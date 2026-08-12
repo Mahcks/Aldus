@@ -1,0 +1,190 @@
+package auth
+
+import (
+	"context"
+	"crypto/sha256"
+	"errors"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/mahcks/aldus/server/internal/database"
+)
+
+const (
+	testBootstrapToken = "test-bootstrap-token"
+	testPassword       = "a-secure-test-password"
+)
+
+func openTestStore(t *testing.T, options Options) (*Store, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "aldus.db")
+	db, err := database.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := New(db, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return store, path
+}
+
+func TestBootstrapAndSessionLifecycle(t *testing.T) {
+	ctx := context.Background()
+	store, path := openTestStore(t, Options{BootstrapToken: testBootstrapToken, SessionTTL: time.Hour})
+	available, err := store.SetupAvailable(ctx)
+	if err != nil || !available {
+		t.Fatalf("SetupAvailable() = %v, %v", available, err)
+	}
+	if _, err := store.Bootstrap(ctx, "wrong", Credentials{Username: "alice", Password: testPassword}); !errors.Is(err, ErrInvalidBootstrapToken) {
+		t.Fatalf("wrong token error = %v", err)
+	}
+	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "Alice", DisplayName: "Alice Admin", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !session.User.Admin || session.User.Username != "Alice" {
+		t.Fatalf("bootstrap user = %#v", session.User)
+	}
+	available, err = store.SetupAvailable(ctx)
+	if err != nil || available {
+		t.Fatalf("SetupAvailable() after setup = %v, %v", available, err)
+	}
+	if _, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "other", Password: testPassword}); !errors.Is(err, ErrBootstrapClosed) {
+		t.Fatalf("second bootstrap error = %v", err)
+	}
+
+	var passwordHash string
+	if err := store.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id=?`, session.User.ID).Scan(&passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	if passwordHash == testPassword {
+		t.Fatal("password stored in plaintext")
+	}
+	var rawCount, hashCount int
+	hash := sha256.Sum256([]byte(session.Token))
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE token_hash=?`, []byte(session.Token)).Scan(&rawCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE token_hash=?`, hash[:]).Scan(&hashCount); err != nil {
+		t.Fatal(err)
+	}
+	if rawCount != 0 || hashCount != 1 {
+		t.Fatalf("stored session raw=%d hashed=%d", rawCount, hashCount)
+	}
+
+	login, err := store.Login(ctx, Credentials{Username: " alice ", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Login(ctx, Credentials{Username: "missing", Password: testPassword}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("missing user error = %v", err)
+	}
+	if _, err := store.Login(ctx, Credentials{Username: "alice", Password: "wrong"}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("wrong password error = %v", err)
+	}
+	if err := store.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := database.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(db, Options{BootstrapToken: testBootstrapToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if user, err := reopened.Authenticate(ctx, login.Token); err != nil || user.ID != session.User.ID {
+		t.Fatalf("persisted session user = %#v, %v", user, err)
+	}
+	if err := reopened.Logout(ctx, login.Token); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Logout(ctx, login.Token); err != nil {
+		t.Fatalf("idempotent logout: %v", err)
+	}
+	if _, err := reopened.Authenticate(ctx, login.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("revoked session error = %v", err)
+	}
+	if _, err := reopened.Authenticate(ctx, "invalid"); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("invalid session error = %v", err)
+	}
+}
+
+func TestBootstrapRequiresConfiguration(t *testing.T) {
+	store, _ := openTestStore(t, Options{})
+	_, err := store.Bootstrap(context.Background(), "anything", Credentials{Username: "alice", Password: testPassword})
+	if !errors.Is(err, ErrBootstrapNotConfigured) {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+}
+
+func TestConcurrentBootstrapCreatesOneAdmin(t *testing.T) {
+	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
+	start := make(chan struct{})
+	errorsSeen := make(chan error, 2)
+	var wait sync.WaitGroup
+	for _, username := range []string{"alice", "other"} {
+		wait.Add(1)
+		go func(username string) {
+			defer wait.Done()
+			<-start
+			_, err := store.Bootstrap(context.Background(), testBootstrapToken, Credentials{Username: username, Password: testPassword})
+			errorsSeen <- err
+		}(username)
+	}
+	close(start)
+	wait.Wait()
+	close(errorsSeen)
+	var successes, closed int
+	for err := range errorsSeen {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrBootstrapClosed):
+			closed++
+		default:
+			t.Fatalf("bootstrap error = %v", err)
+		}
+	}
+	var admins int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM users WHERE is_admin=1`).Scan(&admins); err != nil {
+		t.Fatal(err)
+	}
+	if successes != 1 || closed != 1 || admins != 1 {
+		t.Fatalf("successes=%d closed=%d admins=%d", successes, closed, admins)
+	}
+}
+
+func TestExpiredAndDisabledSessionsAreRejected(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
+	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "alice", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256([]byte(session.Token))
+	if _, err := store.db.ExecContext(ctx, `UPDATE sessions SET expires_at=? WHERE token_hash=?`, formatTime(time.Now().Add(-time.Hour)), hash[:]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, session.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("expired session error = %v", err)
+	}
+	session, err = store.Login(ctx, Credentials{Username: "alice", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE users SET disabled=1 WHERE id=?`, session.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, session.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("disabled session error = %v", err)
+	}
+	if _, err := store.Login(ctx, Credentials{Username: "alice", Password: testPassword}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("disabled login error = %v", err)
+	}
+}

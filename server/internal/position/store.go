@@ -3,53 +3,16 @@ package position
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"errors"
 	"fmt"
-	"net/url"
-	"path/filepath"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
-
-//go:embed schema.sql
-var schema string
 
 type Store struct {
 	db *sql.DB
 }
 
-func Open(ctx context.Context, path string) (*Store, error) {
-	path, err := filepath.Abs(path)
-	if err != nil {
-		return nil, fmt.Errorf("resolve SQLite path: %w", err)
-	}
-	dsn := (&url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"}).String()
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open SQLite: %w", err)
-	}
-	// ponytail: one connection makes transaction behavior deterministic; raise only if measured read contention warrants it.
-	db.SetMaxOpenConns(1)
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ping SQLite: %w", err)
-	}
-	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable SQLite WAL: %w", err)
-	}
-	if err := migrate(ctx, db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("migrate SQLite: %w", err)
-	}
-	return &Store{db: db}, nil
-}
-
-func (s *Store) Close() error {
-	return s.db.Close()
-}
+func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Alignment(ctx context.Context, alignmentID string) (Alignment, error) {
 	var alignment Alignment

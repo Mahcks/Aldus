@@ -11,7 +11,7 @@ import (
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
+	store, err := openTestStore(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestOpenRelativePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(workingDirectory) })
-	store, err := Open(context.Background(), "relative.db")
+	store, err := openTestStore(context.Background(), "relative.db")
 	if err != nil {
 		t.Fatal(err)
 	}

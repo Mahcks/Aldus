@@ -9,6 +9,8 @@ services:
       - ./test-fixtures/alice/media:/fixtures/alice:ro
     environment:
       ALDUS_FIXTURE_DIR: /fixtures/alice
+      ALDUS_BOOTSTRAP_TOKEN: ${ALDUS_BOOTSTRAP_TOKEN:-}
+      ALDUS_SECURE_COOKIES: ${ALDUS_SECURE_COOKIES:-false}
 
 volumes:
   aldus-data:

@@ -113,7 +113,7 @@ func TestSavedAliceAnchors(t *testing.T) {
 
 func testStoreWithoutFixture(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open(context.Background(), filepath.Join(t.TempDir(), "anchors.db"))
+	store, err := openTestStore(context.Background(), filepath.Join(t.TempDir(), "anchors.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

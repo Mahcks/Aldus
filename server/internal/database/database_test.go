@@ -1,4 +1,4 @@
-package position
+package database
 
 import (
 	"context"
@@ -7,26 +7,26 @@ import (
 	"testing"
 )
 
-func TestMigrationCreatesAndReopensVersionOne(t *testing.T) {
+func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	ctx := context.Background()
 	path := t.TempDir() + "/aldus.db"
-	store, err := Open(ctx, path)
+	db, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, store.db); version != 1 {
-		t.Fatalf("schema version = %d, want 1", version)
+	if version := schemaVersion(t, db); version != 2 {
+		t.Fatalf("schema version = %d, want 2", version)
 	}
-	if err := store.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = Open(ctx, path)
+	db, err = Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	if version := schemaVersion(t, store.db); version != 1 {
-		t.Fatalf("schema version after reopen = %d, want 1", version)
+	defer db.Close()
+	if version := schemaVersion(t, db); version != 2 {
+		t.Fatalf("schema version after reopen = %d, want 2", version)
 	}
 }
 
@@ -37,7 +37,7 @@ func TestMigrationPreservesExistingVersionOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := schema + `
+	legacy := initialSchema + `
 PRAGMA user_version = 1;
 INSERT INTO works (id, title) VALUES ('work', 'Alice');
 INSERT INTO media (id, work_id, kind, path, sha256, created_at) VALUES
@@ -59,26 +59,40 @@ INSERT INTO progress (alignment_id, segment_id, offset, revision, updated_at, so
 		t.Fatal(err)
 	}
 
-	store, err := Open(ctx, path)
+	db, err = Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
-	alignment, err := store.Alignment(ctx, "alignment")
-	if err != nil || len(alignment.Segments) != 1 || alignment.Segments[0].Text != "Alice" {
-		t.Fatalf("alignment after migration = %#v, %v", alignment, err)
+	defer db.Close()
+	var segmentText, progressSegment string
+	var offset, revision int
+	if err := db.QueryRowContext(ctx, `SELECT text FROM alignment_segments WHERE alignment_id='alignment'`).Scan(&segmentText); err != nil || segmentText != "Alice" {
+		t.Fatalf("alignment after migration = %q, %v", segmentText, err)
 	}
-	progress, err := store.Progress(ctx, "alignment")
-	if err != nil || progress.SegmentID != "segment" || progress.Offset != 250000 || progress.Revision != 1 {
-		t.Fatalf("progress after migration = %#v, %v", progress, err)
+	if err := db.QueryRowContext(ctx, `SELECT segment_id,offset,revision FROM progress WHERE alignment_id='alignment'`).Scan(&progressSegment, &offset, &revision); err != nil || progressSegment != "segment" || offset != 250000 || revision != 1 {
+		t.Fatalf("progress after migration = %q %d %d, %v", progressSegment, offset, revision, err)
 	}
 	var tableCount int
-	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('works','media','koreader_aliases','alignments','alignment_segments','progress')`).Scan(&tableCount); err != nil || tableCount != 6 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('works','media','koreader_aliases','alignments','alignment_segments','progress')`).Scan(&tableCount); err != nil || tableCount != 6 {
 		t.Fatalf("preserved tables = %d, %v", tableCount, err)
 	}
 	var violation string
-	if err := store.db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
+	if err := db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
 		t.Fatalf("foreign key check = %q, %v", violation, err)
+	}
+	if version := schemaVersion(t, db); version != 2 {
+		t.Fatalf("migrated schema version = %d, want 2", version)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatalf("reopen migrated database: %v", err)
+	}
+	defer db.Close()
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('users','sessions')`).Scan(&tableCount); err != nil || tableCount != 2 {
+		t.Fatalf("authentication tables = %d, %v", tableCount, err)
 	}
 }
 
@@ -88,12 +102,12 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`PRAGMA user_version = 2`); err != nil {
+	if _, err := db.Exec(`PRAGMA user_version = 3`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
 	_, err = Open(context.Background(), path)
-	if err == nil || !strings.Contains(err.Error(), "schema version 2 is newer than supported version 1") {
+	if err == nil || !strings.Contains(err.Error(), "schema version 3 is newer than supported version 2") {
 		t.Fatalf("Open error = %v", err)
 	}
 }
@@ -101,24 +115,24 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 func TestMigrationRollsBackFailedVersion(t *testing.T) {
 	ctx := context.Background()
 	path := t.TempDir() + "/aldus.db"
-	store, err := Open(ctx, path)
+	db, err := Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	original := migrations
 	migrations = append(append([]string{}, migrations...), `CREATE TABLE partial (id TEXT); SELECT nope FROM missing;`)
 	t.Cleanup(func() { migrations = original })
-	if err := migrate(ctx, store.db); err == nil {
+	if err := migrate(ctx, db); err == nil {
 		t.Fatal("failed migration succeeded")
 	}
-	if version := schemaVersion(t, store.db); version != 1 {
-		t.Fatalf("schema version after rollback = %d, want 1", version)
+	if version := schemaVersion(t, db); version != 2 {
+		t.Fatalf("schema version after rollback = %d, want 2", version)
 	}
 	var exists int
-	if err := store.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'partial')`).Scan(&exists); err != nil || exists != 0 {
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'partial')`).Scan(&exists); err != nil || exists != 0 {
 		t.Fatalf("partial migration table exists = %d, %v", exists, err)
 	}
-	store.Close()
+	db.Close()
 }
 
 func schemaVersion(t *testing.T, db *sql.DB) int {

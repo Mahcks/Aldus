@@ -8,19 +8,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
 func TestProtocolExactProgressAndStaleRejection(t *testing.T) {
-	store, err := position.Open(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { db.Close() })
+	store := position.New(db)
 	if err := store.SeedFixture(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(store, Credentials{User: "reader", Key: "key"})
+	handler := Handler(position.New(db), Credentials{User: "reader", Key: "key"})
 
 	push := koRequest(handler, http.MethodPut, "/syncs/progress", `{"document":"fixture-koreader-document","progress":"/body/DocFragment[1]/body/p[2].0","percentage":0.5,"device":"Kobo","device_id":"a"}`)
 	if push.Code != http.StatusOK {
