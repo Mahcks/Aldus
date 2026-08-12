@@ -188,3 +188,35 @@ func TestExpiredAndDisabledSessionsAreRejected(t *testing.T) {
 		t.Fatalf("disabled login error = %v", err)
 	}
 }
+
+func TestAdminUserManagement(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
+	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "admin", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetDisabled(ctx, session.User, session.User.ID, true); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("disable last admin = %v", err)
+	}
+	user, err := store.CreateUser(ctx, session.User, Credentials{Username: "reader", Password: testPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateUser(ctx, session.User, Credentials{Username: "READER", Password: testPassword}, false); !errors.Is(err, ErrUsernameTaken) {
+		t.Fatalf("duplicate username = %v", err)
+	}
+	if err := store.SetDisabled(ctx, user, user.ID, true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-admin disable = %v", err)
+	}
+	if err := store.SetDisabled(ctx, session.User, user.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Login(ctx, Credentials{Username: "reader", Password: testPassword}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("disabled login = %v", err)
+	}
+	users, err := store.Users(ctx, session.User, 50, 0)
+	if err != nil || len(users) != 2 {
+		t.Fatalf("users = %#v, %v", users, err)
+	}
+}

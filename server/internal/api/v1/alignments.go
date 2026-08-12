@@ -4,12 +4,15 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func registerAlignmentRoutes(router chi.Router, store *position.Store) {
-	router.Get("/alignments/{alignmentID}", getAlignment(store))
+func registerAlignmentRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
+	router.With(requireAlignmentAccess(catalogStore)).Get("/alignments/{alignmentID}", getAlignment(store))
 	router.Route("/alignments/{alignmentID}", func(router chi.Router) {
+		router.Use(requireAlignmentAccess(catalogStore))
 		router.Get("/progress", getProgress(store))
 		router.Put("/progress", updateProgress(store))
 		router.Post("/resolve/epub", epubToCanonical(store))
@@ -17,6 +20,24 @@ func registerAlignmentRoutes(router chi.Router, store *position.Store) {
 		router.Post("/locators/epub", canonicalToEPUB(store))
 		router.Post("/locators/audio", canonicalToAudio(store))
 	})
+}
+
+func requireAlignmentAccess(store *catalog.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, _ := auth.UserFromContext(r.Context())
+			ok, err := store.CanAccessAlignment(r.Context(), user, chi.URLParam(r, "alignmentID"))
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func getAlignment(store *position.Store) http.HandlerFunc {

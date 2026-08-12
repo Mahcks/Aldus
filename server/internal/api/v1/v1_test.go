@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/position"
 )
@@ -53,7 +54,7 @@ func TestAuthenticationRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(position.New(db), authStore)
+	handler := Handler(position.New(db), authStore, catalog.New(db))
 
 	unauthorized := request(t, handler, "", http.MethodGet, "/auth/me", "")
 	if unauthorized.Code != http.StatusUnauthorized {
@@ -96,7 +97,7 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(position.New(db), authStore), session.Token
+	return Handler(position.New(db), authStore, catalog.New(db)), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {

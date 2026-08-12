@@ -6,17 +6,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func Handler(store *position.Store, authStore *auth.Store) http.Handler {
+func Handler(store *position.Store, authStore *auth.Store, catalogStore *catalog.Store) http.Handler {
 	router := chi.NewRouter()
 	router.Get("/health", health)
 	registerAuthRoutes(router, authStore)
 	router.Group(func(router chi.Router) {
 		router.Use(authStore.Middleware)
 		registerSessionRoutes(router, authStore)
-		registerAlignmentRoutes(router, store)
+		registerUserRoutes(router, authStore)
+		registerCatalogRoutes(router, catalogStore)
+		registerAlignmentRoutes(router, store, catalogStore)
 	})
 	return router
 }

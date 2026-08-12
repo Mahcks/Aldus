@@ -17,7 +17,10 @@ var initialSchema string
 //go:embed migrations/002_authentication.sql
 var authenticationSchema string
 
-var migrations = []string{initialSchema, authenticationSchema}
+//go:embed migrations/003_catalog.sql
+var catalogSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema}
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	path, err := filepath.Abs(path)

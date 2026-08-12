@@ -125,9 +125,12 @@ func seedSavedAnchors(t *testing.T, store *Store, fixture anchorFixture) {
 	t.Helper()
 	ctx := context.Background()
 	for _, statement := range []string{
-		`INSERT INTO works (id, title) VALUES ('fixture-work', 'Alice')`,
-		fmt.Sprintf(`INSERT INTO media (id, work_id, kind, path, sha256, created_at) VALUES ('fixture-epub', 'fixture-work', 'epub', 'alice.epub', '%s', '2026-08-11T00:00:00Z')`, fixture.EPUBSHA256),
-		fmt.Sprintf(`INSERT INTO media (id, work_id, kind, path, sha256, created_at) VALUES ('fixture-audio', 'fixture-work', 'audio', 'alice-chapter-01.mp3', '%s', '2026-08-11T00:00:00Z')`, fixture.AudioSHA256),
+		`INSERT INTO libraries (id,name,created_at,updated_at) VALUES ('fixture-library','Fixture','2026-08-11T00:00:00Z','2026-08-11T00:00:00Z')`,
+		`INSERT INTO works (id,library_id,title,created_at,updated_at) VALUES ('fixture-work','fixture-library','Alice','2026-08-11T00:00:00Z','2026-08-11T00:00:00Z')`,
+		`INSERT INTO representations (id,work_id,kind,label,created_at,updated_at) VALUES ('fixture-epub-representation','fixture-work','epub','EPUB','2026-08-11T00:00:00Z','2026-08-11T00:00:00Z')`,
+		`INSERT INTO representations (id,work_id,kind,label,created_at,updated_at) VALUES ('fixture-audio-representation','fixture-work','audio','Audio','2026-08-11T00:00:00Z','2026-08-11T00:00:00Z')`,
+		fmt.Sprintf(`INSERT INTO media (id,representation_id,kind,path,sha256,created_at) VALUES ('fixture-epub','fixture-epub-representation','epub','alice.epub','%s','2026-08-11T00:00:00Z')`, fixture.EPUBSHA256),
+		fmt.Sprintf(`INSERT INTO media (id,representation_id,kind,path,sha256,created_at) VALUES ('fixture-audio','fixture-audio-representation','audio','alice-chapter-01.mp3','%s','2026-08-11T00:00:00Z')`, fixture.AudioSHA256),
 		`INSERT INTO alignments (id, epub_media_id, audio_media_id, revision, state, created_at) VALUES ('fixture-alignment', 'fixture-epub', 'fixture-audio', 1, 'ready', '2026-08-11T00:00:00Z')`,
 	} {
 		if _, err := store.db.ExecContext(ctx, statement); err != nil {

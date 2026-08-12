@@ -14,6 +14,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/api"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/config"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/position"
@@ -33,6 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 	store := position.New(db)
+	catalogStore := catalog.New(db)
 	if err := store.RemoveLegacyFixture(ctx); err != nil {
 		slog.Error("remove legacy synthetic fixture", "error", err)
 		db.Close()
@@ -46,7 +48,7 @@ func main() {
 	}
 	server := &http.Server{
 		Addr: cfg.Addr,
-		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, koreader.Credentials{
+		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, catalogStore, koreader.Credentials{
 			User: cfg.KOReaderUser,
 			Key:  cfg.KOReaderKey,
 		}),

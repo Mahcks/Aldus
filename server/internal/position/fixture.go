@@ -22,11 +22,16 @@ func (s *Store) SeedFixture(ctx context.Context) error {
 		query string
 		args  []any
 	}{
-		{`INSERT OR IGNORE INTO works (id, title) VALUES ('fixture-work', 'Aldus Sync Fixture')`, nil},
-		{`INSERT OR IGNORE INTO media (id, work_id, kind, path, sha256, created_at) VALUES (?, 'fixture-work', ?, ?, ?, ?)`, []any{"fixture-epub", "epub", "fixture/book.epub", epubHash, now}},
-		{`INSERT OR IGNORE INTO media (id, work_id, kind, path, sha256, created_at) VALUES (?, 'fixture-work', ?, ?, ?, ?)`, []any{"fixture-audio", "audio", "fixture/book.m4b", audioHash, now}},
+		{`INSERT OR IGNORE INTO libraries (id,name,created_at,updated_at) VALUES ('fixture-library','Fixture Library',?,?)`, []any{now, now}},
+		{`INSERT OR IGNORE INTO works (id,library_id,title,created_at,updated_at) VALUES ('fixture-work','fixture-library','Aldus Sync Fixture',?,?)`, []any{now, now}},
+		{`INSERT OR IGNORE INTO representations (id,work_id,kind,label,created_at,updated_at) VALUES ('fixture-epub-representation','fixture-work','epub','EPUB',?,?)`, []any{now, now}},
+		{`INSERT OR IGNORE INTO representations (id,work_id,kind,label,created_at,updated_at) VALUES ('fixture-audio-representation','fixture-work','audio','Audiobook',?,?)`, []any{now, now}},
+		{`INSERT OR IGNORE INTO media (id,representation_id,kind,path,sha256,created_at) VALUES (?,'fixture-epub-representation',?,?,?,?)`, []any{"fixture-epub", "epub", "fixture/book.epub", epubHash, now}},
+		{`INSERT OR IGNORE INTO media (id,representation_id,kind,path,sha256,created_at) VALUES (?,'fixture-audio-representation',?,?,?,?)`, []any{"fixture-audio", "audio", "fixture/book.m4b", audioHash, now}},
 		{`INSERT OR IGNORE INTO koreader_aliases (document_id, media_id) VALUES ('fixture-koreader-document', 'fixture-epub')`, nil},
 		{`INSERT OR IGNORE INTO alignments (id, epub_media_id, audio_media_id, revision, state, created_at) VALUES (?, 'fixture-epub', 'fixture-audio', 1, 'ready', ?)`, []any{FixtureAlignmentID, now}},
+		{`INSERT OR IGNORE INTO alignment_inputs (alignment_id,media_id,role) VALUES (?,'fixture-epub','epub')`, []any{FixtureAlignmentID}},
+		{`INSERT OR IGNORE INTO alignment_inputs (alignment_id,media_id,role) VALUES (?,'fixture-audio','audio')`, []any{FixtureAlignmentID}},
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
@@ -79,10 +84,13 @@ func (s *Store) RemoveLegacyFixture(ctx context.Context) error {
 	for _, query := range []string{
 		`DELETE FROM progress WHERE alignment_id = 'fixture-alignment'`,
 		`DELETE FROM alignment_segments WHERE alignment_id = 'fixture-alignment'`,
+		`DELETE FROM alignment_inputs WHERE alignment_id = 'fixture-alignment'`,
 		`DELETE FROM alignments WHERE id = 'fixture-alignment'`,
 		`DELETE FROM koreader_aliases WHERE media_id IN ('fixture-epub', 'fixture-audio')`,
-		`DELETE FROM media WHERE work_id = 'fixture-work'`,
+		`DELETE FROM media WHERE representation_id IN ('fixture-epub-representation','fixture-audio-representation')`,
+		`DELETE FROM representations WHERE work_id = 'fixture-work'`,
 		`DELETE FROM works WHERE id = 'fixture-work'`,
+		`DELETE FROM libraries WHERE id = 'fixture-library'`,
 	} {
 		if _, err := tx.ExecContext(ctx, query); err != nil {
 			return fmt.Errorf("remove legacy fixture: %w", err)
