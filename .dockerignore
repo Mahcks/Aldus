@@ -1,0 +1,6 @@
+.git
+.github
+app/.expo
+app/dist
+app/node_modules
+data

@@ -1,0 +1,8 @@
+.DS_Store
+.env
+data/
+app/.expo/
+app/dist/
+app/node_modules/
+server/aldus
+AGENTS.md

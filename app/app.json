@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Aldus",
+    "slug": "aldus",
+    "scheme": "aldus",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.mahcks.aldus" },
+    "android": { "package": "com.mahcks.aldus" },
+    "web": { "bundler": "metro", "output": "static" },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": true }
+  }
+}
