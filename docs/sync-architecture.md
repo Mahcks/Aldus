@@ -76,13 +76,13 @@ This is deliberately not a CRDT. A user resolving a conflict submits again again
 
 SQLite owns works, immutable media revisions and hashes, alignments, segments, native locators, KOReader aliases, and canonical progress. Foreign keys and uniqueness constraints protect revision identity. Initialization is a small embedded SQL schema; there is no ORM.
 
-## Automatic alignment (after Phase 1)
+## Automatic alignment
 
-Alignment is preprocessing, never playback work. The intended boundary is a local subprocess that accepts exact EPUB/audio paths and emits a versioned alignment document. Storyteller's `stalign` is the first tool to evaluate because it already extracts/marks EPUB sentences, transcribes timestamped audio, performs forced alignment, and can preserve word timing. Go validates monotonic segment order, media bounds, overlap, unmatched ranges, coverage, source hashes, and tool/schema versions before one transaction marks an alignment `ready`. No Redis, queue service, or distributed worker is planned.
+Alignment is preprocessing, never playback work. WhisperX 3.8.6 is the adopted MVP candidate: its word starts met the frozen Alice audible-onset target while exact EPUB restoration remained 10/10. The boundary remains a Go-owned local subprocess that accepts exact EPUB/audio paths and emits a versioned alignment document. Go validates monotonic segment order, media bounds, overlap, unmatched ranges, coverage, source hashes, and tool/schema versions before one transaction marks an alignment `ready`. Low-confidence or unresolved mappings fail closed to ordinary playback. No Redis, queue service, or distributed worker is planned.
 
 ## Exactness and failure cases
 
-Phase 1 exactness is the same hand-aligned sentence and an exact millisecond offset within its narration interval. It does not claim character or spoken-word identity unless a segment contains validated word timing.
+Exact DOM-range restoration is validated against the frozen Alice EPUB. Automatic spoken onset uses the separately human-authored audible-onset fixture; manual-seek anchors retain their distinct restoration/listening-position semantics. Exact word highlighting still requires a validated word timing for that segment.
 
 Resolution fails closed when a source hash changed, an alignment is not ready, a document alias is unknown, a locator has no exact segment mapping, a timestamp is out of bounds, segment ordering is non-monotonic, or a client revision is stale. Text quotes are recovery evidence for diagnostics and future controlled re-anchoring, never permission to reuse an alignment against changed media.
 

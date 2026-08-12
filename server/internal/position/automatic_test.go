@@ -100,6 +100,48 @@ func TestAliceAudibleOnsetFixture(t *testing.T) {
 	}
 }
 
+func TestAliceWhisperXOnsetEvaluation(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "test-fixtures", "alice", "automatic", "whisperx", "onset-evaluation.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Rows []struct {
+			Human int64 `json:"audible_onset_timestamp_ms"`
+			Word  struct {
+				Generated int64 `json:"generated_timestamp_ms"`
+				Signed    int64 `json:"signed_error_ms"`
+				Absolute  int64 `json:"absolute_error_ms"`
+			} `json:"whisperx_word_start"`
+		} `json:"rows"`
+		Metrics struct {
+			Word struct {
+				MedianAbsolute float64 `json:"median_absolute_error_ms"`
+				Within250      int     `json:"within_250_ms"`
+				Over1000       int     `json:"over_1000_ms"`
+			} `json:"whisperx_word_start"`
+		} `json:"metrics"`
+	}
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Rows) != 10 || report.Metrics.Word.MedianAbsolute != 230.5 || report.Metrics.Word.Within250 != 8 || report.Metrics.Word.Over1000 != 0 {
+		t.Fatalf("unexpected onset metrics: rows=%d metrics=%+v", len(report.Rows), report.Metrics.Word)
+	}
+	for index, row := range report.Rows {
+		if row.Word.Signed != row.Word.Generated-row.Human || row.Word.Absolute != abs64(row.Word.Signed) {
+			t.Fatalf("onset row %d has inconsistent errors", index)
+		}
+	}
+}
+
+func abs64(value int64) int64 {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
 func validateAutomaticCandidate(t *testing.T, root string) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, "alignment.json"))

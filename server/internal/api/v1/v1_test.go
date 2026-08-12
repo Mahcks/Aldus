@@ -32,6 +32,30 @@ func TestResolveAudioAndUpdateProgress(t *testing.T) {
 	}
 }
 
+func TestProgressConflictContract(t *testing.T) {
+	store, err := position.Open(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	if err := store.SeedFixture(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	handler := Handler(store)
+	first := request(t, handler, http.MethodPut, "/alignments/fixture-alignment/progress", `{"segment_id":"s0001","offset":0,"expected_revision":0,"source_device":"web"}`)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first update = %d %s", first.Code, first.Body.String())
+	}
+	conflict := request(t, handler, http.MethodPut, "/alignments/fixture-alignment/progress", `{"segment_id":"s0002","offset":0,"expected_revision":0,"source_device":"other"}`)
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("conflict = %d %s", conflict.Code, conflict.Body.String())
+	}
+	const want = `{"alignment_id":"fixture-alignment","segment_id":"s0001","offset":0,"revision":1,`
+	if !strings.HasPrefix(conflict.Body.String(), want) {
+		t.Fatalf("conflict body = %s, want prefix %s", conflict.Body.String(), want)
+	}
+}
+
 func request(t *testing.T, handler http.Handler, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()

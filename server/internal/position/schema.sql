@@ -1,6 +1,3 @@
-PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;
-
 CREATE TABLE IF NOT EXISTS works (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL
@@ -59,5 +56,3 @@ CREATE TABLE IF NOT EXISTS progress (
     source_device TEXT NOT NULL,
     FOREIGN KEY (alignment_id, segment_id) REFERENCES alignment_segments(alignment_id, id)
 );
-
-PRAGMA user_version = 1;

@@ -36,9 +36,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("ping SQLite: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, schema); err != nil {
+	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode = WAL`); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("initialize SQLite: %w", err)
+		return nil, fmt.Errorf("enable SQLite WAL: %w", err)
+	}
+	if err := migrate(ctx, db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate SQLite: %w", err)
 	}
 	return &Store{db: db}, nil
 }
