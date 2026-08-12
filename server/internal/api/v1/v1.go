@@ -7,10 +7,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func Handler(store *position.Store, authStore *auth.Store, catalogStore *catalog.Store) http.Handler {
+func Handler(store *position.Store, authStore *auth.Store, catalogStore *catalog.Store, ingestStore *ingest.Store) http.Handler {
 	router := chi.NewRouter()
 	router.Get("/health", health)
 	registerAuthRoutes(router, authStore)
@@ -19,6 +20,9 @@ func Handler(store *position.Store, authStore *auth.Store, catalogStore *catalog
 		registerSessionRoutes(router, authStore)
 		registerUserRoutes(router, authStore)
 		registerCatalogRoutes(router, catalogStore)
+		if ingestStore != nil {
+			registerMediaRoutes(router, ingestStore)
+		}
 		registerAlignmentRoutes(router, store, catalogStore)
 	})
 	return router

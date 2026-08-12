@@ -13,6 +13,8 @@ type Config struct {
 	KOReaderKey    string
 	BootstrapToken string
 	SecureCookies  bool
+	MediaDir       string
+	MaxUploadBytes int64
 }
 
 func Load() Config {
@@ -24,7 +26,17 @@ func Load() Config {
 		KOReaderKey:    envOr("ALDUS_KOREADER_KEY", "aldus"),
 		BootstrapToken: os.Getenv("ALDUS_BOOTSTRAP_TOKEN"),
 		SecureCookies:  envBool("ALDUS_SECURE_COOKIES"),
+		MediaDir:       envOr("ALDUS_MEDIA_DIR", ""),
+		MaxUploadBytes: envInt64("ALDUS_MAX_UPLOAD_BYTES", 2<<30),
 	}
+}
+
+func envInt64(key string, fallback int64) int64 {
+	value, err := strconv.ParseInt(os.Getenv(key), 10, 64)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func envBool(key string) bool {

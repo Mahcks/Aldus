@@ -14,7 +14,7 @@ COPY server/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /aldus ./cmd/app
 
 FROM alpine:3.22
-RUN addgroup -S aldus && adduser -S -G aldus aldus && mkdir /data /app && chown aldus:aldus /data /app
+RUN apk add --no-cache ffmpeg && addgroup -S aldus && adduser -S -G aldus aldus && mkdir /data /app && chown aldus:aldus /data /app
 WORKDIR /app
 COPY --from=server /aldus /usr/local/bin/aldus
 COPY --from=web /src/app/dist ./public

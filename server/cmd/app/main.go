@@ -17,6 +17,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/config"
 	"github.com/mahcks/aldus/server/internal/database"
+	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -35,6 +36,16 @@ func main() {
 	}
 	store := position.New(db)
 	catalogStore := catalog.New(db)
+	mediaDir := cfg.MediaDir
+	if mediaDir == "" {
+		mediaDir = filepath.Join(cfg.DataDir, "media")
+	}
+	ingestStore, err := ingest.New(db, ingest.Options{Root: mediaDir, MaxBytes: cfg.MaxUploadBytes})
+	if err != nil {
+		slog.Error("open media storage", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
 	if err := store.RemoveLegacyFixture(ctx); err != nil {
 		slog.Error("remove legacy synthetic fixture", "error", err)
 		db.Close()
@@ -48,7 +59,7 @@ func main() {
 	}
 	server := &http.Server{
 		Addr: cfg.Addr,
-		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, catalogStore, koreader.Credentials{
+		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, catalogStore, ingestStore, koreader.Credentials{
 			User: cfg.KOReaderUser,
 			Key:  cfg.KOReaderKey,
 		}),

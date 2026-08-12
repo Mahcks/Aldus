@@ -54,7 +54,7 @@ func TestAuthenticationRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(position.New(db), authStore, catalog.New(db))
+	handler := Handler(position.New(db), authStore, catalog.New(db), nil)
 
 	unauthorized := request(t, handler, "", http.MethodGet, "/auth/me", "")
 	if unauthorized.Code != http.StatusUnauthorized {
@@ -97,7 +97,7 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(position.New(db), authStore, catalog.New(db)), session.Token
+	return Handler(position.New(db), authStore, catalog.New(db), nil), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {

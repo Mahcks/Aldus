@@ -10,14 +10,15 @@ import (
 	"github.com/mahcks/aldus/server/internal/api/v1"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func Handler(web fs.FS, media http.FileSystem, store *position.Store, authStore *auth.Store, catalogStore *catalog.Store, credentials koreader.Credentials) http.Handler {
+func Handler(web fs.FS, media http.FileSystem, store *position.Store, authStore *auth.Store, catalogStore *catalog.Store, ingestStore *ingest.Store, credentials koreader.Credentials) http.Handler {
 	router := chi.NewRouter()
 	apiRouter := router.With(cors)
-	apiRouter.Mount("/api/v1", v1.Handler(store, authStore, catalogStore))
-	apiRouter.Mount("/api", v1.Handler(store, authStore, catalogStore))
+	apiRouter.Mount("/api/v1", v1.Handler(store, authStore, catalogStore, ingestStore))
+	apiRouter.Mount("/api", v1.Handler(store, authStore, catalogStore, ingestStore))
 	koreaderHandler := koreader.Handler(store, credentials)
 	router.Handle("/healthcheck", koreaderHandler)
 	router.Handle("/users/*", koreaderHandler)
