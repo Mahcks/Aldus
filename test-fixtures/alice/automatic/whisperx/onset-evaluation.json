@@ -1,0 +1,199 @@
+{
+  "onset_fixture": "../test-fixtures/alice/onset-anchors.json",
+  "rows": [
+    {
+      "anchor_id": "alice-ch01-01",
+      "opening_word": "Alice",
+      "manual_seek_timestamp_ms": 33745,
+      "audible_onset_timestamp_ms": 33195,
+      "annotation_notes": "Before clip is silent; after clip begins with the \"A\" in Alice.",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 33428,
+        "signed_error_ms": 233,
+        "absolute_error_ms": 233
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 33348,
+        "signed_error_ms": 153,
+        "absolute_error_ms": 153
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-02",
+      "opening_word": "In",
+      "manual_seek_timestamp_ms": 131458,
+      "audible_onset_timestamp_ms": 131008,
+      "annotation_notes": "Before clip is silent; after clip begins with the “I” in \"In\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 131241,
+        "signed_error_ms": 233,
+        "absolute_error_ms": 233
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 131181,
+        "signed_error_ms": 173,
+        "absolute_error_ms": 173
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-03",
+      "opening_word": "How",
+      "manual_seek_timestamp_ms": 212388,
+      "audible_onset_timestamp_ms": 211988,
+      "annotation_notes": "Before clip is silent; after clip begins with the “H” in \"How\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 212185,
+        "signed_error_ms": 197,
+        "absolute_error_ms": 197
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 212195,
+        "signed_error_ms": 207,
+        "absolute_error_ms": 207
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-04",
+      "opening_word": "Presently",
+      "manual_seek_timestamp_ms": 279459,
+      "audible_onset_timestamp_ms": 278559,
+      "annotation_notes": "Before clip is silent; after clip begins with the “P” in \"Presently\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 278692,
+        "signed_error_ms": 133,
+        "absolute_error_ms": 133
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 278712,
+        "signed_error_ms": 153,
+        "absolute_error_ms": 153
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-05",
+      "opening_word": "There",
+      "manual_seek_timestamp_ms": 331956,
+      "audible_onset_timestamp_ms": 331466,
+      "annotation_notes": "Before clip is silent; after clip begins with the “T” in \"There\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 331614,
+        "signed_error_ms": 148,
+        "absolute_error_ms": 148
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 331644,
+        "signed_error_ms": 178,
+        "absolute_error_ms": 178
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-06",
+      "opening_word": "Alice",
+      "manual_seek_timestamp_ms": 405317,
+      "audible_onset_timestamp_ms": 404642,
+      "annotation_notes": "Before clip is silent; after clip begins with the “A” in \"Alice\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 404921,
+        "signed_error_ms": 279,
+        "absolute_error_ms": 279
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 404831,
+        "signed_error_ms": 189,
+        "absolute_error_ms": 189
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-07",
+      "opening_word": "Suddenly",
+      "manual_seek_timestamp_ms": 459112,
+      "audible_onset_timestamp_ms": 458387,
+      "annotation_notes": "Before clip is silent; after clip begins with the “S” in \"Suddenly\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 458641,
+        "signed_error_ms": 254,
+        "absolute_error_ms": 254
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 458561,
+        "signed_error_ms": 174,
+        "absolute_error_ms": 174
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-08",
+      "opening_word": "I",
+      "manual_seek_timestamp_ms": 539352,
+      "audible_onset_timestamp_ms": 539077,
+      "annotation_notes": "Before clip is silent; after clip begins with the “I” in \"I\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 539305,
+        "signed_error_ms": 228,
+        "absolute_error_ms": 228
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 539285,
+        "signed_error_ms": 208,
+        "absolute_error_ms": 208
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-09",
+      "opening_word": "However",
+      "manual_seek_timestamp_ms": 633279,
+      "audible_onset_timestamp_ms": 632454,
+      "annotation_notes": "Before clip is silent; after clip begins with the “H” in \"However\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 632657,
+        "signed_error_ms": 203,
+        "absolute_error_ms": 203
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 632677,
+        "signed_error_ms": 223,
+        "absolute_error_ms": 223
+      }
+    },
+    {
+      "anchor_id": "alice-ch01-10",
+      "opening_word": "And",
+      "manual_seek_timestamp_ms": 692257,
+      "audible_onset_timestamp_ms": 692232,
+      "annotation_notes": "Before clip is silent; after clip begins with the “A” in \"And\".",
+      "whisperx_word_start": {
+        "generated_timestamp_ms": 692472,
+        "signed_error_ms": 240,
+        "absolute_error_ms": 240
+      },
+      "waveform_energy_onset": {
+        "generated_timestamp_ms": 692452,
+        "signed_error_ms": 220,
+        "absolute_error_ms": 220
+      }
+    }
+  ],
+  "metrics": {
+    "whisperx_word_start": {
+      "median_signed_error_ms": 230.5,
+      "median_absolute_error_ms": 230.5,
+      "mean_absolute_error_ms": 214.8,
+      "maximum_absolute_error_ms": 279,
+      "within_100_ms": 0,
+      "within_250_ms": 8,
+      "within_500_ms": 10,
+      "within_1000_ms": 10,
+      "over_1000_ms": 0
+    },
+    "waveform_energy_onset": {
+      "median_signed_error_ms": 183.5,
+      "median_absolute_error_ms": 183.5,
+      "mean_absolute_error_ms": 187.8,
+      "maximum_absolute_error_ms": 223,
+      "within_100_ms": 0,
+      "within_250_ms": 10,
+      "within_500_ms": 10,
+      "within_1000_ms": 10,
+      "over_1000_ms": 0
+    }
+  }
+}

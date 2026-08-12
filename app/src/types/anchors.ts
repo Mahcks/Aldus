@@ -26,3 +26,20 @@ export type AnchorFixture = {
   koreader_document_hash: string;
   anchors: Anchor[];
 };
+
+export type OnsetAnchor = {
+  anchor_id: string;
+  manual_seek_timestamp_ms: number;
+  audible_onset_timestamp_ms: number;
+  opening_word: string;
+  annotation_notes: string;
+  manual_minus_onset_ms: number;
+};
+
+export type OnsetFixture = {
+  version: 1;
+  semantics: 'earliest point at which the opening spoken word audibly begins';
+  epub_sha256: string;
+  audio_sha256: string;
+  anchors: OnsetAnchor[];
+};

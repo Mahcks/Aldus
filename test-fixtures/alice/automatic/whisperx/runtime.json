@@ -1,0 +1,12 @@
+{
+  "tool": "whisperx 3.8.6",
+  "asr_model": "base.en",
+  "alignment_model": "torchaudio",
+  "device": "cpu",
+  "compute_type": "int8",
+  "asr_seconds": 25.407477558008395,
+  "alignment_seconds": 136.28851736200158,
+  "total_seconds": 161.69647740200162,
+  "wall_seconds": 165.07,
+  "peak_memory_mib_approx": 2713.7
+}

@@ -1,0 +1,136 @@
+{
+  "chapters": [
+    {
+      "href": "6260297267691793459_11-h-1.htm.xhtml",
+      "transcriptionOffset": 0,
+      "endTranscriptionOffset": 11176,
+      "transcriptionContext": {
+        "before": "",
+        "after": " CHAPTER I Alice's Adventures in Wonderland by Lewis Carroll. Chapter 1 Down the"
+      },
+      "endTranscriptionContext": {
+        "before": "o on in the common way. So she set to work, and very soon, finished off the cake",
+        "after": "."
+      },
+      "firstMatchedSentenceId": 0,
+      "firstMatchedSentenceContext": {
+        "prevSentence": null,
+        "matchedSentence": "CHAPTER I. Down the Rabbit-Hole\n",
+        "nextSentence": "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, “and what is the use of a book,” thought Alice “without pictures or conversations?” \n"
+      },
+      "lastMatchedSentenceId": 85,
+      "lastMatchedSentenceContext": {
+        "prevSentence": "holding her hand on the top of her head to feel which way it was growing, and she was quite surprised to find that she remained the same size: to be sure, this generally happens when one eats cake, but Alice had got so much into the way of expecting nothing but out-of-the-way things to happen, that it seemed quite dull and stupid for life to go on in the common way. \n",
+        "matchedSentence": "So she set to work, and very soon finished off the cake. \n",
+        "nextSentence": "*      *      *      *      *      *      *      *      *      *      *      *      *  *      *      *      *      *      *      * \n"
+      },
+      "chapterSentenceCount": 87,
+      "alignedSentenceCount": 83,
+      "audioFiles": [
+        {
+          "filepath": "processed/00001-00001.mp3",
+          "start": 33.7,
+          "end": 858.34
+        }
+      ]
+    }
+  ],
+  "unalignedChapters": [
+    {
+      "href": "wrap0000.xhtml",
+      "reason": "no-text"
+    },
+    {
+      "href": "6260297267691793459_11-h-0.htm.xhtml",
+      "reason": "not-found",
+      "start": "The Project Gutenberg eBook of Alice's Adventures in Wonderland\nThis eBook is fo",
+      "end": "Who Stole the Tarts?\nCHAPTER XII.\nAlice’s Evidence\n"
+    },
+    {
+      "href": "6260297267691793459_11-h-2.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER II. The Pool of Tears\n“Curiouser and curiouser!” ",
+      "end": "r curious creatures. Alice led the way, and the whole party swam to the shore. \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-3.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER III. A Caucus-Race and a Long Tale\nThey were indeed a queer-looking part",
+      "end": " that the Mouse had changed his mind, and was coming back to finish his story. \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-4.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER IV. The Rabbit Sends in a Little Bill\nIt was the White Rabbit, trotting ",
+      "end": " a long hookah, and taking not the smallest notice of her or of anything else. \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-5.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER V. Advice from a Caterpillar\nThe Caterpillar and Alice looked at each ot",
+      "end": "re to go near the house till she had brought herself down to nine inches high. \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-6.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER VI. Pig and Pepper\nFor a minute or two she stood looking at the house, a",
+      "end": "ld be raving mad after all! I almost wish I’d gone to see the Hatter instead!” \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-7.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER VII. A Mad Tea-Party\nThere was a table set out under a tree in front of ",
+      "end": " in the beautiful garden, among the bright flower-beds and the cool fountains. \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-8.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER VIII. The Queen’s Croquet-Ground\nA large rose-tree stood near the entran",
+      "end": "up and down looking for it, while the rest of the party went back to the game. \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-9.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER IX. The Mock Turtle’s Story\n“You can’t think how glad I am to see you ag",
+      "end": " interrupted in a very decided tone: “tell her something about the games now.” \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-10.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER X. The Lobster Quadrille\nThe Mock Turtle sighed deeply, and drew the bac",
+      "end": "lancholy words:— \n“Soo—oop of the e—e—evening,     Beautiful, beautiful Soup!” \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-11.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER XI. Who Stole the Tarts?\nThe King and Queen of Hearts were seated on the",
+      "end": "hite Rabbit read out, at the top of his shrill little voice, the name “Alice!” \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-12.htm.xhtml",
+      "reason": "not-found",
+      "start": "CHAPTER XII. Alice’s Evidence\n“Here!” ",
+      "end": "mple joys, remembering her own child-life, and the happy summer days. \nTHE END \n"
+    },
+    {
+      "href": "6260297267691793459_11-h-13.htm.xhtml",
+      "reason": "not-found",
+      "start": "*** END OF THE PROJECT GUTENBERG EBOOK ALICE'S ADVENTURES IN WONDERLAND *** \nUpd",
+      "end": "eBooks, and how to subscribe to our email newsletter to hear about new eBooks. \n"
+    }
+  ],
+  "audioFiles": [
+    {
+      "alignedDuration": 824.64,
+      "duration": 864.287347,
+      "filepath": "processed/00001-00001.mp3",
+      "matchedRanges": [
+        {
+          "start": 33.7,
+          "end": 858.34
+        }
+      ]
+    }
+  ],
+  "unalignedAudioFiles": []
+}

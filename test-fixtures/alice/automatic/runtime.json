@@ -1,0 +1,32 @@
+{
+  "machine": {
+    "cpu": "AMD Ryzen 9 7900X 12-Core Processor",
+    "logical_cpus": 24,
+    "gpu_available_to_worker": false,
+    "host_gpu": "NVIDIA GeForce RTX 4070"
+  },
+  "configuration": {
+    "tool": "@storyteller-platform/align 0.1.57",
+    "engine": "whisper.cpp 1.8.3-st.2 linux-x64-blas",
+    "model": "base.en",
+    "threads": 8,
+    "processors": 1,
+    "language": "en-US",
+    "granularity": "sentence"
+  },
+  "run_1": {
+    "transcription_ms": 809300,
+    "peak_rss_kb": 612976,
+    "transcription_sha256": "c0f0f46a54b1edba326aa40a75e497a15cc3b8d9d5a21ca9a3db08275ccf9e29"
+  },
+  "run_2": {
+    "transcription_ms": 809000,
+    "peak_rss_kb": 612868,
+    "transcription_sha256": "c0f0f46a54b1edba326aa40a75e497a15cc3b8d9d5a21ca9a3db08275ccf9e29"
+  },
+  "preprocessing_ms": 152,
+  "alignment_ms": 1020,
+  "conversion_and_evaluation_ms": 300,
+  "deterministic": true,
+  "comparison": "byte-identical raw transcription JSON"
+}

@@ -1,0 +1,13 @@
+{
+  "tool": "whisperx 3.8.6",
+  "asr_model": null,
+  "alignment_model": "torchaudio",
+  "device": "cpu",
+  "compute_type": "int8",
+  "asr_seconds": 0,
+  "alignment_seconds": 41.91035619399918,
+  "total_seconds": 41.9139247169951,
+  "wall_seconds": 45.17,
+  "peak_memory_mib_approx": 3215.3,
+  "coarse_input": "../whisperx/alignment.json"
+}

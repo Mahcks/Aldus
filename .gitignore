@@ -6,4 +6,7 @@ app/dist/
 app/node_modules/
 server/aldus
 AGENTS.md
+plans/
+__pycache__/
+*.py[cod]
 test-fixtures/alice/media/

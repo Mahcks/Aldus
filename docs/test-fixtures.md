@@ -21,9 +21,11 @@ The EPUB package is `OEBPS/content.opf`; Chapter 1 is `OEBPS/6260297267691793459
 
 Do not replace either file by editing this metadata. Intentionally adopting a new upstream revision requires new hashes, a new fixture ID, new KOReader identity, and a new manual alignment.
 
-## Current limitation
+## Benchmark semantics
 
-The ten sentence-level audio anchors have not been authored and verified by listening yet. The existing database seed remains the synthetic resolver test fixture, so it cannot be used as acceptance evidence for real-media synchronization. This is explicit to prevent guessed timings from becoming golden data.
+`anchors.json` contains ten human-authored manual seek positions and exact EPUB ranges. It remains the immutable fixture for locator restoration and manual Read → Listen / Listen → Read behavior. It is not word-onset ground truth.
+
+`onset-anchors.json`, once exported, is a separate human-authored fixture for the earliest audible beginning of each opening word. Never derive it from WhisperX, waveform diagnostics, or the existing manual timestamps.
 
 ## Authoring anchors
 
@@ -39,6 +41,27 @@ The ten sentence-level audio anchors have not been authored and verified by list
 10. Run `make test`. `TestSavedAliceAnchors` validates every exported anchor in both directions and resolves the final locator to the exact EPUB passage.
 
 The tool is web-only and developer-only. It cannot write the repository directly: exporting and reviewing the JSON is an intentional trust boundary.
+
+## Authoring audible-onset anchors
+
+1. Run `make fixture` and `make dev`.
+2. Open `http://localhost:8081/onsets` (or use the port printed by Expo).
+3. The page reuses valid Alice anchors saved by `/anchors`. If they are unavailable, choose **Import anchors.json** and select `test-fixtures/alice/anchors.json`.
+4. Choose a 100, 250, 500, or 1,000 ms audition length. Use **Play before boundary** and **Play after boundary** with the ±500, ±100, and ±25 ms controls. Narrow toward 100 ms until the before slice has no opening-word sound and the after slice begins with it.
+5. Find the earliest point where the opening word audibly begins. Do not annotate word completion or the point where the word becomes recognizable.
+6. Add a note describing what was heard at the boundary and confirm that the choice was made by listening. Model output is intentionally absent from the authoring control.
+7. Save all ten passages, then export `onset-anchors.json` to `test-fixtures/alice/onset-anchors.json`.
+8. Evaluate the completed fixture from `server/`:
+
+   ```sh
+   go run ./cmd/alignment-experiment onset-evaluate \
+     --manual ../test-fixtures/alice/anchors.json \
+     --onsets ../test-fixtures/alice/onset-anchors.json \
+     --boundaries ../test-fixtures/alice/automatic/whisperx/boundary-analysis.json \
+     --output ../test-fixtures/alice/automatic/whisperx/onset-evaluation.json
+   ```
+
+The output compares WhisperX word start and the fixed waveform-energy diagnostic with the human audible-onset timestamps. Do not run or report this benchmark until all ten human annotations exist.
 
 ## Capturing KOReader XPointers
 

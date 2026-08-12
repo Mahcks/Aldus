@@ -1,0 +1,164 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0 
+xmax = 10.026 
+tiers? <exists> 
+size = 2 
+item []: 
+    item [1]:
+        class = "IntervalTier" 
+        name = "words" 
+        xmin = 0 
+        xmax = 10.026 
+        intervals: size = 18 
+        intervals [1]:
+            xmin = 0.0 
+            xmax = 0.95 
+            text = "" 
+        intervals [2]:
+            xmin = 0.95 
+            xmax = 1.48 
+            text = "so" 
+        intervals [3]:
+            xmin = 1.48 
+            xmax = 2.1 
+            text = "she" 
+        intervals [4]:
+            xmin = 2.1 
+            xmax = 2.51 
+            text = "" 
+        intervals [5]:
+            xmin = 2.51 
+            xmax = 2.97 
+            text = "set" 
+        intervals [6]:
+            xmin = 2.97 
+            xmax = 3.18 
+            text = "to" 
+        intervals [7]:
+            xmin = 3.18 
+            xmax = 3.78 
+            text = "work" 
+        intervals [8]:
+            xmin = 3.78 
+            xmax = 4.53 
+            text = "" 
+        intervals [9]:
+            xmin = 4.53 
+            xmax = 4.76 
+            text = "and" 
+        intervals [10]:
+            xmin = 4.76 
+            xmax = 4.93 
+            text = "very" 
+        intervals [11]:
+            xmin = 4.93 
+            xmax = 5.07 
+            text = "" 
+        intervals [12]:
+            xmin = 5.07 
+            xmax = 5.59 
+            text = "soon" 
+        intervals [13]:
+            xmin = 5.59 
+            xmax = 5.92 
+            text = "finished" 
+        intervals [14]:
+            xmin = 5.92 
+            xmax = 6.0 
+            text = "off" 
+        intervals [15]:
+            xmin = 6.0 
+            xmax = 8.45 
+            text = "" 
+        intervals [16]:
+            xmin = 8.45 
+            xmax = 8.77 
+            text = "the" 
+        intervals [17]:
+            xmin = 8.77 
+            xmax = 9.67 
+            text = "cake" 
+        intervals [18]:
+            xmin = 9.67 
+            xmax = 10.026 
+            text = "" 
+    item [2]:
+        class = "IntervalTier" 
+        name = "phones" 
+        xmin = 0 
+        xmax = 10.026 
+        intervals: size = 18 
+        intervals [1]:
+            xmin = 0.0 
+            xmax = 0.95 
+            text = "" 
+        intervals [2]:
+            xmin = 0.95 
+            xmax = 1.48 
+            text = "spn" 
+        intervals [3]:
+            xmin = 1.48 
+            xmax = 2.1 
+            text = "spn" 
+        intervals [4]:
+            xmin = 2.1 
+            xmax = 2.51 
+            text = "" 
+        intervals [5]:
+            xmin = 2.51 
+            xmax = 2.97 
+            text = "spn" 
+        intervals [6]:
+            xmin = 2.97 
+            xmax = 3.18 
+            text = "spn" 
+        intervals [7]:
+            xmin = 3.18 
+            xmax = 3.78 
+            text = "spn" 
+        intervals [8]:
+            xmin = 3.78 
+            xmax = 4.53 
+            text = "" 
+        intervals [9]:
+            xmin = 4.53 
+            xmax = 4.76 
+            text = "spn" 
+        intervals [10]:
+            xmin = 4.76 
+            xmax = 4.93 
+            text = "spn" 
+        intervals [11]:
+            xmin = 4.93 
+            xmax = 5.07 
+            text = "" 
+        intervals [12]:
+            xmin = 5.07 
+            xmax = 5.59 
+            text = "spn" 
+        intervals [13]:
+            xmin = 5.59 
+            xmax = 5.92 
+            text = "spn" 
+        intervals [14]:
+            xmin = 5.92 
+            xmax = 6.0 
+            text = "spn" 
+        intervals [15]:
+            xmin = 6.0 
+            xmax = 8.45 
+            text = "" 
+        intervals [16]:
+            xmin = 8.45 
+            xmax = 8.77 
+            text = "spn" 
+        intervals [17]:
+            xmin = 8.77 
+            xmax = 9.67 
+            text = "spn" 
+        intervals [18]:
+            xmin = 9.67 
+            xmax = 10.026 
+            text = "" 

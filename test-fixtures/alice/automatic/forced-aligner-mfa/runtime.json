@@ -1,0 +1,14 @@
+{
+  "tool": "Montreal Forced Aligner 3.4.2.dev0+gf01293108.d20260711",
+  "acoustic_model": "english_mfa",
+  "dictionary": "english_us_arpa",
+  "device": "cpu",
+  "window_extraction_seconds": 1.5,
+  "alignment_seconds": 25.169,
+  "alignment_wall_seconds": 28.826,
+  "total_seconds": 30.326,
+  "peak_memory_mib": 1260.5,
+  "utterances": 85,
+  "aligned_utterances": 81,
+  "unresolved_utterances": 4
+}

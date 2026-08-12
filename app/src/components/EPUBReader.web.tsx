@@ -30,10 +30,11 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     },
     async restoreSelection(capture) {
       const view = reader.current;
-      const resolved = await view.resolveNavigation(capture.cfi);
-      await view.goTo(capture.cfi);
+      const target = capture.cfi || capture.href;
+      const resolved = await view.resolveNavigation(target);
+      await view.goTo(target);
       const content = view.renderer.getContents().find(({ index }: { index: number }) => index === resolved.index);
-      const range = resolved.anchor(content.doc) as Range;
+      const range = capture.cfi ? resolved.anchor(content.doc) as Range : restoreDOMRange(content.doc, capture);
       const selected = content.doc.getSelection();
       selected?.removeAllRanges();
       selected?.addRange(range);
@@ -93,6 +94,28 @@ function serializeRange(view: any, index: number, range: Range): ReaderCapture {
 
 function normalize(text: string) {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function restoreDOMRange(doc: Document, capture: ReaderCapture) {
+  const range = doc.createRange();
+  range.setStart(resolveDOMPath(doc, capture.start.dom_path), capture.start.node_offset);
+  range.setEnd(resolveDOMPath(doc, capture.end.dom_path), capture.end.node_offset);
+  return range;
+}
+
+function resolveDOMPath(doc: Document, path: string) {
+  let node: Node = doc;
+  for (const part of path.split('/')) {
+    const match = /^(\w+|text\(\))\[(\d+)\]$/.exec(part);
+    if (!match) throw new Error(`Invalid DOM path: ${path}`);
+    const [, name, rawIndex] = match;
+    const candidates = name === 'text()'
+      ? Array.from(node.childNodes).filter((child) => child.nodeType === Node.TEXT_NODE)
+      : Array.from(node.childNodes).filter((child) => child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName.toLowerCase() === name);
+    node = candidates[Number(rawIndex) - 1];
+    if (!node) throw new Error(`DOM path not found: ${path}`);
+  }
+  return node;
 }
 
 function domPath(node: Node): string {

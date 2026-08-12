@@ -1,0 +1,113 @@
+{
+  "candidate": "test-fixtures/alice/automatic/hybrid-whisperx/alignment.json",
+  "anchors": [
+    {
+      "anchor_id": "alice-ch01-01",
+      "manual_timestamp_ms": 33745,
+      "generated_timestamp_ms": 33429,
+      "absolute_error_ms": 316,
+      "restored_text_match": true,
+      "confidence": 0.762625,
+      "segment_id": "item4-s1"
+    },
+    {
+      "anchor_id": "alice-ch01-02",
+      "manual_timestamp_ms": 131458,
+      "generated_timestamp_ms": 131243,
+      "absolute_error_ms": 215,
+      "restored_text_match": true,
+      "confidence": 0.803625,
+      "segment_id": "item4-s7"
+    },
+    {
+      "anchor_id": "alice-ch01-03",
+      "manual_timestamp_ms": 212388,
+      "generated_timestamp_ms": 212186,
+      "absolute_error_ms": 202,
+      "restored_text_match": true,
+      "confidence": 0.8015,
+      "segment_id": "item4-s14"
+    },
+    {
+      "anchor_id": "alice-ch01-04",
+      "manual_timestamp_ms": 279459,
+      "generated_timestamp_ms": 278694,
+      "absolute_error_ms": 765,
+      "restored_text_match": true,
+      "confidence": 0.8625,
+      "segment_id": "item4-s24"
+    },
+    {
+      "anchor_id": "alice-ch01-05",
+      "manual_timestamp_ms": 331956,
+      "generated_timestamp_ms": 331615,
+      "absolute_error_ms": 341,
+      "restored_text_match": true,
+      "confidence": 0.83025,
+      "segment_id": "item4-s34"
+    },
+    {
+      "anchor_id": "alice-ch01-06",
+      "manual_timestamp_ms": 405317,
+      "generated_timestamp_ms": 404902,
+      "absolute_error_ms": 415,
+      "restored_text_match": true,
+      "confidence": 0.829125,
+      "segment_id": "item4-s50"
+    },
+    {
+      "anchor_id": "alice-ch01-07",
+      "manual_timestamp_ms": 459112,
+      "generated_timestamp_ms": 458622,
+      "absolute_error_ms": 490,
+      "restored_text_match": true,
+      "confidence": 0.775875,
+      "segment_id": "item4-s54"
+    },
+    {
+      "anchor_id": "alice-ch01-08",
+      "manual_timestamp_ms": 539352,
+      "generated_timestamp_ms": 539308,
+      "absolute_error_ms": 44,
+      "restored_text_match": true,
+      "confidence": 0.871875,
+      "segment_id": "item4-s60"
+    },
+    {
+      "anchor_id": "alice-ch01-09",
+      "manual_timestamp_ms": 633279,
+      "generated_timestamp_ms": 632658,
+      "absolute_error_ms": 621,
+      "restored_text_match": true,
+      "confidence": 0.877625,
+      "segment_id": "item4-s65"
+    },
+    {
+      "anchor_id": "alice-ch01-10",
+      "manual_timestamp_ms": 692257,
+      "generated_timestamp_ms": 692473,
+      "absolute_error_ms": 216,
+      "restored_text_match": true,
+      "confidence": 0.79875,
+      "segment_id": "item4-s72"
+    }
+  ],
+  "metrics": {
+    "median_absolute_error_ms": 328.5,
+    "mean_absolute_error_ms": 362.5,
+    "maximum_absolute_error_ms": 765,
+    "within_100_ms": 1,
+    "within_250_ms": 4,
+    "within_500_ms": 8,
+    "within_1000_ms": 10,
+    "over_1000_ms": 0,
+    "exact_passage_restoration": 10,
+    "percentages": {
+      "within_100_ms": 10.0,
+      "within_250_ms": 40.0,
+      "within_500_ms": 80.0,
+      "within_1000_ms": 100.0,
+      "over_1000_ms": 0.0
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "browser": "Chrome for Testing 149.0.7827.55 (headless)",
+  "flow": "candidate EPUB DOM range -> restore exact text -> candidate audio timestamp -> seek real MP3",
+  "anchors": [
+    { "anchor_id": "alice-ch01-01", "restored": true, "requested_ms": 33700, "reported_ms": 33700, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-02", "restored": true, "requested_ms": 131490, "reported_ms": 131490, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-03", "restored": true, "requested_ms": 216990, "reported_ms": 216990, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-04", "restored": true, "requested_ms": 278860, "reported_ms": 278860, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-05", "restored": true, "requested_ms": 330650, "reported_ms": 330650, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-06", "restored": true, "requested_ms": 404640, "reported_ms": 404640, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-07", "restored": true, "requested_ms": 459040, "reported_ms": 459040, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-08", "restored": true, "requested_ms": 539310, "reported_ms": 539310, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-09", "restored": true, "requested_ms": 632120, "reported_ms": 632120, "seek_difference_ms": 0 },
+    { "anchor_id": "alice-ch01-10", "restored": true, "requested_ms": 692640, "reported_ms": 692640, "seek_difference_ms": 0 }
+  ]
+}

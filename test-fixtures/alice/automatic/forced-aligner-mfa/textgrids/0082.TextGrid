@@ -1,0 +1,156 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0 
+xmax = 6.874062 
+tiers? <exists> 
+size = 2 
+item []: 
+    item [1]:
+        class = "IntervalTier" 
+        name = "words" 
+        xmin = 0 
+        xmax = 6.874062 
+        intervals: size = 17 
+        intervals [1]:
+            xmin = 0.0 
+            xmax = 0.94 
+            text = "" 
+        intervals [2]:
+            xmin = 0.94 
+            xmax = 1.42 
+            text = "she" 
+        intervals [3]:
+            xmin = 1.42 
+            xmax = 1.49 
+            text = "ate" 
+        intervals [4]:
+            xmin = 1.49 
+            xmax = 2.08 
+            text = "a" 
+        intervals [5]:
+            xmin = 2.08 
+            xmax = 2.22 
+            text = "" 
+        intervals [6]:
+            xmin = 2.22 
+            xmax = 2.65 
+            text = "little" 
+        intervals [7]:
+            xmin = 2.65 
+            xmax = 3.4 
+            text = "bit" 
+        intervals [8]:
+            xmin = 3.4 
+            xmax = 3.58 
+            text = "and" 
+        intervals [9]:
+            xmin = 3.58 
+            xmax = 3.77 
+            text = "said" 
+        intervals [10]:
+            xmin = 3.77 
+            xmax = 4.4 
+            text = "" 
+        intervals [11]:
+            xmin = 4.4 
+            xmax = 4.56 
+            text = "anxiously" 
+        intervals [12]:
+            xmin = 4.56 
+            xmax = 4.75 
+            text = "to" 
+        intervals [13]:
+            xmin = 4.75 
+            xmax = 5.19 
+            text = "herself" 
+        intervals [14]:
+            xmin = 5.19 
+            xmax = 5.68 
+            text = "" 
+        intervals [15]:
+            xmin = 5.68 
+            xmax = 5.79 
+            text = "which" 
+        intervals [16]:
+            xmin = 5.79 
+            xmax = 6.53 
+            text = "way" 
+        intervals [17]:
+            xmin = 6.53 
+            xmax = 6.874062 
+            text = "" 
+    item [2]:
+        class = "IntervalTier" 
+        name = "phones" 
+        xmin = 0 
+        xmax = 6.874062 
+        intervals: size = 17 
+        intervals [1]:
+            xmin = 0.0 
+            xmax = 0.94 
+            text = "" 
+        intervals [2]:
+            xmin = 0.94 
+            xmax = 1.42 
+            text = "spn" 
+        intervals [3]:
+            xmin = 1.42 
+            xmax = 1.49 
+            text = "spn" 
+        intervals [4]:
+            xmin = 1.49 
+            xmax = 2.08 
+            text = "spn" 
+        intervals [5]:
+            xmin = 2.08 
+            xmax = 2.22 
+            text = "" 
+        intervals [6]:
+            xmin = 2.22 
+            xmax = 2.65 
+            text = "spn" 
+        intervals [7]:
+            xmin = 2.65 
+            xmax = 3.4 
+            text = "spn" 
+        intervals [8]:
+            xmin = 3.4 
+            xmax = 3.58 
+            text = "spn" 
+        intervals [9]:
+            xmin = 3.58 
+            xmax = 3.77 
+            text = "spn" 
+        intervals [10]:
+            xmin = 3.77 
+            xmax = 4.4 
+            text = "" 
+        intervals [11]:
+            xmin = 4.4 
+            xmax = 4.56 
+            text = "spn" 
+        intervals [12]:
+            xmin = 4.56 
+            xmax = 4.75 
+            text = "spn" 
+        intervals [13]:
+            xmin = 4.75 
+            xmax = 5.19 
+            text = "spn" 
+        intervals [14]:
+            xmin = 5.19 
+            xmax = 5.68 
+            text = "" 
+        intervals [15]:
+            xmin = 5.68 
+            xmax = 5.79 
+            text = "spn" 
+        intervals [16]:
+            xmin = 5.79 
+            xmax = 6.53 
+            text = "spn" 
+        intervals [17]:
+            xmin = 6.53 
+            xmax = 6.874062 
+            text = "" 

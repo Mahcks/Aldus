@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "semantics": "earliest point at which the opening spoken word audibly begins",
+  "epub_sha256": "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c",
+  "audio_sha256": "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a",
+  "anchors": [
+    {
+      "anchor_id": "alice-ch01-01",
+      "manual_seek_timestamp_ms": 33745,
+      "audible_onset_timestamp_ms": 33195,
+      "opening_word": "Alice",
+      "annotation_notes": "Before clip is silent; after clip begins with the \"A\" in Alice.",
+      "manual_minus_onset_ms": 550
+    },
+    {
+      "anchor_id": "alice-ch01-02",
+      "manual_seek_timestamp_ms": 131458,
+      "audible_onset_timestamp_ms": 131008,
+      "opening_word": "In",
+      "annotation_notes": "Before clip is silent; after clip begins with the “I” in \"In\".",
+      "manual_minus_onset_ms": 450
+    },
+    {
+      "anchor_id": "alice-ch01-03",
+      "manual_seek_timestamp_ms": 212388,
+      "audible_onset_timestamp_ms": 211988,
+      "opening_word": "How",
+      "annotation_notes": "Before clip is silent; after clip begins with the “H” in \"How\".",
+      "manual_minus_onset_ms": 400
+    },
+    {
+      "anchor_id": "alice-ch01-04",
+      "manual_seek_timestamp_ms": 279459,
+      "audible_onset_timestamp_ms": 278559,
+      "opening_word": "Presently",
+      "annotation_notes": "Before clip is silent; after clip begins with the “P” in \"Presently\".",
+      "manual_minus_onset_ms": 900
+    },
+    {
+      "anchor_id": "alice-ch01-05",
+      "manual_seek_timestamp_ms": 331956,
+      "audible_onset_timestamp_ms": 331466,
+      "opening_word": "There",
+      "annotation_notes": "Before clip is silent; after clip begins with the “T” in \"There\".",
+      "manual_minus_onset_ms": 490
+    },
+    {
+      "anchor_id": "alice-ch01-06",
+      "manual_seek_timestamp_ms": 405317,
+      "audible_onset_timestamp_ms": 404642,
+      "opening_word": "Alice",
+      "annotation_notes": "Before clip is silent; after clip begins with the “A” in \"Alice\".",
+      "manual_minus_onset_ms": 675
+    },
+    {
+      "anchor_id": "alice-ch01-07",
+      "manual_seek_timestamp_ms": 459112,
+      "audible_onset_timestamp_ms": 458387,
+      "opening_word": "Suddenly",
+      "annotation_notes": "Before clip is silent; after clip begins with the “S” in \"Suddenly\".",
+      "manual_minus_onset_ms": 725
+    },
+    {
+      "anchor_id": "alice-ch01-08",
+      "manual_seek_timestamp_ms": 539352,
+      "audible_onset_timestamp_ms": 539077,
+      "opening_word": "I",
+      "annotation_notes": "Before clip is silent; after clip begins with the “I” in \"I\".",
+      "manual_minus_onset_ms": 275
+    },
+    {
+      "anchor_id": "alice-ch01-09",
+      "manual_seek_timestamp_ms": 633279,
+      "audible_onset_timestamp_ms": 632454,
+      "opening_word": "However",
+      "annotation_notes": "Before clip is silent; after clip begins with the “H” in \"However\".",
+      "manual_minus_onset_ms": 825
+    },
+    {
+      "anchor_id": "alice-ch01-10",
+      "manual_seek_timestamp_ms": 692257,
+      "audible_onset_timestamp_ms": 692232,
+      "opening_word": "And",
+      "annotation_notes": "Before clip is silent; after clip begins with the “A” in \"And\".",
+      "manual_minus_onset_ms": 25
+    }
+  ]
+}

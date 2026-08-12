@@ -1,0 +1,13 @@
+{
+  "probe": "ffprobe",
+  "codec": "mp3",
+  "sample_rate_hz": 22050,
+  "stream_start_time_ms": 50.113,
+  "duration_ms": 864253.107,
+  "first_packet_pts_ms": 0,
+  "first_packet_duration_ms": 26.122,
+  "first_packet_skip_samples": 1105,
+  "skip_samples_ms": 50.113,
+  "browser_reported_seek_difference_ms": 0,
+  "observation": "The encoded lead-in is about 50 ms and is represented by MP3 skip-sample metadata. It is too small to explain the 329.5 ms median signed lead."
+}

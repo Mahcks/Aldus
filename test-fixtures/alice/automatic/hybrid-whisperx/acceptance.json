@@ -1,0 +1,55 @@
+{
+  "browser": "Chrome for Testing 149.0.7827.55 (headless)",
+  "anchors": [
+    {
+      "anchor_id": "alice-ch01-01",
+      "restored": true,
+      "diagnostic": "reported 33429 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-02",
+      "restored": true,
+      "diagnostic": "reported 131243 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-03",
+      "restored": true,
+      "diagnostic": "reported 212186 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-04",
+      "restored": true,
+      "diagnostic": "reported 278694 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-05",
+      "restored": true,
+      "diagnostic": "reported 331615 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-06",
+      "restored": true,
+      "diagnostic": "reported 404902 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-07",
+      "restored": true,
+      "diagnostic": "reported 458622 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-08",
+      "restored": true,
+      "diagnostic": "reported 539308 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-09",
+      "restored": true,
+      "diagnostic": "reported 632658 ms · difference +0 ms"
+    },
+    {
+      "anchor_id": "alice-ch01-10",
+      "restored": true,
+      "diagnostic": "reported 692473 ms · difference +0 ms"
+    }
+  ]
+}
