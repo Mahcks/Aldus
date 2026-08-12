@@ -1,0 +1,18 @@
+{
+  "id": "alice-gutenberg-11-2026-08-01",
+  "acquired": "2026-08-11",
+  "epub": {
+    "file": "alice.epub",
+    "url": "https://www.gutenberg.org/ebooks/11.epub3.images",
+    "bytes": 189231,
+    "sha256": "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c"
+  },
+  "audio": {
+    "file": "alice-chapter-01.mp3",
+    "url": "https://archive.org/download/alicesadventuresinwonderland_2005_librivox/alicesadventuresinwonderland_01_carroll_64kb.mp3",
+    "bytes": 6922917,
+    "sha256": "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a",
+    "layout": "one MP3 per chapter; this fixture downloads Chapter 1 only",
+    "duration_ms": 864310
+  }
+}

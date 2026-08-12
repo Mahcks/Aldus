@@ -6,3 +6,4 @@ app/dist/
 app/node_modules/
 server/aldus
 AGENTS.md
+test-fixtures/alice/media/

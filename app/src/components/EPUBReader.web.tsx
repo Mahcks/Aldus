@@ -1,0 +1,116 @@
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+export type RangeBoundary = { dom_path: string; node_offset: number };
+export type ReaderCapture = {
+  href: string;
+  cfi: string;
+  text: string;
+  normalized_text: string;
+  start: RangeBoundary;
+  end: RangeBoundary;
+};
+export type EPUBReaderHandle = {
+  captureSelection: () => ReaderCapture | null;
+  restoreSelection: (capture: ReaderCapture) => Promise<string>;
+};
+
+type Props = { source?: string };
+
+export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReader({ source = '/media/alice.epub' }, ref) {
+  const host = useRef<View>(null);
+  const reader = useRef<any>(null);
+  const selection = useRef<{ index: number; range: Range } | undefined>(undefined);
+
+  useImperativeHandle(ref, () => ({
+    captureSelection() {
+      const current = selection.current;
+      if (!current || current.range.collapsed || !current.range.toString()) return null;
+      return serializeRange(reader.current, current.index, current.range);
+    },
+    async restoreSelection(capture) {
+      const view = reader.current;
+      const resolved = await view.resolveNavigation(capture.cfi);
+      await view.goTo(capture.cfi);
+      const content = view.renderer.getContents().find(({ index }: { index: number }) => index === resolved.index);
+      const range = resolved.anchor(content.doc) as Range;
+      const selected = content.doc.getSelection();
+      selected?.removeAllRanges();
+      selected?.addRange(range);
+      selection.current = { index: resolved.index, range: range.cloneRange() };
+      return range.toString();
+    },
+  }), []);
+
+  useEffect(() => {
+    let disposed = false;
+    import('foliate-js/view.js').then(async () => {
+      if (disposed || !host.current) return;
+      const view = document.createElement('foliate-view') as any;
+      view.style.width = '100%';
+      view.style.height = '65vh';
+      (host.current as unknown as HTMLElement).append(view);
+      view.addEventListener('load', ({ detail: { doc, index } }: CustomEvent) => {
+        doc.addEventListener('selectionchange', () => {
+          const selected = doc.getSelection();
+          if (selected?.rangeCount && !selected.isCollapsed) selection.current = { index, range: selected.getRangeAt(0).cloneRange() };
+        });
+      });
+      await view.open(source);
+      view.renderer.setAttribute('flow', 'paginated');
+      reader.current = view;
+    });
+    return () => {
+      disposed = true;
+      reader.current?.remove();
+      reader.current = null;
+    };
+  }, [source]);
+
+  return (
+    <View style={styles.reader}>
+      <View ref={host} style={styles.book} />
+      <View style={styles.navigation}>
+        <Pressable accessibilityRole="button" style={styles.button} onPress={() => reader.current?.goLeft()}><Text style={styles.buttonText}>Previous page</Text></Pressable>
+        <Text style={styles.hint}>Highlight a passage in Alice, then click Capture selection.</Text>
+        <Pressable accessibilityRole="button" style={styles.button} onPress={() => reader.current?.goRight()}><Text style={styles.buttonText}>Next page</Text></Pressable>
+      </View>
+    </View>
+  );
+});
+
+function serializeRange(view: any, index: number, range: Range): ReaderCapture {
+  const text = range.toString();
+  return {
+    href: view.book.sections[index].id,
+    cfi: view.getCFI(index, range),
+    text,
+    normalized_text: normalize(text),
+    start: { dom_path: domPath(range.startContainer), node_offset: range.startOffset },
+    end: { dom_path: domPath(range.endContainer), node_offset: range.endOffset },
+  };
+}
+
+function normalize(text: string) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function domPath(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const siblings = Array.from(node.parentNode?.childNodes ?? []).filter((sibling) => sibling.nodeType === Node.TEXT_NODE);
+    return `${domPath(node.parentNode!)}/text()[${siblings.indexOf(node as ChildNode) + 1}]`;
+  }
+  const element = node as Element;
+  if (element.tagName?.toLowerCase() === 'html') return 'html[1]';
+  const parent = element.parentElement;
+  const tag = element.tagName.toLowerCase();
+  const siblings = Array.from(parent?.children ?? []).filter((sibling) => sibling.tagName === element.tagName);
+  return `${domPath(parent!)}/${tag}[${siblings.indexOf(element) + 1}]`;
+}
+
+const styles = StyleSheet.create({
+  reader: { flex: 1, minHeight: 620 }, book: { flex: 1, minHeight: 560, overflow: 'hidden' },
+  navigation: { height: 52, borderTopWidth: 1, borderTopColor: '#c9c0b3', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  button: { borderWidth: 1, borderColor: '#a99d8e', borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#fffdf9' },
+  buttonText: { color: '#40372f', fontSize: 13, fontWeight: '600' }, hint: { color: '#746a5f', fontSize: 12 },
+});

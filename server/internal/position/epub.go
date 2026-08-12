@@ -1,0 +1,153 @@
+package position
+
+import (
+	"archive/zip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/xml"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"strings"
+)
+
+type EPUB struct {
+	SHA256     string
+	Package    string
+	Resources  map[string]string
+	Spine      []string
+	Paragraphs []EPUBParagraph
+}
+
+type EPUBParagraph struct {
+	Href    string
+	DOMPath string
+	Text    string
+}
+
+func ImportEPUB(filename string) (EPUB, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return EPUB{}, fmt.Errorf("read EPUB: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	archive, err := zip.OpenReader(filename)
+	if err != nil {
+		return EPUB{}, fmt.Errorf("open EPUB: %w", err)
+	}
+	defer archive.Close()
+
+	files := make(map[string]*zip.File, len(archive.File))
+	for _, file := range archive.File {
+		files[file.Name] = file
+	}
+	container, err := xmlFile[struct {
+		Rootfiles []struct {
+			Path string `xml:"full-path,attr"`
+		} `xml:"rootfiles>rootfile"`
+	}](files, "META-INF/container.xml")
+	if err != nil || len(container.Rootfiles) == 0 {
+		return EPUB{}, fmt.Errorf("read EPUB container: %w", err)
+	}
+	packagePath := container.Rootfiles[0].Path
+	opf, err := xmlFile[struct {
+		Manifest []struct {
+			ID   string `xml:"id,attr"`
+			Href string `xml:"href,attr"`
+			Type string `xml:"media-type,attr"`
+		} `xml:"manifest>item"`
+		Spine []struct {
+			ID string `xml:"idref,attr"`
+		} `xml:"spine>itemref"`
+	}](files, packagePath)
+	if err != nil {
+		return EPUB{}, err
+	}
+
+	book := EPUB{SHA256: hex.EncodeToString(sum[:]), Package: packagePath, Resources: map[string]string{}}
+	byID := map[string]string{}
+	base := path.Dir(packagePath)
+	for _, item := range opf.Manifest {
+		href := path.Join(base, item.Href)
+		book.Resources[href] = item.Type
+		byID[item.ID] = href
+	}
+	for _, ref := range opf.Spine {
+		href := byID[ref.ID]
+		if href == "" {
+			return EPUB{}, fmt.Errorf("spine item %q missing from manifest", ref.ID)
+		}
+		book.Spine = append(book.Spine, href)
+		if book.Resources[href] == "application/xhtml+xml" {
+			paragraphs, err := readParagraphs(files[href], href)
+			if err != nil {
+				return EPUB{}, err
+			}
+			book.Paragraphs = append(book.Paragraphs, paragraphs...)
+		}
+	}
+	return book, nil
+}
+
+func xmlFile[T any](files map[string]*zip.File, name string) (T, error) {
+	var value T
+	file := files[name]
+	if file == nil {
+		return value, fmt.Errorf("EPUB resource %q not found", name)
+	}
+	reader, err := file.Open()
+	if err != nil {
+		return value, err
+	}
+	defer reader.Close()
+	if err := xml.NewDecoder(reader).Decode(&value); err != nil {
+		return value, fmt.Errorf("parse %s: %w", name, err)
+	}
+	return value, nil
+}
+
+func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
+	if file == nil {
+		return nil, fmt.Errorf("EPUB resource %q not found", href)
+	}
+	reader, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	decoder := xml.NewDecoder(reader)
+	var paragraphs []EPUBParagraph
+	var text strings.Builder
+	depth, number := 0, 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", href, err)
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			if token.Name.Local == "p" && depth == 0 {
+				depth, number = 1, number+1
+				text.Reset()
+			} else if depth > 0 {
+				depth++
+			}
+		case xml.CharData:
+			if depth > 0 {
+				text.Write(token)
+			}
+		case xml.EndElement:
+			if depth > 0 {
+				depth--
+				if depth == 0 {
+					paragraphs = append(paragraphs, EPUBParagraph{Href: href, DOMPath: fmt.Sprintf("body/div[1]/p[%d]", number), Text: strings.Join(strings.Fields(text.String()), " ")})
+				}
+			}
+		}
+	}
+	return paragraphs, nil
+}

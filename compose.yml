@@ -5,4 +5,10 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/data
+      - aldus-data:/data
+      - ./test-fixtures/alice/media:/fixtures/alice:ro
+    environment:
+      ALDUS_FIXTURE_DIR: /fixtures/alice
+
+volumes:
+  aldus-data:

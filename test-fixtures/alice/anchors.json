@@ -1,0 +1,318 @@
+{
+  "version": 1,
+  "epub_sha256": "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c",
+  "audio_sha256": "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a",
+  "koreader_document_hash": "efbf04efc9d43ecd89a033b329f49bdb",
+  "anchors": [
+    {
+      "id": "alice-ch01-01",
+      "text": "Alice was beginning to get very tired of sitting by her sister on the bank, and\nof having nothing to do: once or twice she had peeped into the book her sister\nwas reading, but it had no pictures or conversations in it, “and what is the\nuse of a book,” thought Alice “without pictures or conversations?”",
+      "normalized_text": "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, “and what is the use of a book,” thought Alice “without pictures or conversations?”",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/4,/1:1,/1:303)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[1]/text()[1]",
+          "node_offset": 1
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[1]/text()[1]",
+          "node_offset": 303
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 33745,
+        "seek": {
+          "requested_ms": 33745,
+          "reported_ms": 33745,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-01",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-02",
+      "text": "In another moment down went Alice after it, never once considering how in the\nworld she was to get out again.",
+      "normalized_text": "In another moment down went Alice after it, never once considering how in the world she was to get out again.",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/10,/1:1,/1:110)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[4]/text()[1]",
+          "node_offset": 1
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[4]/text()[1]",
+          "node_offset": 110
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 131458,
+        "seek": {
+          "requested_ms": 131458,
+          "reported_ms": 131458,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-02",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-03",
+      "text": "How brave they’ll all think me at home!",
+      "normalized_text": "How brave they’ll all think me at home!",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/16,/1:110,/1:149)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[7]/text()[1]",
+          "node_offset": 110
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[7]/text()[1]",
+          "node_offset": 149
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 212388,
+        "seek": {
+          "requested_ms": 212388,
+          "reported_ms": 212388,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-03",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-04",
+      "text": "Presently she began again.",
+      "normalized_text": "Presently she began again.",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/20,/1:1,/1:27)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[9]/text()[1]",
+          "node_offset": 1
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[9]/text()[1]",
+          "node_offset": 27
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 279459,
+        "seek": {
+          "requested_ms": 279459,
+          "reported_ms": 279459,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-04",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-05",
+      "text": "There was nothing else to do, so Alice soon began talking\nagain.",
+      "normalized_text": "There was nothing else to do, so Alice soon began talking again.",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/22,/1:19,/1:83)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[10]/text()[1]",
+          "node_offset": 19
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[10]/text()[1]",
+          "node_offset": 83
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 331956,
+        "seek": {
+          "requested_ms": 331956,
+          "reported_ms": 331956,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-05",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-06",
+      "text": "Alice was not a bit hurt, and she jumped up on to her feet in a moment: she\nlooked up, but it was all dark overhead; before her was another long passage,\nand the White Rabbit was still in sight, hurrying down it.",
+      "normalized_text": "Alice was not a bit hurt, and she jumped up on to her feet in a moment: she looked up, but it was all dark overhead; before her was another long passage, and the White Rabbit was still in sight, hurrying down it.",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/24,/1:1,/1:213)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[11]/text()[1]",
+          "node_offset": 1
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[11]/text()[1]",
+          "node_offset": 213
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 405317,
+        "seek": {
+          "requested_ms": 405317,
+          "reported_ms": 405317,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-06",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-07",
+      "text": "Suddenly she came upon a little three-legged table, all made of solid glass;\nthere was nothing on it except a tiny golden key, and Alice’s first thought was\nthat it might belong to one of the doors of the hall; but, alas!",
+      "normalized_text": "Suddenly she came upon a little three-legged table, all made of solid glass; there was nothing on it except a tiny golden key, and Alice’s first thought was that it might belong to one of the doors of the hall; but, alas!",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/28,/1:1,/1:222)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[13]/text()[1]",
+          "node_offset": 1
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[13]/text()[1]",
+          "node_offset": 222
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 459112,
+        "seek": {
+          "requested_ms": 459112,
+          "reported_ms": 459112,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-07",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-08",
+      "text": "I think I could, if\nI only knew how to begin.”",
+      "normalized_text": "I think I could, if I only knew how to begin.”",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/30,/1:527,/1:573)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[14]/text()[1]",
+          "node_offset": 527
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[14]/text()[1]",
+          "node_offset": 573
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 539352,
+        "seek": {
+          "requested_ms": 539352,
+          "reported_ms": 539352,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-08",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-09",
+      "text": "However, this bottle was not marked “poison,” so Alice ventured to taste\nit, and finding it very nice, (it had, in fact, a sort of mixed flavour of\ncherry-tart, custard, pine-apple, roast turkey, toffee, and hot buttered\ntoast,) she very soon finished it off.",
+      "normalized_text": "However, this bottle was not marked “poison,” so Alice ventured to taste it, and finding it very nice, (it had, in fact, a sort of mixed flavour of cherry-tart, custard, pine-apple, roast turkey, toffee, and hot buttered toast,) she very soon finished it off.",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/36,/1:1,/3:231)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[17]/text()[1]",
+          "node_offset": 1
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[17]/text()[2]",
+          "node_offset": 231
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 633279,
+        "seek": {
+          "requested_ms": 633279,
+          "reported_ms": 633279,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-09",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    },
+    {
+      "id": "alice-ch01-10",
+      "text": "And she tried\nto fancy what the flame of a candle is like after the candle is blown out, for\nshe could not remember ever having seen such a thing.",
+      "normalized_text": "And she tried to fancy what the flame of a candle is like after the candle is blown out, for she could not remember ever having seen such a thing.",
+      "epub": {
+        "href": "OEBPS/6260297267691793459_11-h-1.htm.xhtml",
+        "cfi": "epubcfi(/6/6!/4/2[pgepubid00003]/42,/1:455,/1:601)",
+        "start": {
+          "dom_path": "html[1]/body[1]/div[1]/p[20]/text()[1]",
+          "node_offset": 455
+        },
+        "end": {
+          "dom_path": "html[1]/body[1]/div[1]/p[20]/text()[1]",
+          "node_offset": 601
+        }
+      },
+      "audio": {
+        "resource": "alice-chapter-01.mp3",
+        "timestamp_ms": 692257,
+        "seek": {
+          "requested_ms": 692257,
+          "reported_ms": 692257,
+          "difference_ms": 0
+        }
+      },
+      "canonical": {
+        "segment_id": "alice-ch01-10",
+        "offset": 0
+      },
+      "koreader_xpointer": ""
+    }
+  ]
+}
