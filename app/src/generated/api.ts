@@ -159,6 +159,37 @@ export interface UpdateLibrarySourceRequest {
   root_path: string;
   enabled: boolean;
 }
+export interface SourceScan {
+  id: string;
+  source_id: string;
+  state: string;
+  error?: string;
+  files_visited: number /* int */;
+  supported: number /* int */;
+  epub: number /* int */;
+  audio: number /* int */;
+  new: number /* int */;
+  changed: number /* int */;
+  unchanged: number /* int */;
+  missing: number /* int */;
+  problems: number /* int */;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+}
+export interface SourceEntry {
+  id: string;
+  source_id: string;
+  relative_path: string;
+  kind: string;
+  sha256?: string;
+  state: string;
+  error?: string;
+  size_bytes: number /* int64 */;
+  modified_at: string;
+  metadata: { [key: string]: any};
+  path_hints: { [key: string]: any};
+}
 
 //////////
 // source: sync.go

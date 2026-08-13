@@ -43,9 +43,14 @@ func main() {
 	if mediaDir == "" {
 		mediaDir = filepath.Join(cfg.DataDir, "media")
 	}
-	sourceStore, err := source.New(db, source.Options{AllowedRoots: cfg.SourceRoots, ManagedRoot: mediaDir, DataRoot: cfg.DataDir})
+	sourceStore, err := source.New(db, source.Options{AllowedRoots: cfg.SourceRoots, ManagedRoot: mediaDir, DataRoot: cfg.DataDir, MaxBytes: cfg.MaxUploadBytes})
 	if err != nil {
 		slog.Error("open library sources", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
+	if err := sourceStore.Start(ctx); err != nil {
+		slog.Error("recover source scans", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
@@ -97,6 +102,7 @@ func main() {
 	case err := <-errCh:
 		stop()
 		alignmentManager.Wait()
+		sourceStore.Wait()
 		if !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("serve HTTP", "error", err)
 			db.Close()
@@ -123,6 +129,7 @@ func main() {
 		os.Exit(1)
 	}
 	alignmentManager.Wait()
+	sourceStore.Wait()
 	if err := db.Close(); err != nil {
 		slog.Error("close database", "error", err)
 		os.Exit(1)

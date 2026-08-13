@@ -1,4 +1,12 @@
-import type { Library, LibrarySource, Membership, User, Work } from '../../../generated/api';
+import type {
+  Library,
+  LibrarySource,
+  Membership,
+  SourceEntry,
+  SourceScan,
+  User,
+  Work,
+} from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -6,6 +14,7 @@ import { WorkCard } from '../../../features/bookshelf';
 import { useAuth } from '../../../features/auth/AuthProvider';
 import { Button, Field, Loading, Notice, Page, Row, colors, shared } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
+import { goBackOr } from '../../../lib/navigation';
 
 type Availability = { epub: boolean; audio: boolean; synced: boolean };
 type Panel = 'work' | 'members' | 'settings' | 'sources' | null;
@@ -18,6 +27,8 @@ export default function LibraryScreen() {
   const [members, setMembers] = useState<Membership[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [sourceScans, setSourceScans] = useState<Record<string, SourceScan[]>>({});
+  const [sourceEntries, setSourceEntries] = useState<Record<string, SourceEntry[]>>({});
   const [availability, setAvailability] = useState<Record<string, Availability>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,13 +43,16 @@ export default function LibraryScreen() {
   async function load() {
     if (!id) return;
     try {
-      const [nextLibrary, nextWorks, nextMembers, nextUsers, nextSources] = await Promise.all([
+      const [nextLibrary, nextWorks, nextMembers, nextUsers] = await Promise.all([
         api.library(id),
         api.works(id),
         api.members(id),
         auth.user?.admin ? api.users() : Promise.resolve([]),
-        auth.user?.admin ? api.sources(id) : Promise.resolve([]),
       ]);
+      const mayScan = Boolean(
+        auth.user?.admin || nextLibrary.role === 'owner' || nextLibrary.role === 'editor',
+      );
+      const nextSources = mayScan ? await api.sources(id) : [];
       const details = await Promise.all(
         nextWorks.map(async (work) => {
           const [representations, jobs] = await Promise.all([
@@ -66,6 +80,18 @@ export default function LibraryScreen() {
       setMembers(nextMembers);
       setUsers(nextUsers);
       setSources(nextSources);
+      if (mayScan) {
+        const [scans, entries] = await Promise.all([
+          Promise.all(nextSources.map((source) => api.sourceScans(id, source.id))),
+          Promise.all(nextSources.map((source) => api.sourceEntries(id, source.id))),
+        ]);
+        setSourceScans(
+          Object.fromEntries(nextSources.map((source, index) => [source.id, scans[index]])),
+        );
+        setSourceEntries(
+          Object.fromEntries(nextSources.map((source, index) => [source.id, entries[index]])),
+        );
+      }
       setAvailability(Object.fromEntries(details));
     } catch (value) {
       setError(errorMessage(value));
@@ -140,17 +166,25 @@ export default function LibraryScreen() {
       setError(errorMessage(value));
     }
   }
+  async function startSourceScan(sourceID: string) {
+    try {
+      await api.startSourceScan(id, sourceID);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
 
   return (
     <Page
       title={library.name}
-      back={<Button label="Libraries" kind="quiet" onPress={() => router.replace('/libraries')} />}
+      back={<Button label="Libraries" kind="quiet" onPress={() => goBackOr('/libraries')} />}
       actions={
         <Row>
           {canManage ? (
             <Button label="Manage members" kind="quiet" onPress={() => setPanel('members')} />
           ) : null}
-          {auth.user?.admin ? (
+          {canEdit ? (
             <Button label="Sources" kind="quiet" onPress={() => setPanel('sources')} />
           ) : null}
           {canManage ? (
@@ -305,28 +339,51 @@ export default function LibraryScreen() {
             <View key={source.id} style={shared.listItem}>
               <Text style={shared.itemTitle}>{source.name}</Text>
               <Text style={shared.itemMeta}>{source.root_path}</Text>
+              {auth.user?.admin ? (
+                <Button
+                  label={source.enabled ? 'Disable' : 'Enable'}
+                  kind={source.enabled ? 'danger' : 'secondary'}
+                  onPress={() => void toggleSource(source)}
+                />
+              ) : null}
               <Button
-                label={source.enabled ? 'Disable' : 'Enable'}
-                kind={source.enabled ? 'danger' : 'secondary'}
-                onPress={() => void toggleSource(source)}
+                label="Scan now"
+                kind="primary"
+                disabled={!source.enabled || sourceScans[source.id]?.[0]?.state === 'scanning'}
+                onPress={() => void startSourceScan(source.id)}
               />
+              {sourceScans[source.id]?.[0] ? (
+                <Text style={shared.itemMeta}>
+                  {sourceScans[source.id][0].state} · {sourceScans[source.id][0].supported}{' '}
+                  supported · {sourceScans[source.id][0].new} new ·{' '}
+                  {sourceScans[source.id][0].changed} changed · {sourceScans[source.id][0].missing}{' '}
+                  missing · {sourceScans[source.id][0].problems} problems
+                </Text>
+              ) : null}
+              {(sourceEntries[source.id] ?? []).map((entry) => (
+                <Text key={entry.id} style={shared.itemMeta}>
+                  {entry.relative_path} · {entry.kind || 'problem'} · {entry.state}
+                </Text>
+              ))}
             </View>
           ))}
-          <View style={shared.form}>
-            <Field label="Source name" value={sourceName} onChangeText={setSourceName} />
-            <Field
-              label="Authorized absolute path"
-              autoCapitalize="none"
-              value={sourceRoot}
-              onChangeText={setSourceRoot}
-            />
-            <Button
-              label="Add source"
-              kind="primary"
-              disabled={!sourceName.trim() || !sourceRoot.trim()}
-              onPress={createSource}
-            />
-          </View>
+          {auth.user?.admin ? (
+            <View style={shared.form}>
+              <Field label="Source name" value={sourceName} onChangeText={setSourceName} />
+              <Field
+                label="Authorized absolute path"
+                autoCapitalize="none"
+                value={sourceRoot}
+                onChangeText={setSourceRoot}
+              />
+              <Button
+                label="Add source"
+                kind="primary"
+                disabled={!sourceName.trim() || !sourceRoot.trim()}
+                onPress={createSource}
+              />
+            </View>
+          ) : null}
         </ScrollView>
       </Dialog>
       <Dialog

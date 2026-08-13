@@ -1,5 +1,4 @@
 import type { User } from '../../generated/api';
-import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
@@ -15,6 +14,7 @@ import {
   shared,
 } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
+import { goBackOr } from '../../lib/navigation';
 
 const emptyForm = { username: '', display_name: '', password: '', admin: false };
 
@@ -41,9 +41,7 @@ export default function UsersScreen() {
     return (
       <Page
         title="Users"
-        back={
-          <Button label="Libraries" kind="quiet" onPress={() => router.replace('/libraries')} />
-        }
+        back={<Button label="Libraries" kind="quiet" onPress={() => goBackOr('/libraries')} />}
       >
         <Notice>This page is available to global administrators.</Notice>
       </Page>
@@ -71,7 +69,7 @@ export default function UsersScreen() {
   return (
     <Page
       title="Users"
-      back={<Button label="Libraries" kind="quiet" onPress={() => router.replace('/libraries')} />}
+      back={<Button label="Libraries" kind="quiet" onPress={() => goBackOr('/libraries')} />}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <View style={shared.split}>

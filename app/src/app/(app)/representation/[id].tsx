@@ -1,6 +1,6 @@
 import type { Media, Representation } from '../../../generated/api';
 import * as DocumentPicker from 'expo-document-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { useAuth } from '../../../features/auth/AuthProvider';
@@ -16,6 +16,7 @@ import {
   shared,
 } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
+import { goBackOr } from '../../../lib/navigation';
 
 export default function RepresentationScreen() {
   const {
@@ -83,7 +84,7 @@ export default function RepresentationScreen() {
   return (
     <Page
       title={representation.label}
-      back={<Button label="Work" kind="quiet" onPress={() => router.back()} />}
+      back={<Button label="Work" kind="quiet" onPress={() => goBackOr('/libraries')} />}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <Section
@@ -156,7 +157,7 @@ export default function RepresentationScreen() {
                         onPress: async () => {
                           try {
                             await api.deleteRepresentation(id);
-                            router.back();
+                            goBackOr('/libraries');
                           } catch (value) {
                             setError(errorMessage(value));
                           }

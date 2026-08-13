@@ -7,7 +7,7 @@ import type {
 } from '../../../generated/api';
 import type { AudioSource } from 'expo-audio';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
@@ -28,6 +28,7 @@ import {
 } from '../../../features/consumption';
 import { Button, Loading, Notice, colors } from '../../../features/ui';
 import { APIError, api, errorMessage } from '../../../lib/api';
+import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
 
 type Mode = 'read' | 'listen';
@@ -459,7 +460,7 @@ export default function ConsumeWorkScreen() {
   return (
     <View style={styles.page}>
       <View style={styles.toolbar}>
-        <Button label="Work" kind="quiet" onPress={() => router.back()} />
+        <Button label="Work" kind="quiet" onPress={() => goBackOr(`/work/${params.id}`)} />
         <View style={styles.identity}>
           <Text numberOfLines={1} style={styles.title}>
             {work.title}

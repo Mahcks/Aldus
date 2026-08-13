@@ -22,6 +22,8 @@ import type {
   RepresentationState,
   RepresentationStateUpdate,
   Session,
+  SourceEntry,
+  SourceScan,
   SetupStatus,
   UpdateLibraryRequest,
   UpdateLibrarySourceRequest,
@@ -142,6 +144,14 @@ export const api = {
     }),
   deleteSource: (libraryID: string, sourceID: string) =>
     request<void>(`/libraries/${libraryID}/sources/${sourceID}`, { method: 'DELETE' }),
+  sourceScans: (libraryID: string, sourceID: string) =>
+    request<SourceScan[]>(`/libraries/${libraryID}/sources/${sourceID}/scans`),
+  startSourceScan: (libraryID: string, sourceID: string) =>
+    request<SourceScan>(`/libraries/${libraryID}/sources/${sourceID}/scans`, {
+      method: 'POST',
+    }),
+  sourceEntries: (libraryID: string, sourceID: string) =>
+    request<SourceEntry[]>(`/libraries/${libraryID}/sources/${sourceID}/entries`),
 
   works: (libraryID: string) => request<Work[]>(`/libraries/${libraryID}/works`),
   work: (id: string) => request<Work>(`/works/${id}`),

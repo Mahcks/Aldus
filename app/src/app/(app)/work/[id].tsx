@@ -23,6 +23,7 @@ import {
   shared,
 } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
+import { goBackOr } from '../../../lib/navigation';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
 
@@ -158,7 +159,9 @@ export default function WorkScreen() {
   return (
     <Page
       title={work.title}
-      back={<Button label="Library" kind="quiet" onPress={() => router.back()} />}
+      back={
+        <Button label="Library" kind="quiet" onPress={() => goBackOr(`/library/${libraryId}`)} />
+      }
       actions={
         canEdit ? (
           <Button
@@ -348,7 +351,7 @@ export default function WorkScreen() {
                         onPress: async () => {
                           try {
                             await api.deleteWork(id);
-                            router.back();
+                            goBackOr(`/library/${libraryId}`);
                           } catch (value) {
                             setError(errorMessage(value));
                           }

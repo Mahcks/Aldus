@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -28,6 +29,7 @@ type Options struct {
 	AllowedRoots []string
 	ManagedRoot  string
 	DataRoot     string
+	MaxBytes     int64
 }
 
 type Store struct {
@@ -35,6 +37,10 @@ type Store struct {
 	allowedRoots []string
 	blockedRoots []string
 	managedRoot  string
+	maxBytes     int64
+	wake         chan struct{}
+	done         chan struct{}
+	startOnce    sync.Once
 }
 
 type LibrarySource struct {
@@ -44,7 +50,10 @@ type LibrarySource struct {
 }
 
 func New(db *sql.DB, options Options) (*Store, error) {
-	s := &Store{db: db}
+	if options.MaxBytes <= 0 {
+		options.MaxBytes = 2 << 30
+	}
+	s := &Store{db: db, maxBytes: options.MaxBytes, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	for _, root := range options.AllowedRoots {
 		resolved, err := canonicalDirectory(root)
 		if err != nil {
@@ -95,10 +104,7 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 }
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]LibrarySource, error) {
-	if !actor.Admin {
-		return nil, ErrNotFound
-	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,library_id,kind,name,root_path,enabled,created_at,updated_at FROM library_sources WHERE library_id=? AND deleted_at IS NULL ORDER BY created_at,id`, libraryID)
+	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.created_at,ls.updated_at FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor')) ORDER BY ls.created_at,ls.id`, actor.Admin, actor.ID, libraryID, actor.Admin)
 	if err != nil {
 		return nil, err
 	}
@@ -115,10 +121,17 @@ func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]
 }
 
 func (s *Store) Get(ctx context.Context, actor auth.User, libraryID, id string) (LibrarySource, error) {
-	if !actor.Admin {
+	if ok, err := s.canScan(ctx, actor, libraryID, id); err != nil || !ok {
+		if err != nil {
+			return LibrarySource{}, err
+		}
 		return LibrarySource{}, ErrNotFound
 	}
-	return s.get(ctx, libraryID, id)
+	v, err := s.get(ctx, libraryID, id)
+	if !actor.Admin {
+		v.RootPath = ""
+	}
+	return v, err
 }
 
 func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name, root string, enabled bool) error {
@@ -156,10 +169,10 @@ func (s *Store) Delete(ctx context.Context, actor auth.User, libraryID, id strin
 }
 
 func (s *Store) OpenMedia(ctx context.Context, mediaID string, verifyHash bool) (*os.File, error) {
-	var kind, path, expectedHash, entryPath, root, entryHash, modified string
+	var kind, path, expectedHash, entryPath, root, entryHash, entryState, modified string
 	var size int64
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT m.storage_kind,m.path,m.sha256,COALESCE(e.relative_path,''),COALESCE(ls.root_path,''),COALESCE(e.sha256,''),COALESCE(e.size_bytes,0),COALESCE(e.modified_at,''),COALESCE(ls.enabled,0) FROM media m LEFT JOIN source_entries e ON e.id=m.source_entry_id LEFT JOIN library_sources ls ON ls.id=e.source_id AND ls.deleted_at IS NULL WHERE m.id=?`, mediaID).Scan(&kind, &path, &expectedHash, &entryPath, &root, &entryHash, &size, &modified, &enabled)
+	err := s.db.QueryRowContext(ctx, `SELECT m.storage_kind,m.path,m.sha256,COALESCE(e.relative_path,''),COALESCE(ls.root_path,''),COALESCE(e.sha256,''),COALESCE(e.state,''),COALESCE(e.size_bytes,0),COALESCE(e.modified_at,''),COALESCE(ls.enabled,0) FROM media m LEFT JOIN source_entries e ON e.id=m.source_entry_id LEFT JOIN library_sources ls ON ls.id=e.source_id AND ls.deleted_at IS NULL WHERE m.id=?`, mediaID).Scan(&kind, &path, &expectedHash, &entryPath, &root, &entryHash, &entryState, &size, &modified, &enabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -169,7 +182,7 @@ func (s *Store) OpenMedia(ctx context.Context, mediaID string, verifyHash bool) 
 	if kind == "managed" {
 		return openRegular(filepath.Join(s.managedRoot, "media"), path)
 	}
-	if kind != "referenced" || enabled == 0 || entryHash != expectedHash {
+	if kind != "referenced" || enabled == 0 || entryState != "registered" || entryHash != expectedHash {
 		return nil, ErrUnavailable
 	}
 	file, err := openRegular(root, entryPath)
