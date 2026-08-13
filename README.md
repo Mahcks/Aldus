@@ -18,7 +18,22 @@ Install client dependencies once with `cd app && bun install`.
 
 Run both development servers with `make dev`, or separately with `make dev-server` and `make dev-app`. The standard web workflow allows Expo's `http://localhost:8081` origin automatically and uses `aldus-dev-bootstrap` as the local first-admin bootstrap token. Development defaults to `http://localhost:8080`; override `EXPO_PUBLIC_API_URL` and `ALDUS_ALLOWED_ORIGINS` together when using another web origin. Physical devices need your computer's LAN address, while Android emulators commonly use `http://10.0.2.2:8080`. Production web builds use the same-origin `/api` path.
 
-The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB), `ALDUS_KOREADER_USER` (default `aldus`), and `ALDUS_KOREADER_KEY` (default `aldus`). Set a unique `ALDUS_BOOTSTRAP_TOKEN` before creating the first administrator; setup is disabled when it is empty and permanently closes after the first user. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. KOReader sends its stored key exactly as `x-auth-key`; use the value KOReader generates for the configured password in a real deployment.
+The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_SOURCE_ROOTS` (comma-separated server-visible media roots), `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB), `ALDUS_KOREADER_USER` (default `aldus`), and `ALDUS_KOREADER_KEY` (default `aldus`). Set a unique `ALDUS_BOOTSTRAP_TOKEN` before creating the first administrator; setup is disabled when it is empty and permanently closes after the first user. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. KOReader sends its stored key exactly as `x-auth-key`; use the value KOReader generates for the configured password in a real deployment.
+
+### Media folders
+
+Local Sources are folders visible to the Aldus server. Mount externally owned media read-only, then allowlist the container path. The included Compose file uses:
+
+```yaml
+volumes:
+  - /host/books:/library/media:ro
+environment:
+  ALDUS_SOURCE_ROOTS: /library/media
+```
+
+Set `ALDUS_SOURCE_PATH=/host/books` before `docker compose up` to use that pattern with the included Compose file. Aldus administrators can then choose `/library/media` or one of its subfolders from Sources & Imports. Aldus never browses outside configured roots, and source roots cannot overlap `/data` or managed media storage.
+
+On Windows or WSL, distinguish the host path from the server-visible path. A Windows folder such as `D:\Media\Books` may be mounted into the container as `/library/media`; Aldus selects `/library/media`, not the Windows path. Ensure the container user can read the mounted directory.
 
 Alignment jobs use one local external process at a time. `ALDUS_ALIGNMENT_COMMAND` defaults to `python3 ../tools/whisperx_worker.py`, `ALDUS_ALIGNMENT_TIMEOUT_SECONDS` defaults to 7200, and `ALDUS_ALIGNMENT_MODEL_DIR` selects the pre-populated Hugging Face cache. Jobs force offline model loading, so missing models fail closed instead of downloading mutable assets. For a local environment, install [`tools/requirements-alignment.txt`](tools/requirements-alignment.txt) and pre-cache `base.en`, Silero VAD, and WhisperX's English alignment model. The optional `make docker-alignment` image performs that download at image-build time; the normal image remains Go/Expo-only. The Alice CPU baseline was about 165 seconds and 2.7 GiB RAM.
 

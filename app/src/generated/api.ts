@@ -90,6 +90,26 @@ export interface Work {
   created_at: string;
   updated_at: string;
 }
+export interface WorkSummary {
+  id: string;
+  library_id: string;
+  library_name: string;
+  library_role?: string;
+  title: string;
+  author?: string;
+  readable: boolean;
+  listenable: boolean;
+  synchronized: boolean;
+  in_progress: boolean;
+  progress_updated_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface WorkBrowsePage {
+  items: WorkSummary[];
+  offset: number /* int */;
+  has_more: boolean;
+}
 export interface Representation {
   id: string;
   work_id: string;
@@ -140,6 +160,19 @@ export interface Media {
 //////////
 // source: sources.go
 
+export interface SourceRoot {
+  id: string;
+  label: string;
+  path: string;
+  available: boolean;
+}
+export interface SourceDirectoryListing {
+  root_id: string;
+  relative_path: string;
+  selected_path: string;
+  has_parent: boolean;
+  directories: string[];
+}
 export interface LibrarySource {
   id: string;
   library_id: string;

@@ -160,12 +160,18 @@ export default function WorkScreen() {
     <Page
       title={work.title}
       back={
-        <Button label="Library" kind="quiet" onPress={() => goBackOr(`/library/${libraryId}`)} />
+        <Button
+          label="Library"
+          icon="back"
+          kind="quiet"
+          onPress={() => goBackOr(`/library/${libraryId}`)}
+        />
       }
       actions={
         canEdit ? (
           <Button
             label={managing ? 'Done' : 'Manage work'}
+            icon={managing ? 'check' : 'settings'}
             kind="quiet"
             onPress={() => setManaging((value) => !value)}
           />
@@ -185,12 +191,14 @@ export default function WorkScreen() {
           <Row>
             <Button
               label={hasProgress ? 'Continue reading' : 'Read'}
+              icon="read"
               kind="primary"
               disabled={!selectedEPUB}
               onPress={() => consume('read')}
             />
             <Button
               label={hasProgress ? 'Continue listening' : 'Listen'}
+              icon="listen"
               disabled={!selectedAudio}
               onPress={() => consume('listen')}
             />
@@ -341,6 +349,7 @@ export default function WorkScreen() {
                 />
                 <Button
                   label="Delete work"
+                  icon="delete"
                   kind="danger"
                   onPress={() =>
                     Alert.alert('Delete work?', 'The work must have no representations.', [

@@ -14,6 +14,8 @@ func registerSourceRoutes(r chi.Router, store *source.Store) {
 	if store == nil {
 		return
 	}
+	r.Get("/source-roots", listSourceRoots(store))
+	r.Get("/source-roots/{rootID}/directories", listSourceDirectories(store))
 	r.Get("/libraries/{libraryID}/sources", listSources(store))
 	r.Post("/libraries/{libraryID}/sources", createSource(store))
 	r.Get("/libraries/{libraryID}/sources/{sourceID}", getSource(store))
@@ -26,6 +28,30 @@ func registerSourceRoutes(r chi.Router, store *source.Store) {
 	r.Get("/libraries/{libraryID}/import-proposals/{proposalID}", getImportProposal(store))
 	r.Post("/libraries/{libraryID}/import-proposals/{proposalID}/accept", acceptImportProposal(store))
 	r.Post("/libraries/{libraryID}/import-proposals/{proposalID}/ignore", ignoreImportProposal(store))
+}
+func listSourceRoots(s *source.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		values, err := s.Roots(actor(r))
+		if err != nil {
+			writeSourceError(w, err)
+			return
+		}
+		out := make([]contracts.SourceRoot, len(values))
+		for i, value := range values {
+			out[i] = contracts.SourceRoot{ID: value.ID, Label: value.Label, Path: value.Path, Available: true}
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+func listSourceDirectories(s *source.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := s.Directories(actor(r), chi.URLParam(r, "rootID"), r.URL.Query().Get("path"))
+		if err != nil {
+			writeSourceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, contracts.SourceDirectoryListing{RootID: value.RootID, RelativePath: value.RelativePath, SelectedPath: value.AbsolutePath, HasParent: value.HasParent, Directories: value.Directories})
+	}
 }
 func getImportProposal(s *source.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -203,6 +229,11 @@ func sourceDTO(v source.LibrarySource) contracts.LibrarySource {
 	return contracts.LibrarySource{ID: v.ID, LibraryID: v.LibraryID, Kind: v.Kind, Name: v.Name, RootPath: v.RootPath, Enabled: v.Enabled, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func writeSourceError(w http.ResponseWriter, err error) {
+	var validation *source.ValidationError
+	if errors.As(err, &validation) {
+		http.Error(w, validation.Message, http.StatusBadRequest)
+		return
+	}
 	if errors.Is(err, source.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return

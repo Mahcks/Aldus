@@ -2,6 +2,20 @@ package contracts
 
 import "time"
 
+type SourceRoot struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Path      string `json:"path"`
+	Available bool   `json:"available"`
+}
+type SourceDirectoryListing struct {
+	RootID       string   `json:"root_id"`
+	RelativePath string   `json:"relative_path"`
+	SelectedPath string   `json:"selected_path"`
+	HasParent    bool     `json:"has_parent"`
+	Directories  []string `json:"directories"`
+}
+
 type LibrarySource struct {
 	ID        string    `json:"id"`
 	LibraryID string    `json:"library_id"`

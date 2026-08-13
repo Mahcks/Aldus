@@ -48,6 +48,17 @@ type Work struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type WorkSummary struct {
+	ID, LibraryID, LibraryName, LibraryRole, Title, Author string
+	Readable, Listenable, Synchronized, InProgress         bool
+	CreatedAt, UpdatedAt, ProgressUpdatedAt                time.Time
+}
+
+type BrowseOptions struct {
+	LibraryID, Query, Sort, Availability string
+	Limit, Offset                        int
+}
+
 type Representation struct {
 	ID        string    `json:"id"`
 	WorkID    string    `json:"work_id"`
@@ -261,6 +272,77 @@ func (s *Store) Works(ctx context.Context, actor auth.User, libraryID string, li
 	return out, rows.Err()
 }
 
+func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options BrowseOptions) ([]WorkSummary, bool, error) {
+	options.Query = strings.TrimSpace(options.Query)
+	if len(options.Query) > 200 {
+		return nil, false, ErrInvalid
+	}
+	if options.Sort == "" {
+		options.Sort = "recent"
+	}
+	if options.Availability == "" {
+		options.Availability = "all"
+	}
+	if !oneOf(options.Sort, "recent", "updated", "title", "author", "progress") || !oneOf(options.Availability, "all", "readable", "listenable", "synchronized", "in_progress") {
+		return nil, false, ErrInvalid
+	}
+	limit, offset := page(options.Limit, options.Offset)
+	pattern := "%" + escapeLike(strings.ToLower(options.Query)) + "%"
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT w.id,w.library_id,l.name,COALESCE(lm.role,''),w.title,COALESCE(w.author,''),w.created_at,w.updated_at,
+			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`),
+			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`),
+			EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`),
+			EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id),
+			COALESCE((SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id),'')
+		FROM works w
+		JOIN libraries l ON l.id=w.library_id
+		LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=?
+		WHERE (? OR lm.user_id IS NOT NULL)
+			AND (?='' OR w.library_id=?)
+			AND (?='%%' OR lower(w.title) LIKE ? ESCAPE '\' OR lower(COALESCE(w.author,'')) LIKE ? ESCAPE '\')
+			AND (?='all'
+				OR (?='readable' AND EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`))
+				OR (?='listenable' AND EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`))
+				OR (?='synchronized' AND EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`))
+				OR (?='in_progress' AND EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id)))
+		ORDER BY
+			CASE WHEN ?='title' THEN lower(w.title) END ASC,
+			CASE WHEN ?='author' THEN lower(COALESCE(w.author,'')) END ASC,
+			CASE WHEN ?='updated' THEN w.updated_at END DESC,
+			CASE WHEN ?='recent' THEN w.created_at END DESC,
+			CASE WHEN ?='progress' THEN (SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id) END DESC,
+			w.id ASC
+		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.Admin,
+		options.LibraryID, options.LibraryID, pattern, pattern, pattern,
+		options.Availability, options.Availability, options.Availability, options.Availability, options.Availability, actor.ID,
+		options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, actor.ID, limit+1, offset)
+	if err != nil {
+		return nil, false, fmt.Errorf("browse works: %w", err)
+	}
+	defer rows.Close()
+	var out []WorkSummary
+	for rows.Next() {
+		var value WorkSummary
+		var created, updated, progress string
+		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress); err != nil {
+			return nil, false, err
+		}
+		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		value.ProgressUpdatedAt, _ = time.Parse(time.RFC3339Nano, progress)
+		out = append(out, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	return out, hasMore, nil
+}
+
 func (s *Store) Work(ctx context.Context, actor auth.User, id string) (Work, error) {
 	var v Work
 	var c, u string
@@ -393,6 +475,20 @@ func page(limit, offset int) (int, int) {
 		offset = 0
 	}
 	return limit, offset
+}
+func oneOf(value string, allowed ...string) bool {
+	for _, item := range allowed {
+		if value == item {
+			return true
+		}
+	}
+	return false
+}
+func escapeLike(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+func availableMediaSQL(alias string) string {
+	return `(` + alias + `.storage_kind='managed' OR EXISTS(SELECT 1 FROM media_locations ml JOIN source_entries se ON se.id=ml.source_entry_id JOIN library_sources ls ON ls.id=se.source_id WHERE ml.media_id=` + alias + `.id AND se.state='registered' AND se.sha256=` + alias + `.sha256 AND ls.enabled=1 AND ls.deleted_at IS NULL))`
 }
 func nullString(v string) any {
 	if v == "" {

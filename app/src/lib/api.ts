@@ -26,6 +26,8 @@ import type {
   RepresentationStateUpdate,
   Session,
   SourceEntry,
+  SourceDirectoryListing,
+  SourceRoot,
   SourceScan,
   SetupStatus,
   UpdateLibraryRequest,
@@ -35,6 +37,7 @@ import type {
   UpdateWorkRequest,
   User,
   Work,
+  WorkBrowsePage,
   WorkProgressUpdate,
 } from '../generated/api';
 import { clearToken, getToken, setToken } from './auth-token';
@@ -135,6 +138,11 @@ export const api = {
   removeMember: (libraryID: string, userID: string) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, { method: 'DELETE' }),
   sources: (libraryID: string) => request<LibrarySource[]>(`/libraries/${libraryID}/sources`),
+  sourceRoots: () => request<SourceRoot[]>('/source-roots'),
+  sourceDirectories: (rootID: string, path = '') =>
+    request<SourceDirectoryListing>(
+      `/source-roots/${rootID}/directories${path ? `?path=${encodeURIComponent(path)}` : ''}`,
+    ),
   createSource: (libraryID: string, body: CreateLibrarySourceRequest) =>
     request<LibrarySource>(`/libraries/${libraryID}/sources`, {
       method: 'POST',
@@ -157,6 +165,8 @@ export const api = {
     request<SourceEntry[]>(`/libraries/${libraryID}/sources/${sourceID}/entries`),
   importProposals: (libraryID: string) =>
     request<ImportProposal[]>(`/libraries/${libraryID}/import-proposals`),
+  importProposal: (libraryID: string, proposalID: string) =>
+    request<ImportProposal>(`/libraries/${libraryID}/import-proposals/${proposalID}`),
   acceptImportProposal: (
     libraryID: string,
     proposalID: string,
@@ -173,6 +183,25 @@ export const api = {
     }),
 
   works: (libraryID: string) => request<Work[]>(`/libraries/${libraryID}/works`),
+  browseWorks: (
+    options: {
+      libraryID?: string;
+      q?: string;
+      sort?: string;
+      availability?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) => {
+    const query = new URLSearchParams();
+    if (options.libraryID) query.set('library_id', options.libraryID);
+    if (options.q) query.set('q', options.q);
+    if (options.sort) query.set('sort', options.sort);
+    if (options.availability) query.set('availability', options.availability);
+    if (options.limit) query.set('limit', String(options.limit));
+    if (options.offset) query.set('offset', String(options.offset));
+    return request<WorkBrowsePage>(`/works?${query}`);
+  },
   work: (id: string) => request<Work>(`/works/${id}`),
   createWork: (libraryID: string, body: CreateWorkRequest) =>
     request<Work>(`/libraries/${libraryID}/works`, { method: 'POST', body: JSON.stringify(body) }),

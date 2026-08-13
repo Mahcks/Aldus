@@ -153,3 +153,62 @@ func TestMembershipConstraints(t *testing.T) {
 		t.Fatalf("disabled member = %v", err)
 	}
 }
+
+func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	reader := createUser(t, accounts, admin, "browse-reader")
+	outsider := createUser(t, accounts, admin, "browse-outsider")
+	library, err := store.CreateLibrary(ctx, admin, "Classics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	private, err := store.CreateLibrary(ctx, outsider, "Private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	alice, _ := store.CreateWork(ctx, admin, library.ID, "Alice_100%", "Lewis Carroll")
+	wonderland, _ := store.CreateWork(ctx, admin, library.ID, "Wonderland", "Carroll")
+	secret, _ := store.CreateWork(ctx, outsider, private.ID, "Secret Alice", "Nobody")
+	epub, _ := store.CreateRepresentation(ctx, admin, alice.ID, "epub", "EPUB")
+	audio, _ := store.CreateRepresentation(ctx, admin, alice.ID, "audio", "Audio")
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO media(id,representation_id,kind,path,sha256,created_at) VALUES('browse-epub',?,'epub','a.epub',?,'2026-01-01T00:00:00Z'),('browse-audio',?,'audio','a.mp3',?,'2026-01-01T00:00:00Z'); INSERT INTO alignments(id,epub_media_id,audio_media_id,revision,state,created_at) VALUES('browse-alignment','browse-epub','browse-audio',1,'ready','2026-01-01T00:00:00Z')`, epub.ID, strings.Repeat("c", 64), audio.ID, strings.Repeat("d", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms) VALUES('browse-alignment','segment',0,'Alice','chapter.xhtml','{}','/body/p[1]','a.mp3',0,1000); INSERT INTO progress(user_id,work_id,alignment_id,segment_id,offset,revision,updated_at,source_device) VALUES(?,?,'browse-alignment','segment',1,1,'2026-01-02T00:00:00Z','test')`, reader.ID, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	values, more, err := store.BrowseWorks(ctx, reader, BrowseOptions{Query: "alice_100%", Sort: "title", Limit: 1})
+	if err != nil || more || len(values) != 1 || values[0].ID != alice.ID || !values[0].Readable || !values[0].Listenable || !values[0].Synchronized {
+		t.Fatalf("escaped search = %#v, more=%v, err=%v", values, more, err)
+	}
+	values, more, err = store.BrowseWorks(ctx, reader, BrowseOptions{LibraryID: library.ID, Availability: "readable", Sort: "title", Limit: 1})
+	if err != nil || more || len(values) != 1 || values[0].ID != alice.ID {
+		t.Fatalf("readable filter = %#v, more=%v, err=%v", values, more, err)
+	}
+	values, more, err = store.BrowseWorks(ctx, reader, BrowseOptions{LibraryID: library.ID, Sort: "title", Limit: 1})
+	if err != nil || !more || len(values) != 1 || values[0].ID != alice.ID {
+		t.Fatalf("first page = %#v, more=%v, err=%v", values, more, err)
+	}
+	values, more, err = store.BrowseWorks(ctx, reader, BrowseOptions{LibraryID: library.ID, Sort: "title", Limit: 1, Offset: 1})
+	if err != nil || more || len(values) != 1 || values[0].ID != wonderland.ID {
+		t.Fatalf("second page = %#v, more=%v, err=%v", values, more, err)
+	}
+	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Availability: "in_progress", Sort: "progress"})
+	if err != nil || len(values) != 1 || values[0].ID != alice.ID || !values[0].InProgress || values[0].ProgressUpdatedAt.IsZero() {
+		t.Fatalf("progress browse = %#v, %v", values, err)
+	}
+	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Sort: "title"})
+	if err != nil || len(values) != 2 {
+		t.Fatalf("authorized global browse = %#v, %v", values, err)
+	}
+	for _, value := range values {
+		if value.ID == secret.ID {
+			t.Fatal("cross-library work leaked")
+		}
+	}
+}

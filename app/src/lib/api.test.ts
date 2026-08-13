@@ -64,6 +64,48 @@ describe('API transport', () => {
     expect(url).toEndWith('/api/works/work-1/alignment-jobs');
   });
 
+  it('builds one bounded server browse request', async () => {
+    let url = '';
+    globalThis.fetch = (async (input) => {
+      url = String(input);
+      return Response.json({ items: [], offset: 24, has_more: false });
+    }) as typeof fetch;
+    await api.browseWorks({
+      libraryID: 'library',
+      q: 'Alice & Bob',
+      sort: 'title',
+      availability: 'readable',
+      limit: 24,
+      offset: 24,
+    });
+    expect(url).toEndWith(
+      '/api/works?library_id=library&q=Alice+%26+Bob&sort=title&availability=readable&limit=24&offset=24',
+    );
+  });
+
+  it('browses only configured server source roots', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      urls.push(String(input));
+      return Response.json(
+        urls.length === 1
+          ? [{ id: 'root', label: 'Media', path: '/library/media', available: true }]
+          : {
+              root_id: 'root',
+              relative_path: 'Books/Classics',
+              selected_path: '/library/media/Books/Classics',
+              has_parent: true,
+              directories: [],
+            },
+      );
+    }) as typeof fetch;
+    expect(await api.sourceRoots()).toHaveLength(1);
+    expect((await api.sourceDirectories('root', 'Books/Classics')).selected_path).toBe(
+      '/library/media/Books/Classics',
+    );
+    expect(urls[1]).toEndWith('/api/source-roots/root/directories?path=Books%2FClassics');
+  });
+
   it('downloads authenticated EPUB bytes with web credentials', async () => {
     let request: RequestInit | undefined;
     globalThis.fetch = (async (_input, init) => {

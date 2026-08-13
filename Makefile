@@ -17,7 +17,7 @@ dev-app:
 	cd app && EXPO_PUBLIC_API_URL=$${EXPO_PUBLIC_API_URL:-http://localhost:8080} bun run start
 
 dev-server:
-	cd server && ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081} ALDUS_BOOTSTRAP_TOKEN=$${ALDUS_BOOTSTRAP_TOKEN:-aldus-dev-bootstrap} go run ./cmd/app
+	cd server && ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081} ALDUS_BOOTSTRAP_TOKEN=$${ALDUS_BOOTSTRAP_TOKEN:-aldus-dev-bootstrap} go run ./cmd/app
 
 generate:
 	mkdir -p $(TOOL_BIN)

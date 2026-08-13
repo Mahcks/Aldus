@@ -25,6 +25,23 @@ var (
 	ErrUnavailable = errors.New("media unavailable")
 )
 
+type ValidationError struct {
+	Code, Message string
+}
+
+func (e *ValidationError) Error() string { return e.Message }
+func (e *ValidationError) Unwrap() error { return ErrInvalid }
+
+type SourceRoot struct {
+	ID, Label, Path string
+}
+
+type DirectoryListing struct {
+	RootID, RelativePath, AbsolutePath string
+	HasParent                          bool
+	Directories                        []string
+}
+
 type Options struct {
 	AllowedRoots []string
 	ManagedRoot  string
@@ -71,6 +88,13 @@ func New(db *sql.DB, options Options) (*Store, error) {
 		}
 		s.blockedRoots = append(s.blockedRoots, filepath.Clean(absolute))
 	}
+	for _, allowed := range s.allowedRoots {
+		for _, blocked := range s.blockedRoots {
+			if within(blocked, allowed) || within(allowed, blocked) {
+				return nil, fmt.Errorf("source root %q overlaps Aldus storage", allowed)
+			}
+		}
+	}
 	s.managedRoot = options.ManagedRoot
 	return s, nil
 }
@@ -81,7 +105,10 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 	}
 	name = strings.TrimSpace(name)
 	resolved, err := s.validateRoot(root)
-	if name == "" || len(name) > 200 || err != nil {
+	if err != nil {
+		return LibrarySource{}, err
+	}
+	if name == "" || len(name) > 200 {
 		return LibrarySource{}, ErrInvalid
 	}
 	var exists int
@@ -101,6 +128,63 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 		return LibrarySource{}, fmt.Errorf("create source: %w", err)
 	}
 	return LibrarySource{ID: id, LibraryID: libraryID, Kind: "local", Name: name, RootPath: resolved, Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+}
+
+func (s *Store) Roots(actor auth.User) ([]SourceRoot, error) {
+	if !actor.Admin {
+		return nil, ErrNotFound
+	}
+	result := make([]SourceRoot, len(s.allowedRoots))
+	for i, root := range s.allowedRoots {
+		sum := sha256.Sum256([]byte(root))
+		result[i] = SourceRoot{ID: hex.EncodeToString(sum[:8]), Label: filepath.Base(root), Path: root}
+	}
+	return result, nil
+}
+
+func (s *Store) Directories(actor auth.User, rootID, relative string) (DirectoryListing, error) {
+	if !actor.Admin {
+		return DirectoryListing{}, ErrNotFound
+	}
+	var selected SourceRoot
+	roots, _ := s.Roots(actor)
+	for _, root := range roots {
+		if root.ID == rootID {
+			selected = root
+			break
+		}
+	}
+	if selected.ID == "" {
+		return DirectoryListing{}, ErrNotFound
+	}
+	relative = filepath.FromSlash(relative)
+	if filepath.IsAbs(relative) || relative == "." || filepath.Clean(relative) != relative || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		if relative != "" {
+			return DirectoryListing{}, validation("malformed_path", "Choose a folder inside an available media root.")
+		}
+	}
+	full := filepath.Join(selected.Path, relative)
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return DirectoryListing{}, validation("path_not_found", "That folder no longer exists on the Aldus server.")
+	}
+	if resolved != full || !within(selected.Path, resolved) {
+		return DirectoryListing{}, validation("symlink_root", "Linked folders cannot be selected as media sources.")
+	}
+	entries, err := os.ReadDir(full)
+	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			return DirectoryListing{}, validation("inaccessible", "Aldus does not have permission to read that folder.")
+		}
+		return DirectoryListing{}, validation("path_not_found", "That folder is unavailable on the Aldus server.")
+	}
+	var directories []string
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+			directories = append(directories, entry.Name())
+		}
+	}
+	return DirectoryListing{RootID: selected.ID, RelativePath: filepath.ToSlash(relative), AbsolutePath: full, HasParent: relative != "", Directories: directories}, nil
 }
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]LibrarySource, error) {
@@ -140,7 +224,10 @@ func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name
 	}
 	name = strings.TrimSpace(name)
 	resolved, err := s.validateRoot(root)
-	if name == "" || len(name) > 200 || err != nil {
+	if err != nil {
+		return err
+	}
+	if name == "" || len(name) > 200 {
 		return ErrInvalid
 	}
 	result, err := s.db.ExecContext(ctx, `UPDATE library_sources SET name=?,root_path=?,enabled=?,updated_at=? WHERE id=? AND library_id=? AND deleted_at IS NULL`, name, resolved, enabled, time.Now().UTC().Format(time.RFC3339Nano), id, libraryID)
@@ -215,6 +302,11 @@ func (s *Store) validateRoot(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	for _, blocked := range s.blockedRoots {
+		if within(blocked, resolved) || within(resolved, blocked) {
+			return "", validation("overlaps_aldus_storage", "A media source cannot contain or overlap Aldus data storage.")
+		}
+	}
 	allowed := false
 	for _, parent := range s.allowedRoots {
 		if within(parent, resolved) {
@@ -223,30 +315,52 @@ func (s *Store) validateRoot(root string) (string, error) {
 		}
 	}
 	if !allowed {
-		return "", ErrInvalid
-	}
-	for _, blocked := range s.blockedRoots {
-		if within(blocked, resolved) || within(resolved, blocked) {
-			return "", ErrInvalid
-		}
+		return "", validation("outside_allowed_roots", "Choose a folder inside a media root configured by the Aldus operator.")
 	}
 	return resolved, nil
 }
 
 func canonicalDirectory(path string) (string, error) {
 	if !filepath.IsAbs(path) {
-		return "", ErrInvalid
+		return "", validation("malformed_path", "The source path must be an absolute server-visible path.")
 	}
 	clean := filepath.Clean(path)
+	if filepath.Dir(clean) == clean {
+		return "", validation("unsafe_root", "A filesystem volume root cannot be used as a media source.")
+	}
+	info, err := os.Lstat(clean)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", validation("path_not_found", "That folder does not exist on the Aldus server.")
+	}
+	if errors.Is(err, os.ErrPermission) {
+		return "", validation("inaccessible", "Aldus does not have permission to access that folder.")
+	}
+	if err != nil {
+		return "", validation("malformed_path", "That source path is not valid.")
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", validation("symlink_root", "Linked folders cannot be used as media source roots.")
+	}
+	if !info.IsDir() {
+		return "", validation("not_directory", "The selected source path is not a directory.")
+	}
 	resolved, err := filepath.EvalSymlinks(clean)
 	if err != nil || resolved != clean {
-		return "", ErrInvalid
+		return "", validation("symlink_root", "Linked folders cannot be used as media source roots.")
 	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.IsDir() {
-		return "", ErrInvalid
+	directory, err := os.Open(resolved)
+	if errors.Is(err, os.ErrPermission) {
+		return "", validation("inaccessible", "Aldus does not have permission to read that folder.")
 	}
+	if err != nil {
+		return "", validation("inaccessible", "Aldus cannot read that folder.")
+	}
+	directory.Close()
 	return resolved, nil
+}
+
+func validation(code, message string) error {
+	return &ValidationError{Code: code, Message: message}
 }
 
 func openRegular(root, relative string) (*os.File, error) {

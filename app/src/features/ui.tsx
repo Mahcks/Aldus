@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,20 +11,10 @@ import {
   View,
   type TextInputProps,
 } from 'react-native';
+import { AppIcon, type AppIconName } from './icons';
+import { colors } from './theme';
 
-export const colors = {
-  canvas: '#f4efe6',
-  paper: '#fffdf8',
-  panel: '#ece4d8',
-  panelStrong: '#dfd3c3',
-  ink: '#27211c',
-  muted: '#6c6258',
-  line: '#cbbfb0',
-  accent: '#914027',
-  accentSoft: '#f1ded5',
-  danger: '#8a3028',
-  focus: '#bd6a4e',
-};
+export { colors } from './theme';
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48, huge: 64 };
 export const type = StyleSheet.create({
   display: { fontFamily: 'Georgia', fontSize: 34, lineHeight: 41, fontWeight: '700' },
@@ -80,16 +70,43 @@ export function Section({
   );
 }
 
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+export function Field({
+  label,
+  help,
+  error,
+  ...props
+}: TextInputProps & { label: string; help?: string; error?: string }) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor="#8a8075"
-        style={styles.input}
         {...props}
+        accessibilityLabel={label}
+        onBlur={(event) => {
+          setFocused(false);
+          props.onBlur?.(event);
+        }}
+        onFocus={(event) => {
+          setFocused(true);
+          props.onFocus?.(event);
+        }}
+        placeholderTextColor="#8a8075"
+        style={[
+          styles.input,
+          props.style,
+          error && styles.invalidInput,
+          focused && styles.focusedInput,
+        ]}
       />
+      {error || help ? (
+        <Text
+          accessibilityRole={error ? 'alert' : undefined}
+          style={[styles.help, error && styles.error]}
+        >
+          {error || help}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -99,26 +116,56 @@ export function Button({
   onPress,
   kind = 'secondary',
   disabled,
+  selected,
+  icon,
+  iconOnly,
+  loading,
 }: {
   label: string;
   onPress: () => void;
   kind?: 'primary' | 'secondary' | 'danger' | 'quiet';
   disabled?: boolean;
+  selected?: boolean;
+  icon?: AppIconName;
+  iconOnly?: boolean;
+  loading?: boolean;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || loading, selected, busy: loading }}
+      disabled={disabled || loading}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         styles[`${kind}Button`],
-        disabled && styles.disabled,
+        (disabled || loading) && styles.disabled,
+        focused && styles.focused,
         pressed && styles.pressed,
       ]}
     >
-      <Text style={[styles.buttonText, styles[`${kind}Text`]]}>{label}</Text>
+      {loading ? (
+        <ActivityIndicator color={kind === 'primary' ? colors.paper : colors.accent} />
+      ) : (
+        <>
+          {icon ? (
+            <AppIcon
+              name={icon}
+              size={18}
+              color={
+                kind === 'primary' ? colors.paper : kind === 'danger' ? colors.danger : colors.ink
+              }
+            />
+          ) : null}
+          {iconOnly ? null : (
+            <Text style={[styles.buttonText, styles[`${kind}Text`]]}>{label}</Text>
+          )}
+        </>
+      )}
     </Pressable>
   );
 }
@@ -135,6 +182,25 @@ export function Notice({ children, danger }: PropsWithChildren<{ danger?: boolea
 }
 export function Empty({ children }: PropsWithChildren) {
   return <Text style={styles.empty}>{children}</Text>;
+}
+export function EmptyState({
+  icon = 'read',
+  title,
+  children,
+  action,
+}: PropsWithChildren<{
+  icon?: AppIconName;
+  title: string;
+  action?: ReactNode;
+}>) {
+  return (
+    <View accessibilityLiveRegion="polite" style={styles.emptyState}>
+      <AppIcon name={icon} size={34} color={colors.accent} />
+      <Text style={styles.emptyStateTitle}>{title}</Text>
+      <Text style={styles.emptyStateText}>{children}</Text>
+      {action}
+    </View>
+  );
 }
 export function Loading({ label = 'Loading your library…' }: { label?: string }) {
   return (
@@ -153,6 +219,30 @@ export function Loading({ label = 'Loading your library…' }: { label?: string 
 }
 export function Row({ children }: PropsWithChildren) {
   return <View style={styles.row}>{children}</View>;
+}
+
+export function Checkbox({
+  label,
+  checked,
+  onPress,
+}: {
+  label: string;
+  checked: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      onPress={onPress}
+      style={styles.checkboxRow}
+    >
+      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+        {checked ? <AppIcon name="check" size={16} color={colors.paper} /> : null}
+      </View>
+      <Text style={styles.checkboxLabel}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export const shared = StyleSheet.create({
@@ -218,6 +308,9 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 15,
   },
+  focusedInput: { borderColor: colors.focus, borderWidth: 2 },
+  invalidInput: { borderColor: colors.danger },
+  help: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   button: {
     minHeight: 42,
     borderRadius: 6,
@@ -226,6 +319,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: space.sm,
   },
   buttonText: { fontSize: 13, fontWeight: '800' },
   primaryButton: { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -238,9 +333,19 @@ const styles = StyleSheet.create({
   quietText: { color: colors.accent },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.72 },
+  focused: { borderColor: colors.focus, borderWidth: 2 },
   notice: { color: colors.muted, lineHeight: 20 },
   error: { color: colors.danger },
   empty: { color: colors.muted, paddingVertical: 18 },
+  emptyState: {
+    minHeight: 180,
+    maxWidth: 560,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: space.sm,
+  },
+  emptyStateTitle: { color: colors.ink, ...type.sectionTitle },
+  emptyStateText: { color: colors.muted, ...type.body },
   muted: { color: colors.muted },
   loading: {
     flex: 1,
@@ -250,6 +355,19 @@ const styles = StyleSheet.create({
     gap: space.md,
   },
   row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
+  checkboxRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  checkbox: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 4,
+    backgroundColor: colors.paper,
+  },
+  checkboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
+  checkboxLabel: { color: colors.ink, ...type.body },
   skeleton: { width: 250, flexDirection: 'row', gap: space.md, opacity: 0.55 },
   skeletonCover: { width: 54, height: 76, backgroundColor: colors.panelStrong },
   skeletonLines: { flex: 1, gap: space.sm, justifyContent: 'center' },

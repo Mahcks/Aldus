@@ -7,8 +7,10 @@ services:
     volumes:
       - aldus-data:/data
       - ./test-fixtures/alice/media:/fixtures/alice:ro
+      - ${ALDUS_SOURCE_PATH:-./test-fixtures/alice/media}:/library/media:ro
     environment:
       ALDUS_FIXTURE_DIR: /fixtures/alice
+      ALDUS_SOURCE_ROOTS: /library/media
       ALDUS_BOOTSTRAP_TOKEN: ${ALDUS_BOOTSTRAP_TOKEN:-}
       ALDUS_SECURE_COOKIES: ${ALDUS_SECURE_COOKIES:-false}
       ALDUS_MAX_UPLOAD_BYTES: ${ALDUS_MAX_UPLOAD_BYTES:-2147483648}

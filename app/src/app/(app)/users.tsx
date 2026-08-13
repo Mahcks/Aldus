@@ -1,15 +1,15 @@
 import type { User } from '../../generated/api';
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
 import {
   Button,
+  Checkbox,
   Empty,
   Field,
   Loading,
   Notice,
   Page,
-  Row,
   Section,
   shared,
 } from '../../features/ui';
@@ -41,7 +41,14 @@ export default function UsersScreen() {
     return (
       <Page
         title="Users"
-        back={<Button label="Libraries" kind="quiet" onPress={() => goBackOr('/libraries')} />}
+        back={
+          <Button
+            label="Libraries"
+            icon="back"
+            kind="quiet"
+            onPress={() => goBackOr('/libraries')}
+          />
+        }
       >
         <Notice>This page is available to global administrators.</Notice>
       </Page>
@@ -69,7 +76,9 @@ export default function UsersScreen() {
   return (
     <Page
       title="Users"
-      back={<Button label="Libraries" kind="quiet" onPress={() => goBackOr('/libraries')} />}
+      back={
+        <Button label="Libraries" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />
+      }
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <View style={shared.split}>
@@ -120,16 +129,11 @@ export default function UsersScreen() {
                 value={form.password}
                 onChangeText={change('password')}
               />
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: form.admin }}
+              <Checkbox
+                label="Create as global administrator"
+                checked={form.admin}
                 onPress={() => setForm((current) => ({ ...current, admin: !current.admin }))}
-              >
-                <Row>
-                  <Text>{form.admin ? '☑' : '☐'}</Text>
-                  <Text>Create as global administrator</Text>
-                </Row>
-              </Pressable>
+              />
               <Button
                 label="Create account"
                 kind="primary"

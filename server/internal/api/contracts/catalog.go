@@ -23,6 +23,26 @@ type Work struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+type WorkSummary struct {
+	ID                string    `json:"id"`
+	LibraryID         string    `json:"library_id"`
+	LibraryName       string    `json:"library_name"`
+	LibraryRole       string    `json:"library_role,omitempty"`
+	Title             string    `json:"title"`
+	Author            string    `json:"author,omitempty"`
+	Readable          bool      `json:"readable"`
+	Listenable        bool      `json:"listenable"`
+	Synchronized      bool      `json:"synchronized"`
+	InProgress        bool      `json:"in_progress"`
+	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+type WorkBrowsePage struct {
+	Items   []WorkSummary `json:"items"`
+	Offset  int           `json:"offset"`
+	HasMore bool          `json:"has_more"`
+}
 type Representation struct {
 	ID        string    `json:"id"`
 	WorkID    string    `json:"work_id"`

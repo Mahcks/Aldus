@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import { useState, type PropsWithChildren } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, space, type } from './ui';
 
@@ -55,19 +55,31 @@ export function WorkCard({
   author,
   badges = [],
   progress,
+  context,
+  narrow,
   onPress,
 }: {
   title: string;
   author?: string;
   badges?: string[];
   progress?: string;
+  context?: string;
+  narrow?: boolean;
   onPress: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
     <Pressable
       accessibilityRole="link"
       accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      style={({ pressed }) => [
+        styles.card,
+        narrow && styles.narrowCard,
+        focused && styles.focused,
+        pressed && styles.pressed,
+      ]}
       onPress={onPress}
     >
       <BookCover title={title} author={author} />
@@ -77,6 +89,7 @@ export function WorkCard({
       <Text numberOfLines={1} style={styles.author}>
         {author || 'Unknown author'}
       </Text>
+      {context ? <Text style={styles.context}>{context}</Text> : null}
       {progress ? (
         <Text numberOfLines={1} style={styles.progress}>
           {progress}
@@ -138,7 +151,9 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
   card: { width: 184, gap: 7, borderRadius: 4 },
+  narrowCard: { width: 148 },
   pressed: { opacity: 0.76 },
+  focused: { outlineStyle: 'solid', outlineWidth: 2, outlineColor: colors.focus },
   title: {
     color: colors.ink,
     fontFamily: 'Georgia',
@@ -149,5 +164,6 @@ const styles = StyleSheet.create({
   },
   author: { color: colors.muted, ...type.meta },
   progress: { color: colors.accent, fontSize: 12, fontWeight: '700' },
+  context: { color: colors.muted, fontSize: 11, fontWeight: '700' },
   badges: { minHeight: 24, flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
 });

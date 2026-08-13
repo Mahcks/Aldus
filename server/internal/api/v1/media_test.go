@@ -111,6 +111,29 @@ func TestReferencedMediaDownloadSupportsRangesAndFailsWhenChanged(t *testing.T) 
 	}
 	mediaStore, _ := ingest.New(db, ingest.Options{Root: managed, MaxBytes: 1024, Resolver: resolver})
 	handler := Handler(Dependencies{Position: position.New(db), Auth: accounts, Catalog: catalogStore, Ingest: mediaStore, Sources: resolver})
+	roots, _ := resolver.Roots(session.User)
+	rootsRequest := httptest.NewRequest(http.MethodGet, "/source-roots", nil)
+	rootsRequest.Header.Set("Authorization", "Bearer "+session.Token)
+	rootsResponse := httptest.NewRecorder()
+	handler.ServeHTTP(rootsResponse, rootsRequest)
+	if rootsResponse.Code != http.StatusOK || !strings.Contains(rootsResponse.Body.String(), allowed) {
+		t.Fatalf("source roots=%d %s", rootsResponse.Code, rootsResponse.Body.String())
+	}
+	directoriesRequest := httptest.NewRequest(http.MethodGet, "/source-roots/"+roots[0].ID+"/directories", nil)
+	directoriesRequest.Header.Set("Authorization", "Bearer "+session.Token)
+	directoriesResponse := httptest.NewRecorder()
+	handler.ServeHTTP(directoriesResponse, directoriesRequest)
+	if directoriesResponse.Code != http.StatusOK || !strings.Contains(directoriesResponse.Body.String(), `"directories":["books"]`) {
+		t.Fatalf("source directories=%d %s", directoriesResponse.Code, directoriesResponse.Body.String())
+	}
+	invalidRequest := httptest.NewRequest(http.MethodPost, "/libraries/"+library.ID+"/sources", strings.NewReader(`{"name":"Missing","root_path":"/does-not-exist"}`))
+	invalidRequest.Header.Set("Authorization", "Bearer "+session.Token)
+	invalidRequest.Header.Set("Content-Type", "application/json")
+	invalidResponse := httptest.NewRecorder()
+	handler.ServeHTTP(invalidResponse, invalidRequest)
+	if invalidResponse.Code != http.StatusBadRequest || !strings.Contains(invalidResponse.Body.String(), "does not exist") {
+		t.Fatalf("invalid source=%d %s", invalidResponse.Code, invalidResponse.Body.String())
+	}
 	request := httptest.NewRequest(http.MethodGet, "/media/referenced", nil)
 	request.Header.Set("Authorization", "Bearer "+session.Token)
 	request.Header.Set("Range", "bytes=2-5")

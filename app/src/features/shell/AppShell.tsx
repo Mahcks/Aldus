@@ -1,6 +1,7 @@
 import { router, Slot, usePathname, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useAuth } from '../auth/AuthProvider';
+import { AppIcon, type AppIconName } from '../icons';
 import { colors } from '../ui';
 
 export function AppShell() {
@@ -13,9 +14,14 @@ export function AppShell() {
   }
   if (path.startsWith('/consume/')) return <Slot />;
   const links = [
-    { label: 'Home', href: '/home' },
-    { label: 'Libraries', href: '/libraries' },
-    ...(auth.user?.admin ? [{ label: 'Users', href: '/users' }] : []),
+    { label: 'Home', href: '/home', icon: 'home' as AppIconName },
+    { label: 'Libraries', href: '/libraries', icon: 'libraries' as AppIconName },
+    ...(auth.user?.admin
+      ? [
+          { label: 'Sources', href: '/sources', icon: 'folder' as AppIconName },
+          { label: 'Users', href: '/users', icon: 'users' as AppIconName },
+        ]
+      : []),
   ];
   return (
     <View style={[styles.shell, !desktop && styles.mobileShell]}>
@@ -33,14 +39,9 @@ export function AppShell() {
         {desktop && auth.user?.admin ? (
           <View style={styles.admin}>
             <Text style={styles.navLabel}>Administration</Text>
-            <Pressable
-              accessibilityRole="link"
-              accessibilityState={{ selected: path === '/users' }}
-              onPress={() => router.push('/users')}
-              style={[styles.link, path === '/users' && styles.activeLink]}
-            >
-              <Text style={[styles.linkText, path === '/users' && styles.activeText]}>Users</Text>
-            </Pressable>
+            {links.slice(2).map((link) => (
+              <NavLink key={link.href} {...link} selected={isActive(path, link.href)} />
+            ))}
           </View>
         ) : null}
         {desktop ? (
@@ -75,11 +76,22 @@ export function AppShell() {
 function isActive(path: string, href: string) {
   return (
     path === href ||
+    (href === '/sources' && path.startsWith('/sources')) ||
     (href === '/libraries' &&
       ['/library/', '/work/', '/representation/'].some((prefix) => path.startsWith(prefix)))
   );
 }
-function NavLink({ label, href, selected }: { label: string; href: string; selected: boolean }) {
+function NavLink({
+  label,
+  href,
+  icon,
+  selected,
+}: {
+  label: string;
+  href: string;
+  icon: AppIconName;
+  selected: boolean;
+}) {
   return (
     <Pressable
       accessibilityRole="link"
@@ -87,6 +99,7 @@ function NavLink({ label, href, selected }: { label: string; href: string; selec
       onPress={() => router.push(href as Href)}
       style={[styles.link, styles.mobileLink, selected && styles.activeLink]}
     >
+      <AppIcon name={icon} size={20} color={selected ? colors.accent : colors.muted} />
       <Text style={[styles.linkText, selected && styles.activeText]}>{label}</Text>
     </Pressable>
   );
@@ -127,8 +140,21 @@ const styles = StyleSheet.create({
   },
   brand: { color: colors.accent, fontFamily: 'Georgia', fontSize: 24, fontWeight: '700' },
   links: { gap: 4, marginTop: 28 },
-  link: { minHeight: 44, paddingHorizontal: 11, justifyContent: 'center', borderRadius: 6 },
-  mobileLink: { flex: 1, alignItems: 'center', paddingHorizontal: 6 },
+  link: {
+    minHeight: 44,
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 6,
+  },
+  mobileLink: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    gap: 2,
+  },
   activeLink: { backgroundColor: colors.panelStrong },
   linkText: { color: colors.muted, fontSize: 15, fontWeight: '700' },
   activeText: { color: colors.ink },
