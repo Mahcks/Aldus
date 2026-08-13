@@ -23,7 +23,10 @@ var catalogSchema string
 //go:embed migrations/004_media_ingestion.sql
 var mediaIngestionSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema}
+//go:embed migrations/005_alignment_jobs.sql
+var alignmentJobsSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema}
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	path, err := filepath.Abs(path)

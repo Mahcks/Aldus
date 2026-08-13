@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -46,6 +48,17 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	alignmentManager, err := alignment.New(db, alignment.Options{MediaRoot: mediaDir, ArtifactRoot: filepath.Join(cfg.DataDir, "alignments"), ModelRoot: cfg.AlignmentModelDir, Command: strings.Fields(cfg.AlignmentCommand), Timeout: cfg.AlignmentTimeout})
+	if err != nil {
+		slog.Error("open alignment worker", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
+	if err := alignmentManager.Start(ctx); err != nil {
+		slog.Error("recover alignment jobs", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
 	if err := store.RemoveLegacyFixture(ctx); err != nil {
 		slog.Error("remove legacy synthetic fixture", "error", err)
 		db.Close()
@@ -59,7 +72,7 @@ func main() {
 	}
 	server := &http.Server{
 		Addr: cfg.Addr,
-		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, catalogStore, ingestStore, koreader.Credentials{
+		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, catalogStore, ingestStore, alignmentManager, koreader.Credentials{
 			User: cfg.KOReaderUser,
 			Key:  cfg.KOReaderKey,
 		}),
@@ -75,6 +88,7 @@ func main() {
 	select {
 	case err := <-errCh:
 		stop()
+		alignmentManager.Wait()
 		if !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("serve HTTP", "error", err)
 			db.Close()
@@ -91,6 +105,7 @@ func main() {
 	cancel()
 	if err != nil {
 		slog.Error("shut down HTTP server", "error", err)
+		alignmentManager.Wait()
 		db.Close()
 		os.Exit(1)
 	}
@@ -99,6 +114,7 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	alignmentManager.Wait()
 	if err := db.Close(); err != nil {
 		slog.Error("close database", "error", err)
 		os.Exit(1)

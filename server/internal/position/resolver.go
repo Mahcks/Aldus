@@ -16,7 +16,7 @@ func (s *Store) EPUBToCanonical(ctx context.Context, alignmentID string, locator
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.alignment_id, s.id
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
-		WHERE s.alignment_id = ? AND s.epub_href = ? AND s.epub_locator = ? AND a.state = 'ready'`,
+		WHERE s.alignment_id = ? AND s.epub_href = ? AND s.epub_locator = ? AND s.highlightable=1 AND a.state = 'ready'`,
 		alignmentID, locator.Href, string(locator.Locator),
 	).Scan(&p.AlignmentID, &p.SegmentID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -38,7 +38,7 @@ func (s *Store) CanonicalToEPUB(ctx context.Context, p Canonical) (EPUBLocator, 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.epub_href, s.epub_locator
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
-		WHERE s.alignment_id = ? AND s.id = ? AND a.state = 'ready'`,
+		WHERE s.alignment_id = ? AND s.id = ? AND s.highlightable=1 AND a.state = 'ready'`,
 		p.AlignmentID, p.SegmentID,
 	).Scan(&locator.Href, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -59,7 +59,7 @@ func (s *Store) AudioToCanonical(ctx context.Context, alignmentID string, locato
 		SELECT s.alignment_id, s.id, s.audio_start_ms, s.audio_end_ms
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
 		WHERE s.alignment_id = ? AND s.audio_resource = ?
-			AND s.audio_start_ms <= ? AND s.audio_end_ms > ? AND a.state = 'ready'
+			AND s.audio_start_ms <= ? AND s.audio_end_ms > ? AND s.highlightable=1 AND a.state = 'ready'
 		ORDER BY s.ordinal LIMIT 1`,
 		alignmentID, locator.Resource, locator.TimestampMS, locator.TimestampMS,
 	).Scan(&p.AlignmentID, &p.SegmentID, &start, &end)
@@ -82,7 +82,7 @@ func (s *Store) CanonicalToAudio(ctx context.Context, p Canonical) (AudioLocator
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.audio_resource, s.audio_start_ms, s.audio_end_ms
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
-		WHERE s.alignment_id = ? AND s.id = ? AND a.state = 'ready'`,
+		WHERE s.alignment_id = ? AND s.id = ? AND s.highlightable=1 AND a.state = 'ready'`,
 		p.AlignmentID, p.SegmentID,
 	).Scan(&locator.Resource, &start, &end)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -101,7 +101,7 @@ func (s *Store) KOReaderToCanonical(ctx context.Context, locator KOReaderLocator
 		SELECT s.alignment_id, s.id
 		FROM koreader_aliases k
 		JOIN alignments a ON a.epub_media_id = k.media_id AND a.state = 'ready'
-		JOIN alignment_segments s ON s.alignment_id = a.id AND s.koreader_locator = ?
+	JOIN alignment_segments s ON s.alignment_id = a.id AND s.koreader_locator = ? AND s.highlightable=1 AND s.koreader_locator NOT LIKE 'unavailable:%'
 		WHERE k.document_id = ?`, locator.Progress, locator.DocumentID,
 	).Scan(&p.AlignmentID, &p.SegmentID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -138,7 +138,7 @@ func (s *Store) CanonicalToKOReader(ctx context.Context, p Canonical) (KOReaderL
 		FROM alignment_segments s
 		JOIN alignments a ON a.id = s.alignment_id AND a.state = 'ready'
 		JOIN koreader_aliases k ON k.media_id = a.epub_media_id
-		WHERE s.alignment_id = ? AND s.id = ?`, p.AlignmentID, p.SegmentID,
+		WHERE s.alignment_id = ? AND s.id = ? AND s.highlightable=1 AND s.koreader_locator NOT LIKE 'unavailable:%'`, p.AlignmentID, p.SegmentID,
 	).Scan(&locator.DocumentID, &locator.Progress, &ordinal, &total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return KOReaderLocator{}, ErrNotFound

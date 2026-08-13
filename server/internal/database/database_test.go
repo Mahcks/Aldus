@@ -14,8 +14,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 4 {
-		t.Fatalf("schema version = %d, want 4", version)
+	if version := schemaVersion(t, db); version != 5 {
+		t.Fatalf("schema version = %d, want 5", version)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -25,8 +25,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 4 {
-		t.Fatalf("schema version after reopen = %d, want 4", version)
+	if version := schemaVersion(t, db); version != 5 {
+		t.Fatalf("schema version after reopen = %d, want 5", version)
 	}
 }
 
@@ -80,8 +80,8 @@ INSERT INTO progress (alignment_id, segment_id, offset, revision, updated_at, so
 	if err := db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
 		t.Fatalf("foreign key check = %q, %v", violation, err)
 	}
-	if version := schemaVersion(t, db); version != 4 {
-		t.Fatalf("migrated schema version = %d, want 4", version)
+	if version := schemaVersion(t, db); version != 5 {
+		t.Fatalf("migrated schema version = %d, want 5", version)
 	}
 	var epubHash, representationID string
 	if err := db.QueryRowContext(ctx, `SELECT sha256,representation_id FROM media WHERE id='epub'`).Scan(&epubHash, &representationID); err != nil || epubHash != strings.Repeat("a", 64) || representationID != "legacy-representation-epub" {
@@ -110,12 +110,12 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`PRAGMA user_version = 5`); err != nil {
+	if _, err := db.Exec(`PRAGMA user_version = 6`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
 	_, err = Open(context.Background(), path)
-	if err == nil || !strings.Contains(err.Error(), "schema version 5 is newer than supported version 4") {
+	if err == nil || !strings.Contains(err.Error(), "schema version 6 is newer than supported version 5") {
 		t.Fatalf("Open error = %v", err)
 	}
 }
@@ -137,7 +137,7 @@ func TestMigrationFromVersionTwo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 4 {
+	if version := schemaVersion(t, db); version != 5 {
 		t.Fatalf("version=%d", version)
 	}
 	var users, tables int
@@ -164,12 +164,36 @@ func TestMigrationFromVersionThree(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 4 {
+	if version := schemaVersion(t, db); version != 5 {
 		t.Fatalf("version=%d", version)
 	}
 	var columns int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('media') WHERE name IN ('original_filename','size_bytes')`).Scan(&columns); err != nil || columns != 2 {
 		t.Fatalf("media columns=%d, %v", columns, err)
+	}
+}
+
+func TestMigrationFromVersionFour(t *testing.T) {
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + `PRAGMA user_version=4;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	db, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if version := schemaVersion(t, db); version != 5 {
+		t.Fatalf("version=%d", version)
+	}
+	var jobs int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='alignment_jobs'`).Scan(&jobs); err != nil || jobs != 1 {
+		t.Fatalf("jobs=%d, %v", jobs, err)
 	}
 }
 
@@ -186,8 +210,8 @@ func TestMigrationRollsBackFailedVersion(t *testing.T) {
 	if err := migrate(ctx, db); err == nil {
 		t.Fatal("failed migration succeeded")
 	}
-	if version := schemaVersion(t, db); version != 4 {
-		t.Fatalf("schema version after rollback = %d, want 4", version)
+	if version := schemaVersion(t, db); version != 5 {
+		t.Fatalf("schema version after rollback = %d, want 5", version)
 	}
 	var exists int
 	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'partial')`).Scan(&exists); err != nil || exists != 0 {

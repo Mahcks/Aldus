@@ -214,6 +214,12 @@ func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, represen
 		}
 		return Media{}, fmt.Errorf("stale prior alignments: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE alignment_jobs SET state='stale',finished_at=? WHERE state='ready' AND alignment_id IN (SELECT a.id FROM alignments a WHERE a.state='stale')`, now.Format(time.RFC3339Nano)); err != nil {
+		if created {
+			os.Remove(final)
+		}
+		return Media{}, fmt.Errorf("stale prior jobs: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		if created {
 			os.Remove(final)

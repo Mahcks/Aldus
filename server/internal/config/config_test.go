@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoad(t *testing.T) {
 	t.Setenv("ALDUS_ADDR", "localhost:9000")
@@ -12,8 +15,11 @@ func TestLoad(t *testing.T) {
 	t.Setenv("ALDUS_SECURE_COOKIES", "true")
 	t.Setenv("ALDUS_MEDIA_DIR", "/tmp/media")
 	t.Setenv("ALDUS_MAX_UPLOAD_BYTES", "12345")
+	t.Setenv("ALDUS_ALIGNMENT_COMMAND", "worker --fixed")
+	t.Setenv("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", "45")
+	t.Setenv("ALDUS_ALIGNMENT_MODEL_DIR", "/tmp/models")
 	cfg := Load()
-	if cfg.Addr != "localhost:9000" || cfg.DataDir != "/tmp/aldus" || cfg.FixtureDir != "/tmp/alice" || cfg.KOReaderUser != "reader" || cfg.KOReaderKey != "secret" || cfg.BootstrapToken != "bootstrap-secret" || !cfg.SecureCookies || cfg.MediaDir != "/tmp/media" || cfg.MaxUploadBytes != 12345 {
+	if cfg.Addr != "localhost:9000" || cfg.DataDir != "/tmp/aldus" || cfg.FixtureDir != "/tmp/alice" || cfg.KOReaderUser != "reader" || cfg.KOReaderKey != "secret" || cfg.BootstrapToken != "bootstrap-secret" || !cfg.SecureCookies || cfg.MediaDir != "/tmp/media" || cfg.MaxUploadBytes != 12345 || cfg.AlignmentCommand != "worker --fixed" || cfg.AlignmentTimeout != 45*time.Second || cfg.AlignmentModelDir != "/tmp/models" {
 		t.Fatalf("Load() = %#v", cfg)
 	}
 }

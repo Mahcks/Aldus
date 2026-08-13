@@ -1,4 +1,4 @@
-.PHONY: fixture dev dev-app dev-server build test lint docker
+.PHONY: fixture dev dev-app dev-server build test lint docker docker-alignment
 
 fixture:
 	./test-fixtures/alice/fetch.sh
@@ -28,3 +28,6 @@ lint:
 
 docker:
 	docker build -t ghcr.io/mahcks/aldus .
+
+docker-alignment:
+	docker build --target alignment -t ghcr.io/mahcks/aldus:alignment .

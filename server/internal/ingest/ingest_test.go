@@ -226,12 +226,18 @@ func TestNewRevisionMarksAlignmentStale(t *testing.T) {
 	if _, err := s.store.db.Exec(`INSERT INTO alignment_inputs(alignment_id,media_id,role) VALUES('alignment',?,'epub'),('alignment',?,'audio')`, epub.ID, audio.ID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.store.db.Exec(`INSERT INTO alignment_jobs(id,alignment_id,epub_media_id,audio_media_id,state,worker_version,model,created_at) VALUES('job','alignment',?,?,'ready','whisperx 3.8.6','base.en','2026-01-01T00:00:00Z')`, epub.ID, audio.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.store.Upload(ctx, s.admin, s.libraryID, s.epubID, "two.epub", bytes.NewReader(validEPUB(t, "two"))); err != nil {
 		t.Fatal(err)
 	}
 	var state string
 	if err := s.store.db.QueryRow(`SELECT state FROM alignments WHERE id='alignment'`).Scan(&state); err != nil || state != "stale" {
 		t.Fatalf("state=%q, %v", state, err)
+	}
+	if err := s.store.db.QueryRow(`SELECT state FROM alignment_jobs WHERE id='job'`).Scan(&state); err != nil || state != "stale" {
+		t.Fatalf("job state=%q, %v", state, err)
 	}
 }
 

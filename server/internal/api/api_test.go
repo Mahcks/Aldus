@@ -48,14 +48,14 @@ func TestHandler(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			Handler(fs.FS(web), nil, position.New(db), authStore, catalog.New(db), nil, koreader.Credentials{User: "aldus", Key: "aldus"}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, test.target, nil))
+			Handler(fs.FS(web), nil, position.New(db), authStore, catalog.New(db), nil, nil, koreader.Credentials{User: "aldus", Key: "aldus"}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, test.target, nil))
 			if recorder.Code != test.status || !strings.Contains(recorder.Body.String(), test.body) {
 				t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
 	recorder := httptest.NewRecorder()
-	Handler(fs.FS(web), nil, position.New(db), authStore, catalog.New(db), nil, koreader.Credentials{User: "aldus", Key: "aldus"}).ServeHTTP(recorder, httptest.NewRequest(http.MethodOptions, "/api/alignments/fixture-alignment/progress", nil))
+	Handler(fs.FS(web), nil, position.New(db), authStore, catalog.New(db), nil, nil, koreader.Credentials{User: "aldus", Key: "aldus"}).ServeHTTP(recorder, httptest.NewRequest(http.MethodOptions, "/api/alignments/fixture-alignment/progress", nil))
 	if recorder.Code != http.StatusNoContent || recorder.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Fatalf("preflight response = %d %#v", recorder.Code, recorder.Header())
 	}
@@ -81,7 +81,7 @@ func TestMediaSupportsCrossOriginRanges(t *testing.T) {
 	request.Header.Set("Range", "bytes=2-5")
 	request.Header.Set("Authorization", "Bearer "+session.Token)
 	recorder := httptest.NewRecorder()
-	Handler(nil, media, position.New(db), authStore, catalog.New(db), nil, koreader.Credentials{}).ServeHTTP(recorder, request)
+	Handler(nil, media, position.New(db), authStore, catalog.New(db), nil, nil, koreader.Credentials{}).ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusPartialContent || recorder.Body.String() != "2345" || recorder.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Fatalf("range response = %d %q %#v", recorder.Code, recorder.Body.String(), recorder.Header())
 	}

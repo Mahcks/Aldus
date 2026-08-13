@@ -119,7 +119,14 @@ func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
 	decoder := xml.NewDecoder(reader)
 	var paragraphs []EPUBParagraph
 	var text strings.Builder
-	depth, number := 0, 0
+	type node struct {
+		name     string
+		index    int
+		children map[string]int
+	}
+	var stack []node
+	paragraphDepth := 0
+	paragraphPath := ""
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -130,23 +137,32 @@ func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
 		}
 		switch token := token.(type) {
 		case xml.StartElement:
-			if token.Name.Local == "p" && depth == 0 {
-				depth, number = 1, number+1
+			index := 1
+			if len(stack) > 0 {
+				parent := &stack[len(stack)-1]
+				parent.children[token.Name.Local]++
+				index = parent.children[token.Name.Local]
+			}
+			stack = append(stack, node{name: token.Name.Local, index: index, children: map[string]int{}})
+			if token.Name.Local == "p" && paragraphDepth == 0 {
+				paragraphDepth = len(stack)
+				parts := make([]string, len(stack))
+				for i, item := range stack {
+					parts[i] = fmt.Sprintf("%s[%d]", item.name, item.index)
+				}
+				paragraphPath = strings.Join(parts, "/")
 				text.Reset()
-			} else if depth > 0 {
-				depth++
 			}
 		case xml.CharData:
-			if depth > 0 {
+			if paragraphDepth > 0 {
 				text.Write(token)
 			}
 		case xml.EndElement:
-			if depth > 0 {
-				depth--
-				if depth == 0 {
-					paragraphs = append(paragraphs, EPUBParagraph{Href: href, DOMPath: fmt.Sprintf("body/div[1]/p[%d]", number), Text: strings.Join(strings.Fields(text.String()), " ")})
-				}
+			if paragraphDepth == len(stack) {
+				paragraphs = append(paragraphs, EPUBParagraph{Href: href, DOMPath: paragraphPath, Text: strings.Join(strings.Fields(text.String()), " ")})
+				paragraphDepth = 0
 			}
+			stack = stack[:len(stack)-1]
 		}
 	}
 	return paragraphs, nil
