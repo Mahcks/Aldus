@@ -251,7 +251,11 @@ func (m *Manager) Cancel(ctx context.Context, actor auth.User, id string) error 
 	if actor.Admin {
 		allowed = 1
 	} else {
-		_ = m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM alignment_jobs j JOIN media md ON md.id=j.epub_media_id JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id JOIN library_members lm ON lm.library_id=w.library_id WHERE j.id=? AND lm.user_id=? AND lm.role IN ('owner','editor')`, id, actor.ID).Scan(&allowed)
+		var err error
+		allowed, err = m.canCancel(ctx, actor.ID, id)
+		if err != nil {
+			return err
+		}
 	}
 	if allowed != 1 {
 		return ErrNotFound
@@ -267,6 +271,14 @@ func (m *Manager) Cancel(ctx context.Context, actor auth.User, id string) error 
 		cancel()
 	}
 	return err
+}
+
+func (m *Manager) canCancel(ctx context.Context, userID, id string) (int, error) {
+	var allowed int
+	if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM alignment_jobs j JOIN media md ON md.id=j.epub_media_id JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id JOIN library_members lm ON lm.library_id=w.library_id WHERE j.id=? AND lm.user_id=? AND lm.role IN ('owner','editor')`, id, userID).Scan(&allowed); err != nil {
+		return 0, fmt.Errorf("authorize alignment cancellation: %w", err)
+	}
+	return allowed, nil
 }
 
 func (m *Manager) claim(ctx context.Context) (Job, bool, error) {

@@ -9,7 +9,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func registerReadingStateRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
+func registerProgressRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
 	router.Get("/works/{workID}/progress", workProgress(store, catalogStore))
 	router.Put("/works/{workID}/progress", updateWorkProgress(store, catalogStore))
 	router.Get("/representations/{representationID}/state", representationState(store, catalogStore))
@@ -24,7 +24,7 @@ func workProgress(store *position.Store, catalogStore *catalog.Store) http.Handl
 			return
 		}
 		value, err := store.Progress(r.Context(), actor(r).ID, workID)
-		writeResult(w, value, err)
+		writePositionResult(w, canonicalDTO(value), err)
 	}
 }
 
@@ -39,8 +39,8 @@ func updateWorkProgress(store *position.Store, catalogStore *catalog.Store) http
 		if !decode(w, r, &request) {
 			return
 		}
-		value, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, request.AlignmentID, request.ProgressUpdate)
-		writeResult(w, value, err)
+		value, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, request.AlignmentID, position.Update{SegmentID: request.SegmentID, Offset: request.Offset, ExpectedRevision: request.ExpectedRevision, SourceDevice: request.SourceDevice})
+		writePositionResult(w, canonicalDTO(value), err)
 	}
 }
 
@@ -52,7 +52,7 @@ func representationState(store *position.Store, catalogStore *catalog.Store) htt
 			return
 		}
 		value, err := store.RepresentationState(r.Context(), actor(r).ID, id)
-		writeResult(w, value, err)
+		writePositionResult(w, representationStateDTO(value), err)
 	}
 }
 
@@ -63,11 +63,12 @@ func updateRepresentationState(store *position.Store, catalogStore *catalog.Stor
 			writeCatalogResult(w, nil, err)
 			return
 		}
-		var update position.RepresentationUpdate
-		if !decode(w, r, &update) {
+		var request contracts.RepresentationStateUpdate
+		if !decode(w, r, &request) {
 			return
 		}
+		update := position.RepresentationUpdate{EPUBLocator: request.EPUBLocator, AudioTimestampMS: request.AudioTimestampMS, PlaybackSpeed: request.PlaybackSpeed, ReaderLayout: request.ReaderLayout, Zoom: request.Zoom, ExpectedRevision: request.ExpectedRevision}
 		value, err := store.UpdateRepresentationState(r.Context(), actor(r).ID, id, update)
-		writeResult(w, value, err)
+		writePositionResult(w, representationStateDTO(value), err)
 	}
 }

@@ -51,7 +51,7 @@ func TestOpaqueMediaDownloadSupportsRanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(position.New(db), accounts, catalogStore, mediaStore, nil)
+	handler := Handler(Dependencies{Position: position.New(db), Auth: accounts, Catalog: catalogStore, Ingest: mediaStore})
 	request := httptest.NewRequest(http.MethodGet, "/media/"+media.ID, nil)
 	request.Header.Set("Authorization", "Bearer "+session.Token)
 	request.Header.Set("Range", "bytes=2-5")

@@ -4,22 +4,22 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
 func registerAlignmentRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
-	registerReadingStateRoutes(router, store, catalogStore)
-	router.With(requireAlignmentAccess(catalogStore)).Get("/alignments/{alignmentID}", getAlignment(store))
-	router.Route("/alignments/{alignmentID}", func(router chi.Router) {
+	router.Group(func(router chi.Router) {
 		router.Use(requireAlignmentAccess(catalogStore))
-		router.Get("/progress", getProgress(store))
-		router.Put("/progress", updateProgress(store))
-		router.Post("/resolve/epub", epubToCanonical(store))
-		router.Post("/resolve/audio", audioToCanonical(store))
-		router.Post("/locators/epub", canonicalToEPUB(store))
-		router.Post("/locators/audio", canonicalToAudio(store))
+		router.Get("/alignments/{alignmentID}", getAlignment(store))
+		router.Get("/alignments/{alignmentID}/progress", getProgress(store))
+		router.Put("/alignments/{alignmentID}/progress", updateProgress(store))
+		router.Post("/alignments/{alignmentID}/resolve/epub", epubToCanonical(store))
+		router.Post("/alignments/{alignmentID}/resolve/audio", audioToCanonical(store))
+		router.Post("/alignments/{alignmentID}/locators/epub", canonicalToEPUB(store))
+		router.Post("/alignments/{alignmentID}/locators/audio", canonicalToAudio(store))
 	})
 }
 
@@ -44,7 +44,7 @@ func requireAlignmentAccess(store *catalog.Store) func(http.Handler) http.Handle
 func getAlignment(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		alignment, err := store.Alignment(r.Context(), chi.URLParam(r, "alignmentID"))
-		writeResult(w, alignment, err)
+		writePositionResult(w, alignmentDTO(alignment), err)
 	}
 }
 
@@ -52,72 +52,72 @@ func getProgress(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workID, err := store.WorkForAlignment(r.Context(), chi.URLParam(r, "alignmentID"))
 		if err != nil {
-			writeResult(w, position.Canonical{}, err)
+			writePositionResult(w, contracts.CanonicalPosition{}, err)
 			return
 		}
 		progress, err := store.Progress(r.Context(), actor(r).ID, workID)
-		writeResult(w, progress, err)
+		writePositionResult(w, canonicalDTO(progress), err)
 	}
 }
 
 func updateProgress(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var update position.Update
-		if !decode(w, r, &update) {
+		var request contracts.ProgressUpdate
+		if !decode(w, r, &request) {
 			return
 		}
 		workID, err := store.WorkForAlignment(r.Context(), chi.URLParam(r, "alignmentID"))
 		if err != nil {
-			writeResult(w, position.Canonical{}, err)
+			writePositionResult(w, contracts.CanonicalPosition{}, err)
 			return
 		}
-		progress, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, chi.URLParam(r, "alignmentID"), update)
-		writeResult(w, progress, err)
+		progress, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, chi.URLParam(r, "alignmentID"), position.Update{SegmentID: request.SegmentID, Offset: request.Offset, ExpectedRevision: request.ExpectedRevision, SourceDevice: request.SourceDevice})
+		writePositionResult(w, canonicalDTO(progress), err)
 	}
 }
 
 func epubToCanonical(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var locator position.EPUBLocator
-		if !decode(w, r, &locator) {
+		var request contracts.EPUBLocator
+		if !decode(w, r, &request) {
 			return
 		}
-		result, err := store.EPUBToCanonical(r.Context(), chi.URLParam(r, "alignmentID"), locator)
-		writeResult(w, result, err)
+		result, err := store.EPUBToCanonical(r.Context(), chi.URLParam(r, "alignmentID"), position.EPUBLocator{Href: request.Href, Locator: request.Locator, Offset: request.Offset})
+		writePositionResult(w, canonicalDTO(result), err)
 	}
 }
 
 func audioToCanonical(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var locator position.AudioLocator
-		if !decode(w, r, &locator) {
+		var request contracts.AudioLocator
+		if !decode(w, r, &request) {
 			return
 		}
-		result, err := store.AudioToCanonical(r.Context(), chi.URLParam(r, "alignmentID"), locator)
-		writeResult(w, result, err)
+		result, err := store.AudioToCanonical(r.Context(), chi.URLParam(r, "alignmentID"), position.AudioLocator{Resource: request.Resource, TimestampMS: request.TimestampMS})
+		writePositionResult(w, canonicalDTO(result), err)
 	}
 }
 
 func canonicalToEPUB(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var canonical position.Canonical
-		if !decode(w, r, &canonical) {
+		var request contracts.CanonicalPosition
+		if !decode(w, r, &request) {
 			return
 		}
-		canonical.AlignmentID = chi.URLParam(r, "alignmentID")
+		canonical := position.Canonical{AlignmentID: chi.URLParam(r, "alignmentID"), SegmentID: request.SegmentID, Offset: request.Offset}
 		result, err := store.CanonicalToEPUB(r.Context(), canonical)
-		writeResult(w, result, err)
+		writePositionResult(w, epubLocatorDTO(result), err)
 	}
 }
 
 func canonicalToAudio(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var canonical position.Canonical
-		if !decode(w, r, &canonical) {
+		var request contracts.CanonicalPosition
+		if !decode(w, r, &request) {
 			return
 		}
-		canonical.AlignmentID = chi.URLParam(r, "alignmentID")
+		canonical := position.Canonical{AlignmentID: chi.URLParam(r, "alignmentID"), SegmentID: request.SegmentID, Offset: request.Offset}
 		result, err := store.CanonicalToAudio(r.Context(), canonical)
-		writeResult(w, result, err)
+		writePositionResult(w, audioLocatorDTO(result), err)
 	}
 }

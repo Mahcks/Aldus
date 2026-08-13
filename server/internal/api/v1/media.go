@@ -42,7 +42,7 @@ func uploadMedia(store *ingest.Store) http.HandlerFunc {
 			media, err := store.Upload(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "representationID"), part.FileName(), part)
 			part.Close()
 			if err == nil {
-				writeJSON(w, http.StatusCreated, media)
+				writeJSON(w, http.StatusCreated, mediaDTO(media))
 				return
 			}
 			writeMediaError(w, err)
@@ -59,7 +59,7 @@ func listMedia(store *ingest.Store) http.HandlerFunc {
 			writeMediaError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, media)
+		writeJSON(w, http.StatusOK, mediaDTOs(media))
 	}
 }
 

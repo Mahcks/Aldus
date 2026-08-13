@@ -29,6 +29,16 @@ type testState struct {
 	dbPath, root, script    string
 }
 
+func TestCancellationAuthorizationReturnsDatabaseErrors(t *testing.T) {
+	state := setupManager(t, "success", time.Second)
+	if err := state.manager.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.manager.canCancel(context.Background(), state.reader.ID, "missing"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("authorization error = %v", err)
+	}
+}
+
 func setupManager(t *testing.T, mode string, timeout time.Duration) *testState {
 	t.Helper()
 	ctx := context.Background()

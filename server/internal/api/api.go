@@ -6,47 +6,29 @@ import (
 	"path"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/api/v1"
-	"github.com/mahcks/aldus/server/internal/auth"
-	"github.com/mahcks/aldus/server/internal/catalog"
-	"github.com/mahcks/aldus/server/internal/ingest"
-	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func Handler(web fs.FS, media http.FileSystem, store *position.Store, authStore *auth.Store, catalogStore *catalog.Store, ingestStore *ingest.Store, alignmentManager *alignment.Manager, credentials koreader.Credentials) http.Handler {
+func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
-	apiRouter := router.With(cors)
-	apiRouter.Mount("/api/v1", v1.Handler(store, authStore, catalogStore, ingestStore, alignmentManager))
-	apiRouter.Mount("/api", v1.Handler(store, authStore, catalogStore, ingestStore, alignmentManager))
-	koreaderHandler := koreader.Handler(store, credentials)
+	apiRouter := router.With(cors(deps.AllowedOrigins))
+	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest, AlignmentJobs: deps.AlignmentJobs})
+	apiRouter.Mount("/api/v1", v1Handler)
+	apiRouter.Mount("/api", v1Handler)
+	koreaderHandler := koreader.Handler(deps.Position, deps.KOReader)
 	router.Handle("/healthcheck", koreaderHandler)
 	router.Handle("/users/*", koreaderHandler)
 	router.Handle("/syncs/*", koreaderHandler)
-	if media != nil {
-		router.Handle("/media/*", cors(authStore.Middleware(http.StripPrefix("/media/", http.FileServer(media)))))
+	if deps.Media != nil {
+		router.Handle("/media/*", cors(deps.AllowedOrigins)(deps.Auth.Middleware(http.StripPrefix("/media/", http.FileServer(deps.Media)))))
 	}
-	if web != nil {
-		spa := spaHandler(web)
+	if deps.Web != nil {
+		spa := spaHandler(deps.Web)
 		router.Handle("/", spa)
 		router.Handle("/*", spa)
 	}
 	return router
-}
-
-func cors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		w.Header().Set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 func spaHandler(web fs.FS) http.Handler {

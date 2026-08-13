@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/auth"
 )
 
@@ -19,23 +20,24 @@ func listUsers(store *auth.Store) http.HandlerFunc {
 		actor, _ := auth.UserFromContext(r.Context())
 		limit, offset := pageParams(r)
 		users, err := store.Users(r.Context(), actor, limit, offset)
-		writeAuthResult(w, users, err)
+		values := make([]contracts.User, len(users))
+		for i, user := range users {
+			values[i] = userDTO(user)
+		}
+		writeAuthResult(w, values, err)
 	}
 }
 
 func createUser(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		actor, _ := auth.UserFromContext(r.Context())
-		var body struct {
-			auth.Credentials
-			Admin bool `json:"admin"`
-		}
+		var body contracts.CreateUserRequest
 		if !decode(w, r, &body) {
 			return
 		}
-		user, err := store.CreateUser(r.Context(), actor, body.Credentials, body.Admin)
+		user, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, Password: body.Password, DisplayName: body.DisplayName}, body.Admin)
 		if err == nil {
-			writeJSON(w, http.StatusCreated, user)
+			writeJSON(w, http.StatusCreated, userDTO(user))
 			return
 		}
 		writeAuthResult(w, user, err)
@@ -45,9 +47,7 @@ func createUser(store *auth.Store) http.HandlerFunc {
 func updateUser(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		actor, _ := auth.UserFromContext(r.Context())
-		var body struct {
-			Disabled *bool `json:"disabled"`
-		}
+		var body contracts.UpdateUserRequest
 		if !decode(w, r, &body) {
 			return
 		}

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Config struct {
 	KOReaderKey       string
 	BootstrapToken    string
 	SecureCookies     bool
+	AllowedOrigins    []string
 	MediaDir          string
 	MaxUploadBytes    int64
 	AlignmentCommand  string
@@ -30,12 +32,23 @@ func Load() Config {
 		KOReaderKey:       envOr("ALDUS_KOREADER_KEY", "aldus"),
 		BootstrapToken:    os.Getenv("ALDUS_BOOTSTRAP_TOKEN"),
 		SecureCookies:     envBool("ALDUS_SECURE_COOKIES"),
+		AllowedOrigins:    envList("ALDUS_ALLOWED_ORIGINS"),
 		MediaDir:          envOr("ALDUS_MEDIA_DIR", ""),
 		MaxUploadBytes:    envInt64("ALDUS_MAX_UPLOAD_BYTES", 2<<30),
 		AlignmentCommand:  envOr("ALDUS_ALIGNMENT_COMMAND", "python3 ../tools/whisperx_worker.py"),
 		AlignmentTimeout:  time.Duration(envInt64("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", 7200)) * time.Second,
 		AlignmentModelDir: os.Getenv("ALDUS_ALIGNMENT_MODEL_DIR"),
 	}
+}
+
+func envList(key string) []string {
+	var values []string
+	for _, value := range strings.Split(os.Getenv(key), ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 func envInt64(key string, fallback int64) int64 {

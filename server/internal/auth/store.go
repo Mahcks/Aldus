@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 )
 
 var (
@@ -57,6 +59,7 @@ type Credentials struct {
 
 type Store struct {
 	db        *sql.DB
+	queries   *dbsql.Queries
 	options   Options
 	dummyHash string
 }
@@ -69,12 +72,12 @@ func New(db *sql.DB, options Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prepare credential check: %w", err)
 	}
-	return &Store{db: db, options: options, dummyHash: dummyHash}, nil
+	return &Store{db: db, queries: dbsql.New(db), options: options, dummyHash: dummyHash}, nil
 }
 
 func (s *Store) SetupAvailable(ctx context.Context) (bool, error) {
-	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+	count, err := s.queries.CountUsers(ctx)
+	if err != nil {
 		return false, fmt.Errorf("count users: %w", err)
 	}
 	return count == 0, nil

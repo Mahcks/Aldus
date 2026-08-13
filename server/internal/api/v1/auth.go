@@ -4,10 +4,12 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/auth"
 )
 
@@ -26,20 +28,21 @@ func registerSessionRoutes(router chi.Router, store *auth.Store) {
 func setupStatus(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		available, err := store.SetupAvailable(r.Context())
-		writeResult(w, map[string]bool{"available": available}, err)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, contracts.SetupStatus{Available: available})
 	}
 }
 
 func setup(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			auth.Credentials
-			BootstrapToken string `json:"bootstrap_token"`
-		}
+		var request contracts.BootstrapRequest
 		if !decode(w, r, &request) {
 			return
 		}
-		session, err := store.Bootstrap(r.Context(), request.BootstrapToken, request.Credentials)
+		session, err := store.Bootstrap(r.Context(), request.BootstrapToken, auth.Credentials{Username: request.Username, Password: request.Password, DisplayName: request.DisplayName})
 		switch {
 		case errors.Is(err, auth.ErrBootstrapClosed):
 			http.NotFound(w, r)
@@ -58,17 +61,17 @@ func setup(store *auth.Store) http.HandlerFunc {
 			return
 		}
 		store.SetCookie(w, session)
-		writeJSON(w, http.StatusCreated, session)
+		writeJSON(w, http.StatusCreated, sessionDTO(session))
 	}
 }
 
 func login(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var credentials auth.Credentials
-		if !decode(w, r, &credentials) {
+		var request contracts.LoginRequest
+		if !decode(w, r, &request) {
 			return
 		}
-		session, err := store.Login(r.Context(), credentials)
+		session, err := store.Login(r.Context(), auth.Credentials{Username: request.Username, Password: request.Password, DisplayName: request.DisplayName})
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
 			return
@@ -78,7 +81,7 @@ func login(store *auth.Store) http.HandlerFunc {
 			return
 		}
 		store.SetCookie(w, session)
-		writeJSON(w, http.StatusOK, session)
+		writeJSON(w, http.StatusOK, sessionDTO(session))
 	}
 }
 
@@ -99,7 +102,7 @@ func me(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	writeJSON(w, http.StatusOK, user)
+	writeJSON(w, http.StatusOK, userDTO(user))
 }
 
 type limiter struct {
@@ -124,9 +127,15 @@ func (l *limiter) middleware(next http.Handler) http.Handler {
 		if err != nil {
 			host = r.RemoteAddr
 		}
-		key := r.URL.Path + "\x00" + host
+		path := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/v1"), "/api")
+		key := path + "\x00" + host
 		now := time.Now()
 		l.mu.Lock()
+		for key, value := range l.attempt {
+			if now.Sub(value.start) >= l.window {
+				delete(l.attempt, key)
+			}
+		}
 		current := l.attempt[key]
 		if current.start.IsZero() || now.Sub(current.start) >= l.window {
 			current = attempt{start: now}

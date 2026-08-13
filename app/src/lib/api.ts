@@ -16,6 +16,7 @@ const workID = 'fixture-work';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseURL}/api${path}`, {
+	credentials: 'include',
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
@@ -34,7 +35,7 @@ export async function getProgress() {
 }
 
 export async function getWorkProgress(id: string) {
-  const response = await fetch(`${baseURL}/api/works/${id}/progress`);
+  const response = await fetch(`${baseURL}/api/works/${id}/progress`, { credentials: 'include' });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
   return response.json() as Promise<CanonicalPosition>;
@@ -80,6 +81,7 @@ export async function updateWorkProgress(
   sourceDevice: string,
 ) {
   const response = await fetch(`${baseURL}/api/works/${id}/progress`, {
+	credentials: 'include',
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -97,7 +99,7 @@ export async function updateWorkProgress(
 }
 
 export async function getRepresentationState(id: string) {
-  const response = await fetch(`${baseURL}/api/representations/${id}/state`);
+  const response = await fetch(`${baseURL}/api/representations/${id}/state`, { credentials: 'include' });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
   return response.json() as Promise<RepresentationState>;
@@ -105,6 +107,7 @@ export async function getRepresentationState(id: string) {
 
 export async function updateRepresentationState(id: string, update: RepresentationStateUpdate) {
   const response = await fetch(`${baseURL}/api/representations/${id}/state`, {
+	credentials: 'include',
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(update),

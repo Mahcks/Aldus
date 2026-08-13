@@ -5,9 +5,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/mahcks/aldus/server/internal/position"
 )
+
+func health(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, `{"status":"ok"}`)
+}
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -24,7 +30,13 @@ func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	return true
 }
 
-func writeResult(w http.ResponseWriter, value any, err error) {
+func pageParams(r *http.Request) (int, int) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	return limit, offset
+}
+
+func writePositionResult(w http.ResponseWriter, value any, err error) {
 	switch {
 	case errors.Is(err, position.ErrNotFound):
 		http.Error(w, "position not found", http.StatusNotFound)

@@ -2,12 +2,16 @@ package v1
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
@@ -24,6 +28,29 @@ func TestResolveAudioAndUpdateProgress(t *testing.T) {
 	response = request(t, handler, token, http.MethodPut, "/alignments/fixture-alignment/progress", `{"segment_id":"s0002","offset":350000,"expected_revision":0,"source_device":"web"}`)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"revision":1`) {
 		t.Fatalf("update response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestRouteContract(t *testing.T) {
+	handler, _ := testHandler(t)
+	var got []string
+	if err := chi.Walk(handler.(chi.Routes), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		got = append(got, method+" "+route)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"GET /alignment-jobs/{jobID}", "GET /alignments/{alignmentID}", "GET /alignments/{alignmentID}/progress", "GET /auth/me", "GET /health", "GET /libraries", "GET /libraries/{libraryID}", "GET /libraries/{libraryID}/members", "GET /libraries/{libraryID}/representations/{representationID}/media", "GET /libraries/{libraryID}/works", "GET /media/{mediaID}", "GET /representations/{representationID}", "GET /representations/{representationID}/state", "GET /setup/status", "GET /users", "GET /works/{workID}", "GET /works/{workID}/progress", "GET /works/{workID}/representations",
+		"DELETE /libraries/{libraryID}", "DELETE /libraries/{libraryID}/members/{userID}", "DELETE /representations/{representationID}", "DELETE /works/{workID}",
+		"PATCH /libraries/{libraryID}", "PATCH /representations/{representationID}", "PATCH /users/{userID}", "PATCH /works/{workID}",
+		"POST /alignment-jobs", "POST /alignment-jobs/{jobID}/cancel", "POST /alignments/{alignmentID}/locators/audio", "POST /alignments/{alignmentID}/locators/epub", "POST /alignments/{alignmentID}/resolve/audio", "POST /alignments/{alignmentID}/resolve/epub", "POST /auth/login", "POST /auth/logout", "POST /libraries", "POST /libraries/{libraryID}/representations/{representationID}/media", "POST /libraries/{libraryID}/works", "POST /setup", "POST /users", "POST /works/{workID}/representations",
+		"PUT /alignments/{alignmentID}/progress", "PUT /libraries/{libraryID}/members/{userID}", "PUT /representations/{representationID}/state", "PUT /works/{workID}/progress",
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("routes = %#v\nwant %#v", got, want)
 	}
 }
 
@@ -74,7 +101,7 @@ func TestReadingStatePersistsAcrossSessionsAndRemainsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(position.New(db), authStore, catalog.New(db), nil, nil)
+	handler := Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db)})
 
 	updated := request(t, handler, first.Token, http.MethodPut, "/works/fixture-work/progress", `{"alignment_id":"fixture-alignment","segment_id":"s0002","offset":250000,"expected_revision":0,"source_device":"web"}`)
 	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"revision":1`) {
@@ -126,7 +153,7 @@ func TestAuthenticationRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(position.New(db), authStore, catalog.New(db), nil, nil)
+	handler := Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db)})
 
 	unauthorized := request(t, handler, "", http.MethodGet, "/auth/me", "")
 	if unauthorized.Code != http.StatusUnauthorized {
@@ -147,6 +174,32 @@ func TestAuthenticationRoutes(t *testing.T) {
 	login := request(t, handler, "", http.MethodPost, "/auth/login", `{"username":"alice","password":"a-secure-test-password"}`)
 	if login.Code != http.StatusOK || !strings.Contains(login.Body.String(), `"token":`) {
 		t.Fatalf("login = %d %s", login.Code, login.Body.String())
+	}
+	cookieRequest := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	cookieRequest.AddCookie(login.Result().Cookies()[0])
+	cookieResponse := httptest.NewRecorder()
+	handler.ServeHTTP(cookieResponse, cookieRequest)
+	if cookieResponse.Code != http.StatusOK || !strings.Contains(cookieResponse.Body.String(), `"username":"alice"`) {
+		t.Fatalf("cookie authentication = %d %s", cookieResponse.Code, cookieResponse.Body.String())
+	}
+}
+
+func TestLimiterDiscardsExpiredAddresses(t *testing.T) {
+	limiter := newLimiter(10, time.Millisecond)
+	limiter.attempt["old"] = attempt{start: time.Now().Add(-time.Second), count: 1}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+	limiter.middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(recorder, request)
+	if _, exists := limiter.attempt["old"]; exists {
+		t.Fatal("expired limiter entry was retained")
+	}
+}
+
+func TestAlignmentJobDatabaseErrorResponse(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeAlignmentJobError(recorder, errors.New("database unavailable"))
+	if recorder.Code != http.StatusInternalServerError || recorder.Body.String() != "internal server error\n" {
+		t.Fatalf("database error response = %d %q", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -169,7 +222,7 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(position.New(db), authStore, catalog.New(db), nil, nil), session.Token
+	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db)}), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {

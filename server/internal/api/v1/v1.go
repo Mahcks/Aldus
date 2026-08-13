@@ -1,38 +1,26 @@
 package v1
 
 import (
-	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/mahcks/aldus/server/internal/alignment"
-	"github.com/mahcks/aldus/server/internal/auth"
-	"github.com/mahcks/aldus/server/internal/catalog"
-	"github.com/mahcks/aldus/server/internal/ingest"
-	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func Handler(store *position.Store, authStore *auth.Store, catalogStore *catalog.Store, ingestStore *ingest.Store, alignmentManager *alignment.Manager) http.Handler {
+func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
 	router.Get("/health", health)
-	registerAuthRoutes(router, authStore)
+	registerAuthRoutes(router, deps.Auth)
 	router.Group(func(router chi.Router) {
-		router.Use(authStore.Middleware)
-		registerSessionRoutes(router, authStore)
-		registerUserRoutes(router, authStore)
-		registerCatalogRoutes(router, catalogStore)
-		if ingestStore != nil {
-			registerMediaRoutes(router, ingestStore)
-		}
-		if alignmentManager != nil {
-			registerAlignmentJobRoutes(router, alignmentManager)
-		}
-		registerAlignmentRoutes(router, store, catalogStore)
+		router.Use(deps.Auth.Middleware)
+		registerSessionRoutes(router, deps.Auth)
+		registerUserRoutes(router, deps.Auth)
+		registerLibraryRoutes(router, deps.Catalog)
+		registerWorkRoutes(router, deps.Catalog)
+		registerRepresentationRoutes(router, deps.Catalog)
+		registerMediaRoutes(router, deps.Ingest)
+		registerAlignmentJobRoutes(router, deps.AlignmentJobs)
+		registerAlignmentRoutes(router, deps.Position, deps.Catalog)
+		registerProgressRoutes(router, deps.Position, deps.Catalog)
 	})
 	return router
-}
-
-func health(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = io.WriteString(w, `{"status":"ok"}`)
 }

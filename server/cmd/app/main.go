@@ -72,9 +72,10 @@ func main() {
 	}
 	server := &http.Server{
 		Addr: cfg.Addr,
-		Handler: api.Handler(os.DirFS("public"), http.Dir(cfg.FixtureDir), store, authStore, catalogStore, ingestStore, alignmentManager, koreader.Credentials{
-			User: cfg.KOReaderUser,
-			Key:  cfg.KOReaderKey,
+		Handler: api.Handler(api.Dependencies{
+			Web: os.DirFS("public"), Media: http.Dir(cfg.FixtureDir), Position: store, Auth: authStore,
+			Catalog: catalogStore, Ingest: ingestStore, AlignmentJobs: alignmentManager,
+			KOReader: koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

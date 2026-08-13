@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/alignment"
+	"github.com/mahcks/aldus/server/internal/api/contracts"
 )
 
 func registerAlignmentJobRoutes(router chi.Router, manager *alignment.Manager) {
@@ -15,16 +16,16 @@ func registerAlignmentJobRoutes(router chi.Router, manager *alignment.Manager) {
 }
 func enqueueAlignment(m *alignment.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body alignment.Request
+		var body contracts.CreateAlignmentJobRequest
 		if !decode(w, r, &body) {
 			return
 		}
-		job, err := m.Enqueue(r.Context(), actor(r), body)
+		job, err := m.Enqueue(r.Context(), actor(r), alignment.Request{EPUBMediaID: body.EPUBMediaID, EPUBSHA256: body.EPUBSHA256, AudioMediaID: body.AudioMediaID, AudioSHA256: body.AudioSHA256})
 		if err != nil {
 			writeAlignmentJobError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusAccepted, job)
+		writeJSON(w, http.StatusAccepted, jobDTO(job))
 	}
 }
 func getAlignmentJob(m *alignment.Manager) http.HandlerFunc {
@@ -34,7 +35,7 @@ func getAlignmentJob(m *alignment.Manager) http.HandlerFunc {
 			writeAlignmentJobError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, job)
+		writeJSON(w, http.StatusOK, jobDTO(job))
 	}
 }
 func cancelAlignmentJob(m *alignment.Manager) http.HandlerFunc {
