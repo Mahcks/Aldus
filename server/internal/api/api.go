@@ -13,7 +13,7 @@ import (
 func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
 	apiRouter := router.With(cors(deps.AllowedOrigins))
-	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest, AlignmentJobs: deps.AlignmentJobs})
+	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs})
 	apiRouter.Mount("/api/v1", v1Handler)
 	apiRouter.Mount("/api", v1Handler)
 	koreaderHandler := koreader.Handler(deps.Position, deps.KOReader)

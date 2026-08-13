@@ -1,4 +1,4 @@
-import type { Library, Membership, User, Work } from '../../../generated/api';
+import type { Library, LibrarySource, Membership, User, Work } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +8,7 @@ import { Button, Field, Loading, Notice, Page, Row, colors, shared } from '../..
 import { api, errorMessage } from '../../../lib/api';
 
 type Availability = { epub: boolean; audio: boolean; synced: boolean };
-type Panel = 'work' | 'members' | 'settings' | null;
+type Panel = 'work' | 'members' | 'settings' | 'sources' | null;
 
 export default function LibraryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,6 +17,7 @@ export default function LibraryScreen() {
   const [works, setWorks] = useState<Work[]>([]);
   const [members, setMembers] = useState<Membership[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [sources, setSources] = useState<LibrarySource[]>([]);
   const [availability, setAvailability] = useState<Record<string, Availability>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,14 +27,17 @@ export default function LibraryScreen() {
   const [author, setAuthor] = useState('');
   const [memberID, setMemberID] = useState('');
   const [role, setRole] = useState('reader');
+  const [sourceName, setSourceName] = useState('');
+  const [sourceRoot, setSourceRoot] = useState('');
   async function load() {
     if (!id) return;
     try {
-      const [nextLibrary, nextWorks, nextMembers, nextUsers] = await Promise.all([
+      const [nextLibrary, nextWorks, nextMembers, nextUsers, nextSources] = await Promise.all([
         api.library(id),
         api.works(id),
         api.members(id),
         auth.user?.admin ? api.users() : Promise.resolve([]),
+        auth.user?.admin ? api.sources(id) : Promise.resolve([]),
       ]);
       const details = await Promise.all(
         nextWorks.map(async (work) => {
@@ -61,6 +65,7 @@ export default function LibraryScreen() {
       setWorks(nextWorks);
       setMembers(nextMembers);
       setUsers(nextUsers);
+      setSources(nextSources);
       setAvailability(Object.fromEntries(details));
     } catch (value) {
       setError(errorMessage(value));
@@ -113,6 +118,28 @@ export default function LibraryScreen() {
       setError(errorMessage(value));
     }
   }
+  async function createSource() {
+    try {
+      await api.createSource(id, { name: sourceName, root_path: sourceRoot });
+      setSourceName('');
+      setSourceRoot('');
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
+  async function toggleSource(source: LibrarySource) {
+    try {
+      await api.updateSource(id, source.id, {
+        name: source.name,
+        root_path: source.root_path,
+        enabled: !source.enabled,
+      });
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
 
   return (
     <Page
@@ -122,6 +149,9 @@ export default function LibraryScreen() {
         <Row>
           {canManage ? (
             <Button label="Manage members" kind="quiet" onPress={() => setPanel('members')} />
+          ) : null}
+          {auth.user?.admin ? (
+            <Button label="Sources" kind="quiet" onPress={() => setPanel('sources')} />
           ) : null}
           {canManage ? (
             <Button label="Library settings" kind="quiet" onPress={() => setPanel('settings')} />
@@ -267,6 +297,36 @@ export default function LibraryScreen() {
               existing members here.
             </Notice>
           )}
+        </ScrollView>
+      </Dialog>
+      <Dialog visible={panel === 'sources'} title="Library sources" onClose={() => setPanel(null)}>
+        <ScrollView style={styles.dialogScroll}>
+          {sources.map((source) => (
+            <View key={source.id} style={shared.listItem}>
+              <Text style={shared.itemTitle}>{source.name}</Text>
+              <Text style={shared.itemMeta}>{source.root_path}</Text>
+              <Button
+                label={source.enabled ? 'Disable' : 'Enable'}
+                kind={source.enabled ? 'danger' : 'secondary'}
+                onPress={() => void toggleSource(source)}
+              />
+            </View>
+          ))}
+          <View style={shared.form}>
+            <Field label="Source name" value={sourceName} onChangeText={setSourceName} />
+            <Field
+              label="Authorized absolute path"
+              autoCapitalize="none"
+              value={sourceRoot}
+              onChangeText={setSourceRoot}
+            />
+            <Button
+              label="Add source"
+              kind="primary"
+              disabled={!sourceName.trim() || !sourceRoot.trim()}
+              onPress={createSource}
+            />
+          </View>
         </ScrollView>
       </Dialog>
       <Dialog

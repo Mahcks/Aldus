@@ -2,17 +2,22 @@ package v1
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
+	"github.com/mahcks/aldus/server/internal/source"
 )
 
 func TestOpaqueMediaDownloadSupportsRanges(t *testing.T) {
@@ -59,5 +64,69 @@ func TestOpaqueMediaDownloadSupportsRanges(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" || response.Header().Get("Accept-Ranges") != "bytes" {
 		t.Fatalf("range=%d %q %#v", response.Code, response.Body.String(), response.Header())
+	}
+}
+
+func TestReferencedMediaDownloadSupportsRangesAndFailsWhenChanged(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	accounts, _ := auth.New(db, auth.Options{BootstrapToken: "bootstrap-token"})
+	session, err := accounts.Bootstrap(ctx, "bootstrap-token", auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogStore := catalog.New(db)
+	library, _ := catalogStore.CreateLibrary(ctx, session.User, "Library")
+	work, _ := catalogStore.CreateWork(ctx, session.User, library.ID, "Book", "")
+	representation, _ := catalogStore.CreateRepresentation(ctx, session.User, work.ID, "audio", "Audio")
+	allowed, managed := t.TempDir(), t.TempDir()
+	root := filepath.Join(allowed, "books")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bytes := []byte("0123456789")
+	path := filepath.Join(root, "chapter.mp3")
+	if err := os.WriteFile(path, bytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	sum := sha256.Sum256(bytes)
+	hash := hex.EncodeToString(sum[:])
+	resolver, _ := source.New(db, source.Options{AllowedRoots: []string{allowed}, ManagedRoot: managed})
+	saved, err := resolver.Create(ctx, session.User, library.ID, "Books", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := info.ModTime().UTC().Format(time.RFC3339Nano)
+	_, err = db.Exec(`INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at) VALUES('entry',?,'chapter.mp3',?,?,?,'registered',?,?);`, saved.ID, len(bytes), now, hash, now, now)
+	if err == nil {
+		_, err = db.Exec(`INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes,storage_kind,source_entry_id) VALUES('referenced',?,'audio','',?,?,'chapter.mp3',?,'referenced','entry')`, representation.ID, hash, now, len(bytes))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaStore, _ := ingest.New(db, ingest.Options{Root: managed, MaxBytes: 1024, Resolver: resolver})
+	handler := Handler(Dependencies{Position: position.New(db), Auth: accounts, Catalog: catalogStore, Ingest: mediaStore, Sources: resolver})
+	request := httptest.NewRequest(http.MethodGet, "/media/referenced", nil)
+	request.Header.Set("Authorization", "Bearer "+session.Token)
+	request.Header.Set("Range", "bytes=2-5")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" {
+		t.Fatalf("range=%d %q", response.Code, response.Body.String())
+	}
+	if err := os.WriteFile(path, []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	response = httptest.NewRecorder()
+	changedRequest := httptest.NewRequest(http.MethodGet, "/media/referenced", nil)
+	changedRequest.Header.Set("Authorization", "Bearer "+session.Token)
+	handler.ServeHTTP(response, changedRequest)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("changed=%d", response.Code)
 	}
 }

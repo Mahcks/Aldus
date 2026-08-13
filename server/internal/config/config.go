@@ -21,6 +21,7 @@ type Config struct {
 	AlignmentCommand  string
 	AlignmentTimeout  time.Duration
 	AlignmentModelDir string
+	SourceRoots       []string
 }
 
 func Load() Config {
@@ -38,6 +39,7 @@ func Load() Config {
 		AlignmentCommand:  envOr("ALDUS_ALIGNMENT_COMMAND", "python3 ../tools/whisperx_worker.py"),
 		AlignmentTimeout:  time.Duration(envInt64("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", 7200)) * time.Second,
 		AlignmentModelDir: os.Getenv("ALDUS_ALIGNMENT_MODEL_DIR"),
+		SourceRoots:       envList("ALDUS_SOURCE_ROOTS"),
 	}
 }
 

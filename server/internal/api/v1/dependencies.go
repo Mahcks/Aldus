@@ -6,6 +6,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
+	"github.com/mahcks/aldus/server/internal/source"
 )
 
 type Dependencies struct {
@@ -13,5 +14,6 @@ type Dependencies struct {
 	Auth          *auth.Store
 	Catalog       *catalog.Store
 	Ingest        *ingest.Store
+	Sources       *source.Store
 	AlignmentJobs *alignment.Manager
 }

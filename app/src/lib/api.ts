@@ -8,11 +8,13 @@ import type {
   CanonicalPosition,
   CreateAlignmentJobRequest,
   CreateLibraryRequest,
+  CreateLibrarySourceRequest,
   CreateRepresentationRequest,
   CreateUserRequest,
   CreateWorkRequest,
   EPUBLocator,
   Library,
+  LibrarySource,
   LoginRequest,
   Media,
   Membership,
@@ -22,6 +24,7 @@ import type {
   Session,
   SetupStatus,
   UpdateLibraryRequest,
+  UpdateLibrarySourceRequest,
   UpdateRepresentationRequest,
   UpdateUserRequest,
   UpdateWorkRequest,
@@ -126,6 +129,19 @@ export const api = {
     }),
   removeMember: (libraryID: string, userID: string) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, { method: 'DELETE' }),
+  sources: (libraryID: string) => request<LibrarySource[]>(`/libraries/${libraryID}/sources`),
+  createSource: (libraryID: string, body: CreateLibrarySourceRequest) =>
+    request<LibrarySource>(`/libraries/${libraryID}/sources`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateSource: (libraryID: string, sourceID: string, body: UpdateLibrarySourceRequest) =>
+    request<void>(`/libraries/${libraryID}/sources/${sourceID}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteSource: (libraryID: string, sourceID: string) =>
+    request<void>(`/libraries/${libraryID}/sources/${sourceID}`, { method: 'DELETE' }),
 
   works: (libraryID: string) => request<Work[]>(`/libraries/${libraryID}/works`),
   work: (id: string) => request<Work>(`/works/${id}`),

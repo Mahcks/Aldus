@@ -138,6 +138,29 @@ export interface Media {
 }
 
 //////////
+// source: sources.go
+
+export interface LibrarySource {
+  id: string;
+  library_id: string;
+  kind: string;
+  name: string;
+  root_path: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface CreateLibrarySourceRequest {
+  name: string;
+  root_path: string;
+}
+export interface UpdateLibrarySourceRequest {
+  name: string;
+  root_path: string;
+  enabled: boolean;
+}
+
+//////////
 // source: sync.go
 /*
 Package contracts contains the intentionally public JSON contracts shared with clients.

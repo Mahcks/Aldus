@@ -23,6 +23,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 	"github.com/mahcks/aldus/server/internal/position"
+	"github.com/mahcks/aldus/server/internal/source"
 )
 
 const ContractVersion = 1
@@ -41,6 +42,7 @@ type Options struct {
 	WorkerVersion, Model    string
 	ModelRoot               string
 	AudioDuration           func(context.Context, string) (int64, error)
+	Media                   *source.Store
 }
 type Manager struct {
 	db      *sql.DB
@@ -50,6 +52,7 @@ type Manager struct {
 	mu      sync.Mutex
 	cancel  map[string]context.CancelFunc
 	done    chan struct{}
+	media   *source.Store
 }
 type Request struct {
 	EPUBMediaID  string `json:"epub_media_id"`
@@ -140,7 +143,15 @@ func New(db *sql.DB, o Options) (*Manager, error) {
 			return nil, err
 		}
 	}
-	return &Manager{db: db, queries: dbsql.New(db), options: o, wake: make(chan struct{}, 1), cancel: map[string]context.CancelFunc{}, done: make(chan struct{})}, nil
+	media := o.Media
+	if media == nil {
+		var err error
+		media, err = source.New(db, source.Options{ManagedRoot: o.MediaRoot})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Manager{db: db, queries: dbsql.New(db), options: o, wake: make(chan struct{}, 1), cancel: map[string]context.CancelFunc{}, done: make(chan struct{}), media: media}, nil
 }
 func (m *Manager) Start(ctx context.Context) error {
 	if err := m.recover(ctx); err != nil {
@@ -425,15 +436,21 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 }
 
 func (m *Manager) input(ctx context.Context, job Job) (workerInput, error) {
-	var ep, ap, eh, ah string
-	if err := m.db.QueryRowContext(ctx, `SELECT e.path,a.path,e.sha256,a.sha256 FROM media e,media a WHERE e.id=? AND a.id=?`, job.EPUBMediaID, job.AudioMediaID).Scan(&ep, &ap, &eh, &ah); err != nil {
+	var eh, ah string
+	if err := m.db.QueryRowContext(ctx, `SELECT e.sha256,a.sha256 FROM media e,media a WHERE e.id=? AND a.id=?`, job.EPUBMediaID, job.AudioMediaID).Scan(&eh, &ah); err != nil {
 		return workerInput{}, err
 	}
-	ep = filepath.Join(m.options.MediaRoot, "media", ep)
-	ap = filepath.Join(m.options.MediaRoot, "media", ap)
-	if hashFile(ep) != eh || hashFile(ap) != ah {
+	epub, err := m.media.OpenMedia(ctx, job.EPUBMediaID, true)
+	if err != nil {
 		return workerInput{}, ErrInvalid
 	}
+	defer epub.Close()
+	audio, err := m.media.OpenMedia(ctx, job.AudioMediaID, true)
+	if err != nil {
+		return workerInput{}, ErrInvalid
+	}
+	defer audio.Close()
+	ep, ap := epub.Name(), audio.Name()
 	book, err := position.ImportEPUB(ep)
 	if err != nil {
 		return workerInput{}, err
@@ -454,19 +471,6 @@ func (m *Manager) input(ctx context.Context, job Job) (workerInput, error) {
 	}
 	return input, nil
 }
-func hashFile(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
 func readArtifact(path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {

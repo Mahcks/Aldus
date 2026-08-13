@@ -21,6 +21,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
+	"github.com/mahcks/aldus/server/internal/source"
 )
 
 func main() {
@@ -42,13 +43,19 @@ func main() {
 	if mediaDir == "" {
 		mediaDir = filepath.Join(cfg.DataDir, "media")
 	}
-	ingestStore, err := ingest.New(db, ingest.Options{Root: mediaDir, MaxBytes: cfg.MaxUploadBytes})
+	sourceStore, err := source.New(db, source.Options{AllowedRoots: cfg.SourceRoots, ManagedRoot: mediaDir, DataRoot: cfg.DataDir})
+	if err != nil {
+		slog.Error("open library sources", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
+	ingestStore, err := ingest.New(db, ingest.Options{Root: mediaDir, MaxBytes: cfg.MaxUploadBytes, Resolver: sourceStore})
 	if err != nil {
 		slog.Error("open media storage", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
-	alignmentManager, err := alignment.New(db, alignment.Options{MediaRoot: mediaDir, ArtifactRoot: filepath.Join(cfg.DataDir, "alignments"), ModelRoot: cfg.AlignmentModelDir, Command: strings.Fields(cfg.AlignmentCommand), Timeout: cfg.AlignmentTimeout})
+	alignmentManager, err := alignment.New(db, alignment.Options{MediaRoot: mediaDir, Media: sourceStore, ArtifactRoot: filepath.Join(cfg.DataDir, "alignments"), ModelRoot: cfg.AlignmentModelDir, Command: strings.Fields(cfg.AlignmentCommand), Timeout: cfg.AlignmentTimeout})
 	if err != nil {
 		slog.Error("open alignment worker", "error", err)
 		db.Close()
@@ -74,7 +81,7 @@ func main() {
 		Addr: cfg.Addr,
 		Handler: api.Handler(api.Dependencies{
 			Web: os.DirFS("public"), Media: http.Dir(cfg.FixtureDir), Position: store, Auth: authStore,
-			Catalog: catalogStore, Ingest: ingestStore, AlignmentJobs: alignmentManager,
+			Catalog: catalogStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
 			KOReader: koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

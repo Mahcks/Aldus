@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/source"
 )
 
 var (
@@ -35,6 +36,7 @@ type Options struct {
 	Root     string
 	MaxBytes int64
 	Probe    func(context.Context, string) error
+	Resolver *source.Store
 }
 
 type Store struct {
@@ -42,6 +44,7 @@ type Store struct {
 	root     string
 	maxBytes int64
 	probe    func(context.Context, string) error
+	resolver *source.Store
 	mu       sync.Mutex
 }
 
@@ -88,7 +91,14 @@ func New(db *sql.DB, options Options) (*Store, error) {
 	if probe == nil {
 		probe = ffprobe
 	}
-	return &Store{db: db, root: root, maxBytes: options.MaxBytes, probe: probe}, nil
+	resolver := options.Resolver
+	if resolver == nil {
+		resolver, err = source.New(db, source.Options{ManagedRoot: root})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Store{db: db, root: root, maxBytes: options.MaxBytes, probe: probe, resolver: resolver}, nil
 }
 
 func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, representationID, filename string, source io.Reader) (Media, error) {
@@ -264,8 +274,8 @@ func (s *Store) Media(ctx context.Context, actor auth.User, libraryID, represent
 
 func (s *Store) Open(ctx context.Context, actor auth.User, id string) (*os.File, Media, error) {
 	var m Media
-	var path, created string
-	err := s.db.QueryRowContext(ctx, `SELECT md.id,md.representation_id,md.kind,md.path,md.sha256,md.original_filename,md.size_bytes,md.created_at FROM media md JOIN representations r ON r.id=md.representation_id JOIN works w ON w.id=r.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE md.id=? AND (? OR lm.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&m.ID, &m.RepresentationID, &m.Kind, &path, &m.SHA256, &m.OriginalFilename, &m.SizeBytes, &created)
+	var created string
+	err := s.db.QueryRowContext(ctx, `SELECT md.id,md.representation_id,md.kind,md.sha256,md.original_filename,md.size_bytes,md.created_at FROM media md JOIN representations r ON r.id=md.representation_id JOIN works w ON w.id=r.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE md.id=? AND (? OR lm.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&m.ID, &m.RepresentationID, &m.Kind, &m.SHA256, &m.OriginalFilename, &m.SizeBytes, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, Media{}, ErrNotFound
 	}
@@ -273,18 +283,10 @@ func (s *Store) Open(ctx context.Context, actor auth.User, id string) (*os.File,
 		return nil, Media{}, err
 	}
 	m.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
-	if filepath.IsAbs(path) || filepath.Clean(path) != path || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
-		return nil, Media{}, ErrInvalid
+	file, err := s.resolver.OpenMedia(ctx, id, false)
+	if errors.Is(err, source.ErrUnavailable) || errors.Is(err, source.ErrInvalid) {
+		return nil, Media{}, ErrNotFound
 	}
-	full := filepath.Join(s.root, "media", path)
-	info, err := os.Lstat(full)
-	if err != nil {
-		return nil, Media{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, Media{}, ErrInvalid
-	}
-	file, err := os.Open(full)
 	return file, m, err
 }
 
