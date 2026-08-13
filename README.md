@@ -45,4 +45,4 @@ cd server
 go test ./internal/position ./internal/api/v1 ./internal/api/koreader
 ```
 
-Configure KOReader's custom progress server to the Aldus origin and log in with `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY`. The bundled synthetic document alias is only for automated tests; a real KOReader test requires importing and aligning the exact sideloaded EPUB revision.
+Configure KOReader's custom progress server to the Aldus origin and log in with `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY`. `ALDUS_KOREADER_USER` must match an enabled Aldus username with access to the book's library. The bundled synthetic document alias is only for automated tests; a real KOReader test requires importing and aligning the exact sideloaded EPUB revision.

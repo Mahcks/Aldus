@@ -15,12 +15,35 @@ var (
 )
 
 type Canonical struct {
-	AlignmentID  string    `json:"alignment_id"`
-	SegmentID    string    `json:"segment_id"`
-	Offset       int       `json:"offset"`
-	Revision     int64     `json:"revision,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at,omitempty"`
-	SourceDevice string    `json:"source_device,omitempty"`
+	WorkID         string    `json:"work_id,omitempty"`
+	AlignmentID    string    `json:"alignment_id"`
+	SegmentID      string    `json:"segment_id"`
+	Offset         int       `json:"offset"`
+	Revision       int64     `json:"revision,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+	SourceDevice   string    `json:"source_device,omitempty"`
+	AlignmentState string    `json:"alignment_state,omitempty"`
+	Resolvable     *bool     `json:"resolvable,omitempty"`
+}
+
+type RepresentationState struct {
+	RepresentationID string          `json:"representation_id"`
+	EPUBLocator      json.RawMessage `json:"epub_locator,omitempty"`
+	AudioTimestampMS *int64          `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
+	ReaderLayout     string          `json:"reader_layout,omitempty"`
+	Zoom             *float64        `json:"zoom,omitempty"`
+	Revision         int64           `json:"revision"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+type RepresentationUpdate struct {
+	EPUBLocator      json.RawMessage `json:"epub_locator,omitempty"`
+	AudioTimestampMS *int64          `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
+	ReaderLayout     string          `json:"reader_layout,omitempty"`
+	Zoom             *float64        `json:"zoom,omitempty"`
+	ExpectedRevision int64           `json:"expected_revision"`
 }
 
 type EPUBLocator struct {

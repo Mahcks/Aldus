@@ -8,6 +8,7 @@ The only authoritative position is:
 
 ```json
 {
+  "work_id": "fixture-work",
   "alignment_id": "fixture-alignment",
   "segment_id": "s0002",
   "offset": 350000,
@@ -19,7 +20,7 @@ The only authoritative position is:
 
 `offset` is millionths through one aligned segment (`0..1000000`), not percentage through a book. A segment is sentence-sized in Phase 1. The alignment and segment identify the logical passage; offset preserves sub-segment progress for audio interpolation and future word timing. `revision` is the server-issued optimistic-concurrency version of progress, not an alignment revision.
 
-Native locators are retained on alignment segments and are never canonical. An adapter converts only between its native locator and `(segment_id, offset)`.
+Canonical progress belongs to a user and Work. Native state belongs separately to a user and Representation: for example an EPUB locator, audio timestamp, playback speed, reader layout, or zoom. Native state never creates or replaces canonical progress. Native locators are also retained on alignment segments for conversion; an adapter converts only between its native locator and `(segment_id, offset)`.
 
 ## Alignment and source revisions
 
@@ -60,7 +61,7 @@ The native locator is `{resource, timestamp_ms}`. Timestamps remain integer mill
 
 ### KOReader
 
-Aldus implements KOReader's current custom progress server endpoints: `GET /users/auth`, `PUT /syncs/progress`, and `GET /syncs/progress/{document}`, using the `application/vnd.koreader.v1+json` contract and `x-auth-user`/`x-auth-key` headers. Single-user MVP credentials come from server configuration.
+Aldus implements KOReader's current custom progress server endpoints: `GET /users/auth`, `PUT /syncs/progress`, and `GET /syncs/progress/{document}`, using the `application/vnd.koreader.v1+json` contract and `x-auth-user`/`x-auth-key` headers. The configured `ALDUS_KOREADER_USER` must name an enabled Aldus account; the configured key authenticates the adapter, and library membership authorizes the mapped Work.
 
 For reflowable EPUB, KOReader's `progress` value is its exact XPointer and is retained verbatim. `percentage` is returned for protocol compatibility only. KOReader identifies the document with `partial_md5_checksum`: MD5 over up to 1 KiB at offsets 256, 1024, 4096, and each successive offset multiplied by four, stopping when a read returns no bytes. The frozen Alice EPUB vector is `efbf04efc9d43ecd89a033b329f49bdb`. Import records this alias alongside SHA-256 so it can only resolve to the exact EPUB revision that was aligned.
 
@@ -68,13 +69,15 @@ The KOReader adapter maps `(document alias, XPointer)` to a segment and stores t
 
 ## Progress conflict semantics
 
-There is one progress row per alignment. A client reads revision `N` and updates with `expected_revision: N`. The server commits `N+1` atomically. A mismatched revision returns `409 Conflict` and the current position; it never silently overwrites it. A new client starts with expected revision `0`. Clients persist canonical progress locally, debounce routine updates, and flush on pause, completed seek, settled navigation, mode switch, background, and close.
+There is one canonical progress row per user and Work. `GET` and `PUT /api/works/{workID}/progress` read and update it; an update names the validated alignment explicitly. A client reads revision `N` and updates with `expected_revision: N`. The server commits `N+1` atomically. A mismatched revision returns `409 Conflict` and the current position; it never silently overwrites it. A new client starts with expected revision `0`.
+
+There is separately one native-state row per user and Representation at `GET` and `PUT /api/representations/{representationID}/state`, with its own optimistic revision. If an alignment becomes stale, Aldus preserves the exact canonical row and reports it as unresolved instead of rebinding or interpreting it against another revision. Native state remains writable even when no canonical mapping can be resolved.
 
 This is deliberately not a CRDT. A user resolving a conflict submits again against the returned current revision.
 
 ## Database
 
-SQLite owns works, immutable media revisions and hashes, alignments, segments, native locators, KOReader aliases, and canonical progress. Foreign keys and uniqueness constraints protect revision identity. Initialization is a small embedded SQL schema; there is no ORM.
+SQLite owns works, immutable media revisions and hashes, alignments, segments, native locators, KOReader aliases, per-user canonical progress, and per-user Representation state. Foreign keys and uniqueness constraints protect revision identity. Ordered embedded SQL migrations initialize the database; there is no ORM.
 
 ## Automatic alignment
 

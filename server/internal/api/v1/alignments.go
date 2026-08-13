@@ -10,6 +10,7 @@ import (
 )
 
 func registerAlignmentRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
+	registerReadingStateRoutes(router, store, catalogStore)
 	router.With(requireAlignmentAccess(catalogStore)).Get("/alignments/{alignmentID}", getAlignment(store))
 	router.Route("/alignments/{alignmentID}", func(router chi.Router) {
 		router.Use(requireAlignmentAccess(catalogStore))
@@ -49,7 +50,12 @@ func getAlignment(store *position.Store) http.HandlerFunc {
 
 func getProgress(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		progress, err := store.Progress(r.Context(), chi.URLParam(r, "alignmentID"))
+		workID, err := store.WorkForAlignment(r.Context(), chi.URLParam(r, "alignmentID"))
+		if err != nil {
+			writeResult(w, position.Canonical{}, err)
+			return
+		}
+		progress, err := store.Progress(r.Context(), actor(r).ID, workID)
 		writeResult(w, progress, err)
 	}
 }
@@ -60,7 +66,12 @@ func updateProgress(store *position.Store) http.HandlerFunc {
 		if !decode(w, r, &update) {
 			return
 		}
-		progress, err := store.UpdateProgress(r.Context(), chi.URLParam(r, "alignmentID"), update)
+		workID, err := store.WorkForAlignment(r.Context(), chi.URLParam(r, "alignmentID"))
+		if err != nil {
+			writeResult(w, position.Canonical{}, err)
+			return
+		}
+		progress, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, chi.URLParam(r, "alignmentID"), update)
 		writeResult(w, progress, err)
 	}
 }

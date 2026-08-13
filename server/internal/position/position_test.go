@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -86,19 +87,20 @@ func TestResolverRoundTrips(t *testing.T) {
 func TestProgressRejectsStaleUpdate(t *testing.T) {
 	ctx := context.Background()
 	store := testStore(t)
-	first, err := store.UpdateProgress(ctx, FixtureAlignmentID, Update{
+	userID := addFixtureUser(t, store)
+	first, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{
 		SegmentID: "s0001", ExpectedRevision: 0, SourceDevice: "device-a",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.UpdateProgress(ctx, FixtureAlignmentID, Update{
+	second, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{
 		SegmentID: "s0003", ExpectedRevision: first.Revision, SourceDevice: "device-b",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := store.UpdateProgress(ctx, FixtureAlignmentID, Update{
+	current, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{
 		SegmentID: "s0001", ExpectedRevision: first.Revision, SourceDevice: "device-a",
 	})
 	if !errors.Is(err, ErrConflict) {
@@ -107,6 +109,163 @@ func TestProgressRejectsStaleUpdate(t *testing.T) {
 	if current.SegmentID != second.SegmentID || current.Revision != second.Revision {
 		t.Fatalf("conflict current = %#v, want %#v", current, second)
 	}
+}
+
+func TestReadingStateIsPerUserAndPreservesStaleCanonicalPosition(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	firstUser := addFixtureUser(t, store)
+	secondUser := addFixtureUserNamed(t, store, "other-user", "other")
+
+	written, err := store.UpdateProgress(ctx, firstUser, "fixture-work", FixtureAlignmentID, Update{
+		SegmentID: "s0002", Offset: 123_456, ExpectedRevision: 0, SourceDevice: "web",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Progress(ctx, secondUser, "fixture-work"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user's progress error = %v", err)
+	}
+	if _, err := store.db.Exec(`UPDATE alignments SET state='stale' WHERE id=?`, FixtureAlignmentID); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := store.Progress(ctx, firstUser, "fixture-work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale.SegmentID != written.SegmentID || stale.Offset != written.Offset || stale.AlignmentState != "stale" || stale.Resolvable == nil || *stale.Resolvable {
+		t.Fatalf("stale progress = %#v", stale)
+	}
+	if _, err := store.UpdateProgress(ctx, firstUser, "fixture-work", FixtureAlignmentID, Update{SegmentID: "s0003", ExpectedRevision: written.Revision, SourceDevice: "web"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("update through stale alignment error = %v", err)
+	}
+	if _, err := store.db.Exec(`UPDATE alignments SET state='ready' WHERE id=?`, FixtureAlignmentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE alignment_segments SET highlightable=0 WHERE alignment_id=? AND id=?`, FixtureAlignmentID, written.SegmentID); err != nil {
+		t.Fatal(err)
+	}
+	partial, err := store.Progress(ctx, firstUser, "fixture-work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if partial.AlignmentState != "ready" || partial.Resolvable == nil || *partial.Resolvable {
+		t.Fatalf("unhighlightable progress = %#v", partial)
+	}
+}
+
+func TestRepresentationStateIsIndependentAndOptimistic(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	userID := addFixtureUser(t, store)
+	audioMS, speed := int64(33295), 1.25
+	state, err := store.UpdateRepresentationState(ctx, userID, "fixture-audio-representation", RepresentationUpdate{
+		AudioTimestampMS: &audioMS, PlaybackSpeed: &speed, ExpectedRevision: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Revision != 1 || state.AudioTimestampMS == nil || *state.AudioTimestampMS != audioMS || state.PlaybackSpeed == nil || *state.PlaybackSpeed != speed {
+		t.Fatalf("audio state = %#v", state)
+	}
+	current, err := store.UpdateRepresentationState(ctx, userID, "fixture-audio-representation", RepresentationUpdate{
+		AudioTimestampMS: &audioMS, ExpectedRevision: 0,
+	})
+	if !errors.Is(err, ErrConflict) || current.Revision != state.Revision {
+		t.Fatalf("conflict = %#v, %v", current, err)
+	}
+	if _, err := store.Progress(ctx, userID, "fixture-work"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("native state invented canonical progress: %v", err)
+	}
+	if _, err := store.RepresentationState(ctx, addFixtureUserNamed(t, store, "isolated-user", "isolated"), "fixture-audio-representation"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user's representation state error = %v", err)
+	}
+}
+
+func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "aldus.db")
+	store, err := openTestStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SeedFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	userID := addFixtureUser(t, store)
+	if _, err := store.db.Exec(`UPDATE alignment_segments SET highlightable=0 WHERE alignment_id=? AND id='s0003'`, FixtureAlignmentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{SegmentID: "s0003", ExpectedRevision: 0, SourceDevice: "web"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unresolved canonical update error = %v", err)
+	}
+	locator := json.RawMessage(`{"href":"text/chapter-1.xhtml","locations":{"cfi":"epubcfi(/6/2!/4/2:3)"}}`)
+	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", ExpectedRevision: 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = openTestStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	state, err := store.RepresentationState(ctx, userID, "fixture-epub-representation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" {
+		t.Fatalf("reopened EPUB state = %#v", state)
+	}
+}
+
+func TestConcurrentProgressUpdateAllowsOneRevision(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	userID := addFixtureUser(t, store)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, segment := range []string{"s0001", "s0002"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{SegmentID: segment, ExpectedRevision: 0, SourceDevice: "device"})
+			results <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	var successes, conflicts int
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrConflict):
+			conflicts++
+		default:
+			t.Fatalf("concurrent update error = %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
+	}
+}
+
+func addFixtureUser(t *testing.T, store *Store) string {
+	t.Helper()
+	return addFixtureUserNamed(t, store, "fixture-user", "reader")
+}
+
+func addFixtureUserNamed(t *testing.T, store *Store, userID, username string) string {
+	t.Helper()
+	if _, err := store.db.Exec(`INSERT OR IGNORE INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES(?,?,?,?,?,0,0,?,?); INSERT OR IGNORE INTO library_members(library_id,user_id,role,created_at) VALUES('fixture-library',?,'reader',?)`, userID, username, username, username, "test-only", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", userID, "2026-01-01T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	return userID
 }
 
 func TestRemoveLegacyFixture(t *testing.T) {

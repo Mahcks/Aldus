@@ -83,6 +83,7 @@ func (s *Store) RemoveLegacyFixture(ctx context.Context) error {
 	defer tx.Rollback()
 	for _, query := range []string{
 		`DELETE FROM progress WHERE alignment_id = 'fixture-alignment'`,
+		`DELETE FROM legacy_progress WHERE alignment_id = 'fixture-alignment'`,
 		`DELETE FROM alignment_segments WHERE alignment_id = 'fixture-alignment'`,
 		`DELETE FROM alignment_inputs WHERE alignment_id = 'fixture-alignment'`,
 		`DELETE FROM alignments WHERE id = 'fixture-alignment'`,

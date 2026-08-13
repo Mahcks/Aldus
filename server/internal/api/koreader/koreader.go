@@ -28,8 +28,8 @@ func Handler(store *position.Store, credentials Credentials) http.Handler {
 		router.Get("/users/auth", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"authorized": "OK"})
 		})
-		router.Put("/syncs/progress", putProgress(store))
-		router.Get("/syncs/progress/{document}", getProgress(store))
+		router.Put("/syncs/progress", putProgress(store, credentials.User))
+		router.Get("/syncs/progress/{document}", getProgress(store, credentials.User))
 	})
 	return router
 }
@@ -71,7 +71,7 @@ type progressRequest struct {
 	DeviceID   string  `json:"device_id"`
 }
 
-func putProgress(store *position.Store) http.HandlerFunc {
+func putProgress(store *position.Store, username string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request progressRequest
 		if !decode(w, r, &request) {
@@ -89,7 +89,12 @@ func putProgress(store *position.Store) http.HandlerFunc {
 			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
 			return
 		}
-		current, err := store.Progress(r.Context(), incoming.AlignmentID)
+		userID, workID, alignmentID, err := store.KOReaderOwner(r.Context(), username, request.Document)
+		if err != nil || alignmentID != incoming.AlignmentID {
+			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
+			return
+		}
+		current, err := store.Progress(r.Context(), userID, workID)
 		expected := int64(0)
 		if err == nil {
 			expected = current.Revision
@@ -111,7 +116,7 @@ func putProgress(store *position.Store) http.HandlerFunc {
 			return
 		}
 		device := strings.TrimPrefix(strings.TrimSpace(request.Device+" "+request.DeviceID), " ")
-		updated, err := store.UpdateProgress(r.Context(), incoming.AlignmentID, position.Update{
+		updated, err := store.UpdateProgress(r.Context(), userID, workID, incoming.AlignmentID, position.Update{
 			SegmentID: incoming.SegmentID, Offset: incoming.Offset, ExpectedRevision: expected, SourceDevice: "koreader:" + device,
 		})
 		if errors.Is(err, position.ErrConflict) {
@@ -126,15 +131,15 @@ func putProgress(store *position.Store) http.HandlerFunc {
 	}
 }
 
-func getProgress(store *position.Store) http.HandlerFunc {
+func getProgress(store *position.Store, username string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		document := chi.URLParam(r, "document")
-		alignmentID, err := store.AlignmentForKOReaderDocument(r.Context(), document)
+		userID, workID, _, err := store.KOReaderOwner(r.Context(), username, document)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{})
 			return
 		}
-		progress, err := store.Progress(r.Context(), alignmentID)
+		progress, err := store.Progress(r.Context(), userID, workID)
 		if errors.Is(err, position.ErrNotFound) {
 			writeJSON(w, http.StatusOK, map[string]any{})
 			return

@@ -129,6 +129,14 @@ func (s *Store) AlignmentForKOReaderDocument(ctx context.Context, documentID str
 	return alignmentID, nil
 }
 
+func (s *Store) KOReaderOwner(ctx context.Context, username, documentID string) (userID, workID, alignmentID string, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT u.id,w.id,a.id FROM users u CROSS JOIN works w LEFT JOIN library_members lm ON lm.user_id=u.id AND lm.library_id=w.library_id JOIN representations r ON r.work_id=w.id JOIN media m ON m.representation_id=r.id JOIN koreader_aliases k ON k.media_id=m.id JOIN alignments a ON a.epub_media_id=m.id WHERE u.username_normalized=lower(trim(?)) AND u.disabled=0 AND (u.is_admin=1 OR lm.user_id IS NOT NULL) AND k.document_id=? AND a.state='ready'`, username, documentID).Scan(&userID, &workID, &alignmentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrNotFound
+	}
+	return
+}
+
 func (s *Store) CanonicalToKOReader(ctx context.Context, p Canonical) (KOReaderLocator, error) {
 	var locator KOReaderLocator
 	var ordinal, total int

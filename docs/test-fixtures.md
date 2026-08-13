@@ -67,7 +67,7 @@ The output compares WhisperX word start and the fixed waveform-energy diagnostic
 
 1. Copy `test-fixtures/alice/media/alice.epub` directly to the KOReader device. Do not unzip, rebuild, convert, or pass it through Calibre.
 2. Confirm the document hash is `efbf04efc9d43ecd89a033b329f49bdb`.
-3. Configure KOReader's Progress Sync plugin for the Aldus server using `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY`.
+3. Configure KOReader's Progress Sync plugin for the Aldus server using `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY`; the username must match an enabled Aldus user with access to the fixture library.
 4. Open the exact passage and trigger **Progress sync → Push progress**.
 5. Inspect the request body sent to `PUT /syncs/progress` with a debugging proxy or temporary request logging. Copy `progress` verbatim; for reflowable EPUB it is KOReader's native XPointer.
 6. Paste it into the anchor's **KOReader XPointer** field, then save and export again. Never derive it from foliate CFI or percentage.
