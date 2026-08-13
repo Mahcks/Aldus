@@ -14,8 +14,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 8 {
-		t.Fatalf("schema version = %d, want 8", version)
+	if version := schemaVersion(t, db); version != 10 {
+		t.Fatalf("schema version = %d, want 10", version)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -24,8 +24,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 8 {
-		t.Fatalf("schema version after reopen = %d, want 8", version)
+	if version := schemaVersion(t, db); version != 10 {
+		t.Fatalf("schema version after reopen = %d, want 10", version)
 	}
 }
 
@@ -79,8 +79,8 @@ INSERT INTO progress (alignment_id, segment_id, offset, revision, updated_at, so
 	if err := db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
 		t.Fatalf("foreign key check = %q, %v", violation, err)
 	}
-	if version := schemaVersion(t, db); version != 8 {
-		t.Fatalf("migrated schema version = %d, want 8", version)
+	if version := schemaVersion(t, db); version != 10 {
+		t.Fatalf("migrated schema version = %d, want 10", version)
 	}
 	var epubHash, representationID string
 	if err := db.QueryRowContext(ctx, `SELECT sha256,representation_id FROM media WHERE id='epub'`).Scan(&epubHash, &representationID); err != nil || epubHash != strings.Repeat("a", 64) || representationID != "legacy-representation-epub" {
@@ -109,12 +109,12 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`PRAGMA user_version = 9`); err != nil {
+	if _, err := db.Exec(`PRAGMA user_version = 11`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
 	_, err = Open(context.Background(), path)
-	if err == nil || !strings.Contains(err.Error(), "schema version 9 is newer than supported version 8") {
+	if err == nil || !strings.Contains(err.Error(), "schema version 11 is newer than supported version 10") {
 		t.Fatalf("Open error = %v", err)
 	}
 }
@@ -136,7 +136,7 @@ func TestMigrationFromVersionTwo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 8 {
+	if version := schemaVersion(t, db); version != 10 {
 		t.Fatalf("version=%d", version)
 	}
 	var users, tables int
@@ -163,7 +163,7 @@ func TestMigrationFromVersionThree(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 8 {
+	if version := schemaVersion(t, db); version != 10 {
 		t.Fatalf("version=%d", version)
 	}
 	var columns int
@@ -187,7 +187,7 @@ func TestMigrationFromVersionFour(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 8 {
+	if version := schemaVersion(t, db); version != 10 {
 		t.Fatalf("version=%d", version)
 	}
 	var jobs int
@@ -258,8 +258,8 @@ func TestMigrationRollsBackFailedVersion(t *testing.T) {
 	if err := migrate(ctx, db); err == nil {
 		t.Fatal("failed migration succeeded")
 	}
-	if version := schemaVersion(t, db); version != 8 {
-		t.Fatalf("schema version after rollback = %d, want 8", version)
+	if version := schemaVersion(t, db); version != 10 {
+		t.Fatalf("schema version after rollback = %d, want 10", version)
 	}
 	var exists int
 	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'partial')`).Scan(&exists); err != nil || exists != 0 {
@@ -322,6 +322,51 @@ func TestMigrationFromVersionSevenAddsSourceInventory(t *testing.T) {
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('source_entries') WHERE name IN ('detected_kind','metadata_json','last_seen_scan_id','device','inode')`).Scan(&columns); err != nil || columns != 5 {
 		t.Fatalf("source entry columns=%d, %v", columns, err)
+	}
+}
+
+func TestMigrationFromVersionEightAddsImportProposals(t *testing.T) {
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + userReadingStateSchema + librarySourcesSchema + sourceScansSchema + `PRAGMA user_version=8;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	db, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var tables int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('import_groups','import_items')`).Scan(&tables); err != nil || tables != 2 {
+		t.Fatalf("proposal tables=%d, %v", tables, err)
+	}
+}
+
+func TestMigrationFromVersionNineAddsImportAcceptance(t *testing.T) {
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + userReadingStateSchema + librarySourcesSchema + sourceScansSchema + importProposalsSchema + `PRAGMA user_version=9;`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	db, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var tables, columns int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='media_locations'`).Scan(&tables); err != nil || tables != 1 {
+		t.Fatalf("media_locations=%d, %v", tables, err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('import_groups') WHERE name IN ('accepted_work_id','decision')`).Scan(&columns); err != nil || columns != 2 {
+		t.Fatalf("acceptance columns=%d, %v", columns, err)
 	}
 }
 

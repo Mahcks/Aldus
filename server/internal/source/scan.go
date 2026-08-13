@@ -282,6 +282,13 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 	}
 	missing, _ := result.RowsAffected()
 	sum.missing = int(missing)
+	var libraryID string
+	if err := s.db.QueryRowContext(ctx, `SELECT library_id FROM library_sources WHERE id=?`, job.SourceID).Scan(&libraryID); err != nil {
+		return err
+	}
+	if err := s.GenerateProposals(ctx, libraryID); err != nil {
+		return err
+	}
 	return s.finishScan(ctx, job.ID, "completed", sum, "")
 }
 

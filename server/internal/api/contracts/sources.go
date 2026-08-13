@@ -52,3 +52,47 @@ type SourceEntry struct {
 	Metadata     map[string]any `json:"metadata"`
 	PathHints    map[string]any `json:"path_hints"`
 }
+type ImportProposal struct {
+	ID               string               `json:"id"`
+	LibraryID        string               `json:"library_id"`
+	State            string               `json:"state"`
+	Confidence       string               `json:"confidence"`
+	Title            string               `json:"title"`
+	Author           string               `json:"author"`
+	NormalizedTitle  string               `json:"normalized_title"`
+	NormalizedAuthor string               `json:"normalized_author"`
+	ExistingWorkID   string               `json:"existing_work_id,omitempty"`
+	Reasons          []string             `json:"reasons"`
+	Revision         int                  `json:"revision"`
+	Items            []ImportProposalItem `json:"items"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+}
+type ImportProposalItem struct {
+	SourceEntryID string         `json:"source_entry_id"`
+	RelativePath  string         `json:"relative_path"`
+	Kind          string         `json:"kind"`
+	Label         string         `json:"label"`
+	SHA256        string         `json:"sha256"`
+	Duplicate     bool           `json:"duplicate"`
+	Evidence      map[string]any `json:"evidence"`
+}
+type AcceptImportProposalRequest struct {
+	ExpectedRevision int                `json:"expected_revision"`
+	WorkID           string             `json:"work_id,omitempty"`
+	Title            string             `json:"title"`
+	Author           string             `json:"author"`
+	Items            []AcceptImportItem `json:"items"`
+}
+type AcceptImportItem struct {
+	SourceEntryID    string `json:"source_entry_id"`
+	RepresentationID string `json:"representation_id,omitempty"`
+	Kind             string `json:"kind"`
+	Label            string `json:"label"`
+}
+type AcceptImportProposalResponse struct {
+	WorkID string `json:"work_id"`
+}
+type IgnoreImportProposalRequest struct {
+	ExpectedRevision int `json:"expected_revision"`
+}

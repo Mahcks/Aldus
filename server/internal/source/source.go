@@ -172,7 +172,7 @@ func (s *Store) OpenMedia(ctx context.Context, mediaID string, verifyHash bool) 
 	var kind, path, expectedHash, entryPath, root, entryHash, entryState, modified string
 	var size int64
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT m.storage_kind,m.path,m.sha256,COALESCE(e.relative_path,''),COALESCE(ls.root_path,''),COALESCE(e.sha256,''),COALESCE(e.state,''),COALESCE(e.size_bytes,0),COALESCE(e.modified_at,''),COALESCE(ls.enabled,0) FROM media m LEFT JOIN source_entries e ON e.id=m.source_entry_id LEFT JOIN library_sources ls ON ls.id=e.source_id AND ls.deleted_at IS NULL WHERE m.id=?`, mediaID).Scan(&kind, &path, &expectedHash, &entryPath, &root, &entryHash, &entryState, &size, &modified, &enabled)
+	err := s.db.QueryRowContext(ctx, `SELECT m.storage_kind,m.path,m.sha256,COALESCE(e.relative_path,''),COALESCE(ls.root_path,''),COALESCE(e.sha256,''),COALESCE(e.state,''),COALESCE(e.size_bytes,0),COALESCE(e.modified_at,''),COALESCE(ls.enabled,0) FROM media m LEFT JOIN source_entries e ON e.id=COALESCE((SELECT ml.source_entry_id FROM media_locations ml JOIN source_entries se ON se.id=ml.source_entry_id JOIN library_sources sl ON sl.id=se.source_id AND sl.deleted_at IS NULL WHERE ml.media_id=m.id AND se.state='registered' AND se.sha256=m.sha256 AND sl.enabled=1 ORDER BY ml.created_at,ml.source_entry_id LIMIT 1),m.source_entry_id) LEFT JOIN library_sources ls ON ls.id=e.source_id AND ls.deleted_at IS NULL WHERE m.id=?`, mediaID).Scan(&kind, &path, &expectedHash, &entryPath, &root, &entryHash, &entryState, &size, &modified, &enabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

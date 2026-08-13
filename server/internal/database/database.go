@@ -35,7 +35,13 @@ var librarySourcesSchema string
 //go:embed migrations/008_source_scans.sql
 var sourceScansSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema}
+//go:embed migrations/009_import_proposals.sql
+var importProposalsSchema string
+
+//go:embed migrations/010_import_acceptance.sql
+var importAcceptanceSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema}
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	path, err := filepath.Abs(path)

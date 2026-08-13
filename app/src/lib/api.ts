@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 
 import type {
   Alignment,
+  AcceptImportProposalRequest,
+  AcceptImportProposalResponse,
   AlignmentJob,
   AudioLocator,
   BootstrapRequest,
@@ -15,6 +17,7 @@ import type {
   EPUBLocator,
   Library,
   LibrarySource,
+  ImportProposal,
   LoginRequest,
   Media,
   Membership,
@@ -152,6 +155,22 @@ export const api = {
     }),
   sourceEntries: (libraryID: string, sourceID: string) =>
     request<SourceEntry[]>(`/libraries/${libraryID}/sources/${sourceID}/entries`),
+  importProposals: (libraryID: string) =>
+    request<ImportProposal[]>(`/libraries/${libraryID}/import-proposals`),
+  acceptImportProposal: (
+    libraryID: string,
+    proposalID: string,
+    body: AcceptImportProposalRequest,
+  ) =>
+    request<AcceptImportProposalResponse>(
+      `/libraries/${libraryID}/import-proposals/${proposalID}/accept`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  ignoreImportProposal: (libraryID: string, proposalID: string, expectedRevision: number) =>
+    request<void>(`/libraries/${libraryID}/import-proposals/${proposalID}/ignore`, {
+      method: 'POST',
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    }),
 
   works: (libraryID: string) => request<Work[]>(`/libraries/${libraryID}/works`),
   work: (id: string) => request<Work>(`/works/${id}`),

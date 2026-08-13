@@ -32,6 +32,7 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	}
 	copyFile(t, filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice.epub"), filepath.Join(root, "alice.epub"))
 	copyFile(t, filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice-chapter-01.mp3"), filepath.Join(root, "alice.mp3"))
+	copyFile(t, filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice-chapter-01.mp3"), filepath.Join(root, "alice-copy.mp3"))
 	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("ignored"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -56,14 +57,14 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := runTestScan(t, store, saved.ID, "scan-1")
-	if first.FilesVisited != 3 || first.Supported != 2 || first.EPUB != 1 || first.Audio != 1 || first.New != 2 || first.Problems != 0 {
+	if first.FilesVisited != 4 || first.Supported != 3 || first.EPUB != 1 || first.Audio != 2 || first.New != 3 || first.Problems != 0 {
 		t.Fatalf("first scan=%+v", first)
 	}
 	entries, err := store.Entries(ctx, auth.User{ID: "admin", Admin: true}, "library", saved.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 2 {
+	if len(entries) != 3 {
 		t.Fatalf("entries=%d", len(entries))
 	}
 	hashes := map[string]string{}
@@ -79,9 +80,47 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	if hashes["alice.epub"] != "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c" || hashes["alice.mp3"] != "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a" {
 		t.Fatalf("hashes=%v", hashes)
 	}
+	proposals, err := store.Proposals(ctx, auth.User{ID: "admin", Admin: true}, "library")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposals) != 1 || proposals[0].Title != "Alice's Adventures in Wonderland" || proposals[0].Author != "Lewis Carroll" || proposals[0].Confidence != "high" || len(proposals[0].Items) != 3 {
+		t.Fatalf("Alice proposal=%+v", proposals)
+	}
+	firstProposalID, firstRevision := proposals[0].ID, proposals[0].Revision
 	second := runTestScan(t, store, saved.ID, "scan-2")
-	if second.Unchanged != 2 || second.New != 0 || second.Changed != 0 {
+	if second.Unchanged != 3 || second.New != 0 || second.Changed != 0 {
 		t.Fatalf("second scan=%+v", second)
+	}
+	proposals, _ = store.Proposals(ctx, auth.User{ID: "admin", Admin: true}, "library")
+	if proposals[0].ID != firstProposalID || proposals[0].Revision != firstRevision {
+		t.Fatalf("proposal changed on rescan=%+v", proposals[0])
+	}
+	items := make([]AcceptItem, len(proposals[0].Items))
+	for i, item := range proposals[0].Items {
+		items[i] = AcceptItem{SourceEntryID: item.EntryID, Kind: item.Kind, Label: item.Label}
+	}
+	workID, err := store.AcceptProposal(ctx, auth.User{ID: "admin", Admin: true}, "library", proposals[0].ID, AcceptRequest{ExpectedRevision: proposals[0].Revision, Title: proposals[0].Title, Author: proposals[0].Author, Items: items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AcceptProposal(ctx, auth.User{ID: "admin", Admin: true}, "library", proposals[0].ID, AcceptRequest{ExpectedRevision: proposals[0].Revision, Title: proposals[0].Title, Items: items}); err != ErrConflict {
+		t.Fatalf("stale accept=%v", err)
+	}
+	var works, reps, media int
+	db.QueryRow(`SELECT COUNT(*) FROM works WHERE id=?`, workID).Scan(&works)
+	db.QueryRow(`SELECT COUNT(*) FROM representations WHERE work_id=?`, workID).Scan(&reps)
+	db.QueryRow(`SELECT COUNT(*) FROM media m JOIN representations r ON r.id=m.representation_id WHERE r.work_id=? AND m.storage_kind='referenced'`, workID).Scan(&media)
+	if works != 1 || reps != 2 || media != 2 {
+		t.Fatalf("accepted counts=%d %d %d", works, reps, media)
+	}
+	var locations int
+	db.QueryRow(`SELECT COUNT(*) FROM media_locations ml JOIN media m ON m.id=ml.media_id JOIN representations r ON r.id=m.representation_id WHERE r.work_id=?`, workID).Scan(&locations)
+	if locations != 3 {
+		t.Fatalf("media locations=%d", locations)
+	}
+	if active, _ := store.Proposals(ctx, auth.User{ID: "admin", Admin: true}, "library"); len(active) != 0 {
+		t.Fatalf("accepted proposal active=%+v", active)
 	}
 	f, err := os.OpenFile(filepath.Join(root, "alice.mp3"), os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
@@ -92,16 +131,39 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	}
 	f.Close()
 	changed := runTestScan(t, store, saved.ID, "scan-3")
-	if changed.Changed != 1 || changed.Unchanged != 1 {
+	if changed.Changed != 1 || changed.Unchanged != 2 {
 		t.Fatalf("changed scan=%+v", changed)
+	}
+	changedProposals, err := store.Proposals(ctx, auth.User{ID: "admin", Admin: true}, "library")
+	if err != nil || len(changedProposals) != 1 {
+		t.Fatalf("changed proposals=%+v, %v", changedProposals, err)
+	}
+	changedItems := make([]AcceptItem, len(changedProposals[0].Items))
+	for i, item := range changedProposals[0].Items {
+		changedItems[i] = AcceptItem{SourceEntryID: item.EntryID, Kind: item.Kind, Label: item.Label}
+	}
+	if attached, err := store.AcceptProposal(ctx, auth.User{ID: "admin", Admin: true}, "library", changedProposals[0].ID, AcceptRequest{ExpectedRevision: changedProposals[0].Revision, WorkID: workID, Items: changedItems}); err != nil || attached != workID {
+		t.Fatalf("existing work acceptance=%q, %v", attached, err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM works WHERE library_id='library'`).Scan(&works); err != nil || works != 1 {
+		t.Fatalf("duplicate works=%d, %v", works, err)
 	}
 	if err := os.Remove(filepath.Join(root, "alice.mp3")); err != nil {
 		t.Fatal(err)
 	}
 	missing := runTestScan(t, store, saved.ID, "scan-4")
-	if missing.Missing != 1 || missing.Supported != 1 {
+	if missing.Missing != 1 || missing.Supported != 2 {
 		t.Fatalf("missing scan=%+v", missing)
 	}
+	var audioMediaID string
+	if err := db.QueryRow(`SELECT m.id FROM media m JOIN representations r ON r.id=m.representation_id WHERE r.work_id=? AND m.kind='audio'`, workID).Scan(&audioMediaID); err != nil {
+		t.Fatal(err)
+	}
+	file, err := store.OpenMedia(ctx, audioMediaID, true)
+	if err != nil {
+		t.Fatalf("duplicate location fallback=%v", err)
+	}
+	file.Close()
 	if _, err := db.Exec(`INSERT INTO source_scans(id,source_id,state,created_at,started_at) VALUES('interrupted',?,'scanning',?,?)`, saved.ID, now, now); err != nil {
 		t.Fatal(err)
 	}

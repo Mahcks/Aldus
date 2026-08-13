@@ -1,6 +1,7 @@
 import type {
   Library,
   LibrarySource,
+  ImportProposal,
   Membership,
   SourceEntry,
   SourceScan,
@@ -29,6 +30,10 @@ export default function LibraryScreen() {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [sourceScans, setSourceScans] = useState<Record<string, SourceScan[]>>({});
   const [sourceEntries, setSourceEntries] = useState<Record<string, SourceEntry[]>>({});
+  const [proposals, setProposals] = useState<ImportProposal[]>([]);
+  const [proposalEdits, setProposalEdits] = useState<
+    Record<string, { title: string; author: string }>
+  >({});
   const [availability, setAvailability] = useState<Record<string, Availability>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -81,15 +86,25 @@ export default function LibraryScreen() {
       setUsers(nextUsers);
       setSources(nextSources);
       if (mayScan) {
-        const [scans, entries] = await Promise.all([
+        const [scans, entries, nextProposals] = await Promise.all([
           Promise.all(nextSources.map((source) => api.sourceScans(id, source.id))),
           Promise.all(nextSources.map((source) => api.sourceEntries(id, source.id))),
+          api.importProposals(id),
         ]);
         setSourceScans(
           Object.fromEntries(nextSources.map((source, index) => [source.id, scans[index]])),
         );
         setSourceEntries(
           Object.fromEntries(nextSources.map((source, index) => [source.id, entries[index]])),
+        );
+        setProposals(nextProposals);
+        setProposalEdits(
+          Object.fromEntries(
+            nextProposals.map((proposal) => [
+              proposal.id,
+              proposalEdits[proposal.id] ?? { title: proposal.title, author: proposal.author },
+            ]),
+          ),
         );
       }
       setAvailability(Object.fromEntries(details));
@@ -172,6 +187,35 @@ export default function LibraryScreen() {
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    }
+  }
+  async function acceptProposal(proposal: ImportProposal, workID = '') {
+    try {
+      const edit = proposalEdits[proposal.id] ?? proposal;
+      await api.acceptImportProposal(id, proposal.id, {
+        expected_revision: proposal.revision,
+        work_id: workID,
+        title: edit.title,
+        author: edit.author,
+        items: proposal.items.map((item) => ({
+          source_entry_id: item.source_entry_id,
+          kind: item.kind,
+          label: item.label,
+        })),
+      });
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+      await load();
+    }
+  }
+  async function ignoreProposal(proposal: ImportProposal) {
+    try {
+      await api.ignoreImportProposal(id, proposal.id, proposal.revision);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+      await load();
     }
   }
 
@@ -365,6 +409,81 @@ export default function LibraryScreen() {
                   {entry.relative_path} · {entry.kind || 'problem'} · {entry.state}
                 </Text>
               ))}
+            </View>
+          ))}
+          {proposals.map((proposal) => (
+            <View key={proposal.id} style={shared.listItem}>
+              <Text style={shared.itemTitle}>{proposal.title || 'Untitled proposal'}</Text>
+              <Text style={shared.itemMeta}>
+                {proposal.author || 'Unknown author'} · {proposal.confidence} confidence ·{' '}
+                {proposal.state}
+              </Text>
+              <Field
+                label="Work title"
+                value={proposalEdits[proposal.id]?.title ?? proposal.title}
+                onChangeText={(title) =>
+                  setProposalEdits((current) => ({
+                    ...current,
+                    [proposal.id]: {
+                      title,
+                      author: current[proposal.id]?.author ?? proposal.author,
+                    },
+                  }))
+                }
+              />
+              <Field
+                label="Work author"
+                value={proposalEdits[proposal.id]?.author ?? proposal.author}
+                onChangeText={(author) =>
+                  setProposalEdits((current) => ({
+                    ...current,
+                    [proposal.id]: {
+                      title: current[proposal.id]?.title ?? proposal.title,
+                      author,
+                    },
+                  }))
+                }
+              />
+              {proposal.reasons.map((reason) => (
+                <Text key={reason} style={shared.itemMeta}>
+                  {reason}
+                </Text>
+              ))}
+              {proposal.items.map((item) => (
+                <Text key={`${item.relative_path}-${item.sha256}`} style={shared.itemMeta}>
+                  {item.label} · {item.relative_path}
+                  {item.duplicate ? ' · exact duplicate' : ''}
+                </Text>
+              ))}
+              <Row>
+                <Button
+                  label="Create new work"
+                  kind="primary"
+                  onPress={() => void acceptProposal(proposal)}
+                />
+                {proposal.existing_work_id ? (
+                  <Button
+                    label="Attach to matching work"
+                    kind="secondary"
+                    onPress={() => void acceptProposal(proposal, proposal.existing_work_id)}
+                  />
+                ) : null}
+                {works
+                  .filter((work) => work.id !== proposal.existing_work_id)
+                  .map((work) => (
+                    <Button
+                      key={work.id}
+                      label={`Attach to ${work.title}`}
+                      kind="secondary"
+                      onPress={() => void acceptProposal(proposal, work.id)}
+                    />
+                  ))}
+                <Button
+                  label="Ignore"
+                  kind="danger"
+                  onPress={() => void ignoreProposal(proposal)}
+                />
+              </Row>
             </View>
           ))}
           {auth.user?.admin ? (

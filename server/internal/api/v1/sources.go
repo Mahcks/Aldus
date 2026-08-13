@@ -22,6 +22,73 @@ func registerSourceRoutes(r chi.Router, store *source.Store) {
 	r.Post("/libraries/{libraryID}/sources/{sourceID}/scans", enqueueSourceScan(store))
 	r.Get("/libraries/{libraryID}/sources/{sourceID}/scans", listSourceScans(store))
 	r.Get("/libraries/{libraryID}/sources/{sourceID}/entries", listSourceEntries(store))
+	r.Get("/libraries/{libraryID}/import-proposals", listImportProposals(store))
+	r.Get("/libraries/{libraryID}/import-proposals/{proposalID}", getImportProposal(store))
+	r.Post("/libraries/{libraryID}/import-proposals/{proposalID}/accept", acceptImportProposal(store))
+	r.Post("/libraries/{libraryID}/import-proposals/{proposalID}/ignore", ignoreImportProposal(store))
+}
+func getImportProposal(s *source.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := s.Proposal(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "proposalID"))
+		if err != nil {
+			writeSourceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, proposalDTO(value))
+	}
+}
+func acceptImportProposal(s *source.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var b contracts.AcceptImportProposalRequest
+		if !decode(w, r, &b) {
+			return
+		}
+		items := make([]source.AcceptItem, len(b.Items))
+		for i, item := range b.Items {
+			items[i] = source.AcceptItem{SourceEntryID: item.SourceEntryID, RepresentationID: item.RepresentationID, Kind: item.Kind, Label: item.Label}
+		}
+		workID, err := s.AcceptProposal(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "proposalID"), source.AcceptRequest{ExpectedRevision: b.ExpectedRevision, WorkID: b.WorkID, Title: b.Title, Author: b.Author, Items: items})
+		if err != nil {
+			writeSourceError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, contracts.AcceptImportProposalResponse{WorkID: workID})
+	}
+}
+func ignoreImportProposal(s *source.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var b contracts.IgnoreImportProposalRequest
+		if !decode(w, r, &b) {
+			return
+		}
+		err := s.IgnoreProposal(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "proposalID"), b.ExpectedRevision)
+		if err != nil {
+			writeSourceError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+func listImportProposals(s *source.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		values, err := s.Proposals(r.Context(), actor(r), chi.URLParam(r, "libraryID"))
+		if err != nil {
+			writeSourceError(w, err)
+			return
+		}
+		out := make([]contracts.ImportProposal, len(values))
+		for i, v := range values {
+			out[i] = proposalDTO(v)
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+func proposalDTO(v source.Proposal) contracts.ImportProposal {
+	items := make([]contracts.ImportProposalItem, len(v.Items))
+	for j, item := range v.Items {
+		items[j] = contracts.ImportProposalItem{SourceEntryID: item.EntryID, RelativePath: item.RelativePath, Kind: item.Kind, Label: item.Label, SHA256: item.SHA256, Duplicate: item.DuplicateOf != "", Evidence: item.Evidence}
+	}
+	return contracts.ImportProposal{ID: v.ID, LibraryID: v.LibraryID, State: v.State, Confidence: v.Confidence, Title: v.Title, Author: v.Author, NormalizedTitle: v.NormalizedTitle, NormalizedAuthor: v.NormalizedAuthor, ExistingWorkID: v.ExistingWorkID, Reasons: v.Reasons, Revision: v.Revision, Items: items, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func enqueueSourceScan(s *source.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -146,6 +213,10 @@ func writeSourceError(w http.ResponseWriter, err error) {
 	}
 	if errors.Is(err, source.ErrActiveScan) {
 		http.Error(w, "scan already active", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, source.ErrConflict) {
+		http.Error(w, "proposal changed; refresh and review again", http.StatusConflict)
 		return
 	}
 	http.Error(w, "internal server error", http.StatusInternalServerError)

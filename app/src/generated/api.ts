@@ -190,6 +190,50 @@ export interface SourceEntry {
   metadata: { [key: string]: any};
   path_hints: { [key: string]: any};
 }
+export interface ImportProposal {
+  id: string;
+  library_id: string;
+  state: string;
+  confidence: string;
+  title: string;
+  author: string;
+  normalized_title: string;
+  normalized_author: string;
+  existing_work_id?: string;
+  reasons: string[];
+  revision: number /* int */;
+  items: ImportProposalItem[];
+  created_at: string;
+  updated_at: string;
+}
+export interface ImportProposalItem {
+  source_entry_id: string;
+  relative_path: string;
+  kind: string;
+  label: string;
+  sha256: string;
+  duplicate: boolean;
+  evidence: { [key: string]: any};
+}
+export interface AcceptImportProposalRequest {
+  expected_revision: number /* int */;
+  work_id?: string;
+  title: string;
+  author: string;
+  items: AcceptImportItem[];
+}
+export interface AcceptImportItem {
+  source_entry_id: string;
+  representation_id?: string;
+  kind: string;
+  label: string;
+}
+export interface AcceptImportProposalResponse {
+  work_id: string;
+}
+export interface IgnoreImportProposalRequest {
+  expected_revision: number /* int */;
+}
 
 //////////
 // source: sync.go
