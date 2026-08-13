@@ -3,7 +3,10 @@ export function activeContentIndex(visible: Range, contents: { doc: Document; in
 }
 
 export function currentParagraph(visible: Range) {
-  const element = visible.startContainer.nodeType === 1 ? visible.startContainer as Element : visible.startContainer.parentElement;
+  const element =
+    visible.startContainer.nodeType === 1
+      ? (visible.startContainer as Element)
+      : visible.startContainer.parentElement;
   const containing = element?.closest('p');
   if (containing && meaningful(containing)) return containing;
   const doc = visible.startContainer.ownerDocument;
@@ -15,7 +18,11 @@ export function currentParagraph(visible: Range) {
 }
 
 export function classifyPageSync(aligned: number, unresolved: number) {
-  return aligned === 0 ? 'none' as const : unresolved > 0 ? 'partial' as const : 'full' as const;
+  return aligned === 0
+    ? ('none' as const)
+    : unresolved > 0
+      ? ('partial' as const)
+      : ('full' as const);
 }
 
 export function relocatedCursor<T>(committed: T | undefined, fallback: T | undefined) {

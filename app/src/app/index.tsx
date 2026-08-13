@@ -6,5 +6,7 @@ export default function Home() {
   const auth = useAuth();
   if (auth.loading) return <Loading />;
   if (auth.error) return <Notice danger>{auth.error}</Notice>;
-  return <Redirect href={(auth.user ? '/home' : auth.setupAvailable ? '/setup' : '/login') as Href} />;
+  return (
+    <Redirect href={(auth.user ? '/home' : auth.setupAvailable ? '/setup' : '/login') as Href} />
+  );
 }

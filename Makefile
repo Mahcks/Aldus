@@ -1,4 +1,4 @@
-.PHONY: fixture seed-alice dev dev-app dev-server generate generate-check build test lint docker docker-alignment
+.PHONY: fixture seed-alice dev dev-app dev-server generate generate-check format format-check build test lint docker docker-alignment
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -30,6 +30,12 @@ generate-check: generate
 	cd server && $(TOOL_BIN)/sqlc vet
 	git diff --exit-code -- server/internal/database/sqlc app/src/generated/api.ts
 
+format:
+	cd app && bun run format
+
+format-check:
+	cd app && bun run format:check
+
 build:
 	cd app && bun run build:web
 	cd server && go build ./...
@@ -43,6 +49,7 @@ test:
 lint:
 	cd server && test -z "$$(gofmt -l .)"
 	cd server && go vet ./...
+	$(MAKE) format-check
 	cd app && bun run lint
 
 docker:
