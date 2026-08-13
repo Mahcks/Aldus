@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import type { AlignmentJob, Media, Representation } from '../generated/api';
 import {
+  applyPlaybackRate,
   choices,
+  clampAudioPosition,
   defaultPair,
   listenToRead,
+  playbackRate,
+  PLAYBACK_RATES,
   readToListen,
   readyJob,
   synchronizationLabel,
@@ -30,6 +34,25 @@ const job = {
 } satisfies AlignmentJob;
 
 describe('consumption selection', () => {
+  it('uses the complete pitch-preserved playback speed set without changing time', () => {
+    const calls: unknown[][] = [];
+    const timestamp = 123.456;
+    const player = { setPlaybackRate: (...args: unknown[]) => calls.push(args) };
+
+    expect(PLAYBACK_RATES).toEqual([0.75, 1, 1.25, 1.5, 1.75, 2]);
+    expect(applyPlaybackRate(player, 1.75)).toBe(1.75);
+    expect(calls).toEqual([[1.75, 'high']]);
+    expect(timestamp).toBe(123.456);
+    expect(playbackRate(3)).toBe(1);
+  });
+
+  it('bounds pointer, keyboard, and accessibility seeks to media time', () => {
+    expect(clampAudioPosition(-5, 60)).toBe(0);
+    expect(clampAudioPosition(30, 60)).toBe(30);
+    expect(clampAudioPosition(65, 60)).toBe(60);
+    expect(clampAudioPosition(5, Number.NaN)).toBe(0);
+  });
+
   it('supports EPUB-only, audio-only, and the ready exact revision pair', () => {
     const epubs = choices(representations, media, ['epub']);
     const audio = choices(representations, media, ['audio', 'audiobook']);

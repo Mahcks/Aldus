@@ -34,6 +34,7 @@ type Props = {
   segments?: SyncSegment[];
   onLocation?: (location: ReaderLocation) => void;
   onReady?: () => void;
+  onError?: (error: Error) => void;
 };
 type SyncSegment = {
   id: string;
@@ -44,7 +45,7 @@ type SyncSegment = {
 };
 
 export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReader(
-  { source = '/media/alice.epub', product, segments = [], onLocation, onReady },
+  { source = '/media/alice.epub', product, segments = [], onLocation, onReady, onError },
   ref,
 ) {
   const host = useRef<View>(null);
@@ -60,8 +61,12 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const direction = useRef<'initial' | 'forward' | 'backward'>('initial');
   const onLocationRef = useRef(onLocation);
   const onReadyRef = useRef(onReady);
+  const onErrorRef = useRef(onError);
+  const segmentsRef = useRef(segments);
   onLocationRef.current = onLocation;
   onReadyRef.current = onReady;
+  onErrorRef.current = onError;
+  segmentsRef.current = segments;
 
   useImperativeHandle(
     ref,
@@ -167,98 +172,114 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
 
   useEffect(() => {
     let disposed = false;
-    import('foliate-js/view.js').then(async () => {
-      if (disposed || !host.current) return;
-      const view = document.createElement('foliate-view') as any;
-      view.style.width = '100%';
-      view.style.height = product ? 'calc(100vh - 238px)' : '65vh';
-      (host.current as unknown as HTMLElement).append(view);
-      view.addEventListener('load', ({ detail: { doc, index } }: CustomEvent) => {
-        if (product) {
-          const style = doc.createElement('style');
-          style.textContent = `html { color: #2b241f; background: #fffdf8; } body { font-family: Georgia, 'Times New Roman', serif; font-size: 1.08rem; line-height: 1.72; padding-inline: clamp(1rem, 4vw, 3.5rem); } p { max-width: 68ch; margin-inline: auto; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: #ead0c3; color: #2b241f; }`;
-          doc.head.append(style);
-        }
-        doc.addEventListener('selectionchange', () => {
-          const selected = doc.getSelection();
-          if (selected?.rangeCount && !selected.isCollapsed)
-            selection.current = { index, range: selected.getRangeAt(0).cloneRange() };
-        });
-        doc.addEventListener('click', (event: MouseEvent) => {
-          if (!product) return;
-          const point = caretAt(doc, event.clientX, event.clientY);
-          const href = view.book.sections[index]?.id;
-          const current = page.current;
-          if (!point || !href || !current) return;
-          const match = containingSegment(point, href, segments);
-          if (!match)
-            return onLocationRef.current?.({
-              href,
-              cfi: current.cfi,
-              syncState: current.state,
-              reason: 'explicit',
-            });
-          cursor.current = syncLocation(href, current.cfi, match, current.state, 'explicit');
-          markWord(point);
-          if (__DEV__)
-            console.debug('Aldus reading cursor', {
-              reason: 'explicit',
-              href,
-              boundary: boundary(point),
-              segment_id: match.id,
-              offset: match.offset,
-            });
-          onLocationRef.current?.(cursor.current);
-        });
-      });
-      view.addEventListener('relocate', ({ detail }: CustomEvent) => {
-        const range = detail.range as Range | undefined;
-        const index = range ? activeContentIndex(range, view.renderer.getContents()) : undefined;
-        if (!range || index == null) return;
-        const href = view.book.sections[index]?.id;
-        if (!href) return;
-        const state = pageSyncState(range, href, segments);
-        page.current = { href, cfi: detail.cfi, range: range.cloneRange(), state };
-        const fallback = !cursor.current ? containingSegment(range, href, segments) : undefined;
-        cursor.current = relocatedCursor(
-          cursor.current,
-          fallback ? syncLocation(href, detail.cfi, fallback, state, 'relocate') : undefined,
-        );
-        const location: ReaderLocation = cursor.current
-          ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason: 'relocate' }
-          : { href, cfi: detail.cfi, syncState: state, reason: 'relocate' };
-        if (__DEV__)
-          console.debug('Aldus relocation', {
-            href,
-            visible_start: boundary(range),
-            visible_end: boundary(range, true),
-            direction: direction.current,
-            cursor: cursor.current?.sync,
-            candidate_segments: intersectingSegments(range, href, segments).map((item) => item.id),
-            sync_state: state,
-            listen: cursor.current?.sync
-              ? 'enabled: valid cursor'
-              : state === 'partial'
-                ? 'disabled: move to aligned text'
-                : 'disabled: no valid cursor',
+    let view: any;
+    void import('foliate-js/view.js')
+      .then(async () => {
+        if (disposed || !host.current) return;
+        view = document.createElement('foliate-view') as any;
+        view.style.width = '100%';
+        view.style.height = product ? 'calc(100vh - 238px)' : '65vh';
+        (host.current as unknown as HTMLElement).append(view);
+        view.addEventListener('load', ({ detail: { doc, index } }: CustomEvent) => {
+          if (product) {
+            const style = doc.createElement('style');
+            style.textContent = `html { color: #2b241f; background: #fffdf8; } body { font-family: Georgia, 'Times New Roman', serif; font-size: 1.08rem; line-height: 1.72; padding-inline: clamp(1rem, 4vw, 3.5rem); } p { max-width: 68ch; margin-inline: auto; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: #ead0c3; color: #2b241f; }`;
+            doc.head.append(style);
+          }
+          doc.addEventListener('selectionchange', () => {
+            const selected = doc.getSelection();
+            if (selected?.rangeCount && !selected.isCollapsed)
+              selection.current = { index, range: selected.getRangeAt(0).cloneRange() };
           });
-        onLocationRef.current?.(location);
+          doc.addEventListener('click', (event: MouseEvent) => {
+            if (!product) return;
+            const point = caretAt(doc, event.clientX, event.clientY);
+            const href = view.book.sections[index]?.id;
+            const current = page.current;
+            if (!point || !href || !current) return;
+            const match = containingSegment(point, href, segmentsRef.current);
+            if (!match)
+              return onLocationRef.current?.({
+                href,
+                cfi: current.cfi,
+                syncState: current.state,
+                reason: 'explicit',
+              });
+            cursor.current = syncLocation(href, current.cfi, match, current.state, 'explicit');
+            if (__DEV__)
+              console.debug('Aldus reading cursor', {
+                reason: 'explicit',
+                href,
+                boundary: boundary(point),
+                segment_id: match.id,
+                offset: match.offset,
+              });
+            onLocationRef.current?.(cursor.current);
+          });
+        });
+        view.addEventListener('relocate', ({ detail }: CustomEvent) => {
+          const range = detail.range as Range | undefined;
+          const index = range ? activeContentIndex(range, view.renderer.getContents()) : undefined;
+          if (!range || index == null) return;
+          const href = view.book.sections[index]?.id;
+          if (!href) return;
+          const state = pageSyncState(range, href, segmentsRef.current);
+          page.current = { href, cfi: detail.cfi, range: range.cloneRange(), state };
+          const fallback = !cursor.current
+            ? containingSegment(range, href, segmentsRef.current)
+            : undefined;
+          cursor.current = relocatedCursor(
+            cursor.current,
+            fallback ? syncLocation(href, detail.cfi, fallback, state, 'relocate') : undefined,
+          );
+          const location: ReaderLocation = cursor.current
+            ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason: 'relocate' }
+            : { href, cfi: detail.cfi, syncState: state, reason: 'relocate' };
+          if (__DEV__)
+            console.debug('Aldus relocation', {
+              href,
+              visible_start: boundary(range),
+              visible_end: boundary(range, true),
+              direction: direction.current,
+              cursor: cursor.current?.sync,
+              candidate_segments: intersectingSegments(range, href, segmentsRef.current).map(
+                (item) => item.id,
+              ),
+              sync_state: state,
+              listen: cursor.current?.sync
+                ? 'enabled: valid cursor'
+                : state === 'partial'
+                  ? 'disabled: move to aligned text'
+                  : 'disabled: no valid cursor',
+            });
+          onLocationRef.current?.(location);
+        });
+        await view.open(
+          source instanceof Blob
+            ? new File([source], 'book.epub', { type: 'application/epub+zip' })
+            : source,
+        );
+        if (disposed) {
+          view.remove();
+          return;
+        }
+        view.renderer.setAttribute('flow', 'paginated');
+        reader.current = view;
+        onReadyRef.current?.();
+      })
+      .catch((error: unknown) => {
+        view?.remove();
+        if (!disposed)
+          onErrorRef.current?.(
+            error instanceof Error ? error : new Error('The EPUB could not be opened.'),
+          );
       });
-      await view.open(
-        source instanceof Blob
-          ? new File([source], 'book.epub', { type: 'application/epub+zip' })
-          : source,
-      );
-      view.renderer.setAttribute('flow', 'paginated');
-      reader.current = view;
-      onReadyRef.current?.();
-    });
     return () => {
       disposed = true;
-      reader.current?.remove();
-      reader.current = null;
+      view?.remove();
+      if (reader.current === view) reader.current = null;
     };
-  }, [source, product, segments]);
+  }, [source, product]);
 
   return (
     <View style={styles.reader}>
@@ -489,22 +510,6 @@ function caretAt(doc: Document, x: number, y: number) {
   range.setStart(modern.offsetNode, modern.offset);
   range.collapse(true);
   return range;
-}
-
-function markWord(point: Range) {
-  if (point.startContainer.nodeType !== Node.TEXT_NODE) return;
-  const text = point.startContainer.textContent ?? '';
-  let start = point.startOffset;
-  let end = start;
-  while (start > 0 && /[\p{L}\p{N}'’]/u.test(text[start - 1])) start--;
-  while (end < text.length && /[\p{L}\p{N}'’]/u.test(text[end])) end++;
-  if (start === end) return;
-  const range = point.cloneRange();
-  range.setStart(point.startContainer, start);
-  range.setEnd(point.startContainer, end);
-  const selected = point.startContainer.ownerDocument?.getSelection();
-  selected?.removeAllRanges();
-  selected?.addRange(range);
 }
 
 function boundary(range: Range, end = false) {

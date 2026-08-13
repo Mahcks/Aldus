@@ -121,3 +121,50 @@ func TestProductionGate(t *testing.T) {
 		t.Fatal("production seed accepted")
 	}
 }
+
+func TestSeedReusesImportedExactHashPair(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	fixture := filepath.Join(root, "test-fixtures", "alice")
+	if _, err := os.Stat(filepath.Join(fixture, "media", "alice.epub")); err != nil {
+		t.Skip("run make fixture")
+	}
+	dataDir := t.TempDir()
+	db, err := database.Open(context.Background(), filepath.Join(dataDir, "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	now := "2026-01-01T00:00:00Z"
+	statements := []string{
+		`INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Public','` + now + `','` + now + `')`,
+		`INSERT INTO works(id,library_id,title,author,created_at,updated_at) VALUES('work','library','Alice''s Adventures in Wonderland','Lewis Carroll','` + now + `','` + now + `')`,
+		`INSERT INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES('epub-rep','work','epub','Imported EPUB','` + now + `','` + now + `')`,
+		`INSERT INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES('audio-rep','work','audiobook','Imported audio','` + now + `','` + now + `')`,
+		`INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES('epub-media','epub-rep','epub','alice.epub','` + epubHash + `','` + now + `','alice.epub',1)`,
+		`INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES('audio-media','audio-rep','audiobook','alice.mp3','` + audioHash + `','` + now + `','alice.mp3',1)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Setenv("ALDUS_ENV", "development")
+	if err := Seed(context.Background(), db, dataDir, filepath.Join(fixture, "media"), filepath.Join(fixture, "automatic", "hybrid-whisperx", "alignment.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	var works, segments int
+	var workID, epubMediaID, audioMediaID string
+	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM works),a.epub_media_id,a.audio_media_id,(SELECT COUNT(*) FROM alignment_segments WHERE alignment_id=a.id) FROM alignments a WHERE a.id=?`, AlignmentID).Scan(&works, &epubMediaID, &audioMediaID, &segments); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT work_id FROM representations WHERE id='epub-rep'`).Scan(&workID); err != nil {
+		t.Fatal(err)
+	}
+	if works != 1 || workID != "work" || epubMediaID != "epub-media" || audioMediaID != "audio-media" || segments != 87 {
+		t.Fatalf("seed did not reuse imported pair: works=%d work=%s epub=%s audio=%s segments=%d", works, workID, epubMediaID, audioMediaID, segments)
+	}
+}

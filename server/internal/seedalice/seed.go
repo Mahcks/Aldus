@@ -100,18 +100,35 @@ func Seed(ctx context.Context, db *sql.DB, dataDir, fixtureDir, artifactPath str
 	if err != nil {
 		return err
 	}
+	workID, epubRepID, audioRepID := WorkID, EPUBRepID, AudioRepID
+	epubMediaID, audioMediaID := EPUBMediaID, AudioMediaID
+	err = tx.QueryRowContext(ctx, `
+		SELECT w.id,er.id,em.id,ar.id,am.id
+		FROM works w
+		JOIN representations er ON er.work_id=w.id AND er.kind='epub'
+		JOIN media em ON em.representation_id=er.id AND em.sha256=?
+		JOIN representations ar ON ar.work_id=w.id AND ar.kind IN ('audio','audiobook')
+		JOIN media am ON am.representation_id=ar.id AND am.sha256=?
+		WHERE w.library_id=?
+		ORDER BY w.created_at
+		LIMIT 1`, epubHash, audioHash, libraryID).Scan(
+		&workID, &epubRepID, &epubMediaID, &audioRepID, &audioMediaID,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("find existing Alice media: %w", err)
+	}
 	statements := []struct {
 		query string
 		args  []any
 	}{
 		{`INSERT OR IGNORE INTO library_members(library_id,user_id,role,created_at) SELECT ?,id,'reader',? FROM users`, []any{libraryID, now}},
-		{`INSERT OR IGNORE INTO works(id,library_id,title,author,created_at,updated_at) VALUES(?,?,'Alice''s Adventures in Wonderland','Lewis Carroll',?,?)`, []any{WorkID, libraryID, now, now}},
-		{`INSERT OR IGNORE INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES(?,?,'epub','Standard edition',?,?)`, []any{EPUBRepID, WorkID, now, now}},
-		{`INSERT OR IGNORE INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES(?,?,'audiobook','Chapter One narration',?,?)`, []any{AudioRepID, WorkID, now, now}},
-		{`INSERT OR IGNORE INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'epub',?,?,?,'alice.epub',?)`, []any{EPUBMediaID, EPUBRepID, epubRel, epubHash, now, epubSize}},
-		{`INSERT OR IGNORE INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'audiobook',?,?,?,'alice-chapter-01.mp3',?)`, []any{AudioMediaID, AudioRepID, audioRel, audioHash, now, audioSize}},
-		{`INSERT OR IGNORE INTO alignments(id,epub_media_id,audio_media_id,revision,state,created_at) VALUES(?,?,?,1,'ready',?)`, []any{AlignmentID, EPUBMediaID, AudioMediaID, now}},
-		{`INSERT OR IGNORE INTO alignment_inputs(alignment_id,media_id,role) VALUES(?,?,'epub'),(?,?,'audio')`, []any{AlignmentID, EPUBMediaID, AlignmentID, AudioMediaID}},
+		{`INSERT OR IGNORE INTO works(id,library_id,title,author,created_at,updated_at) VALUES(?,?,'Alice''s Adventures in Wonderland','Lewis Carroll',?,?)`, []any{workID, libraryID, now, now}},
+		{`INSERT OR IGNORE INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES(?,?,'epub','Standard edition',?,?)`, []any{epubRepID, workID, now, now}},
+		{`INSERT OR IGNORE INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES(?,?,'audiobook','Chapter One narration',?,?)`, []any{audioRepID, workID, now, now}},
+		{`INSERT OR IGNORE INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'epub',?,?,?,'alice.epub',?)`, []any{epubMediaID, epubRepID, epubRel, epubHash, now, epubSize}},
+		{`INSERT OR IGNORE INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'audiobook',?,?,?,'alice-chapter-01.mp3',?)`, []any{audioMediaID, audioRepID, audioRel, audioHash, now, audioSize}},
+		{`INSERT OR IGNORE INTO alignments(id,epub_media_id,audio_media_id,revision,state,created_at) VALUES(?,?,?,1,'ready',?)`, []any{AlignmentID, epubMediaID, audioMediaID, now}},
+		{`INSERT OR IGNORE INTO alignment_inputs(alignment_id,media_id,role) VALUES(?,?,'epub'),(?,?,'audio')`, []any{AlignmentID, epubMediaID, AlignmentID, audioMediaID}},
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
@@ -128,7 +145,7 @@ func Seed(ctx context.Context, db *sql.DB, dataDir, fixtureDir, artifactPath str
 		}
 	}
 	artifactHash := sha256.Sum256(data)
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO alignment_jobs(id,alignment_id,epub_media_id,audio_media_id,state,attempts,worker_version,model,artifact_id,error_summary,created_at,started_at,finished_at) VALUES(?,?,?,?,'ready',1,?,?,?,'',?,?,?)`, JobID, AlignmentID, EPUBMediaID, AudioMediaID, a.Tool, a.Model, hex.EncodeToString(artifactHash[:]), now, now, now)
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO alignment_jobs(id,alignment_id,epub_media_id,audio_media_id,state,attempts,worker_version,model,artifact_id,error_summary,created_at,started_at,finished_at) VALUES(?,?,?,?,'ready',1,?,?,?,'',?,?,?)`, JobID, AlignmentID, epubMediaID, audioMediaID, a.Tool, a.Model, hex.EncodeToString(artifactHash[:]), now, now, now)
 	if err != nil {
 		return fmt.Errorf("seed Alice job: %w", err)
 	}

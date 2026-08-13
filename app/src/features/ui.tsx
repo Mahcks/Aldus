@@ -160,19 +160,25 @@ export function Button({
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive });
   const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed });
   const paddingClass = kind === 'quiet' ? 'px-2' : 'px-4';
+  const inactiveClass = isInactive ? 'opacity-50' : '';
 
   return (
     <Pressable
       accessibilityRole={accessibilityRole}
       accessibilityLabel={label}
-      accessibilityState={{ disabled: isInactive, selected, busy: loading }}
+      accessibilityState={{
+        disabled: isInactive,
+        selected: accessibilityRole === 'radio' ? undefined : selected,
+        checked: accessibilityRole === 'radio' ? selected : undefined,
+        busy: loading,
+      }}
       disabled={isInactive}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass}`}
+      className={`min-h-11 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass} ${inactiveClass}`}
     >
       {loading ? (
         <ActivityIndicator color={kind === 'primary' ? colors.onAccent : colors.accent} />

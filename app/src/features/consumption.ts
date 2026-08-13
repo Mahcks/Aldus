@@ -10,6 +10,25 @@ import type {
 
 export type MediaChoice = Media & { representation: Representation };
 
+export const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+
+export function playbackRate(rate?: number) {
+  return PLAYBACK_RATES.find((candidate) => candidate === rate) ?? 1;
+}
+
+export function applyPlaybackRate(
+  player: { setPlaybackRate: (rate: number, quality?: 'low' | 'medium' | 'high') => void },
+  rate?: number,
+) {
+  const next = playbackRate(rate);
+  player.setPlaybackRate(next, 'high');
+  return next;
+}
+
+export function clampAudioPosition(seconds: number, duration: number) {
+  return Math.max(0, Math.min(Number.isFinite(duration) ? duration : 0, seconds));
+}
+
 export function choices(representations: Representation[], media: Media[], kinds: string[]) {
   return representations.flatMap((representation) =>
     kinds.includes(representation.kind)

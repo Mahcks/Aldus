@@ -19,11 +19,14 @@ import {
 import { commitsReadingProgress } from '../../../components/reader-location';
 import { BookCover } from '../../../features/bookshelf';
 import {
+  applyPlaybackRate,
   choices,
+  clampAudioPosition,
   defaultPair,
   listenToRead,
   readToListen,
   readyJob,
+  PLAYBACK_RATES,
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
@@ -195,7 +198,7 @@ export default function ConsumeWorkScreen() {
     restoredAudio.current = `${audioID}:${initialAudioMS}`;
     void (async () => {
       await player.seekTo(initialAudioMS / 1000, 0, 0);
-      if (audioState?.playback_speed) player.setPlaybackRate(audioState.playback_speed);
+      applyPlaybackRate(player, audioState?.playback_speed);
       setAudioReady(true);
     })();
   }, [status.isLoaded, initialAudioMS, audioID, audioState?.playback_speed, player]);
@@ -243,7 +246,11 @@ export default function ConsumeWorkScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, status.currentTime, status.isLoaded, audioReady, selectedAudio?.id, alignmentID]);
 
-  async function saveRepresentation(kind: 'epub' | 'audio', value: unknown) {
+  async function saveRepresentation(
+    kind: 'epub' | 'audio',
+    value: unknown,
+    playbackSpeed = status.playbackRate || 1,
+  ) {
     const selected = kind === 'epub' ? selectedEPUB : selectedAudio;
     const state = kind === 'epub' ? epubState : audioState;
     if (!selected) return;
@@ -258,7 +265,7 @@ export default function ConsumeWorkScreen() {
             }
           : {
               audio_timestamp_ms: value as number,
-              playback_speed: status.playbackRate || 1,
+              playback_speed: playbackSpeed,
               expected_revision: state?.revision ?? 0,
             },
       );
@@ -440,7 +447,7 @@ export default function ConsumeWorkScreen() {
   }
 
   function seekToSeconds(targetSeconds: number) {
-    void player.seekTo(Math.max(0, Math.min(status.duration, targetSeconds)));
+    void player.seekTo(clampAudioPosition(targetSeconds, status.duration));
   }
   function handleSkipBack() {
     void player.seekTo(Math.max(0, status.currentTime - 15));
@@ -454,7 +461,7 @@ export default function ConsumeWorkScreen() {
     }
   }
   function handleSkipForward() {
-    void player.seekTo(Math.min(status.duration || Infinity, status.currentTime + 15));
+    seekToSeconds(status.currentTime + 15);
   }
   function handleScrubberPress(event: GestureResponderEvent) {
     seekToSeconds((event.nativeEvent.locationX / trackWidth) * status.duration);
@@ -471,6 +478,10 @@ export default function ConsumeWorkScreen() {
       event.preventDefault?.();
       seekToSeconds(status.currentTime - 5);
     }
+  }
+  function handlePlaybackRate(rate: number) {
+    const next = applyPlaybackRate(player, rate);
+    void saveRepresentation('audio', Math.round(status.currentTime * 1000), next);
   }
   const scrubberKeyboardProps = Platform.OS === 'web' ? { onKeyDown: handleScrubberKeyDown } : {};
 
@@ -515,6 +526,7 @@ export default function ConsumeWorkScreen() {
           {selectedEPUB ? (
             <Button
               label="Read"
+              icon="read"
               kind={mode === 'read' ? 'primary' : 'secondary'}
               onPress={() => setMode('read')}
             />
@@ -522,6 +534,7 @@ export default function ConsumeWorkScreen() {
           {selectedAudio ? (
             <Button
               label="Listen"
+              icon="listen"
               kind={mode === 'listen' ? 'primary' : 'secondary'}
               onPress={() => setMode('listen')}
             />
@@ -552,11 +565,12 @@ export default function ConsumeWorkScreen() {
               segments={alignment?.segments}
               onLocation={onReaderLocation}
               onReady={onReaderReady}
+              onError={(error) => setNotice(errorMessage(error))}
             />
             <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
               <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
               <Button
-                label="Listen from here"
+                label={syncAvailable ? 'Listen from here' : 'Listen unavailable here'}
                 disabled={!syncAvailable}
                 onPress={() => void switchToListen()}
               />
@@ -586,8 +600,11 @@ export default function ConsumeWorkScreen() {
               { name: 'increment', label: 'Skip ahead 5 seconds' },
               { name: 'decrement', label: 'Skip back 5 seconds' },
             ]}
+            accessibilityState={{ disabled: !status.isLoaded }}
+            disabled={!status.isLoaded}
+            focusable
             onAccessibilityAction={handleScrubberAccessibilityAction}
-            className="mt-[18px] h-[22px] w-full justify-center border-b-4 border-panel-strong"
+            className="mt-[18px] h-11 w-full justify-center border-b-4 border-panel-strong focus:border-focus"
             onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
             onPress={handleScrubberPress}
             {...scrubberKeyboardProps}
@@ -608,38 +625,47 @@ export default function ConsumeWorkScreen() {
             </Text>
           </View>
           <View className="my-2.5 flex-row flex-wrap items-center justify-center gap-3">
-            <IconButton icon="skipBack" label="Rewind 15 seconds" onPress={handleSkipBack} />
+            <IconButton
+              icon="skipBack"
+              label="Rewind 15 seconds"
+              disabled={!status.isLoaded}
+              onPress={handleSkipBack}
+            />
             <IconButton
               icon={status.playing ? 'pause' : 'play'}
               label={status.playing ? 'Pause' : 'Play'}
               kind="primary"
+              disabled={!status.isLoaded}
               onPress={handlePlayPause}
             />
             <IconButton
               icon="skipForward"
               label="Skip forward 15 seconds"
+              disabled={!status.isLoaded}
               onPress={handleSkipForward}
             />
           </View>
-          <View className="flex-row flex-wrap items-center justify-center gap-1.5">
-            <Text className="mr-1 text-xs text-muted">Playback speed</Text>
-            {[0.75, 1, 1.25, 1.5, 2].map((rate) => {
-              const selected = status.playbackRate === rate;
-              const optionClass = selected ? 'border-accent bg-accent-soft' : 'border-line';
-              const textClass = selected ? 'text-accent' : 'text-muted';
-              return (
-                <Pressable
-                  key={rate}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${rate}× speed`}
-                  accessibilityState={{ checked: selected }}
-                  onPress={() => player.setPlaybackRate(rate)}
-                  className={`min-h-[34px] min-w-10 items-center justify-center rounded border px-1 ${optionClass}`}
-                >
-                  <Text className={`text-xs font-bold ${textClass}`}>{rate}×</Text>
-                </Pressable>
-              );
-            })}
+          <View className="items-center gap-2">
+            <Text className="text-xs font-semibold text-muted">Playback speed</Text>
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Playback speed"
+              className="flex-row flex-wrap items-center justify-center gap-1.5"
+            >
+              {PLAYBACK_RATES.map((rate) => {
+                const selected = status.playbackRate === rate;
+                return (
+                  <Button
+                    key={rate}
+                    label={`${rate}×`}
+                    accessibilityRole="radio"
+                    disabled={!status.isLoaded}
+                    selected={selected}
+                    onPress={() => handlePlaybackRate(rate)}
+                  />
+                );
+              })}
+            </View>
           </View>
           <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
             <Text className="flex-1 text-[13px] leading-[19px] text-muted">
@@ -648,7 +674,7 @@ export default function ConsumeWorkScreen() {
                 : 'Playback continues without synchronized text here.'}
             </Text>
             <Button
-              label="Read from here"
+              label={syncAvailable ? 'Read from here' : 'Read unavailable here'}
               disabled={!syncAvailable}
               onPress={() => void switchToRead()}
             />

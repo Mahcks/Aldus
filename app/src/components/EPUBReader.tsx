@@ -35,6 +35,7 @@ export const EPUBReader = forwardRef<
     segments?: unknown[];
     onLocation?: (location: ReaderLocation) => void;
     onReady?: () => void;
+    onError?: (error: Error) => void;
   }
 >(function EPUBReader(_, ref) {
   useImperativeHandle(
