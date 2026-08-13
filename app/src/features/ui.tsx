@@ -36,8 +36,8 @@ export const shared = StyleSheet.create({
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.canvas },
-  header: { minHeight: 66, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  heading: { flexDirection: 'row', alignItems: 'center', gap: 10 }, title: { color: colors.ink, fontSize: 22, fontWeight: '800' }, actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  header: { minHeight: 66, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 10 }, title: { color: colors.ink, fontSize: 22, fontWeight: '800' }, actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   content: { width: '100%', maxWidth: 1160, alignSelf: 'center', paddingHorizontal: 20, paddingVertical: 24, gap: 26 },
   section: { gap: 10 }, sectionHeader: { minHeight: 38, borderBottomWidth: 1, borderBottomColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '700' },
   field: { gap: 5 }, label: { color: colors.ink, fontSize: 13, fontWeight: '600' }, input: { minHeight: 42, borderWidth: 1, borderColor: '#b7ac9e', borderRadius: 6, backgroundColor: colors.paper, paddingHorizontal: 11, paddingVertical: 9, color: colors.ink, fontSize: 15 },
