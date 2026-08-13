@@ -7,12 +7,35 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api/contracts"
+	"github.com/mahcks/aldus/server/internal/catalog"
 )
 
-func registerAlignmentJobRoutes(router chi.Router, manager *alignment.Manager) {
+func registerAlignmentJobRoutes(router chi.Router, manager *alignment.Manager, catalogStore *catalog.Store) {
 	router.Post("/alignment-jobs", enqueueAlignment(manager))
 	router.Get("/alignment-jobs/{jobID}", getAlignmentJob(manager))
 	router.Post("/alignment-jobs/{jobID}/cancel", cancelAlignmentJob(manager))
+	router.Get("/works/{workID}/alignment-jobs", listAlignmentJobs(manager, catalogStore))
+}
+
+func listAlignmentJobs(manager *alignment.Manager, catalogStore *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workID := chi.URLParam(r, "workID")
+		if _, err := catalogStore.Work(r.Context(), actor(r), workID); err != nil {
+			writeCatalogResult(w, nil, err)
+			return
+		}
+		limit, offset := pageParams(r)
+		jobs, err := manager.Jobs(r.Context(), workID, limit, offset)
+		if err != nil {
+			writeAlignmentJobError(w, err)
+			return
+		}
+		values := make([]contracts.AlignmentJob, len(jobs))
+		for i, job := range jobs {
+			values[i] = jobDTO(job)
+		}
+		writeJSON(w, http.StatusOK, values)
+	}
 }
 func enqueueAlignment(m *alignment.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

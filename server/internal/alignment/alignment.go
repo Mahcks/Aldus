@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -43,6 +44,7 @@ type Options struct {
 }
 type Manager struct {
 	db      *sql.DB
+	queries *dbsql.Queries
 	options Options
 	wake    chan struct{}
 	mu      sync.Mutex
@@ -138,7 +140,7 @@ func New(db *sql.DB, o Options) (*Manager, error) {
 			return nil, err
 		}
 	}
-	return &Manager{db: db, options: o, wake: make(chan struct{}, 1), cancel: map[string]context.CancelFunc{}, done: make(chan struct{})}, nil
+	return &Manager{db: db, queries: dbsql.New(db), options: o, wake: make(chan struct{}, 1), cancel: map[string]context.CancelFunc{}, done: make(chan struct{})}, nil
 }
 func (m *Manager) Start(ctx context.Context) error {
 	if err := m.recover(ctx); err != nil {
@@ -242,6 +244,38 @@ func (m *Manager) Job(ctx context.Context, actor auth.User, id string) (Job, err
 	}
 	return job, err
 }
+
+func (m *Manager) Jobs(ctx context.Context, workID string, limit, offset int) ([]Job, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := m.queries.ListAlignmentJobsForWork(ctx, dbsql.ListAlignmentJobsForWorkParams{WorkID: workID, Limit: int64(limit), Offset: int64(offset)})
+	if err != nil {
+		return nil, fmt.Errorf("list alignment jobs: %w", err)
+	}
+	jobs := make([]Job, len(rows))
+	for i, row := range rows {
+		job := Job{ID: row.ID, AlignmentID: row.AlignmentID, EPUBMediaID: row.EpubMediaID, AudioMediaID: row.AudioMediaID, State: row.State, Attempts: int(row.Attempts), WorkerVersion: row.WorkerVersion, Model: row.Model, ArtifactID: row.ArtifactID, Error: row.ErrorSummary}
+		job.CreatedAt, _ = time.Parse(time.RFC3339Nano, row.CreatedAt)
+		if row.StartedAt.Valid {
+			value, _ := time.Parse(time.RFC3339Nano, row.StartedAt.String)
+			job.StartedAt = &value
+		}
+		if row.FinishedAt.Valid {
+			value, _ := time.Parse(time.RFC3339Nano, row.FinishedAt.String)
+			job.FinishedAt = &value
+		}
+		jobs[i] = job
+	}
+	return jobs, nil
+}
+
 func (m *Manager) Cancel(ctx context.Context, actor auth.User, id string) error {
 	job, err := m.Job(ctx, actor, id)
 	if err != nil {

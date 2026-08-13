@@ -108,6 +108,7 @@ export const api = {
   },
 
   enqueueAlignment: (body: CreateAlignmentJobRequest) => request<AlignmentJob>('/alignment-jobs', { method: 'POST', body: JSON.stringify(body) }),
+  alignmentJobs: (workID: string) => request<AlignmentJob[]>(`/works/${workID}/alignment-jobs`),
   alignmentJob: (id: string) => request<AlignmentJob>(`/alignment-jobs/${id}`),
   cancelAlignment: (id: string) => request<void>(`/alignment-jobs/${id}/cancel`, { method: 'POST' }),
 

@@ -2,7 +2,9 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,6 +14,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/alignment"
+	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
@@ -41,7 +45,7 @@ func TestRouteContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"GET /alignment-jobs/{jobID}", "GET /alignments/{alignmentID}", "GET /alignments/{alignmentID}/progress", "GET /auth/me", "GET /health", "GET /libraries", "GET /libraries/{libraryID}", "GET /libraries/{libraryID}/members", "GET /libraries/{libraryID}/representations/{representationID}/media", "GET /libraries/{libraryID}/works", "GET /media/{mediaID}", "GET /representations/{representationID}", "GET /representations/{representationID}/state", "GET /setup/status", "GET /users", "GET /works/{workID}", "GET /works/{workID}/progress", "GET /works/{workID}/representations",
+		"GET /alignment-jobs/{jobID}", "GET /alignments/{alignmentID}", "GET /alignments/{alignmentID}/progress", "GET /auth/me", "GET /health", "GET /libraries", "GET /libraries/{libraryID}", "GET /libraries/{libraryID}/members", "GET /libraries/{libraryID}/representations/{representationID}/media", "GET /libraries/{libraryID}/works", "GET /media/{mediaID}", "GET /representations/{representationID}", "GET /representations/{representationID}/state", "GET /setup/status", "GET /users", "GET /works/{workID}", "GET /works/{workID}/alignment-jobs", "GET /works/{workID}/progress", "GET /works/{workID}/representations",
 		"DELETE /libraries/{libraryID}", "DELETE /libraries/{libraryID}/members/{userID}", "DELETE /representations/{representationID}", "DELETE /works/{workID}",
 		"PATCH /libraries/{libraryID}", "PATCH /representations/{representationID}", "PATCH /users/{userID}", "PATCH /works/{workID}",
 		"POST /alignment-jobs", "POST /alignment-jobs/{jobID}/cancel", "POST /alignments/{alignmentID}/locators/audio", "POST /alignments/{alignmentID}/locators/epub", "POST /alignments/{alignmentID}/resolve/audio", "POST /alignments/{alignmentID}/resolve/epub", "POST /auth/login", "POST /auth/logout", "POST /libraries", "POST /libraries/{libraryID}/representations/{representationID}/media", "POST /libraries/{libraryID}/works", "POST /setup", "POST /users", "POST /works/{workID}/representations",
@@ -68,6 +72,95 @@ func TestProgressConflictContract(t *testing.T) {
 		if !strings.Contains(conflict.Body.String(), want) {
 			t.Fatalf("conflict body = %s, want %s", conflict.Body.String(), want)
 		}
+	}
+}
+
+func TestWorkAlignmentJobListing(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := position.New(db).SeedFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "admin", Password: "a-secure-test-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := map[string]auth.Session{}
+	for _, role := range []string{"owner", "editor", "reader"} {
+		user, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: role, Password: "a-secure-test-password"}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := catalog.New(db).SetMember(ctx, admin.User, "fixture-library", user.ID, role); err != nil {
+			t.Fatal(err)
+		}
+		sessions[role], _ = accounts.Login(ctx, auth.Credentials{Username: role, Password: "a-secure-test-password"})
+	}
+	_, err = accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogStore := catalog.New(db)
+	outsiderSession, _ := accounts.Login(ctx, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"})
+	manager, err := alignment.New(db, alignment.Options{MediaRoot: t.TempDir(), ArtifactRoot: t.TempDir(), Command: []string{"true"}, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	for i := 1; i <= 5; i++ {
+		if _, err := db.ExecContext(ctx, `INSERT INTO media(id,representation_id,kind,path,sha256,created_at) VALUES(?, 'fixture-epub-representation','epub',?,?,?)`, fmt.Sprintf("epub-%d", i), fmt.Sprintf("epub-%d", i), strings.Repeat(fmt.Sprint(i), 64), now.Format(time.RFC3339Nano)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	states := []string{"failed", "stale", "ready", "processing", "pending"}
+	for i, state := range states {
+		created := now.Add(time.Duration(i) * time.Minute).Format(time.RFC3339Nano)
+		var alignmentID any
+		if state == "ready" {
+			alignmentID = "fixture-alignment"
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO alignment_jobs(id,alignment_id,epub_media_id,audio_media_id,state,worker_version,model,error_summary,created_at) VALUES(?,?,?, 'fixture-audio',?,'whisperx 3.8.6','base.en',?,?)`, fmt.Sprintf("job-%d", i), alignmentID, fmt.Sprintf("epub-%d", i+1), state, map[bool]string{true: "bounded failure"}[state == "failed"], created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := Handler(Dependencies{Position: position.New(db), Auth: accounts, Catalog: catalogStore, AlignmentJobs: manager})
+	for role, session := range sessions {
+		response := request(t, handler, session.Token, http.MethodGet, "/works/fixture-work/alignment-jobs?limit=3", "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s list = %d %s", role, response.Code, response.Body.String())
+		}
+	}
+	response := request(t, handler, sessions["reader"].Token, http.MethodGet, "/works/fixture-work/alignment-jobs", "")
+	var jobs []contracts.AlignmentJob
+	if err := json.Unmarshal(response.Body.Bytes(), &jobs); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 5 || jobs[0].ID != "job-4" || jobs[1].State != "processing" || jobs[2].State != "ready" || jobs[2].AlignmentID != "fixture-alignment" || jobs[3].State != "stale" || jobs[4].Error != "bounded failure" {
+		t.Fatalf("ordered jobs = %#v", jobs)
+	}
+	emptyWork, err := catalogStore.CreateWork(ctx, admin.User, "fixture-library", "No alignments", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := request(t, handler, sessions["reader"].Token, http.MethodGet, "/works/"+emptyWork.ID+"/alignment-jobs", "")
+	if empty.Code != http.StatusOK || empty.Body.String() != "[]\n" {
+		t.Fatalf("empty list = %d %q", empty.Code, empty.Body.String())
+	}
+	denied := request(t, handler, outsiderSession.Token, http.MethodGet, "/works/fixture-work/alignment-jobs", "")
+	if denied.Code != http.StatusNotFound || denied.Body.String() != "not found\n" {
+		t.Fatalf("outsider list = %d %q", denied.Code, denied.Body.String())
+	}
+	missing := request(t, handler, sessions["reader"].Token, http.MethodGet, "/works/missing/alignment-jobs", "")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing list = %d", missing.Code)
 	}
 }
 
