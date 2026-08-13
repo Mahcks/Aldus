@@ -49,3 +49,20 @@ export function parentDirectory(path: string) {
 export function childDirectory(path: string, child: string) {
   return [path, child].filter(Boolean).join('/');
 }
+
+/**
+ * Derives a reasonable default source name from the last segment of a
+ * filesystem path, e.g. `/library/media/scifi` -> "Scifi",
+ * `/mnt/books/sci-fi_classics` -> "Sci Fi Classics". Purely a starting
+ * point; callers should let the admin edit it freely.
+ */
+export function deriveSourceName(path: string): string {
+  const segment = path.split('/').filter(Boolean).pop() ?? '';
+  if (!segment) return '';
+  return segment
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(' ');
+}

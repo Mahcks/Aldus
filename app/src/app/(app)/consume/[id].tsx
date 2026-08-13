@@ -9,7 +9,8 @@ import type { AudioSource } from 'expo-audio';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
+import { Platform } from 'react-native';
 import {
   EPUBReader,
   type EPUBReaderHandle,
@@ -26,7 +27,8 @@ import {
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
-import { Button, Loading, Notice, colors } from '../../../features/ui';
+import { Button, IconButton, Loading, Notice } from '../../../features/ui';
+import { Pressable, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
@@ -437,11 +439,46 @@ export default function ConsumeWorkScreen() {
     }
   }
 
+  function seekToSeconds(targetSeconds: number) {
+    void player.seekTo(Math.max(0, Math.min(status.duration, targetSeconds)));
+  }
+  function handleSkipBack() {
+    void player.seekTo(Math.max(0, status.currentTime - 15));
+  }
+  function handlePlayPause() {
+    if (status.playing) {
+      player.pause();
+      void saveListeningPosition(Math.round(status.currentTime * 1000));
+    } else {
+      player.play();
+    }
+  }
+  function handleSkipForward() {
+    void player.seekTo(Math.min(status.duration || Infinity, status.currentTime + 15));
+  }
+  function handleScrubberPress(event: GestureResponderEvent) {
+    seekToSeconds((event.nativeEvent.locationX / trackWidth) * status.duration);
+  }
+  function handleScrubberAccessibilityAction(event: AccessibilityActionEvent) {
+    if (event.nativeEvent.actionName === 'increment') seekToSeconds(status.currentTime + 5);
+    else if (event.nativeEvent.actionName === 'decrement') seekToSeconds(status.currentTime - 5);
+  }
+  function handleScrubberKeyDown(event: { key: string; preventDefault?: () => void }) {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault?.();
+      seekToSeconds(status.currentTime + 5);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault?.();
+      seekToSeconds(status.currentTime - 5);
+    }
+  }
+  const scrubberKeyboardProps = Platform.OS === 'web' ? { onKeyDown: handleScrubberKeyDown } : {};
+
   if (loading || !work)
     return loading ? (
       <Loading />
     ) : (
-      <View style={styles.page}>
+      <View className="min-h-full flex-1 items-center justify-center bg-canvas p-6">
         <Notice danger>{notice || 'Work unavailable.'}</Notice>
       </View>
     );
@@ -458,18 +495,23 @@ export default function ConsumeWorkScreen() {
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
   return (
-    <View style={styles.page}>
-      <View style={styles.toolbar}>
-        <Button label="Work" kind="quiet" onPress={() => goBackOr(`/work/${params.id}`)} />
-        <View style={styles.identity}>
-          <Text numberOfLines={1} style={styles.title}>
+    <View className="min-h-full flex-1 bg-canvas">
+      <View className="min-h-[70px] flex-row items-center gap-3.5 border-b border-line bg-paper px-4 py-2.5">
+        <IconButton
+          icon="back"
+          label="Back to work"
+          kind="quiet"
+          onPress={() => goBackOr(`/work/${params.id}`)}
+        />
+        <View className="min-w-0 flex-1">
+          <Text numberOfLines={1} className="text-lg font-extrabold text-ink">
             {work.title}
           </Text>
-          <Text numberOfLines={1} style={styles.byline}>
+          <Text numberOfLines={1} className="mt-0.5 text-xs text-muted">
             {work.author || 'Unknown author'}
           </Text>
         </View>
-        <View style={styles.modeSwitch}>
+        <View className="flex-row gap-2">
           {selectedEPUB ? (
             <Button
               label="Read"
@@ -486,8 +528,8 @@ export default function ConsumeWorkScreen() {
           ) : null}
         </View>
       </View>
-      <View style={styles.syncLine}>
-        <Text style={styles.syncText}>
+      <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
+        <Text className="text-xs font-semibold text-muted">
           {mode === 'read' && alignmentID
             ? pageSyncLabel
             : syncAvailable
@@ -496,13 +538,13 @@ export default function ConsumeWorkScreen() {
         </Text>
       </View>
       {notice ? (
-        <View style={styles.notice}>
+        <View className="px-5 pt-3">
           <Notice danger>{notice}</Notice>
         </View>
       ) : null}
       {mode === 'read' ? (
         selectedEPUB && epubBlob ? (
-          <View style={styles.reader}>
+          <View className="w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5">
             <EPUBReader
               ref={reader}
               source={epubBlob}
@@ -511,8 +553,8 @@ export default function ConsumeWorkScreen() {
               onLocation={onReaderLocation}
               onReady={onReaderReady}
             />
-            <View style={styles.switchBar}>
-              <Text style={styles.helper}>{readerHelper}</Text>
+            <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
+              <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
               <Button
                 label="Listen from here"
                 disabled={!syncAvailable}
@@ -524,11 +566,13 @@ export default function ConsumeWorkScreen() {
           <EmptyMode text="No EPUB is available for this Work." />
         )
       ) : selectedAudio ? (
-        <View style={styles.listener}>
+        <View className="w-full max-w-[620px] flex-1 items-center justify-center gap-2.5 self-center p-6">
           <BookCover title={work.title} author={work.author} compact />
-          <Text style={styles.listenTitle}>{work.title}</Text>
-          <Text style={styles.author}>{work.author || 'Unknown author'}</Text>
-          <Text style={styles.narration}>{selectedAudio.representation.label}</Text>
+          <Text className="mt-4 text-center font-editorial text-2xl font-bold leading-8 text-ink">
+            {work.title}
+          </Text>
+          <Text className="text-sm text-ink">{work.author || 'Unknown author'}</Text>
+          <Text className="text-[13px] text-muted">{selectedAudio.representation.label}</Text>
           <Pressable
             accessibilityRole="adjustable"
             accessibilityLabel="Audiobook position"
@@ -538,78 +582,67 @@ export default function ConsumeWorkScreen() {
               now: Math.round(status.currentTime),
               text: `${formatTime(status.currentTime)} of ${formatTime(status.duration)}`,
             }}
-            style={styles.scrubber}
+            accessibilityActions={[
+              { name: 'increment', label: 'Skip ahead 5 seconds' },
+              { name: 'decrement', label: 'Skip back 5 seconds' },
+            ]}
+            onAccessibilityAction={handleScrubberAccessibilityAction}
+            className="mt-[18px] h-[22px] w-full justify-center border-b-4 border-panel-strong"
             onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-            onPress={(event) =>
-              void player.seekTo(
-                Math.max(
-                  0,
-                  Math.min(
-                    status.duration,
-                    (event.nativeEvent.locationX / trackWidth) * status.duration,
-                  ),
-                ),
-              )
-            }
+            onPress={handleScrubberPress}
+            {...scrubberKeyboardProps}
           >
             <View
-              style={[
-                styles.scrubberFill,
-                {
-                  width: `${status.duration ? Math.min(100, (status.currentTime / status.duration) * 100) : 0}%`,
-                },
-              ]}
-            />
-          </Pressable>
-          <View style={styles.timeRow}>
-            <Text style={styles.time}>{formatTime(status.currentTime)}</Text>
-            <Text style={styles.duration}>{formatTime(status.duration)}</Text>
-          </View>
-          <View style={styles.controls}>
-            <Button
-              label="−15 sec"
-              onPress={() => void player.seekTo(Math.max(0, status.currentTime - 15))}
-            />
-            <Button
-              label={status.playing ? 'Pause' : 'Play'}
-              kind="primary"
-              onPress={() => {
-                if (status.playing) {
-                  player.pause();
-                  void saveListeningPosition(Math.round(status.currentTime * 1000));
-                } else player.play();
+              className="absolute -bottom-1 left-0 h-1 bg-accent"
+              style={{
+                width: `${status.duration ? Math.min(100, (status.currentTime / status.duration) * 100) : 0}%`,
               }}
             />
-            <Button
-              label="+15 sec"
-              onPress={() =>
-                void player.seekTo(Math.min(status.duration || Infinity, status.currentTime + 15))
-              }
+          </Pressable>
+          <View className="w-full flex-row justify-between">
+            <Text className="text-[13px] text-ink" style={{ fontVariant: ['tabular-nums'] }}>
+              {formatTime(status.currentTime)}
+            </Text>
+            <Text className="text-[13px] text-muted" style={{ fontVariant: ['tabular-nums'] }}>
+              {formatTime(status.duration)}
+            </Text>
+          </View>
+          <View className="my-2.5 flex-row flex-wrap items-center justify-center gap-3">
+            <IconButton icon="skipBack" label="Rewind 15 seconds" onPress={handleSkipBack} />
+            <IconButton
+              icon={status.playing ? 'pause' : 'play'}
+              label={status.playing ? 'Pause' : 'Play'}
+              kind="primary"
+              onPress={handlePlayPause}
+            />
+            <IconButton
+              icon="skipForward"
+              label="Skip forward 15 seconds"
+              onPress={handleSkipForward}
             />
           </View>
-          <View style={styles.speed}>
-            <Text style={styles.speedLabel}>Playback speed</Text>
-            {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityState={{ checked: status.playbackRate === rate }}
-                key={rate}
-                style={[styles.speedOption, status.playbackRate === rate && styles.speedSelected]}
-                onPress={() => player.setPlaybackRate(rate)}
-              >
-                <Text
-                  style={[
-                    styles.speedText,
-                    status.playbackRate === rate && styles.speedTextSelected,
-                  ]}
+          <View className="flex-row flex-wrap items-center justify-center gap-1.5">
+            <Text className="mr-1 text-xs text-muted">Playback speed</Text>
+            {[0.75, 1, 1.25, 1.5, 2].map((rate) => {
+              const selected = status.playbackRate === rate;
+              const optionClass = selected ? 'border-accent bg-accent-soft' : 'border-line';
+              const textClass = selected ? 'text-accent' : 'text-muted';
+              return (
+                <Pressable
+                  key={rate}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${rate}× speed`}
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => player.setPlaybackRate(rate)}
+                  className={`min-h-[34px] min-w-10 items-center justify-center rounded border px-1 ${optionClass}`}
                 >
-                  {rate}×
-                </Text>
-              </Pressable>
-            ))}
+                  <Text className={`text-xs font-bold ${textClass}`}>{rate}×</Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <View style={styles.switchBar}>
-            <Text style={styles.helper}>
+          <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
+            <Text className="flex-1 text-[13px] leading-[19px] text-muted">
               {syncAvailable
                 ? 'Return to the matching text.'
                 : 'Playback continues without synchronized text here.'}
@@ -630,8 +663,8 @@ export default function ConsumeWorkScreen() {
 
 function EmptyMode({ text }: { text: string }) {
   return (
-    <View style={styles.empty}>
-      <Text style={styles.helper}>{text}</Text>
+    <View className="flex-1 items-center justify-center p-8">
+      <Text className="text-[13px] leading-[19px] text-muted">{text}</Text>
     </View>
   );
 }
@@ -640,119 +673,3 @@ function formatTime(seconds: number) {
   const whole = Math.max(0, Math.floor(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, minHeight: '100%', backgroundColor: colors.canvas },
-  toolbar: {
-    minHeight: 70,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-    backgroundColor: colors.paper,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  identity: { flex: 1, minWidth: 0 },
-  title: { color: colors.ink, fontSize: 18, fontWeight: '800' },
-  byline: { color: colors.muted, fontSize: 12, marginTop: 2 },
-  modeSwitch: { flexDirection: 'row', gap: 7 },
-  syncLine: {
-    minHeight: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-    backgroundColor: colors.panel,
-  },
-  syncText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  notice: { paddingHorizontal: 20, paddingTop: 12 },
-  reader: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 1100,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  listener: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 620,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 10,
-  },
-  listenTitle: {
-    color: colors.ink,
-    fontFamily: 'Georgia',
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  author: { color: colors.ink, fontSize: 14 },
-  narration: { color: colors.muted, fontSize: 13 },
-  scrubber: {
-    width: '100%',
-    height: 22,
-    justifyContent: 'center',
-    borderBottomWidth: 4,
-    borderBottomColor: colors.panelStrong,
-    marginTop: 18,
-  },
-  scrubberFill: {
-    position: 'absolute',
-    bottom: -4,
-    left: 0,
-    height: 4,
-    backgroundColor: colors.accent,
-  },
-  timeRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between' },
-  time: { color: colors.ink, fontVariant: ['tabular-nums'], fontSize: 13 },
-  duration: { color: colors.muted, fontVariant: ['tabular-nums'], fontSize: 13 },
-  controls: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    marginVertical: 10,
-  },
-  speed: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  speedLabel: { color: colors.muted, fontSize: 12, marginRight: 4 },
-  speedOption: {
-    minWidth: 40,
-    minHeight: 34,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  speedSelected: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
-  speedText: { color: colors.muted, fontSize: 12, fontWeight: '700' },
-  speedTextSelected: { color: colors.accent },
-  switchBar: {
-    width: '100%',
-    minHeight: 62,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 10,
-  },
-  helper: { flex: 1, color: colors.muted, fontSize: 13, lineHeight: 19 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 },
-});

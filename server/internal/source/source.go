@@ -178,7 +178,7 @@ func (s *Store) Directories(actor auth.User, rootID, relative string) (Directory
 		}
 		return DirectoryListing{}, validation("path_not_found", "That folder is unavailable on the Aldus server.")
 	}
-	var directories []string
+	directories := []string{}
 	for _, entry := range entries {
 		if entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
 			directories = append(directories, entry.Name())

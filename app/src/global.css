@@ -1,0 +1,132 @@
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+
+/* Platform-specific font families */
+@media android {
+  :root {
+    --font-mono: monospace;
+    --font-rounded: normal;
+    --font-serif: serif;
+    --font-sans: normal;
+  }
+}
+
+@media ios {
+  :root {
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
+    --font-sans: system-ui;
+    --font-rounded: ui-rounded;
+  }
+}
+
+/*
+ * Aldus design tokens.
+ * Warm literary palette: parchment canvas, paper surfaces, dark ink,
+ * one restrained terracotta accent. Values re-tuned from the previous
+ * theme.ts/ui.tsx tokens for WCAG AA contrast.
+ */
+:root {
+  /* Surfaces (elevation scale — each step a whisper lighter than the last) */
+  --color-canvas: #f4efe6;
+  --color-panel: #f4efe6;
+  --color-paper: #fffcf6;
+  --color-raised: #fffefb;
+  --color-panel-strong: #dfd3c3;
+  --color-control: #efe8db;
+  --color-control-focus: #fffcf6;
+
+  /* Text hierarchy (use all four — never just ink/muted) */
+  --color-ink: #27211c;
+  --color-text-secondary: #4a4038;
+  --color-muted: #6c6258;
+  --color-subtle: #9c9184;
+
+  /* Border progression */
+  --color-line: rgb(39 33 28 / 0.14);
+  --color-line-subtle: rgb(39 33 28 / 0.08);
+  --color-line-strong: rgb(39 33 28 / 0.24);
+
+  /* Accent (primary actions, selection) */
+  --color-accent: #8a3c24;
+  --color-accent-strong: #6f2f1c;
+  --color-accent-soft: #f1ded5;
+  --color-on-accent: #fffdf8;
+
+  /* Semantic status */
+  --color-danger: #8a3028;
+  --color-danger-soft: #f6dfdb;
+  --color-focus: #bd6a4e;
+  --color-success: #3f5c43;
+  --color-success-soft: #e1e9df;
+  --color-warning: #7a5a17;
+  --color-warning-soft: #f3e6c8;
+  --color-info: #3d5a73;
+  --color-info-soft: #dfe7ee;
+  --color-neutral: #6c6258;
+  --color-neutral-soft: #e7e0d4;
+
+  --radius-control: 0.375rem;
+  --radius-card: 0.625rem;
+  --radius-dialog: 1rem;
+  --radius-pill: 999px;
+
+  /* Layered shadow scale — the only depth strategy used in this app */
+  --shadow-xs: 0 1px 2px rgb(39 33 28 / 0.06);
+  --shadow-sm:
+    0 2px 6px rgb(39 33 28 / 0.08), 0 1px 2px rgb(39 33 28 / 0.06);
+  --shadow-card: 0 8px 20px -6px rgb(39 33 28 / 0.18), 0 2px 6px rgb(39 33 28 / 0.08);
+  --shadow-popover:
+    0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
+}
+
+@layer theme {
+  @theme {
+    --color-canvas: var(--color-canvas);
+    --color-panel: var(--color-panel);
+    --color-paper: var(--color-paper);
+    --color-raised: var(--color-raised);
+    --color-panel-strong: var(--color-panel-strong);
+    --color-control: var(--color-control);
+    --color-control-focus: var(--color-control-focus);
+
+    --color-ink: var(--color-ink);
+    --color-text-secondary: var(--color-text-secondary);
+    --color-muted: var(--color-muted);
+    --color-subtle: var(--color-subtle);
+
+    --color-line: var(--color-line);
+    --color-line-subtle: var(--color-line-subtle);
+    --color-line-strong: var(--color-line-strong);
+
+    --color-accent: var(--color-accent);
+    --color-accent-strong: var(--color-accent-strong);
+    --color-accent-soft: var(--color-accent-soft);
+    --color-on-accent: var(--color-on-accent);
+
+    --color-danger: var(--color-danger);
+    --color-danger-soft: var(--color-danger-soft);
+    --color-focus: var(--color-focus);
+    --color-success: var(--color-success);
+    --color-success-soft: var(--color-success-soft);
+    --color-warning: var(--color-warning);
+    --color-warning-soft: var(--color-warning-soft);
+    --color-info: var(--color-info);
+    --color-info-soft: var(--color-info-soft);
+    --color-neutral: var(--color-neutral);
+    --color-neutral-soft: var(--color-neutral-soft);
+
+    --font-editorial: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+
+    --radius-control: var(--radius-control);
+    --radius-card: var(--radius-card);
+    --radius-dialog: var(--radius-dialog);
+    --radius-pill: var(--radius-pill);
+
+    --shadow-xs: var(--shadow-xs);
+    --shadow-sm: var(--shadow-sm);
+    --shadow-card: var(--shadow-card);
+    --shadow-popover: var(--shadow-popover);
+  }
+}

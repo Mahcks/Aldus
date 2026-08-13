@@ -1,6 +1,6 @@
 import { useState, type PropsWithChildren } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, space, type } from './ui';
+import { colors, StatusBadge } from './ui';
+import { Pressable, Text, View } from './tw';
 
 const covers = [
   ['#74402f', '#f7ede1'],
@@ -9,6 +9,21 @@ const covers = [
   ['#8a6237', '#fff1dd'],
   ['#3f5960', '#f4eee3'],
 ] as const;
+
+type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+
+/** Maps the informal badge labels used across summary badges to a status tone. */
+function resolveBadgeTone(label: string): StatusTone {
+  if (label === 'Synced') return 'success';
+  if (label === 'Read' || label === 'Listen') return 'info';
+  return 'neutral';
+}
+
+function hash(value: string) {
+  let result = 0;
+  for (const character of value) result = (result * 31 + character.charCodeAt(0)) >>> 0;
+  return result;
+}
 
 export function BookCover({
   title,
@@ -20,21 +35,39 @@ export function BookCover({
   compact?: boolean;
 }) {
   const palette = covers[hash(title + author) % covers.length];
+  const sizeClass = compact ? 'h-[252px] w-[172px]' : 'aspect-[0.68] w-full';
+  const titleSizeClass = compact ? 'text-[22px] leading-7' : 'text-xl leading-6';
+
   return (
     <View
       accessibilityLabel={`Cover for ${title}`}
-      style={[styles.cover, compact && styles.compact, { backgroundColor: palette[0] }]}
+      className={`justify-center rounded-[3px] p-3 ${sizeClass}`}
+      style={{
+        backgroundColor: palette[0],
+        shadowColor: colors.ink,
+        shadowOpacity: 0.16,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 3 },
+      }}
     >
-      <View style={[styles.rule, { borderColor: palette[1] }]}>
+      <View
+        className="flex-1 items-center justify-between border px-3 py-6"
+        style={{ borderColor: palette[1] }}
+      >
         <Text
           numberOfLines={4}
           adjustsFontSizeToFit
-          style={[styles.coverTitle, compact && styles.compactTitle, { color: palette[1] }]}
+          className={`text-center font-editorial font-bold ${titleSizeClass}`}
+          style={{ color: palette[1] }}
         >
           {title}
         </Text>
-        <View style={[styles.divider, { backgroundColor: palette[1] }]} />
-        <Text numberOfLines={2} style={[styles.coverAuthor, { color: palette[1] }]}>
+        <View className="h-px w-7" style={{ backgroundColor: palette[1] }} />
+        <Text
+          numberOfLines={2}
+          className="text-center font-editorial text-[11px] leading-[15px]"
+          style={{ color: palette[1] }}
+        >
           {author || 'Aldus Library'}
         </Text>
       </View>
@@ -42,14 +75,32 @@ export function BookCover({
   );
 }
 
+/** Legacy plain chip. Prefer `StatusBadge` for new call sites. */
 export function Badge({ children }: PropsWithChildren) {
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{children}</Text>
+    <View className="rounded border border-line bg-panel px-1.5 py-0.5">
+      <Text className="text-[11px] font-bold text-muted">{children}</Text>
     </View>
   );
 }
 
+function resolvePressStateClass({ focused, pressed }: { focused: boolean; pressed: boolean }) {
+  if (focused) return 'outline outline-2 outline-focus';
+  if (pressed) return 'opacity-75';
+  return '';
+}
+
+type WorkPresentationProps = {
+  title: string;
+  author?: string;
+  badges?: string[];
+  progress?: string;
+  context?: string;
+  narrow?: boolean;
+  onPress: () => void;
+};
+
+/** Card-shaped presentation of a Work, for grids. */
 export function WorkCard({
   title,
   author,
@@ -58,112 +109,113 @@ export function WorkCard({
   context,
   narrow,
   onPress,
-}: {
-  title: string;
-  author?: string;
-  badges?: string[];
-  progress?: string;
-  context?: string;
-  narrow?: boolean;
-  onPress: () => void;
-}) {
+}: WorkPresentationProps) {
   const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+
+  const widthClass = narrow ? 'w-[148px]' : 'w-[184px]';
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
   return (
     <Pressable
       accessibilityRole="link"
       accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      style={({ pressed }) => [
-        styles.card,
-        narrow && styles.narrowCard,
-        focused && styles.focused,
-        pressed && styles.pressed,
-      ]}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onPress={onPress}
+      className={`gap-1.5 rounded ${widthClass} ${stateClass}`}
     >
       <BookCover title={title} author={author} />
-      <Text numberOfLines={2} style={styles.title}>
+      <Text
+        numberOfLines={2}
+        className="mt-1 font-editorial text-base font-bold leading-5 text-ink"
+      >
         {title}
       </Text>
-      <Text numberOfLines={1} style={styles.author}>
+      <Text numberOfLines={1} className="text-sm leading-[18px] text-muted">
         {author || 'Unknown author'}
       </Text>
-      {context ? <Text style={styles.context}>{context}</Text> : null}
+      {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
       {progress ? (
-        <Text numberOfLines={1} style={styles.progress}>
+        <Text numberOfLines={1} className="text-xs font-bold text-accent">
           {progress}
         </Text>
       ) : null}
-      <View style={styles.badges}>
-        {badges.map((badge) => (
-          <Badge key={badge}>{badge}</Badge>
-        ))}
-      </View>
+      {badges.length ? (
+        <View className="min-h-6 flex-row flex-wrap gap-1">
+          {badges.map((badge) => (
+            <StatusBadge key={badge} tone={resolveBadgeTone(badge)} label={badge} />
+          ))}
+        </View>
+      ) : null}
     </Pressable>
   );
 }
 
-function hash(value: string) {
-  let result = 0;
-  for (const character of value) result = (result * 31 + character.charCodeAt(0)) >>> 0;
-  return result;
-}
+/** Alias of `WorkCard`, matching the design plan's naming. */
+export const WorkTile = WorkCard;
 
-const styles = StyleSheet.create({
-  cover: {
-    width: '100%',
-    aspectRatio: 0.68,
-    padding: space.md,
-    justifyContent: 'center',
-    borderRadius: 3,
-    shadowColor: '#2a1c15',
-    shadowOpacity: 0.16,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  compact: { width: 172, height: 252 },
-  rule: {
-    flex: 1,
-    borderWidth: 1,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xl,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  coverTitle: {
-    fontFamily: 'Georgia',
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  compactTitle: { fontSize: 22, lineHeight: 27 },
-  divider: { width: 28, height: 1 },
-  coverAuthor: { fontFamily: 'Georgia', fontSize: 11, lineHeight: 15, textAlign: 'center' },
-  badge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.panel,
-  },
-  badgeText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
-  card: { width: 184, gap: 7, borderRadius: 4 },
-  narrowCard: { width: 148 },
-  pressed: { opacity: 0.76 },
-  focused: { outlineStyle: 'solid', outlineWidth: 2, outlineColor: colors.focus },
-  title: {
-    color: colors.ink,
-    fontFamily: 'Georgia',
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: '700',
-    marginTop: space.xs,
-  },
-  author: { color: colors.muted, ...type.meta },
-  progress: { color: colors.accent, fontSize: 12, fontWeight: '700' },
-  context: { color: colors.muted, fontSize: 11, fontWeight: '700' },
-  badges: { minHeight: 24, flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
-});
+/** Horizontal list-row presentation of a Work: thumbnail + title/author/badges/progress. */
+export function WorkRow({
+  title,
+  author,
+  badges = [],
+  progress,
+  context,
+  onPress,
+}: WorkPresentationProps) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onPress}
+      className={`flex-row items-center gap-4 rounded border-b border-line py-3 ${stateClass}`}
+    >
+      <View className="w-14">
+        <BookCover title={title} author={author} />
+      </View>
+      <View className="min-w-0 flex-1 gap-1">
+        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+          {title}
+        </Text>
+        <Text numberOfLines={1} className="text-sm text-muted">
+          {author || 'Unknown author'}
+        </Text>
+        {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
+        {progress ? (
+          <Text numberOfLines={1} className="text-xs font-bold text-accent">
+            {progress}
+          </Text>
+        ) : null}
+        {badges.length ? (
+          <View className="flex-row flex-wrap gap-1">
+            {badges.map((badge) => (
+              <StatusBadge key={badge} tone={resolveBadgeTone(badge)} label={badge} />
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}

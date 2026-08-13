@@ -29,6 +29,7 @@ const names = {
   check: 'check',
   warning: 'alert-outline',
   error: 'alert-circle-outline',
+  close: 'close',
 } satisfies Record<string, MaterialName>;
 
 export type AppIconName = keyof typeof names;

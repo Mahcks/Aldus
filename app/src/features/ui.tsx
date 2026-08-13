@@ -1,73 +1,300 @@
-import { useState, type PropsWithChildren, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
+  Modal,
+  Platform,
   SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
   useWindowDimensions,
-  View,
-  type TextInputProps,
 } from 'react-native';
 import { AppIcon, type AppIconName } from './icons';
 import { colors } from './theme';
+import { Pressable, ScrollView, Text, TextInput, View, type TextInputProps } from './tw';
 
 export { colors } from './theme';
-export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48, huge: 64 };
-export const type = StyleSheet.create({
-  display: { fontFamily: 'Georgia', fontSize: 34, lineHeight: 41, fontWeight: '700' },
-  pageTitle: { fontFamily: 'Georgia', fontSize: 26, lineHeight: 32, fontWeight: '700' },
-  sectionTitle: { fontSize: 17, lineHeight: 22, fontWeight: '800' },
-  body: { fontSize: 15, lineHeight: 22 },
-  label: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
-  meta: { fontSize: 13, lineHeight: 18 },
-});
 
-export function Page({
-  children,
-  title,
-  actions,
-  back,
-}: PropsWithChildren<{ title: string; actions?: ReactNode; back?: ReactNode }>) {
-  const compact = useWindowDimensions().width < 600;
+/**
+ * `shared` is a map of Tailwind className strings (not StyleSheet objects).
+ * Screens still using the legacy `style={shared.x}` pattern need updating to
+ * `className={shared.x}` when they're migrated to NativeWind in later phases.
+ */
+export const shared = {
+  listItem: 'border-b border-line py-3.5 gap-1',
+  itemTitle: 'text-base font-bold text-ink',
+  itemMeta: 'text-sm text-muted',
+  form: 'max-w-[560px] gap-3',
+  split: 'flex-row flex-wrap gap-6',
+  grow: 'flex-grow basis-[360px]',
+  mono: 'text-muted font-mono text-xs',
+};
+
+type ButtonKind = 'primary' | 'secondary' | 'danger' | 'quiet';
+type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+type NoticeTone = 'info' | 'warning' | 'success' | 'danger';
+
+function resolveButtonBackgroundClass({
+  kind,
+  selected,
+  pressed,
+  inactive,
+}: {
+  kind: ButtonKind;
+  selected: boolean;
+  pressed: boolean;
+  inactive: boolean;
+}) {
+  if (inactive && (kind === 'primary' || kind === 'danger')) return 'bg-panel-strong';
+  if (selected) return 'bg-accent-soft';
+  if (kind === 'primary') return pressed ? 'bg-accent-strong' : 'bg-accent';
+  if (kind === 'danger') return pressed ? 'bg-danger-soft' : 'bg-transparent';
+  if (kind === 'quiet') return pressed ? 'bg-panel' : 'bg-transparent';
+  return pressed ? 'bg-panel' : 'bg-paper';
+}
+
+function resolveButtonBorderClass({
+  kind,
+  selected,
+  focused,
+  inactive,
+}: {
+  kind: ButtonKind;
+  selected: boolean;
+  focused: boolean;
+  inactive: boolean;
+}) {
+  if (focused) return 'border-2 border-focus';
+  if (inactive && (kind === 'primary' || kind === 'danger')) return 'border border-line-strong';
+  if (selected) return 'border border-accent';
+  if (kind === 'primary') return 'border border-accent';
+  if (kind === 'danger') return 'border border-danger';
+  if (kind === 'quiet') return 'border border-transparent';
+  return 'border border-line-strong';
+}
+
+function resolveButtonTextClass({
+  kind,
+  selected,
+  inactive,
+}: {
+  kind: ButtonKind;
+  selected: boolean;
+  inactive: boolean;
+}) {
+  if (inactive && (kind === 'primary' || kind === 'danger')) return 'text-subtle';
+  if (selected) return 'text-accent-strong';
+  if (kind === 'primary') return 'text-on-accent';
+  if (kind === 'danger') return 'text-danger';
+  if (kind === 'quiet') return 'text-accent';
+  return 'text-ink';
+}
+
+function resolveButtonIconColor({
+  kind,
+  selected,
+  inactive,
+}: {
+  kind: ButtonKind;
+  selected: boolean;
+  inactive: boolean;
+}) {
+  if (inactive && (kind === 'primary' || kind === 'danger')) return colors.subtle;
+  if (selected) return colors.accentStrong;
+  if (kind === 'primary') return colors.onAccent;
+  if (kind === 'danger') return colors.danger;
+  if (kind === 'quiet') return colors.accent;
+  return colors.ink;
+}
+
+/** Primary/danger buttons get a soft lift; flat kinds stay flat (one depth strategy, used with intent). */
+function resolveButtonShadowClass({
+  kind,
+  inactive,
+  pressed,
+}: {
+  kind: ButtonKind;
+  inactive: boolean;
+  pressed: boolean;
+}) {
+  if (inactive || pressed || kind !== 'primary') return '';
+  return 'shadow-xs';
+}
+
+export function Button({
+  label,
+  onPress,
+  kind = 'secondary',
+  disabled,
+  selected = false,
+  icon,
+  iconOnly,
+  loading,
+  accessibilityRole = 'button',
+}: {
+  label: string;
+  onPress: () => void;
+  kind?: ButtonKind;
+  disabled?: boolean;
+  selected?: boolean;
+  icon?: AppIconName;
+  iconOnly?: boolean;
+  loading?: boolean;
+  /** Override for use inside a radiogroup (see `Select`). */
+  accessibilityRole?: 'button' | 'radio';
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+
+  const isInactive = Boolean(disabled || loading);
+  const backgroundClass = resolveButtonBackgroundClass({
+    kind,
+    selected,
+    pressed,
+    inactive: isInactive,
+  });
+  const borderClass = resolveButtonBorderClass({ kind, selected, focused, inactive: isInactive });
+  const textClass = resolveButtonTextClass({ kind, selected, inactive: isInactive });
+  const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive });
+  const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed });
+  const paddingClass = kind === 'quiet' ? 'px-2' : 'px-4';
+
   return (
-    <SafeAreaView style={styles.page}>
-      <View style={[styles.header, compact && styles.compactHeader]}>
-        <View style={styles.heading}>
-          {back}
-          <Text accessibilityRole="header" style={[styles.title, compact && styles.compactTitle]}>
-            {title}
-          </Text>
-        </View>
-        {actions ? (
-          <View style={[styles.actions, compact && styles.compactActions]}>{actions}</View>
-        ) : null}
-      </View>
-      <ScrollView contentContainerStyle={[styles.content, compact && styles.compactContent]}>
-        {children}
-      </ScrollView>
-    </SafeAreaView>
+    <Pressable
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isInactive, selected, busy: loading }}
+      disabled={isInactive}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onPress}
+      className={`min-h-11 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass}`}
+    >
+      {loading ? (
+        <ActivityIndicator color={kind === 'primary' ? colors.onAccent : colors.accent} />
+      ) : (
+        <>
+          {icon ? <AppIcon name={icon} size={18} color={iconColor} /> : null}
+          {iconOnly ? null : <Text className={`text-sm font-extrabold ${textClass}`}>{label}</Text>}
+        </>
+      )}
+    </Pressable>
   );
 }
 
-export function Section({
-  title,
-  action,
-  children,
-}: PropsWithChildren<{ title: string; action?: ReactNode }>) {
+/**
+ * Preferred primitive for icon-only actions. `label` is required and becomes
+ * the accessibility label — prefer this over `Button`'s `iconOnly` prop,
+ * which remains only for backward compatibility during the NativeWind
+ * migration.
+ */
+export function IconButton({
+  icon,
+  label,
+  onPress,
+  kind = 'secondary',
+  disabled,
+  selected = false,
+  nativeID,
+}: {
+  icon: AppIconName;
+  label: string;
+  onPress: () => void;
+  kind?: ButtonKind;
+  disabled?: boolean;
+  selected?: boolean;
+  nativeID?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+
+  const backgroundClass = resolveButtonBackgroundClass({
+    kind,
+    selected,
+    pressed,
+    inactive: Boolean(disabled),
+  });
+  const borderClass = resolveButtonBorderClass({
+    kind,
+    selected,
+    focused,
+    inactive: Boolean(disabled),
+  });
+  const iconColor = resolveButtonIconColor({ kind, selected, inactive: Boolean(disabled) });
+  const opacityClass = disabled ? 'opacity-50' : '';
+
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text accessibilityRole="header" style={styles.sectionTitle}>
-          {title}
-        </Text>
-        {action}
+    <Pressable
+      nativeID={nativeID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled, selected }}
+      disabled={disabled}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onPress}
+      className={`h-11 w-11 items-center justify-center rounded-control ${backgroundClass} ${borderClass} ${opacityClass}`}
+    >
+      <AppIcon name={icon} size={20} color={iconColor} />
+    </Pressable>
+  );
+}
+
+/** Accessible radiogroup of mutually-exclusive pill/chip choices. */
+export function Select({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <View className="gap-1.5">
+      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+        className="flex-row flex-wrap items-center gap-2"
+      >
+        {options.map((option) => (
+          <Button
+            key={option.value}
+            label={option.label}
+            kind="secondary"
+            selected={option.value === value}
+            accessibilityRole="radio"
+            onPress={() => onChange(option.value)}
+          />
+        ))}
       </View>
-      {children}
     </View>
   );
+}
+
+function resolveFieldBorderClass({ focused, error }: { focused: boolean; error: boolean }) {
+  if (focused) return 'border-2 border-focus';
+  if (error) return 'border-2 border-danger';
+  return 'border border-line';
+}
+
+/** Inputs are inset — darker than their surroundings until focused, when they lift to paper. */
+function resolveFieldBackgroundClass({ focused }: { focused: boolean }) {
+  return focused ? 'bg-control-focus' : 'bg-control';
 }
 
 export function Field({
@@ -77,32 +304,35 @@ export function Field({
   ...props
 }: TextInputProps & { label: string; help?: string; error?: string }) {
   const [focused, setFocused] = useState(false);
+
+  const handleBlur: TextInputProps['onBlur'] = (event) => {
+    setFocused(false);
+    props.onBlur?.(event);
+  };
+
+  const handleFocus: TextInputProps['onFocus'] = (event) => {
+    setFocused(true);
+    props.onFocus?.(event);
+  };
+
+  const borderClass = resolveFieldBorderClass({ focused, error: Boolean(error) });
+  const backgroundClass = resolveFieldBackgroundClass({ focused });
+
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+    <View className="gap-1.5">
+      <Text className="text-sm font-semibold text-ink">{label}</Text>
       <TextInput
         {...props}
         accessibilityLabel={label}
-        onBlur={(event) => {
-          setFocused(false);
-          props.onBlur?.(event);
-        }}
-        onFocus={(event) => {
-          setFocused(true);
-          props.onFocus?.(event);
-        }}
-        placeholderTextColor="#8a8075"
-        style={[
-          styles.input,
-          props.style,
-          error && styles.invalidInput,
-          focused && styles.focusedInput,
-        ]}
+        onBlur={handleBlur}
+        onFocus={handleFocus}
+        placeholderTextColor={colors.subtle}
+        className={`min-h-11 rounded-control px-3 py-2 text-base text-ink ${backgroundClass} ${borderClass}`}
       />
       {error || help ? (
         <Text
           accessibilityRole={error ? 'alert' : undefined}
-          style={[styles.help, error && styles.error]}
+          className={`text-xs ${error ? 'text-danger' : 'text-muted'}`}
         >
           {error || help}
         </Text>
@@ -111,114 +341,50 @@ export function Field({
   );
 }
 
-export function Button({
-  label,
-  onPress,
-  kind = 'secondary',
-  disabled,
-  selected,
-  icon,
-  iconOnly,
-  loading,
+/** Same component as `Field`, exported under the name used by the design plan. */
+export const TextField = Field;
+
+/** Labeled search input with a leading search icon, for library search boxes. */
+export function SearchField({
+  label = 'Search',
+  value,
+  onChangeText,
+  placeholder,
 }: {
-  label: string;
-  onPress: () => void;
-  kind?: 'primary' | 'secondary' | 'danger' | 'quiet';
-  disabled?: boolean;
-  selected?: boolean;
-  icon?: AppIconName;
-  iconOnly?: boolean;
-  loading?: boolean;
+  label?: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
 }) {
   const [focused, setFocused] = useState(false);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: disabled || loading, selected, busy: loading }}
-      disabled={disabled || loading}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        styles[`${kind}Button`],
-        (disabled || loading) && styles.disabled,
-        focused && styles.focused,
-        pressed && styles.pressed,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={kind === 'primary' ? colors.paper : colors.accent} />
-      ) : (
-        <>
-          {icon ? (
-            <AppIcon
-              name={icon}
-              size={18}
-              color={
-                kind === 'primary' ? colors.paper : kind === 'danger' ? colors.danger : colors.ink
-              }
-            />
-          ) : null}
-          {iconOnly ? null : (
-            <Text style={[styles.buttonText, styles[`${kind}Text`]]}>{label}</Text>
-          )}
-        </>
-      )}
-    </Pressable>
-  );
-}
 
-export function Notice({ children, danger }: PropsWithChildren<{ danger?: boolean }>) {
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+
+  const borderClass = focused ? 'border-2 border-focus' : 'border border-line';
+  const backgroundClass = focused ? 'bg-control-focus' : 'bg-control';
+
   return (
-    <Text
-      accessibilityRole={danger ? 'alert' : undefined}
-      style={[styles.notice, danger && styles.error]}
-    >
-      {children}
-    </Text>
-  );
-}
-export function Empty({ children }: PropsWithChildren) {
-  return <Text style={styles.empty}>{children}</Text>;
-}
-export function EmptyState({
-  icon = 'read',
-  title,
-  children,
-  action,
-}: PropsWithChildren<{
-  icon?: AppIconName;
-  title: string;
-  action?: ReactNode;
-}>) {
-  return (
-    <View accessibilityLiveRegion="polite" style={styles.emptyState}>
-      <AppIcon name={icon} size={34} color={colors.accent} />
-      <Text style={styles.emptyStateTitle}>{title}</Text>
-      <Text style={styles.emptyStateText}>{children}</Text>
-      {action}
-    </View>
-  );
-}
-export function Loading({ label = 'Loading your library…' }: { label?: string }) {
-  return (
-    <View style={styles.loading}>
-      <View style={styles.skeleton}>
-        <View style={styles.skeletonCover} />
-        <View style={styles.skeletonLines}>
-          <View style={styles.skeletonLine} />
-          <View style={[styles.skeletonLine, styles.skeletonShort]} />
-        </View>
+    <View className="gap-1.5">
+      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <View
+        className={`min-h-11 flex-row items-center gap-2 rounded-control px-3 ${backgroundClass} ${borderClass}`}
+      >
+        <AppIcon name="search" size={18} color={colors.subtle} />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          placeholderTextColor={colors.subtle}
+          accessibilityLabel={label}
+          returnKeyType="search"
+          className="min-h-11 flex-1 py-2 text-base text-ink"
+        />
       </View>
-      <ActivityIndicator color={colors.accent} />
-      <Text style={styles.muted}>{label}</Text>
     </View>
   );
-}
-export function Row({ children }: PropsWithChildren) {
-  return <View style={styles.row}>{children}</View>;
 }
 
 export function Checkbox({
@@ -230,147 +396,427 @@ export function Checkbox({
   checked: boolean;
   onPress: () => void;
 }) {
+  const boxClass = checked ? 'border-accent bg-accent' : 'border-line bg-paper';
+
   return (
     <Pressable
       accessibilityRole="checkbox"
+      accessibilityLabel={label}
       accessibilityState={{ checked }}
       onPress={onPress}
-      style={styles.checkboxRow}
+      className="min-h-11 flex-row items-center gap-2"
     >
-      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-        {checked ? <AppIcon name="check" size={16} color={colors.paper} /> : null}
+      <View className={`h-6 w-6 items-center justify-center rounded border ${boxClass}`}>
+        {checked ? <AppIcon name="check" size={16} color={colors.onAccent} /> : null}
       </View>
-      <Text style={styles.checkboxLabel}>{label}</Text>
+      <Text className="text-base text-ink">{label}</Text>
     </Pressable>
   );
 }
 
-export const shared = StyleSheet.create({
-  listItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 4 },
-  itemTitle: { color: colors.ink, fontSize: 16, fontWeight: '700' },
-  itemMeta: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  form: { maxWidth: 560, gap: space.md },
-  split: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xl },
-  grow: { flexGrow: 1, flexBasis: 360 },
-  mono: { color: colors.muted, fontFamily: 'monospace', fontSize: 12 },
-});
+/** Single radio item, for custom radiogroups (role pickers, destination pickers, …). */
+export function Radio({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const ringClass = selected ? 'border-accent' : 'border-line';
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.canvas },
-  header: {
-    minHeight: 72,
-    paddingHorizontal: space.xl,
-    paddingVertical: space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.md,
-  },
-  compactHeader: { alignItems: 'stretch', paddingHorizontal: space.lg },
-  heading: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
-  title: { color: colors.ink, ...type.pageTitle, flexShrink: 1 },
-  compactTitle: { fontSize: 22, lineHeight: 27 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
-  compactActions: { width: '100%' },
-  content: {
-    width: '100%',
-    maxWidth: 1240,
-    alignSelf: 'center',
-    paddingHorizontal: space.xl,
-    paddingVertical: space.xxl,
-    gap: space.xxl,
-  },
-  compactContent: { paddingHorizontal: space.lg, paddingVertical: space.xl, gap: space.xl },
-  section: { gap: space.md },
-  sectionHeader: {
-    minHeight: 42,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.md,
-  },
-  sectionTitle: { color: colors.ink, ...type.sectionTitle },
-  field: { gap: 5 },
-  label: { color: colors.ink, fontSize: 13, fontWeight: '600' },
-  input: {
-    minHeight: 42,
-    borderWidth: 1,
-    borderColor: '#b7ac9e',
-    borderRadius: 6,
-    backgroundColor: colors.paper,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    color: colors.ink,
-    fontSize: 15,
-  },
-  focusedInput: { borderColor: colors.focus, borderWidth: 2 },
-  invalidInput: { borderColor: colors.danger },
-  help: { color: colors.muted, fontSize: 12, lineHeight: 17 },
-  button: {
-    minHeight: 42,
-    borderRadius: 6,
-    borderWidth: 1,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: space.sm,
-  },
-  buttonText: { fontSize: 13, fontWeight: '800' },
-  primaryButton: { backgroundColor: colors.accent, borderColor: colors.accent },
-  primaryText: { color: '#fffaf2' },
-  secondaryButton: { backgroundColor: colors.paper, borderColor: '#b7ac9e' },
-  secondaryText: { color: colors.ink },
-  dangerButton: { backgroundColor: 'transparent', borderColor: '#9c5547' },
-  dangerText: { color: colors.danger },
-  quietButton: { backgroundColor: 'transparent', borderColor: 'transparent', paddingHorizontal: 5 },
-  quietText: { color: colors.accent },
-  disabled: { opacity: 0.45 },
-  pressed: { opacity: 0.72 },
-  focused: { borderColor: colors.focus, borderWidth: 2 },
-  notice: { color: colors.muted, lineHeight: 20 },
-  error: { color: colors.danger },
-  empty: { color: colors.muted, paddingVertical: 18 },
-  emptyState: {
-    minHeight: 180,
-    maxWidth: 560,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    gap: space.sm,
-  },
-  emptyStateTitle: { color: colors.ink, ...type.sectionTitle },
-  emptyStateText: { color: colors.muted, ...type.body },
-  muted: { color: colors.muted },
-  loading: {
-    flex: 1,
-    minHeight: 240,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: space.md,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm },
-  checkboxRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  checkbox: {
-    width: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 4,
-    backgroundColor: colors.paper,
-  },
-  checkboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
-  checkboxLabel: { color: colors.ink, ...type.body },
-  skeleton: { width: 250, flexDirection: 'row', gap: space.md, opacity: 0.55 },
-  skeletonCover: { width: 54, height: 76, backgroundColor: colors.panelStrong },
-  skeletonLines: { flex: 1, gap: space.sm, justifyContent: 'center' },
-  skeletonLine: { height: 10, backgroundColor: colors.panelStrong, borderRadius: 3 },
-  skeletonShort: { width: '62%' },
-});
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      className="min-h-11 flex-row items-center gap-2"
+    >
+      <View
+        className={`h-6 w-6 items-center justify-center rounded-full border bg-paper ${ringClass}`}
+      >
+        {selected ? <View className="h-3 w-3 rounded-full bg-accent" /> : null}
+      </View>
+      <Text className="text-base text-ink">{label}</Text>
+    </Pressable>
+  );
+}
+
+function noop() {
+  // Swallows presses on dialog content so they don't bubble to the backdrop.
+}
+
+/**
+ * Shared modal primitive. Replaces one-off `Modal` wrappers throughout the
+ * app. Dismisses on backdrop press; on web, Escape closes it and focus moves
+ * into the dialog on open and is restored to the previously focused element
+ * on close.
+ */
+export function Dialog({
+  visible,
+  onClose,
+  title,
+  children,
+  wide,
+}: PropsWithChildren<{
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  wide?: boolean;
+}>) {
+  const closeButtonId = useId();
+  const previouslyFocusedRef = useRef<{ focus: () => void } | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
+
+    previouslyFocusedRef.current = document.activeElement as { focus: () => void } | null;
+    const focusTimer = setTimeout(() => {
+      document.getElementById(closeButtonId)?.focus();
+    }, 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [visible, closeButtonId, onClose]);
+
+  if (!visible) return null;
+
+  const maxWidthClass = wide ? 'max-w-[720px]' : 'max-w-[480px]';
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View className="flex-1 items-center justify-center p-6">
+        {/*
+         * The backdrop is a plain (non-button) Pressable positioned behind the
+         * dialog content, not a wrapping ancestor of it — an ancestor with
+         * accessibilityRole="button" renders as an actual <button> on web,
+         * which would illegally nest the dialog's own interactive controls
+         * (e.g. the Close IconButton) inside it. Escape and the visible Close
+         * button remain the accessible dismiss paths; this is a supplementary
+         * pointer convenience only, so it intentionally carries no button role.
+         */}
+        <Pressable
+          accessibilityLabel="Dismiss dialog"
+          onPress={onClose}
+          className="absolute inset-0 bg-ink/40"
+        />
+        <Pressable
+          onPress={noop}
+          accessibilityViewIsModal
+          role="dialog"
+          className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
+        >
+          <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
+            <Text accessibilityRole="header" className="flex-shrink text-lg font-bold text-ink">
+              {title}
+            </Text>
+            <IconButton
+              icon="close"
+              label="Close dialog"
+              kind="quiet"
+              onPress={onClose}
+              nativeID={closeButtonId}
+            />
+          </View>
+          <ScrollView className="flex-shrink">{children}</ScrollView>
+        </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * Shared confirmation dialog. Replaces raw `Alert.alert` confirms used for
+ * destructive actions (remove member, delete library, delete source, …).
+ */
+export function ConfirmDialog({
+  visible,
+  onClose,
+  onConfirm,
+  title,
+  description,
+  confirmLabel,
+  danger,
+  busy,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  danger?: boolean;
+  busy?: boolean;
+}) {
+  return (
+    <Dialog visible={visible} onClose={onClose} title={title}>
+      <View className="gap-6">
+        <Text className="text-base leading-6 text-muted">{description}</Text>
+        <Row>
+          <Button label="Cancel" kind="secondary" onPress={onClose} disabled={busy} />
+          <Button
+            label={confirmLabel}
+            kind={danger ? 'danger' : 'primary'}
+            onPress={onConfirm}
+            loading={busy}
+          />
+        </Row>
+      </View>
+    </Dialog>
+  );
+}
+
+const NOTICE_TONE_TEXT_CLASS: Record<NoticeTone, string> = {
+  info: 'text-info',
+  warning: 'text-warning',
+  success: 'text-success',
+  danger: 'text-danger',
+};
+
+export function Notice({
+  children,
+  danger,
+  tone,
+}: PropsWithChildren<{ danger?: boolean; tone?: NoticeTone }>) {
+  const resolvedTone: NoticeTone | undefined = danger ? 'danger' : tone;
+  const textClass = resolvedTone ? NOTICE_TONE_TEXT_CLASS[resolvedTone] : 'text-muted';
+
+  return (
+    <Text
+      accessibilityRole={resolvedTone === 'danger' ? 'alert' : undefined}
+      className={`text-base leading-5 ${textClass}`}
+    >
+      {children}
+    </Text>
+  );
+}
+
+export function Empty({ children }: PropsWithChildren) {
+  return <Text className="py-4 text-muted">{children}</Text>;
+}
+
+export function EmptyState({
+  icon = 'read',
+  title,
+  children,
+  action,
+}: PropsWithChildren<{
+  icon?: AppIconName;
+  title: string;
+  action?: ReactNode;
+}>) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      className="min-h-[180px] max-w-[560px] items-start justify-center gap-3"
+    >
+      <View className="h-14 w-14 items-center justify-center rounded-full bg-accent-soft">
+        <AppIcon name={icon} size={28} color={colors.accent} />
+      </View>
+      <Text accessibilityRole="header" className="text-lg font-bold text-ink">
+        {title}
+      </Text>
+      <Text className="text-base leading-6 text-muted">{children}</Text>
+      {action}
+    </View>
+  );
+}
+
+/** Same shape as `EmptyState` but for genuine error conditions, not "nothing here yet". */
+export function ErrorState({
+  title = 'Something went wrong',
+  children,
+  action,
+}: PropsWithChildren<{
+  title?: string;
+  action?: ReactNode;
+}>) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      className="min-h-[180px] max-w-[560px] items-start justify-center gap-3"
+    >
+      <View className="h-14 w-14 items-center justify-center rounded-full bg-danger-soft">
+        <AppIcon name="error" size={28} color={colors.danger} />
+      </View>
+      <Text accessibilityRole="header" className="text-lg font-bold text-ink">
+        {title}
+      </Text>
+      <Text className="text-base leading-6 text-muted">{children}</Text>
+      {action}
+    </View>
+  );
+}
+
+export function LoadingState({ label = 'Loading your library…' }: { label?: string }) {
+  return (
+    <View className="min-h-[240px] flex-1 items-center justify-center gap-4">
+      <View className="w-[250px] flex-row gap-4 opacity-60">
+        <View className="h-[76px] w-[54px] rounded bg-panel-strong" />
+        <View className="flex-1 justify-center gap-2">
+          <View className="h-2.5 rounded bg-panel-strong" />
+          <View className="h-2.5 w-[62%] rounded bg-panel-strong" />
+        </View>
+      </View>
+      <ActivityIndicator color={colors.accent} />
+      <Text className="text-muted">{label}</Text>
+    </View>
+  );
+}
+
+/** `Loading` is kept as an alias of `LoadingState` for existing imports. */
+export const Loading = LoadingState;
+
+const STATUS_BADGE_TONE_CLASS: Record<
+  StatusTone,
+  { background: string; text: string; spine: string }
+> = {
+  neutral: { background: 'bg-neutral-soft', text: 'text-neutral', spine: 'border-neutral' },
+  info: { background: 'bg-info-soft', text: 'text-info', spine: 'border-info' },
+  success: { background: 'bg-success-soft', text: 'text-success', spine: 'border-success' },
+  warning: { background: 'bg-warning-soft', text: 'text-warning', spine: 'border-warning' },
+  danger: { background: 'bg-danger-soft', text: 'text-danger', spine: 'border-danger' },
+};
+
+const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
+  neutral: colors.neutral,
+  info: colors.info,
+  success: colors.success,
+  warning: colors.warning,
+  danger: colors.danger,
+};
+
+/**
+ * General-purpose status badge, styled as a library spine label: a solid
+ * color "spine" on the left edge, a soft tone-tinted body, and square-ish
+ * corners on the left (only the trailing edge rounds). Used for source
+ * health, scan state, import proposal state, alignment job state, user
+ * enabled/disabled, and similar.
+ */
+export function StatusBadge({
+  tone = 'neutral',
+  label,
+  icon,
+}: {
+  tone?: StatusTone;
+  label: string;
+  icon?: AppIconName;
+}) {
+  const toneClass = STATUS_BADGE_TONE_CLASS[tone];
+
+  return (
+    <View
+      className={`flex-row items-center gap-1.5 self-start rounded-r border-l-[3px] py-1 pl-2 pr-2.5 ${toneClass.background} ${toneClass.spine}`}
+    >
+      {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
+      <Text className={`text-[11px] font-bold uppercase tracking-wide ${toneClass.text}`}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+export function Row({ children }: PropsWithChildren) {
+  return <View className="flex-row flex-wrap items-center gap-2">{children}</View>;
+}
+
+/**
+ * App-level page header: title, optional back control, and at most one
+ * obvious primary action row. Extracted from `Page` so it can be reused
+ * independently if a screen ever needs the header without the scroll shell.
+ */
+export function PageHeader({
+  title,
+  actions,
+  back,
+  compact,
+}: {
+  title: string;
+  actions?: ReactNode;
+  back?: ReactNode;
+  compact: boolean;
+}) {
+  const paddingClass = compact ? 'px-4' : 'px-6';
+  const layoutClass = compact ? 'items-stretch' : 'items-center';
+  const titleSizeClass = compact ? 'text-2xl leading-7' : 'text-[26px] leading-8';
+  const actionsWidthClass = compact ? 'w-full' : '';
+
+  return (
+    <View
+      className={`min-h-[72px] flex-row flex-wrap justify-between gap-3 border-b border-line py-3 ${paddingClass} ${layoutClass}`}
+    >
+      <View className="min-w-0 flex-row items-center gap-2.5">
+        {back}
+        <Text
+          accessibilityRole="header"
+          className={`flex-shrink font-editorial font-bold text-ink ${titleSizeClass}`}
+        >
+          {title}
+        </Text>
+      </View>
+      {actions ? (
+        <View className={`flex-row flex-wrap items-center gap-2 ${actionsWidthClass}`}>
+          {actions}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+export function Page({
+  children,
+  title,
+  actions,
+  back,
+}: PropsWithChildren<{ title: string; actions?: ReactNode; back?: ReactNode }>) {
+  const compact = useWindowDimensions().width < 600;
+  const contentPaddingClass = compact ? 'gap-6 px-4 py-6' : 'gap-8 px-6 py-8';
+
+  return (
+    <SafeAreaView style={{ flex: 1 }}>
+      <View className="flex-1 bg-canvas">
+        <PageHeader title={title} actions={actions} back={back} compact={compact} />
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName={`w-full max-w-[1240px] self-center ${contentPaddingClass}`}
+        >
+          {children}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
+  return (
+    <View className="min-h-[42px] flex-row items-center justify-between gap-3 border-b border-line">
+      <Text accessibilityRole="header" className="text-lg font-extrabold text-ink">
+        {title}
+      </Text>
+      {action}
+    </View>
+  );
+}
+
+export function Section({
+  title,
+  action,
+  children,
+}: PropsWithChildren<{ title: string; action?: ReactNode }>) {
+  return (
+    <View className="gap-3">
+      <SectionHeader title={title} action={action} />
+      {children}
+    </View>
+  );
+}

@@ -148,6 +148,10 @@ func TestSourceRootDirectoryBrowser(t *testing.T) {
 	if err != nil || !child.HasParent || child.RelativePath != "Books" || child.AbsolutePath != books || len(child.Directories) != 1 {
 		t.Fatalf("nested listing = %#v, %v", child, err)
 	}
+	leaf, err := store.Directories(admin, roots[0].ID, "Books/Classics")
+	if err != nil || leaf.Directories == nil || len(leaf.Directories) != 0 {
+		t.Fatalf("empty listing = %#v, %v", leaf, err)
+	}
 	for _, unsafe := range []string{"../outside", "/etc", "Linked"} {
 		if _, err := store.Directories(admin, roots[0].ID, unsafe); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("browse %q = %v", unsafe, err)

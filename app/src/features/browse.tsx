@@ -1,7 +1,8 @@
 import type { WorkSummary } from '../generated/api';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { WorkCard } from './bookshelf';
-import { Button, Field, Row, colors, space } from './ui';
+import { View } from './tw';
+import { SearchField, Select } from './ui';
 
 export const browseSorts = [
   ['recent', 'Recently added'],
@@ -33,41 +34,25 @@ export function BrowseControls({
   onAvailabilityChange: (value: string) => void;
 }) {
   return (
-    <View style={styles.controls}>
-      <Field
+    <View className="gap-4 rounded-card border border-line bg-paper p-4">
+      <SearchField
         label="Search title or author"
         value={query}
         onChangeText={onQueryChange}
-        returnKeyType="search"
+        placeholder="Search title or author"
       />
-      <View style={styles.controlGroup} accessibilityRole="radiogroup">
-        <Text style={styles.label}>Sort</Text>
-        <Row>
-          {browseSorts.map(([value, label]) => (
-            <Button
-              key={value}
-              label={label}
-              kind={sort === value ? 'primary' : 'secondary'}
-              selected={sort === value}
-              onPress={() => onSortChange(value)}
-            />
-          ))}
-        </Row>
-      </View>
-      <View style={styles.controlGroup} accessibilityRole="radiogroup">
-        <Text style={styles.label}>Show</Text>
-        <Row>
-          {browseFilters.map(([value, label]) => (
-            <Button
-              key={value}
-              label={label}
-              kind={availability === value ? 'primary' : 'secondary'}
-              selected={availability === value}
-              onPress={() => onAvailabilityChange(value)}
-            />
-          ))}
-        </Row>
-      </View>
+      <Select
+        label="Sort"
+        options={browseSorts.map(([value, label]) => ({ value, label }))}
+        value={sort}
+        onChange={onSortChange}
+      />
+      <Select
+        label="Show"
+        options={browseFilters.map(([value, label]) => ({ value, label }))}
+        value={availability}
+        onChange={onAvailabilityChange}
+      />
     </View>
   );
 }
@@ -82,8 +67,9 @@ export function WorkGrid({
   onOpen: (work: WorkSummary) => void;
 }) {
   const narrow = useWindowDimensions().width < 600;
+
   return (
-    <View style={styles.grid}>
+    <View className="flex-row flex-wrap items-start gap-6">
       {works.map((work) => (
         <WorkCard
           key={work.id}
@@ -107,17 +93,3 @@ export function summaryBadges(work: WorkSummary) {
     work.synchronized ? 'Synced' : '',
   ].filter(Boolean);
 }
-
-const styles = StyleSheet.create({
-  controls: {
-    padding: space.lg,
-    gap: space.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 8,
-    backgroundColor: colors.paper,
-  },
-  controlGroup: { gap: 6 },
-  label: { color: colors.ink, fontSize: 13, fontWeight: '700' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: space.xl },
-});

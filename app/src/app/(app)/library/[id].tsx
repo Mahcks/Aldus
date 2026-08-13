@@ -1,24 +1,29 @@
 import type { Library, Membership, User, WorkSummary } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BrowseControls, WorkGrid } from '../../../features/browse';
 import { useAuth } from '../../../features/auth/AuthProvider';
+import { Pressable, Text, View } from '../../../features/tw';
 import {
   Button,
+  ConfirmDialog,
+  Dialog,
   EmptyState,
   Field,
   Loading,
   Notice,
   Page,
+  Radio,
   Row,
-  colors,
   shared,
 } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 
 type Panel = 'work' | 'members' | 'settings' | null;
+type Role = 'owner' | 'editor' | 'reader';
+
+const roles: Role[] = ['owner', 'editor', 'reader'];
 
 export default function LibraryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -39,7 +44,12 @@ export default function LibraryScreen() {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [memberID, setMemberID] = useState('');
-  const [role, setRole] = useState('reader');
+  const [role, setRole] = useState<Role>('reader');
+  const [removeTarget, setRemoveTarget] = useState<Membership | null>(null);
+  const [removingMember, setRemovingMember] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingLibrary, setDeletingLibrary] = useState(false);
+
   async function load() {
     if (!id) return;
     try {
@@ -58,11 +68,13 @@ export default function LibraryScreen() {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
   async function loadWorks(offset = 0) {
     if (!id) return;
     setLoadingWorks(true);
@@ -83,11 +95,13 @@ export default function LibraryScreen() {
       setLoadingWorks(false);
     }
   }
+
   useEffect(() => {
     const timer = setTimeout(() => void loadWorks(), 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, query, sort, availability]);
+
   if (loading) return <Loading />;
   if (!library)
     return (
@@ -95,10 +109,25 @@ export default function LibraryScreen() {
         <Notice danger>{error || 'Library unavailable.'}</Notice>
       </Page>
     );
+
   const canEdit = Boolean(
     auth.user?.admin || library.role === 'owner' || library.role === 'editor',
   );
   const canManage = Boolean(auth.user?.admin || library.role === 'owner');
+  const filtersActive = Boolean(query || availability !== 'all');
+  const availableUsers = users.filter(
+    (user) => !user.disabled && !members.some((member) => member.user_id === user.id),
+  );
+
+  function closePanel() {
+    setPanel(null);
+  }
+
+  function clearFilters() {
+    setQuery('');
+    setAvailability('all');
+  }
+
   async function createWork() {
     try {
       const work = await api.createWork(id, { title, author });
@@ -110,6 +139,7 @@ export default function LibraryScreen() {
       setError(errorMessage(value));
     }
   }
+
   async function saveName() {
     try {
       await api.updateLibrary(id, { name });
@@ -119,6 +149,7 @@ export default function LibraryScreen() {
       setError(errorMessage(value));
     }
   }
+
   async function saveMember() {
     try {
       await api.setMember(id, memberID, role);
@@ -128,6 +159,41 @@ export default function LibraryScreen() {
       setError(errorMessage(value));
     }
   }
+
+  async function changeMemberRole(member: Membership, next: Role) {
+    try {
+      await api.setMember(id, member.user_id, next);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
+
+  async function confirmRemoveMember() {
+    if (!removeTarget) return;
+    setRemovingMember(true);
+    try {
+      await api.removeMember(id, removeTarget.user_id);
+      setRemoveTarget(null);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setRemovingMember(false);
+    }
+  }
+
+  async function confirmDeleteLibrary() {
+    setDeletingLibrary(true);
+    try {
+      await api.deleteLibrary(id);
+      router.replace('/libraries');
+    } catch (value) {
+      setError(errorMessage(value));
+      setDeletingLibrary(false);
+    }
+  }
+
   return (
     <Page
       title={library.name}
@@ -156,12 +222,10 @@ export default function LibraryScreen() {
       }
     >
       {error ? <Notice danger>{error}</Notice> : null}
-      <View style={styles.libraryMeta}>
-        <Text style={styles.count}>
-          {works.length} {works.length === 1 ? 'work' : 'works'} shown · {members.length}{' '}
-          {members.length === 1 ? 'member' : 'members'}
-        </Text>
-      </View>
+      <Text className="-mt-3 text-sm text-muted">
+        {works.length} {works.length === 1 ? 'work' : 'works'} shown · {members.length}{' '}
+        {members.length === 1 ? 'member' : 'members'}
+      </Text>
       <BrowseControls
         query={query}
         sort={sort}
@@ -172,39 +236,28 @@ export default function LibraryScreen() {
       />
       {loadingWorks && works.length === 0 ? (
         <Loading label="Finding books…" />
-      ) : works.length === 0 && (query || availability !== 'all') ? (
+      ) : works.length === 0 && filtersActive ? (
         <EmptyState
           icon="search"
-          title="No matching Works"
-          action={
-            <Button
-              label="Clear search and filters"
-              onPress={() => {
-                setQuery('');
-                setAvailability('all');
-              }}
-            />
-          }
+          title="No matching works"
+          action={<Button label="Clear search and filters" onPress={clearFilters} />}
         >
           Try another title, author, or availability filter.
         </EmptyState>
       ) : works.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyBooks}>
-            <View style={styles.emptyBook} />
-            <View style={[styles.emptyBook, styles.emptyBookTall]} />
-            <View style={[styles.emptyBook, styles.emptyBookRust]} />
-          </View>
-          <Text style={styles.emptyTitle}>Your library is empty</Text>
-          <Text style={styles.emptyText}>
-            Add a book or audiobook to start building this shelf.
-          </Text>
-          {canEdit ? (
-            <Button label="Add your first work" kind="primary" onPress={() => setPanel('work')} />
-          ) : null}
-        </View>
+        <EmptyState
+          icon="read"
+          title="Your library is empty"
+          action={
+            canEdit ? (
+              <Button label="Add your first work" kind="primary" onPress={() => setPanel('work')} />
+            ) : undefined
+          }
+        >
+          Add a book or audiobook to start building this shelf.
+        </EmptyState>
       ) : (
-        <View style={styles.results}>
+        <View className="items-start gap-6">
           <WorkGrid
             works={works}
             onOpen={(work) => router.push(`/work/${work.id}?libraryId=${id}&role=${library.role}`)}
@@ -218,12 +271,12 @@ export default function LibraryScreen() {
           ) : null}
         </View>
       )}
-      <Dialog visible={panel === 'work'} title="Add work" onClose={() => setPanel(null)}>
-        <View style={shared.form}>
+      <Dialog visible={panel === 'work'} title="Add work" onClose={closePanel}>
+        <View className={shared.form}>
           <Field label="Title" autoFocus value={title} onChangeText={setTitle} />
           <Field label="Author" value={author} onChangeText={setAuthor} />
           <Row>
-            <Button label="Cancel" onPress={() => setPanel(null)} />
+            <Button label="Cancel" onPress={closePanel} />
             <Button
               label="Create work"
               kind="primary"
@@ -233,73 +286,36 @@ export default function LibraryScreen() {
           </Row>
         </View>
       </Dialog>
-      <Dialog visible={panel === 'members'} title="Manage members" onClose={() => setPanel(null)}>
-        <ScrollView style={styles.dialogScroll}>
+      <Dialog visible={panel === 'members'} title="Manage members" onClose={closePanel} wide>
+        <View className="gap-1">
           {members.map((member) => (
-            <View key={member.user_id} style={styles.member}>
-              <View style={styles.memberName}>
-                <Text style={shared.itemTitle}>{member.display_name || member.username}</Text>
-                <Text style={shared.itemMeta}>@{member.username}</Text>
+            <View
+              key={member.user_id}
+              className="flex-row flex-wrap items-center justify-between gap-3 border-b border-line py-3.5"
+            >
+              <View className="min-w-[160px] flex-1 gap-1">
+                <Text className={shared.itemTitle}>{member.display_name || member.username}</Text>
+                <Text className={shared.itemMeta}>@{member.username}</Text>
               </View>
               <RoleControl
-                value={member.role}
-                onChange={async (next) => {
-                  try {
-                    await api.setMember(id, member.user_id, next);
-                    await load();
-                  } catch (value) {
-                    setError(errorMessage(value));
-                  }
-                }}
+                value={member.role as Role}
+                onChange={(next) => void changeMemberRole(member, next)}
               />
-              <Button
-                label="Remove"
-                kind="danger"
-                onPress={() =>
-                  Alert.alert(
-                    'Remove member?',
-                    `${member.display_name || member.username} will lose access to this library.`,
-                    [
-                      { text: 'Cancel' },
-                      {
-                        text: 'Remove',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            await api.removeMember(id, member.user_id);
-                            await load();
-                          } catch (value) {
-                            setError(errorMessage(value));
-                          }
-                        },
-                      },
-                    ],
-                  )
-                }
-              />
+              <Button label="Remove" kind="danger" onPress={() => setRemoveTarget(member)} />
             </View>
           ))}
           {auth.user?.admin ? (
-            <View style={styles.addMember}>
-              <Text style={styles.dialogHeading}>Add member</Text>
-              <View style={styles.userChoices}>
-                {users
-                  .filter(
-                    (user) =>
-                      !user.disabled && !members.some((member) => member.user_id === user.id),
-                  )
-                  .map((user) => (
-                    <Pressable
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: memberID === user.id }}
-                      key={user.id}
-                      onPress={() => setMemberID(user.id)}
-                      style={[styles.userChoice, memberID === user.id && styles.userChoiceSelected]}
-                    >
-                      <Text style={shared.itemTitle}>{user.display_name || user.username}</Text>
-                      <Text style={shared.itemMeta}>@{user.username}</Text>
-                    </Pressable>
-                  ))}
+            <View className="gap-3 pt-6">
+              <Text className="text-sm font-extrabold text-ink">Add member</Text>
+              <View className="gap-1">
+                {availableUsers.map((user) => (
+                  <Radio
+                    key={user.id}
+                    label={`${user.display_name || user.username} · @${user.username}`}
+                    selected={memberID === user.id}
+                    onPress={() => setMemberID(user.id)}
+                  />
+                ))}
               </View>
               <RoleControl value={role} onChange={setRole} />
               <Button label="Add member" kind="primary" disabled={!memberID} onPress={saveMember} />
@@ -310,151 +326,87 @@ export default function LibraryScreen() {
               existing members here.
             </Notice>
           )}
-        </ScrollView>
+        </View>
       </Dialog>
-      <Dialog
-        visible={panel === 'settings'}
-        title="Library settings"
-        onClose={() => setPanel(null)}
-      >
-        <View style={shared.form}>
+      <Dialog visible={panel === 'settings'} title="Library settings" onClose={closePanel}>
+        <View className={shared.form}>
           <Field label="Library name" value={name} onChangeText={setName} />
           <Button label="Save changes" kind="primary" disabled={!name.trim()} onPress={saveName} />
-          <View style={styles.dangerZone}>
-            <Text style={styles.dialogHeading}>Delete library</Text>
-            <Text style={shared.itemMeta}>
-              The library must contain no Works before it can be deleted.
+          <View className="mt-4 gap-2 border-t border-line pt-4">
+            <Text className="text-sm font-extrabold text-ink">Delete library</Text>
+            <Text className={shared.itemMeta}>
+              The library must contain no works before it can be deleted.
             </Text>
             <Button
               label="Delete library"
               kind="danger"
-              onPress={() =>
-                Alert.alert('Delete library?', 'This cannot be undone.', [
-                  { text: 'Cancel' },
-                  {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                      try {
-                        await api.deleteLibrary(id);
-                        router.replace('/libraries');
-                      } catch (value) {
-                        setError(errorMessage(value));
-                      }
-                    },
-                  },
-                ])
-              }
+              onPress={() => setConfirmingDelete(true)}
             />
           </View>
         </View>
       </Dialog>
+      <ConfirmDialog
+        visible={Boolean(removeTarget)}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={() => void confirmRemoveMember()}
+        title="Remove member?"
+        description={`${
+          removeTarget?.display_name || removeTarget?.username
+        } will lose access to this library. They can be re-added later.`}
+        confirmLabel="Remove"
+        danger
+        busy={removingMember}
+      />
+      <ConfirmDialog
+        visible={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={() => void confirmDeleteLibrary()}
+        title="Delete library?"
+        description="This cannot be undone. The library must contain no works before it can be deleted."
+        confirmLabel="Delete"
+        danger
+        busy={deletingLibrary}
+      />
     </Page>
   );
 }
 
-function Dialog({
-  visible,
-  title,
-  onClose,
-  children,
-}: React.PropsWithChildren<{ visible: boolean; title: string; onClose: () => void }>) {
+function RoleControl({ value, onChange }: { value: Role; onChange: (role: Role) => void }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable accessibilityRole="none" style={styles.dialog} onPress={() => {}}>
-          <View style={styles.dialogHeader}>
-            <Text accessibilityRole="header" style={styles.dialogTitle}>
-              {title}
-            </Text>
-            <Button label="Close" kind="quiet" onPress={onClose} />
-          </View>
-          {children}
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-function RoleControl({ value, onChange }: { value: string; onChange: (role: string) => void }) {
-  return (
-    <View accessibilityRole="radiogroup" style={styles.roles}>
-      {['owner', 'editor', 'reader'].map((item) => (
-        <Pressable
-          accessibilityRole="radio"
-          accessibilityState={{ checked: value === item }}
+    <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-1.5">
+      {roles.map((item) => (
+        <RolePill
           key={item}
+          label={item}
+          selected={value === item}
           onPress={() => onChange(item)}
-          style={[styles.role, value === item && styles.roleSelected]}
-        >
-          <Text style={[styles.roleText, value === item && styles.roleTextSelected]}>{item}</Text>
-        </Pressable>
+        />
       ))}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  libraryMeta: { marginTop: -12 },
-  count: { color: colors.muted, fontSize: 14 },
-  results: { gap: 24, alignItems: 'flex-start' },
-  empty: { minHeight: 420, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  emptyBooks: {
-    height: 100,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 5,
-    marginBottom: 8,
-  },
-  emptyBook: { width: 25, height: 74, backgroundColor: '#48594b' },
-  emptyBookTall: { height: 94, backgroundColor: '#8a6237' },
-  emptyBookRust: { height: 82, backgroundColor: colors.accent },
-  emptyTitle: { color: colors.ink, fontSize: 22, fontWeight: '800' },
-  emptyText: { color: colors.muted, fontSize: 14, textAlign: 'center', marginBottom: 4 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(41,35,29,.42)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-  },
-  dialog: {
-    width: '100%',
-    maxWidth: 620,
-    maxHeight: '88%',
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 8,
-    padding: 20,
-    gap: 18,
-  },
-  dialogHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  dialogTitle: { color: colors.ink, fontSize: 21, fontWeight: '800' },
-  dialogScroll: { maxHeight: 580 },
-  dialogHeading: { color: colors.ink, fontSize: 15, fontWeight: '800' },
-  member: { paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 10 },
-  memberName: { flex: 1 },
-  roles: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  role: {
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 5,
-  },
-  roleSelected: { borderColor: colors.accent, backgroundColor: '#f1dfd6' },
-  roleText: { color: colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
-  roleTextSelected: { color: colors.accent },
-  addMember: { paddingTop: 22, gap: 12 },
-  userChoices: { gap: 4 },
-  userChoice: { padding: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 5 },
-  userChoiceSelected: { borderColor: colors.accent, backgroundColor: '#f7ebe5' },
-  dangerZone: {
-    marginTop: 18,
-    paddingTop: 18,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-});
+function RolePill({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const borderClass = selected ? 'border-accent bg-accent-soft' : 'border-line-strong bg-paper';
+  const textClass = selected ? 'text-accent-strong' : 'text-muted';
+
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      className={`min-h-9 items-center justify-center rounded-control border px-2.5 py-1.5 ${borderClass}`}
+    >
+      <Text className={`text-xs font-bold capitalize ${textClass}`}>{label}</Text>
+    </Pressable>
+  );
+}

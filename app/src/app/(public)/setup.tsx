@@ -1,8 +1,9 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { Button, Field, Notice, colors } from '../../features/ui';
+import { AuthCard, AuthLayout } from '../../features/auth/AuthLayout';
+import { Button, Field, Notice } from '../../features/ui';
+import { Text } from '../../features/tw';
 import { APIError, api, errorMessage } from '../../lib/api';
 
 export default function Setup() {
@@ -15,10 +16,13 @@ export default function Setup() {
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
   if (auth.user) return <Redirect href="/libraries" />;
   if (!auth.loading && !auth.setupAvailable) return <Redirect href="/login" />;
+
   const change = (key: keyof typeof form) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
+
   async function submit() {
     setBusy(true);
     setError('');
@@ -37,17 +41,14 @@ export default function Setup() {
       setBusy(false);
     }
   }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.page}
-    >
-      <View style={styles.form}>
-        <Text style={styles.wordmark}>Aldus</Text>
-        <Text accessibilityRole="header" style={styles.title}>
+    <AuthLayout>
+      <AuthCard>
+        <Text accessibilityRole="header" className="text-2xl font-extrabold text-ink">
           Create the first administrator
         </Text>
-        <Text style={styles.help}>
+        <Text className="mb-1 leading-[21px] text-muted">
           This one-time setup closes permanently after the account is created.
         </Text>
         {error ? <Notice danger>{error}</Notice> : null}
@@ -80,29 +81,7 @@ export default function Setup() {
           disabled={busy || !form.username || form.password.length < 12 || !form.bootstrap_token}
           onPress={submit}
         />
-      </View>
-    </KeyboardAvoidingView>
+      </AuthCard>
+    </AuthLayout>
   );
 }
-const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  form: {
-    width: '100%',
-    maxWidth: 480,
-    gap: 13,
-    padding: 24,
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 8,
-  },
-  wordmark: { color: colors.accent, fontSize: 28, fontWeight: '900' },
-  title: { color: colors.ink, fontSize: 22, fontWeight: '800' },
-  help: { color: colors.muted, lineHeight: 21, marginBottom: 5 },
-});

@@ -2,8 +2,10 @@ import type { Media, Representation } from '../../../generated/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert } from 'react-native';
 import { useAuth } from '../../../features/auth/AuthProvider';
+import { TechnicalDetails } from '../../../features/sources/TechnicalDetails';
+import { Text, View } from '../../../features/tw';
 import {
   Button,
   Empty,
@@ -32,6 +34,7 @@ export default function RepresentationScreen() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+
   async function load() {
     if (!id || !libraryId) return;
     try {
@@ -49,11 +52,13 @@ export default function RepresentationScreen() {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, libraryId]);
+
   if (loading) return <Loading />;
   if (!representation)
     return (
@@ -61,7 +66,9 @@ export default function RepresentationScreen() {
         <Notice danger>{error || 'Representation unavailable.'}</Notice>
       </Page>
     );
-  const canEdit = auth.user?.admin || role === 'owner' || role === 'editor';
+
+  const canEdit = Boolean(auth.user?.admin || role === 'owner' || role === 'editor');
+
   async function upload() {
     const result = await DocumentPicker.getDocumentAsync({
       type: representation?.kind === 'epub' ? 'application/epub+zip' : 'audio/*',
@@ -81,10 +88,42 @@ export default function RepresentationScreen() {
       setUploading(false);
     }
   }
+
+  async function saveRepresentation() {
+    try {
+      await api.updateRepresentation(id, { kind, label });
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
+
+  function confirmDeleteRepresentation() {
+    Alert.alert(
+      'Delete representation?',
+      'Representations with uploaded media cannot be deleted.',
+      [
+        { text: 'Cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.deleteRepresentation(id);
+              goBackOr('/libraries');
+            } catch (value) {
+              setError(errorMessage(value));
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <Page
       title={representation.label}
-      back={<Button label="Work" kind="quiet" onPress={() => goBackOr('/libraries')} />}
+      back={<Button label="Work" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <Section
@@ -107,65 +146,35 @@ export default function RepresentationScreen() {
           <Empty>No media uploaded.</Empty>
         ) : (
           media.map((item, index) => (
-            <View key={item.id} style={shared.listItem}>
-              <Text style={shared.itemTitle}>
+            <View key={item.id} className={shared.listItem}>
+              <Text className={shared.itemTitle}>
                 {item.original_filename || 'Unnamed upload'}
                 {index === 0 ? ' · newest' : ''}
               </Text>
-              <Text style={shared.itemMeta}>
+              <Text className={shared.itemMeta}>
                 {formatBytes(item.size_bytes)} · {new Date(item.created_at).toLocaleString()}
               </Text>
-              <Text selectable style={shared.mono}>
-                {item.sha256}
-              </Text>
-              <Text selectable style={shared.mono}>
-                media {item.id}
-              </Text>
+              <TechnicalDetails
+                rows={[
+                  { label: 'SHA-256', value: item.sha256, copyable: true },
+                  { label: 'Media ID', value: item.id, copyable: true },
+                ]}
+              />
             </View>
           ))
         )}
       </Section>
       {canEdit ? (
         <Section title="Representation settings">
-          <View style={shared.form}>
+          <View className={shared.form}>
             <Field label="Kind" value={kind} onChangeText={setKind} autoCapitalize="none" />
             <Field label="Label" value={label} onChangeText={setLabel} />
             <Row>
-              <Button
-                label="Save"
-                onPress={async () => {
-                  try {
-                    await api.updateRepresentation(id, { kind, label });
-                    await load();
-                  } catch (value) {
-                    setError(errorMessage(value));
-                  }
-                }}
-              />
+              <Button label="Save" onPress={() => void saveRepresentation()} />
               <Button
                 label="Delete representation"
                 kind="danger"
-                onPress={() =>
-                  Alert.alert(
-                    'Delete representation?',
-                    'Representations with uploaded media cannot be deleted.',
-                    [
-                      { text: 'Cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            await api.deleteRepresentation(id);
-                            goBackOr('/libraries');
-                          } catch (value) {
-                            setError(errorMessage(value));
-                          }
-                        },
-                      },
-                    ],
-                  )
-                }
+                onPress={confirmDeleteRepresentation}
               />
             </Row>
           </View>
@@ -174,6 +183,7 @@ export default function RepresentationScreen() {
     </Page>
   );
 }
+
 function formatBytes(bytes: number) {
   return bytes < 1024 * 1024
     ? `${Math.round(bytes / 1024)} KB`
