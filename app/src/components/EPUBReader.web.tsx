@@ -10,17 +10,25 @@ export type ReaderCapture = {
   start: RangeBoundary;
   end: RangeBoundary;
 };
+export type ReaderLocation = {
+  href: string;
+  cfi: string;
+  sync?: { href: string; locator: { type: 'dom-element'; dom_path: string }; offset: number };
+};
 export type EPUBReaderHandle = {
   captureSelection: () => ReaderCapture | null;
   restoreSelection: (capture: ReaderCapture) => Promise<string>;
+  restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
 };
 
-type Props = { source?: string };
+type Props = { source?: string | Blob; product?: boolean; onLocation?: (location: ReaderLocation) => void; onReady?: () => void };
 
-export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReader({ source = '/media/alice.epub' }, ref) {
+export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReader({ source = '/media/alice.epub', product, onLocation, onReady }, ref) {
   const host = useRef<View>(null);
   const reader = useRef<any>(null);
   const selection = useRef<{ index: number; range: Range } | undefined>(undefined);
+  const onLocationRef = useRef(onLocation); const onReadyRef = useRef(onReady);
+  onLocationRef.current = onLocation; onReadyRef.current = onReady;
 
   useImperativeHandle(ref, () => ({
     captureSelection() {
@@ -41,6 +49,30 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
       selection.current = { index: resolved.index, range: range.cloneRange() };
       return range.toString();
     },
+    async restoreLocation(value, highlight = false) {
+      const view = reader.current;
+      if (!view || !value || typeof value !== 'object') return false;
+      const location = value as { href?: string; cfi?: string; locator?: { type?: string; dom_path?: string } };
+      if (location.cfi) {
+        await view.goTo(location.cfi);
+        return true;
+      }
+      if (!location.href || location.locator?.type !== 'dom-element' || !location.locator.dom_path) return false;
+      const resolved = await view.resolveNavigation(location.href);
+      await view.goTo(location.href);
+      const content = view.renderer.getContents().find(({ index }: { index: number }) => index === resolved.index);
+      const element = resolveDOMPath(content.doc, location.locator.dom_path);
+      const range = content.doc.createRange();
+      range.selectNodeContents(element);
+      const cfi = view.getCFI(resolved.index, range);
+      await view.goTo(cfi);
+      if (highlight) {
+        const selected = content.doc.getSelection();
+        selected?.removeAllRanges();
+        selected?.addRange(range);
+      }
+      return true;
+    },
   }), []);
 
   useEffect(() => {
@@ -57,9 +89,20 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           if (selected?.rangeCount && !selected.isCollapsed) selection.current = { index, range: selected.getRangeAt(0).cloneRange() };
         });
       });
+      view.addEventListener('relocate', ({ detail }: CustomEvent) => {
+        const range = detail.range as Range | undefined;
+        const index = detail.index as number;
+        const href = view.book.sections[index]?.id;
+        if (!range || !href) return;
+        const paragraph = closestParagraph(range.startContainer);
+        const location: ReaderLocation = { href, cfi: detail.cfi };
+        if (paragraph) location.sync = { href, locator: { type: 'dom-element', dom_path: domPath(paragraph) }, offset: paragraphOffset(paragraph, range) };
+        onLocationRef.current?.(location);
+      });
       await view.open(source);
       view.renderer.setAttribute('flow', 'paginated');
       reader.current = view;
+      onReadyRef.current?.();
     });
     return () => {
       disposed = true;
@@ -73,12 +116,29 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
       <View ref={host} style={styles.book} />
       <View style={styles.navigation}>
         <Pressable accessibilityRole="button" style={styles.button} onPress={() => reader.current?.goLeft()}><Text style={styles.buttonText}>Previous page</Text></Pressable>
-        <Text style={styles.hint}>Highlight a passage in Alice, then click Capture selection.</Text>
+        <Text style={styles.hint}>{product ? 'Your place is saved as you turn pages.' : 'Highlight a passage in Alice, then click Capture selection.'}</Text>
         <Pressable accessibilityRole="button" style={styles.button} onPress={() => reader.current?.goRight()}><Text style={styles.buttonText}>Next page</Text></Pressable>
       </View>
     </View>
   );
 });
+
+function closestParagraph(node: Node) {
+  const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+  return element?.closest('p') ?? null;
+}
+
+function paragraphOffset(paragraph: Element, visible: Range) {
+  try {
+    const before = paragraph.ownerDocument.createRange();
+    before.selectNodeContents(paragraph);
+    before.setEnd(visible.startContainer, visible.startOffset);
+    const total = normalize(paragraph.textContent ?? '').length;
+    return total ? Math.min(1_000_000, Math.round(normalize(before.toString()).length * 1_000_000 / total)) : 0;
+  } catch {
+    return 0;
+  }
+}
 
 function serializeRange(view: any, index: number, range: Range): ReaderCapture {
   const text = range.toString();

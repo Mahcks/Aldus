@@ -64,6 +64,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function download(path: string) {
+  const token = await getToken();
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(`${baseURL}/api${path}`, { headers, credentials: 'include' });
+  if (!response.ok) throw new APIError(response.status, (await response.text()).trim() || `Request failed (${response.status}).`);
+  return response.blob();
+}
+
 async function acceptSession(session: Session) {
   if (session.token) await setToken(session.token);
   return session.user;
@@ -106,6 +115,7 @@ export const api = {
     body.append('file', file, filename);
     return request<Media>(`/libraries/${libraryID}/representations/${representationID}/media`, { method: 'POST', body });
   },
+  mediaBlob: (id: string) => download(`/media/${id}`),
 
   enqueueAlignment: (body: CreateAlignmentJobRequest) => request<AlignmentJob>('/alignment-jobs', { method: 'POST', body: JSON.stringify(body) }),
   alignmentJobs: (workID: string) => request<AlignmentJob[]>(`/works/${workID}/alignment-jobs`),
@@ -119,7 +129,7 @@ export const api = {
   canonicalToEPUB: (id: string, position: CanonicalPosition) => request<EPUBLocator>(`/alignments/${id}/locators/epub`, { method: 'POST', body: JSON.stringify(position) }),
   canonicalToAudio: (id: string, position: CanonicalPosition) => request<AudioLocator>(`/alignments/${id}/locators/audio`, { method: 'POST', body: JSON.stringify(position) }),
   updateWorkProgress: (id: string, body: WorkProgressUpdate) => request<CanonicalPosition>(`/works/${id}/progress`, { method: 'PUT', body: JSON.stringify(body) }),
-  representationState: (id: string) => request<RepresentationState>(`/representations/${id}/state`),
+  representationState: async (id: string) => { try { return await request<RepresentationState>(`/representations/${id}/state`); } catch (error) { if (error instanceof APIError && error.status === 404) return null; throw error; } },
   updateRepresentationState: (id: string, body: RepresentationStateUpdate) => request<RepresentationState>(`/representations/${id}/state`, { method: 'PUT', body: JSON.stringify(body) }),
 };
 

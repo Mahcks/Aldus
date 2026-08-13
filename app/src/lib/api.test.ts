@@ -39,4 +39,11 @@ describe('API transport', () => {
     expect(await api.alignmentJobs('work-1')).toEqual(jobs);
     expect(url).toEndWith('/api/works/work-1/alignment-jobs');
   });
+
+  it('downloads authenticated EPUB bytes with web credentials', async () => {
+    let request: RequestInit | undefined;
+    globalThis.fetch = (async (_input, init) => { request = init; return new Response('epub'); }) as typeof fetch;
+    expect(await (await api.mediaBlob('media-1')).text()).toBe('epub');
+    expect(request?.credentials).toBe('include');
+  });
 });
