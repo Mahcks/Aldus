@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/position"
 )
@@ -34,14 +35,11 @@ func updateWorkProgress(store *position.Store, catalogStore *catalog.Store) http
 			writeCatalogResult(w, nil, err)
 			return
 		}
-		var request struct {
-			AlignmentID string `json:"alignment_id"`
-			position.Update
-		}
+		var request contracts.WorkProgressUpdate
 		if !decode(w, r, &request) {
 			return
 		}
-		value, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, request.AlignmentID, request.Update)
+		value, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, request.AlignmentID, request.ProgressUpdate)
 		writeResult(w, value, err)
 	}
 }

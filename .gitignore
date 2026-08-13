@@ -1,5 +1,6 @@
 .DS_Store
 .env
+.tools/
 data/
 app/.expo/
 app/dist/

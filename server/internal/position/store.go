@@ -6,19 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 )
 
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *dbsql.Queries
 }
 
-type scanner interface{ Scan(...any) error }
-
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store { return &Store{db: db, queries: dbsql.New(db)} }
 
 func (s *Store) WorkForAlignment(ctx context.Context, alignmentID string) (string, error) {
-	var workID string
-	err := s.db.QueryRowContext(ctx, `SELECT r.work_id FROM alignments a JOIN media m ON m.id=a.epub_media_id JOIN representations r ON r.id=m.representation_id WHERE a.id=?`, alignmentID).Scan(&workID)
+	workID, err := s.queries.WorkForAlignment(ctx, alignmentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -65,30 +65,27 @@ func (s *Store) Alignment(ctx context.Context, alignmentID string) (Alignment, e
 }
 
 func (s *Store) Progress(ctx context.Context, userID, workID string) (Canonical, error) {
-	return progressRow(s.db.QueryRowContext(ctx, `
-		SELECT p.work_id,p.alignment_id,p.segment_id,p.offset,p.revision,p.updated_at,p.source_device,a.state,
-			a.state='ready' AND seg.highlightable=1
-		FROM progress p JOIN alignments a ON a.id=p.alignment_id
-		JOIN alignment_segments seg ON seg.alignment_id=p.alignment_id AND seg.id=p.segment_id
-		WHERE p.user_id=? AND p.work_id=?`, userID, workID))
+	row, err := s.queries.GetProgress(ctx, dbsql.GetProgressParams{UserID: userID, WorkID: workID})
+	return progressRow(row, err)
 }
 
-func progressRow(row scanner) (Canonical, error) {
-	var p Canonical
-	var updatedAt string
-	var resolvable int
-	err := row.Scan(&p.WorkID, &p.AlignmentID, &p.SegmentID, &p.Offset, &p.Revision, &updatedAt, &p.SourceDevice, &p.AlignmentState, &resolvable)
+func progressRow(row dbsql.GetProgressRow, err error) (Canonical, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return Canonical{}, ErrNotFound
 	}
 	if err != nil {
 		return Canonical{}, fmt.Errorf("get progress: %w", err)
 	}
-	p.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedAt)
+	p := Canonical{
+		WorkID: row.WorkID, AlignmentID: row.AlignmentID, SegmentID: row.SegmentID,
+		Offset: int(row.Offset), Revision: row.Revision, SourceDevice: row.SourceDevice,
+		AlignmentState: row.AlignmentState,
+	}
+	p.UpdatedAt, err = time.Parse(time.RFC3339Nano, row.UpdatedAt)
 	if err != nil {
 		return Canonical{}, fmt.Errorf("parse progress time: %w", err)
 	}
-	value := resolvable != 0
+	value := row.Resolvable.Bool
 	p.Resolvable = &value
 	return p, nil
 }
@@ -102,6 +99,7 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 		return Canonical{}, fmt.Errorf("begin progress update: %w", err)
 	}
 	defer tx.Rollback()
+	queries := s.queries.WithTx(tx)
 
 	var validWork string
 	if err := tx.QueryRowContext(ctx, `
@@ -123,14 +121,14 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 	}
 
 	var currentRevision int64
-	err = tx.QueryRowContext(ctx, `SELECT revision FROM progress WHERE user_id=? AND work_id=?`, userID, workID).Scan(&currentRevision)
+	currentRevision, err = queries.GetProgressRevision(ctx, dbsql.GetProgressRevisionParams{UserID: userID, WorkID: workID})
 	if errors.Is(err, sql.ErrNoRows) {
 		currentRevision = 0
 	} else if err != nil {
 		return Canonical{}, fmt.Errorf("get progress revision: %w", err)
 	}
 	if update.ExpectedRevision != currentRevision {
-		current, getErr := progressTx(ctx, tx, userID, workID)
+		current, getErr := progressTx(ctx, queries, userID, workID)
 		if getErr != nil {
 			return Canonical{}, ErrConflict
 		}
@@ -149,17 +147,10 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 	}
 	resolvable := true
 	p.Resolvable = &resolvable
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO progress (user_id,work_id,alignment_id,segment_id,offset,revision,updated_at,source_device)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(user_id,work_id) DO UPDATE SET
-			alignment_id = excluded.alignment_id,
-			segment_id = excluded.segment_id,
-			offset = excluded.offset,
-			revision = excluded.revision,
-			updated_at = excluded.updated_at,
-			source_device = excluded.source_device`,
-		userID, p.WorkID, p.AlignmentID, p.SegmentID, p.Offset, p.Revision, p.UpdatedAt.Format(time.RFC3339Nano), p.SourceDevice)
+	err = queries.UpsertProgress(ctx, dbsql.UpsertProgressParams{
+		UserID: userID, WorkID: p.WorkID, AlignmentID: p.AlignmentID, SegmentID: p.SegmentID,
+		Offset: int64(p.Offset), Revision: p.Revision, UpdatedAt: p.UpdatedAt.Format(time.RFC3339Nano), SourceDevice: p.SourceDevice,
+	})
 	if err != nil {
 		return Canonical{}, fmt.Errorf("save progress: %w", err)
 	}
@@ -169,8 +160,9 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 	return p, nil
 }
 
-func progressTx(ctx context.Context, tx *sql.Tx, userID, workID string) (Canonical, error) {
-	return progressRow(tx.QueryRowContext(ctx, `SELECT p.work_id,p.alignment_id,p.segment_id,p.offset,p.revision,p.updated_at,p.source_device,a.state,a.state='ready' AND s.highlightable=1 FROM progress p JOIN alignments a ON a.id=p.alignment_id JOIN alignment_segments s ON s.alignment_id=p.alignment_id AND s.id=p.segment_id WHERE p.user_id=? AND p.work_id=?`, userID, workID))
+func progressTx(ctx context.Context, queries *dbsql.Queries, userID, workID string) (Canonical, error) {
+	row, err := queries.GetProgress(ctx, dbsql.GetProgressParams{UserID: userID, WorkID: workID})
+	return progressRow(row, err)
 }
 
 func (s *Store) Ordinal(ctx context.Context, p Canonical) (int, error) {

@@ -1,4 +1,8 @@
-.PHONY: fixture dev dev-app dev-server build test lint docker docker-alignment
+.PHONY: fixture dev dev-app dev-server generate generate-check build test lint docker docker-alignment
+
+SQLC_VERSION := v1.31.1
+TYGO_VERSION := v0.2.21
+TOOL_BIN := $(CURDIR)/.tools
 
 fixture:
 	./test-fixtures/alice/fetch.sh
@@ -11,6 +15,17 @@ dev-app:
 
 dev-server:
 	cd server && ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media go run ./cmd/app
+
+generate:
+	mkdir -p $(TOOL_BIN)
+	GOBIN=$(TOOL_BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+	GOBIN=$(TOOL_BIN) go install github.com/gzuidhof/tygo@$(TYGO_VERSION)
+	cd server && $(TOOL_BIN)/sqlc generate
+	cd server && $(TOOL_BIN)/tygo generate
+
+generate-check: generate
+	cd server && $(TOOL_BIN)/sqlc vet
+	git diff --exit-code -- server/internal/database/sqlc app/src/generated/api.ts
 
 build:
 	cd app && bun run build:web

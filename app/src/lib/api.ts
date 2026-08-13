@@ -7,7 +7,8 @@ import type {
   EPUBLocator,
   RepresentationState,
   RepresentationStateUpdate,
-} from '../types/sync';
+  WorkProgressUpdate,
+} from '../generated/api';
 
 const baseURL = process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? '' : 'http://localhost:8080');
 const alignmentID = 'fixture-alignment';
@@ -87,7 +88,7 @@ export async function updateWorkProgress(
       offset: position.offset,
       expected_revision: expectedRevision,
       source_device: sourceDevice,
-    }),
+    } satisfies WorkProgressUpdate),
   });
   const current = (await response.json()) as CanonicalPosition;
   if (response.status === 409) return { current, conflict: true };

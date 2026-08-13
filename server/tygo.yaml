@@ -1,0 +1,6 @@
+packages:
+  - path: "github.com/mahcks/aldus/server/internal/api/contracts"
+    output_path: "../app/src/generated/api.ts"
+    type_mappings:
+      time.Time: "string"
+      json.RawMessage: "unknown"
