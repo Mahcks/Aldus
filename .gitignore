@@ -11,3 +11,4 @@ plans/
 __pycache__/
 *.py[cod]
 test-fixtures/alice/media/
+artifacts/

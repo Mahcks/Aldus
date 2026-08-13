@@ -48,7 +48,7 @@ func audioLocatorDTO(v position.AudioLocator) contracts.AudioLocator {
 func alignmentDTO(v position.Alignment) contracts.Alignment {
 	out := contracts.Alignment{ID: v.ID, Revision: v.Revision, State: v.State, EPUBSHA256: v.EPUBSHA256, AudioSHA256: v.AudioSHA256, Segments: make([]contracts.AlignmentSegment, len(v.Segments))}
 	for i, s := range v.Segments {
-		out.Segments[i] = contracts.AlignmentSegment{ID: s.ID, Ordinal: s.Ordinal, Text: s.Text, EPUBHref: s.EPUBHref, EPUBLocator: s.EPUBLocator, KOReaderLocator: s.KOReaderLocator, AudioResource: s.AudioResource, AudioStartMS: s.AudioStartMS, AudioEndMS: s.AudioEndMS}
+		out.Segments[i] = contracts.AlignmentSegment{ID: s.ID, Ordinal: s.Ordinal, Text: s.Text, EPUBHref: s.EPUBHref, EPUBLocator: s.EPUBLocator, KOReaderLocator: s.KOReaderLocator, AudioResource: s.AudioResource, AudioStartMS: s.AudioStartMS, AudioEndMS: s.AudioEndMS, Highlightable: s.Highlightable, AlignmentStatus: s.AlignmentStatus}
 	}
 	return out
 }

@@ -69,6 +69,8 @@ type AlignmentSegment struct {
 	AudioResource   string          `json:"audio_resource"`
 	AudioStartMS    int64           `json:"audio_start_ms"`
 	AudioEndMS      int64           `json:"audio_end_ms"`
+	Highlightable   bool            `json:"highlightable"`
+	AlignmentStatus string          `json:"alignment_status"`
 }
 
 type EPUBLocator struct {

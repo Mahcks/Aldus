@@ -84,6 +84,20 @@ func TestResolverRoundTrips(t *testing.T) {
 	}
 }
 
+func TestWordAwareOffsets(t *testing.T) {
+	words := `[{"text":"Alice","startTime":10.0,"endTime":10.4},{"text":"opened","startTime":10.6,"endTime":11.0},{"text":"the","startTime":11.1,"endTime":11.3},{"text":"door","startTime":11.4,"endTime":11.8}]`
+	text := "Alice opened the door"
+	if timestamp, ok := wordTimestamp(500_000, text, words); !ok || timestamp != 10_600 {
+		t.Fatalf("middle text position = %d, %v", timestamp, ok)
+	}
+	if offset, ok := wordOffset(11_200, text, words); !ok || offset != 619_047 {
+		t.Fatalf("audio word position = %d, %v", offset, ok)
+	}
+	if _, ok := wordTimestamp(500_000, text, `[{"text":"","startTime":0}]`); ok {
+		t.Fatal("malformed timing did not fail closed")
+	}
+}
+
 func TestProgressRejectsStaleUpdate(t *testing.T) {
 	ctx := context.Background()
 	store := testStore(t)

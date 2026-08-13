@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 func (s *Store) EPUBToCanonical(ctx context.Context, alignmentID string, locator EPUBLocator) (Canonical, error) {
@@ -16,8 +17,16 @@ func (s *Store) EPUBToCanonical(ctx context.Context, alignmentID string, locator
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.alignment_id, s.id
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
-		WHERE s.alignment_id = ? AND s.epub_href = ? AND s.epub_locator = ? AND s.highlightable=1 AND a.state = 'ready'`,
-		alignmentID, locator.Href, string(locator.Locator),
+		WHERE s.alignment_id = ? AND s.epub_href = ?
+			AND ((json_extract(?,'$.segment_id') IS NOT NULL
+				AND s.id=json_extract(?,'$.segment_id')
+				AND json_extract(s.epub_locator,'$.dom_path')=json_extract(?,'$.dom_path')) OR
+			(json_extract(?,'$.segment_id') IS NULL AND (s.epub_locator=? OR (
+				json_extract(s.epub_locator,'$.type')=json_extract(?,'$.type')
+				AND json_extract(s.epub_locator,'$.dom_path')=json_extract(?,'$.dom_path')))))
+			AND s.highlightable=1 AND a.state = 'ready'
+		ORDER BY s.ordinal LIMIT 1`,
+		alignmentID, locator.Href, string(locator.Locator), string(locator.Locator), string(locator.Locator), string(locator.Locator), string(locator.Locator), string(locator.Locator), string(locator.Locator),
 	).Scan(&p.AlignmentID, &p.SegmentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Canonical{}, ErrNotFound
@@ -55,21 +64,27 @@ func (s *Store) CanonicalToEPUB(ctx context.Context, p Canonical) (EPUBLocator, 
 func (s *Store) AudioToCanonical(ctx context.Context, alignmentID string, locator AudioLocator) (Canonical, error) {
 	var p Canonical
 	var start, end int64
+	var text string
+	var timings sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT s.alignment_id, s.id, s.audio_start_ms, s.audio_end_ms
+		SELECT s.alignment_id, s.id, s.audio_start_ms, s.audio_end_ms, s.text, s.word_timings
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
 		WHERE s.alignment_id = ? AND s.audio_resource = ?
 			AND s.audio_start_ms <= ? AND s.audio_end_ms > ? AND s.highlightable=1 AND a.state = 'ready'
 		ORDER BY s.ordinal LIMIT 1`,
 		alignmentID, locator.Resource, locator.TimestampMS, locator.TimestampMS,
-	).Scan(&p.AlignmentID, &p.SegmentID, &start, &end)
+	).Scan(&p.AlignmentID, &p.SegmentID, &start, &end, &text, &timings)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Canonical{}, ErrNotFound
 	}
 	if err != nil {
 		return Canonical{}, fmt.Errorf("resolve audio locator: %w", err)
 	}
-	p.Offset = int((locator.TimestampMS - start) * OffsetMax / (end - start))
+	if offset, ok := wordOffset(locator.TimestampMS, text, timings.String); timings.Valid && ok {
+		p.Offset = offset
+	} else {
+		p.Offset = int((locator.TimestampMS - start) * OffsetMax / (end - start))
+	}
 	return p, nil
 }
 
@@ -79,20 +94,83 @@ func (s *Store) CanonicalToAudio(ctx context.Context, p Canonical) (AudioLocator
 	}
 	var locator AudioLocator
 	var start, end int64
+	var text string
+	var timings sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT s.audio_resource, s.audio_start_ms, s.audio_end_ms
+		SELECT s.audio_resource, s.audio_start_ms, s.audio_end_ms, s.text, s.word_timings
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
 		WHERE s.alignment_id = ? AND s.id = ? AND s.highlightable=1 AND a.state = 'ready'`,
 		p.AlignmentID, p.SegmentID,
-	).Scan(&locator.Resource, &start, &end)
+	).Scan(&locator.Resource, &start, &end, &text, &timings)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AudioLocator{}, ErrNotFound
 	}
 	if err != nil {
 		return AudioLocator{}, fmt.Errorf("resolve canonical audio locator: %w", err)
 	}
-	locator.TimestampMS = start + int64(p.Offset)*(end-start)/OffsetMax
+	if timestamp, ok := wordTimestamp(p.Offset, text, timings.String); timings.Valid && ok && timestamp >= start && timestamp <= end {
+		locator.TimestampMS = timestamp
+	} else {
+		locator.TimestampMS = start + int64(p.Offset)*(end-start)/OffsetMax
+	}
 	return locator, nil
+}
+
+type timedWord struct {
+	Text      string  `json:"text"`
+	StartTime float64 `json:"startTime"`
+	EndTime   float64 `json:"endTime"`
+}
+
+func timedWords(raw string) ([]timedWord, bool) {
+	var words []timedWord
+	if json.Unmarshal([]byte(raw), &words) != nil || len(words) == 0 {
+		return nil, false
+	}
+	for _, word := range words {
+		if word.Text == "" || word.StartTime <= 0 || word.EndTime < word.StartTime {
+			return nil, false
+		}
+	}
+	return words, true
+}
+
+func wordTimestamp(offset int, text, raw string) (int64, bool) {
+	words, ok := timedWords(raw)
+	if !ok {
+		return 0, false
+	}
+	total := len([]rune(normalizeText(text)))
+	position := offset * total / OffsetMax
+	cursor := 0
+	for _, word := range words {
+		end := cursor + len([]rune(word.Text))
+		if position <= end {
+			return int64(word.StartTime * 1000), true
+		}
+		cursor = end + 1
+	}
+	return int64(words[len(words)-1].StartTime * 1000), true
+}
+
+func wordOffset(timestamp int64, text, raw string) (int, bool) {
+	words, ok := timedWords(raw)
+	if !ok {
+		return 0, false
+	}
+	total := len([]rune(normalizeText(text)))
+	cursor := 0
+	for _, word := range words {
+		if timestamp <= int64(word.EndTime*1000) {
+			return cursor * OffsetMax / total, true
+		}
+		cursor += len([]rune(word.Text)) + 1
+	}
+	return OffsetMax, true
+}
+
+func normalizeText(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }
 
 func (s *Store) KOReaderToCanonical(ctx context.Context, locator KOReaderLocator) (Canonical, error) {

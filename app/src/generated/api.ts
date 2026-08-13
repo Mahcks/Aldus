@@ -199,6 +199,8 @@ export interface AlignmentSegment {
   audio_resource: string;
   audio_start_ms: number /* int64 */;
   audio_end_ms: number /* int64 */;
+  highlightable: boolean;
+  alignment_status: string;
 }
 export interface EPUBLocator {
   href: string;

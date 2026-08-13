@@ -1,4 +1,4 @@
-.PHONY: fixture dev dev-app dev-server generate generate-check build test lint docker docker-alignment
+.PHONY: fixture seed-alice dev dev-app dev-server generate generate-check build test lint docker docker-alignment
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -6,6 +6,9 @@ TOOL_BIN := $(CURDIR)/.tools
 
 fixture:
 	./test-fixtures/alice/fetch.sh
+
+seed-alice:
+	cd server && ALDUS_ENV=development go run ./cmd/seed-alice --data-dir ../data --fixture-dir ../test-fixtures/alice/media --artifact ../test-fixtures/alice/automatic/hybrid-whisperx/alignment.json
 
 dev:
 	@$(MAKE) -j2 dev-server dev-app
