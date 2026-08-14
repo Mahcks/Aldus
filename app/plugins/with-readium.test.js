@@ -19,7 +19,7 @@ describe('Readium config plugin', () => {
     expect(patched).toContain("require_relative '../plugins/readium_post_install'");
     expect(patched).not.toContain("react-native-readium/scripts/readium_post_install'");
     expect(patched).toContain('  readium_pods');
-    expect(patched).toContain('    readium_post_install(installer)');
+    expect(patched).toContain('    aldus_readium_post_install(installer)');
     expect(patchPodfile(patched)).toBe(patched);
   });
 
@@ -29,5 +29,6 @@ describe('Readium config plugin', () => {
       "require_relative '../node_modules/react-native-readium/scripts/readium_post_install'",
     );
     expect(patchPodfile(old)).toContain("require_relative '../plugins/readium_post_install'");
+    expect(patchPodfile(old)).toContain('    aldus_readium_post_install(installer)');
   });
 });

@@ -25,13 +25,17 @@ function patchPodfile(contents) {
     const lineEnd = next.indexOf('\n', useExpo);
     next = `${next.slice(0, lineEnd + 1)}  readium_pods\n${next.slice(lineEnd + 1)}`;
   }
-  if (!next.includes('    readium_post_install(installer)')) {
+  next = next.replace(
+    '    readium_post_install(installer)',
+    '    aldus_readium_post_install(installer)',
+  );
+  if (!next.includes('    aldus_readium_post_install(installer)')) {
     const postInstall = next.indexOf('  post_install do |installer|');
     const blockEnd = next.lastIndexOf('\n  end\nend');
     if (postInstall < 0 || blockEnd < postInstall) {
       throw new Error('Readium spike could not find the Podfile post_install block.');
     }
-    next = `${next.slice(0, blockEnd)}\n    readium_post_install(installer)${next.slice(blockEnd)}`;
+    next = `${next.slice(0, blockEnd)}\n    aldus_readium_post_install(installer)${next.slice(blockEnd)}`;
   }
   return next;
 }

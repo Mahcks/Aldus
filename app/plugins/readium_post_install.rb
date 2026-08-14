@@ -1,5 +1,5 @@
 # Temporary RC 17 compatibility hook. Remove after upgrading react-native-readium.
-def readium_post_install(installer)
+def aldus_readium_post_install(installer)
   modulemap = <<~MODULEMAP
     module Minizip [extern_c] [system] {
       header "Minizip-umbrella.h"
