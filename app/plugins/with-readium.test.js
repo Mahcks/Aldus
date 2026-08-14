@@ -16,8 +16,18 @@ describe('Readium config plugin', () => {
   test('adds the required sources, pods, and post-install hook once', () => {
     const patched = patchPodfile(podfile);
     expect(patched).toContain("source 'https://github.com/readium/podspecs'");
+    expect(patched).toContain("require_relative '../plugins/readium_post_install'");
+    expect(patched).not.toContain("react-native-readium/scripts/readium_post_install'");
     expect(patched).toContain('  readium_pods');
     expect(patched).toContain('    readium_post_install(installer)');
     expect(patchPodfile(patched)).toBe(patched);
+  });
+
+  test('migrates the broken RC 17 upstream post-install hook', () => {
+    const old = patchPodfile(podfile).replace(
+      "require_relative '../plugins/readium_post_install'",
+      "require_relative '../node_modules/react-native-readium/scripts/readium_post_install'",
+    );
+    expect(patchPodfile(old)).toContain("require_relative '../plugins/readium_post_install'");
   });
 });

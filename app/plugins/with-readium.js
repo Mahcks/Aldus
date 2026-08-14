@@ -5,10 +5,13 @@ const path = require('node:path');
 const sources = `source 'https://github.com/readium/podspecs'
 source 'https://cdn.cocoapods.org/'`;
 const helpers = `require_relative '../node_modules/react-native-readium/scripts/readium_pods'
-require_relative '../node_modules/react-native-readium/scripts/readium_post_install'`;
+require_relative '../plugins/readium_post_install'`;
 
 function patchPodfile(contents) {
-  let next = contents;
+  let next = contents.replace(
+    "require_relative '../node_modules/react-native-readium/scripts/readium_post_install'",
+    "require_relative '../plugins/readium_post_install'",
+  );
   if (!next.includes("source 'https://github.com/readium/podspecs'"))
     next = `${sources}\n\n${next}`;
   if (!next.includes('react-native-readium/scripts/readium_pods')) {
