@@ -11,6 +11,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
 import { Platform, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   DEFAULT_READER_PREFERENCES,
   EPUBReader,
@@ -45,6 +46,7 @@ type Mode = 'read' | 'listen';
 
 export default function ConsumeWorkScreen() {
   const compact = useWindowDimensions().width < 600;
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; mode?: Mode; epub?: string; audio?: string }>();
   const [work, setWork] = useState<Work>();
   const [mode, setMode] = useState<Mode>(params.mode === 'listen' ? 'listen' : 'read');
@@ -578,8 +580,11 @@ export default function ConsumeWorkScreen() {
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
   return (
-    <View className="min-h-full flex-1 bg-canvas">
-      <View className="min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper px-3 py-2">
+    <View className="min-h-full flex-1 bg-canvas" style={{ paddingBottom: insets.bottom }}>
+      <View
+        className="min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper px-3 pb-2"
+        style={{ paddingTop: insets.top + 8 }}
+      >
         <IconButton
           icon="back"
           label="Back to work"

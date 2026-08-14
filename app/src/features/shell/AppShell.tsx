@@ -54,10 +54,9 @@ function noop() {
 
 export function AppShell() {
   const path = usePathname();
-  if (path.startsWith('/consume/')) return <Slot />;
   return (
     <SafeAreaProvider>
-      <AppShellChrome />
+      {path.startsWith('/consume/') ? <Slot /> : <AppShellChrome />}
     </SafeAreaProvider>
   );
 }
