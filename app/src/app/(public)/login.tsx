@@ -12,6 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const visibleError = error || auth.error;
 
   if (auth.user) return <Redirect href="/libraries" />;
   if (auth.setupAvailable) return <Redirect href="/setup" />;
@@ -36,7 +37,10 @@ export default function Login() {
         <Text accessibilityRole="header" className="mb-1 text-2xl font-extrabold text-ink">
           Sign in
         </Text>
-        {error ? <Notice danger>{error}</Notice> : null}
+        {visibleError ? <Notice danger>{visibleError}</Notice> : null}
+        {auth.error && !error ? (
+          <Button label="Retry connection" kind="secondary" onPress={auth.refresh} />
+        ) : null}
         <Field
           label="Username"
           autoCapitalize="none"

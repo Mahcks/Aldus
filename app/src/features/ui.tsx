@@ -669,12 +669,18 @@ export function ErrorState({
 }
 
 export function LoadingState({ label = 'Loading your library…' }: { label?: string }) {
+  const compact = useWindowDimensions().width < 600;
+  const placeholders = compact ? [0, 1] : [0, 1, 2, 3];
+
   return (
-    <View accessibilityLabel={label} className="min-h-[240px] w-full gap-8 py-4 opacity-60">
+    <View
+      accessibilityLabel={label}
+      className="min-h-[240px] w-full overflow-hidden px-4 py-4 opacity-60"
+    >
       <View className="gap-3">
         <View className="h-5 w-36 rounded bg-panel-strong" />
         <View className="flex-row gap-5">
-          {[0, 1, 2, 3].map((item) => (
+          {placeholders.map((item) => (
             <View key={item} className="w-[148px] gap-2">
               <View className="h-[218px] rounded bg-panel-strong" />
               <View className="h-3 rounded bg-panel-strong" />
@@ -683,7 +689,7 @@ export function LoadingState({ label = 'Loading your library…' }: { label?: st
           ))}
         </View>
       </View>
-      <Text className="text-sm text-muted">{label}</Text>
+      <Text className="mt-8 text-sm text-muted">{label}</Text>
     </View>
   );
 }

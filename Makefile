@@ -23,7 +23,8 @@ web-dev: dev-app
 
 expo-dev:
 	@test -n "$$EXPO_PUBLIC_API_URL" || (echo "Set EXPO_PUBLIC_API_URL to the LAN-reachable Aldus origin" >&2; exit 1)
-	cd app && bun run start:dev-client
+	@PACKAGER_HOST=$$(printf '%s\n' "$$EXPO_PUBLIC_API_URL" | sed -E 's,https?://([^:/]+).*,\1,'); \
+	cd app && REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
 
 ios-dev:
 	cd app && bun run ios:device

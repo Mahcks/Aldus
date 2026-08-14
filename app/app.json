@@ -10,6 +10,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.mahcks.aldus",
       "infoPlist": {
+        "DEV_CLIENT_TRY_TO_LAUNCH_LAST_BUNDLE": false,
         "NSLocalNetworkUsageDescription": "Aldus connects to your local development server and Metro on your network.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -24,6 +25,12 @@
       "output": "static"
     },
     "plugins": [
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "launcher"
+        }
+      ],
       "expo-router",
       [
         "expo-audio",
@@ -34,7 +41,9 @@
           "enableBackgroundRecording": false
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
