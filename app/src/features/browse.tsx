@@ -34,25 +34,29 @@ export function BrowseControls({
   onAvailabilityChange: (value: string) => void;
 }) {
   return (
-    <View className="gap-4 rounded-card border border-line bg-paper p-4">
-      <SearchField
-        label="Search title or author"
-        value={query}
-        onChangeText={onQueryChange}
-        placeholder="Search title or author"
-      />
-      <Select
-        label="Sort"
-        options={browseSorts.map(([value, label]) => ({ value, label }))}
-        value={sort}
-        onChange={onSortChange}
-      />
-      <Select
-        label="Show"
-        options={browseFilters.map(([value, label]) => ({ value, label }))}
-        value={availability}
-        onChange={onAvailabilityChange}
-      />
+    <View className="gap-3 border-y border-line py-3">
+      <View className="w-full max-w-[760px]">
+        <SearchField
+          label="Search title or author"
+          value={query}
+          onChangeText={onQueryChange}
+          placeholder="Search title or author"
+        />
+      </View>
+      <View className="flex-row flex-wrap items-start gap-x-10 gap-y-3">
+        <Select
+          label="Sort by"
+          options={browseSorts.map(([value, label]) => ({ value, label }))}
+          value={sort}
+          onChange={onSortChange}
+        />
+        <Select
+          label="Availability"
+          options={browseFilters.map(([value, label]) => ({ value, label }))}
+          value={availability}
+          onChange={onAvailabilityChange}
+        />
+      </View>
     </View>
   );
 }
@@ -75,7 +79,7 @@ export function WorkGrid({
           key={work.id}
           title={work.title}
           author={work.author}
-          badges={summaryBadges(work)}
+          availability={work}
           progress={work.in_progress ? 'Continue where you left off' : undefined}
           context={showLibrary ? work.library_name : undefined}
           narrow={narrow}
@@ -84,12 +88,4 @@ export function WorkGrid({
       ))}
     </View>
   );
-}
-
-export function summaryBadges(work: WorkSummary) {
-  return [
-    work.readable ? 'Read' : '',
-    work.listenable ? 'Listen' : '',
-    work.synchronized ? 'Synced' : '',
-  ].filter(Boolean);
 }

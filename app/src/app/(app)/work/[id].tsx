@@ -1,7 +1,8 @@
 import type { AlignmentJob, Representation, Work } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { BookCover } from '../../../features/bookshelf';
+import { useWindowDimensions } from 'react-native';
+import { AvailabilityIcons, BookCover } from '../../../features/bookshelf';
 import {
   choices,
   defaultPair,
@@ -9,12 +10,24 @@ import {
   type MediaChoice,
 } from '../../../features/consumption';
 import { useAuth } from '../../../features/auth/AuthProvider';
-import { Pressable, Text, View } from '../../../features/tw';
-import { Button, Empty, Loading, Notice, Page, Row, Section, shared } from '../../../features/ui';
+import { Text, View } from '../../../features/tw';
+import {
+  Button,
+  Empty,
+  Loading,
+  Notice,
+  Page,
+  Radio,
+  IconButton,
+  Row,
+  Section,
+  shared,
+} from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 
 export default function WorkScreen() {
+  const compact = useWindowDimensions().width < 600;
   const {
     id,
     libraryId,
@@ -94,7 +107,7 @@ export default function WorkScreen() {
 
   return (
     <Page
-      title={work.title}
+      title="Work"
       back={
         <Button
           label="Library"
@@ -105,22 +118,43 @@ export default function WorkScreen() {
       }
       actions={
         canEdit ? (
-          <Button label="Manage this work" icon="settings" kind="secondary" onPress={openManage} />
+          compact ? (
+            <IconButton icon="settings" label="Manage this work" onPress={openManage} />
+          ) : (
+            <Button
+              label="Manage this work"
+              icon="settings"
+              kind="secondary"
+              onPress={openManage}
+            />
+          )
         ) : null
       }
     >
       {error ? <Notice danger>{error}</Notice> : null}
-      <View className="flex-row flex-wrap items-center gap-7 py-3">
+      <View className="flex-row flex-wrap items-center gap-10 border-b border-line py-5 pb-10">
         <BookCover title={work.title} author={work.author} compact />
-        <View className="min-w-[250px] flex-1 items-start gap-2">
-          <Text className="max-w-[680px] font-editorial text-3xl font-extrabold leading-9 text-ink">
+        <View className="min-w-[250px] flex-1 items-start gap-3">
+          <Text className="text-xs font-bold uppercase tracking-[2px] text-accent">Aldus work</Text>
+          <Text
+            numberOfLines={3}
+            className={`${compact ? 'text-3xl leading-9' : 'text-4xl leading-[44px]'} max-w-[720px] font-editorial font-extrabold text-ink`}
+          >
             {work.title}
           </Text>
-          <Text className="text-lg text-muted">{work.author || 'Unknown author'}</Text>
-          <Text className="mt-1.5 text-sm font-bold text-ink">
+          <Text numberOfLines={2} className="text-lg text-muted">
+            {work.author || 'Unknown author'}
+          </Text>
+          <Text className="mt-2 text-sm font-bold text-ink">
             {hasProgress ? 'Continue where you left off' : 'Ready to begin'}
           </Text>
-          <Text className="text-sm font-bold text-accent">{syncLabel}</Text>
+          <AvailabilityIcons
+            value={{
+              readable: Boolean(selectedEPUB),
+              listenable: Boolean(selectedAudio),
+              synchronized: syncLabel === 'Read + Listen available',
+            }}
+          />
           <Row>
             <Button
               label={hasProgress ? 'Continue reading' : 'Read'}
@@ -136,6 +170,20 @@ export default function WorkScreen() {
               onPress={() => consume('listen')}
             />
           </Row>
+          {selectedEPUB || selectedAudio ? (
+            <View className="mt-2 gap-1 border-t border-line pt-3">
+              {selectedEPUB ? (
+                <Text numberOfLines={1} className="text-sm text-muted">
+                  Reading: {selectedEPUB.representation.label}
+                </Text>
+              ) : null}
+              {selectedAudio ? (
+                <Text numberOfLines={1} className="text-sm text-muted">
+                  Listening: {selectedAudio.representation.label}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           {!selectedEPUB ? <Notice>This edition isn&apos;t available to read yet.</Notice> : null}
           {!selectedAudio ? (
             <Notice>This edition isn&apos;t available as an audiobook yet.</Notice>
@@ -194,21 +242,14 @@ function EditionChoiceList({
         <Empty>None available.</Empty>
       ) : (
         items.map((item) => (
-          <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selected === item.id }}
-            key={item.id}
-            className={shared.listItem}
-            onPress={() => onSelect(item.id)}
-          >
-            <Text className={shared.itemTitle}>
-              {selected === item.id ? '● ' : '○ '}
-              {item.original_filename || item.representation.label}
-            </Text>
-            <Text className={shared.itemMeta}>
-              {formatBytes(item.size_bytes)} · {item.representation.label}
-            </Text>
-          </Pressable>
+          <View key={item.id} className="border-b border-line py-2">
+            <Radio
+              label={item.representation.label}
+              selected={selected === item.id}
+              onPress={() => onSelect(item.id)}
+            />
+            <Text className="pl-8 text-xs text-muted">{formatBytes(item.size_bytes)}</Text>
+          </View>
         ))
       )}
     </View>

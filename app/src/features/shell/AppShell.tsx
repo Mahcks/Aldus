@@ -73,6 +73,8 @@ function AppShellChrome() {
   const consumerLinks: NavItem[] = [
     { label: 'Home', href: '/home', icon: 'home' },
     { label: 'Libraries', href: '/libraries', icon: 'libraries' },
+    { label: 'Search', href: '/search', icon: 'search' },
+    { label: 'Account', href: '/account', icon: 'account' },
   ];
   const adminLinks: NavItem[] = auth.user?.admin
     ? [
@@ -132,7 +134,7 @@ function AppShellChrome() {
       </View>
       <MobileTabBar
         path={path}
-        consumerLinks={consumerLinks}
+        consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
         bottomInset={insets.bottom}
         sheetOpen={sheetOpen}
         onOpenSheet={openSheet}
@@ -192,9 +194,13 @@ function DesktopNav({
         </View>
       ) : null}
       <View className="mt-auto gap-2 border-t border-line pt-[18px]">
-        <Text numberOfLines={1} className="min-h-6 text-sm font-bold text-ink">
-          {userLabel}
-        </Text>
+        <NavLink
+          label={userLabel}
+          href="/account"
+          icon="account"
+          selected={isActive(path, '/account')}
+          tone="quiet"
+        />
         <Pressable
           accessibilityRole="button"
           onPress={onSignOut}
@@ -406,9 +412,13 @@ function MoreSheet({
               </View>
             ) : null}
             <View className="gap-1 border-t border-line pt-3">
-              <Text numberOfLines={1} className="min-h-6 px-[11px] text-sm font-bold text-ink">
-                {userLabel}
-              </Text>
+              <SheetLink
+                label={userLabel || 'Account'}
+                href="/account"
+                icon="account"
+                selected={isActive(path, '/account')}
+                onPress={() => handleLinkPress('/account')}
+              />
               <Pressable
                 accessibilityRole="button"
                 onPress={onSignOut}

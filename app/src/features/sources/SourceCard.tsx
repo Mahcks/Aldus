@@ -35,7 +35,7 @@ export function SourceCard({
   const status = sourceStatus(source, latest);
 
   return (
-    <View className="grow basis-[420px] gap-3.5 rounded-card border border-line bg-paper p-[18px]">
+    <View className="w-full max-w-[760px] gap-3.5 rounded-card border border-line bg-paper p-[18px]">
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-lg font-extrabold leading-[23px] text-ink">{source.name}</Text>

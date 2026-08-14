@@ -206,6 +206,7 @@ export function IconButton({
   disabled,
   selected = false,
   nativeID,
+  size = 'default',
 }: {
   icon: AppIconName;
   label: string;
@@ -214,6 +215,7 @@ export function IconButton({
   disabled?: boolean;
   selected?: boolean;
   nativeID?: string;
+  size?: 'default' | 'large';
 }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -238,6 +240,8 @@ export function IconButton({
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: Boolean(disabled) });
   const opacityClass = disabled ? 'opacity-50' : '';
 
+  const sizeClass = size === 'large' ? 'h-16 w-16 rounded-pill' : 'h-11 w-11 rounded-control';
+
   return (
     <Pressable
       nativeID={nativeID}
@@ -250,9 +254,9 @@ export function IconButton({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`h-11 w-11 items-center justify-center rounded-control ${backgroundClass} ${borderClass} ${opacityClass}`}
+      className={`${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${opacityClass}`}
     >
-      <AppIcon name={icon} size={20} color={iconColor} />
+      <AppIcon name={icon} size={size === 'large' ? 30 : 20} color={iconColor} />
     </Pressable>
   );
 }
@@ -666,16 +670,20 @@ export function ErrorState({
 
 export function LoadingState({ label = 'Loading your library…' }: { label?: string }) {
   return (
-    <View className="min-h-[240px] flex-1 items-center justify-center gap-4">
-      <View className="w-[250px] flex-row gap-4 opacity-60">
-        <View className="h-[76px] w-[54px] rounded bg-panel-strong" />
-        <View className="flex-1 justify-center gap-2">
-          <View className="h-2.5 rounded bg-panel-strong" />
-          <View className="h-2.5 w-[62%] rounded bg-panel-strong" />
+    <View accessibilityLabel={label} className="min-h-[240px] w-full gap-8 py-4 opacity-60">
+      <View className="gap-3">
+        <View className="h-5 w-36 rounded bg-panel-strong" />
+        <View className="flex-row gap-5">
+          {[0, 1, 2, 3].map((item) => (
+            <View key={item} className="w-[148px] gap-2">
+              <View className="h-[218px] rounded bg-panel-strong" />
+              <View className="h-3 rounded bg-panel-strong" />
+              <View className="h-3 w-2/3 rounded bg-panel-strong" />
+            </View>
+          ))}
         </View>
       </View>
-      <ActivityIndicator color={colors.accent} />
-      <Text className="text-muted">{label}</Text>
+      <Text className="text-sm text-muted">{label}</Text>
     </View>
   );
 }
@@ -685,13 +693,13 @@ export const Loading = LoadingState;
 
 const STATUS_BADGE_TONE_CLASS: Record<
   StatusTone,
-  { background: string; text: string; spine: string }
+  { background: string; text: string; border: string }
 > = {
-  neutral: { background: 'bg-neutral-soft', text: 'text-neutral', spine: 'border-neutral' },
-  info: { background: 'bg-info-soft', text: 'text-info', spine: 'border-info' },
-  success: { background: 'bg-success-soft', text: 'text-success', spine: 'border-success' },
-  warning: { background: 'bg-warning-soft', text: 'text-warning', spine: 'border-warning' },
-  danger: { background: 'bg-danger-soft', text: 'text-danger', spine: 'border-danger' },
+  neutral: { background: 'bg-neutral-soft', text: 'text-neutral', border: 'border-neutral' },
+  info: { background: 'bg-info-soft', text: 'text-info', border: 'border-info' },
+  success: { background: 'bg-success-soft', text: 'text-success', border: 'border-success' },
+  warning: { background: 'bg-warning-soft', text: 'text-warning', border: 'border-warning' },
+  danger: { background: 'bg-danger-soft', text: 'text-danger', border: 'border-danger' },
 };
 
 const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
@@ -702,13 +710,7 @@ const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
   danger: colors.danger,
 };
 
-/**
- * General-purpose status badge, styled as a library spine label: a solid
- * color "spine" on the left edge, a soft tone-tinted body, and square-ish
- * corners on the left (only the trailing edge rounds). Used for source
- * health, scan state, import proposal state, alignment job state, user
- * enabled/disabled, and similar.
- */
+/** General-purpose badge for compact operational state, never decorative metadata. */
 export function StatusBadge({
   tone = 'neutral',
   label,
@@ -722,7 +724,7 @@ export function StatusBadge({
 
   return (
     <View
-      className={`flex-row items-center gap-1.5 self-start rounded-r border-l-[3px] py-1 pl-2 pr-2.5 ${toneClass.background} ${toneClass.spine}`}
+      className={`flex-row items-center gap-1.5 self-start rounded-control border px-2 py-1 ${toneClass.background} ${toneClass.border}`}
     >
       {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
       <Text className={`text-[11px] font-bold uppercase tracking-wide ${toneClass.text}`}>

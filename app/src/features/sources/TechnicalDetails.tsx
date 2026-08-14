@@ -27,14 +27,14 @@ export function TechnicalDetails({ rows }: { rows: DetailRow[] }) {
   if (rows.length === 0) return null;
 
   return (
-    <View className="gap-2">
+    <View className="items-start gap-2">
       <Button
         label={expanded ? 'Hide technical details' : 'Technical details'}
         kind="quiet"
         onPress={toggleExpanded}
       />
       {expanded ? (
-        <View className="gap-2 rounded-control bg-canvas p-3">
+        <View className="w-full gap-2 rounded-control bg-canvas p-3">
           {rows.map((row) => (
             <DetailRowView key={row.label} row={row} />
           ))}

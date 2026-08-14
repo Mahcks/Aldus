@@ -10,6 +10,7 @@ import {
   Dialog,
   EmptyState,
   Field,
+  IconButton,
   Loading,
   Notice,
   Page,
@@ -203,17 +204,22 @@ export default function LibraryScreen() {
       actions={
         <Row>
           {canManage ? (
-            <Button label="Manage members" kind="quiet" onPress={() => setPanel('members')} />
+            <Button label="Members" kind="quiet" onPress={() => setPanel('members')} />
           ) : null}
           {canEdit ? (
             <Button
-              label="Sources & imports"
+              label="Sources"
               kind="quiet"
               onPress={() => router.push(`/sources?libraryId=${id}`)}
             />
           ) : null}
           {canManage ? (
-            <Button label="Library settings" kind="quiet" onPress={() => setPanel('settings')} />
+            <IconButton
+              icon="settings"
+              label="Library settings"
+              kind="quiet"
+              onPress={() => setPanel('settings')}
+            />
           ) : null}
           {canEdit ? (
             <Button label="Add work" icon="add" kind="primary" onPress={() => setPanel('work')} />

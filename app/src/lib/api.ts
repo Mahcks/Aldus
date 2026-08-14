@@ -116,7 +116,7 @@ export const api = {
     }
   },
 
-  users: () => request<User[]>('/users'),
+  users: (offset = 0) => request<User[]>(`/users?limit=100&offset=${offset}`),
   createUser: (body: CreateUserRequest) =>
     request<User>('/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id: string, body: UpdateUserRequest) =>

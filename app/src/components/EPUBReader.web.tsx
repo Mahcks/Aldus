@@ -553,7 +553,7 @@ function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
     doc.head.appendChild(doc.createElement('style'));
   style.id = 'aldus-reader-style';
   const background = preferences.theme === 'sepia' ? colors.canvas : colors.paper;
-  style.textContent = `html { color: ${colors.ink}; background: ${background}; } body { font-family: Georgia, 'Times New Roman', serif; font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: ${colors.accentSoft}; color: ${colors.ink}; }`;
+  style.textContent = `html { color: ${colors.ink}; background: ${background}; } body { font-family: Georgia, 'Times New Roman', serif; font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: ${colors.accentSoft}; color: ${colors.ink}; }`;
 }
 
 function serializeRange(view: any, index: number, range: Range): ReaderCapture {

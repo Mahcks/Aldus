@@ -2,8 +2,8 @@ import type { Library, WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { WorkCard } from '../../features/bookshelf';
-import { summaryBadges, WorkGrid } from '../../features/browse';
+import { ContinueCard } from '../../features/bookshelf';
+import { WorkGrid } from '../../features/browse';
 import { AppIcon } from '../../features/icons';
 import { Pressable, ScrollView, Text, View } from '../../features/tw';
 import { Button, colors, EmptyState, Loading, Notice, Page, Section } from '../../features/ui';
@@ -80,6 +80,14 @@ export default function HomeScreen() {
     router.push(`/work/${work.id}?libraryId=${work.library_id}&role=${work.library_role ?? ''}`);
   }
 
+  function continueWork(work: WorkSummary) {
+    router.push(`/consume/${work.id}?mode=${work.readable ? 'read' : 'listen'}`);
+  }
+
+  function consumeWork(work: WorkSummary, mode: 'read' | 'listen') {
+    router.push(`/consume/${work.id}?mode=${mode}`);
+  }
+
   function openLibrary(library: Library) {
     router.push(`/library/${library.id}`);
   }
@@ -91,32 +99,42 @@ export default function HomeScreen() {
   if (loading) return <Loading />;
 
   return (
-    <Page title={`Welcome back${auth.user?.display_name ? `, ${auth.user.display_name}` : ''}`}>
+    <Page title="Home">
       {error ? <Notice danger>{error}</Notice> : null}
+      <View className="-mb-2 gap-1">
+        <Text className="text-sm font-semibold text-accent">Your reading room</Text>
+        <Text className="font-editorial text-2xl font-bold text-ink">
+          Welcome back{auth.user?.display_name ? `, ${auth.user.display_name}` : ''}.
+        </Text>
+      </View>
       {hasContinuing ? (
         <Section title="Continue">
-          <View className="gap-4 rounded-card border border-line bg-panel p-4">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="flex-row gap-6"
-            >
-              {continuing.map((work) => (
-                <WorkCard
-                  key={work.id}
-                  title={work.title}
-                  author={work.author}
-                  badges={summaryBadges(work)}
-                  progress="Continue where you left off"
-                  context={work.library_name}
-                  onPress={() => openWork(work)}
-                />
-              ))}
-            </ScrollView>
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="flex-row gap-4 pb-1"
+          >
+            {continuing.map((work) => (
+              <ContinueCard
+                key={work.id}
+                title={work.title}
+                author={work.author}
+                context={work.library_name}
+                availability={work}
+                continueMode={work.readable ? 'read' : 'listen'}
+                onOpen={() => openWork(work)}
+                onContinue={() => continueWork(work)}
+                onRead={() => consumeWork(work, 'read')}
+                onListen={() => consumeWork(work, 'listen')}
+              />
+            ))}
+          </ScrollView>
         </Section>
       ) : null}
-      <Section title={hasContinuing ? 'Recently added' : 'Start reading'}>
+      <Section
+        title={hasContinuing ? 'Recently added' : 'Start reading'}
+        action={<Button label="View all" kind="quiet" onPress={() => router.push('/search')} />}
+      >
         {recent.length ? (
           <WorkGrid works={recent} showLibrary onOpen={openWork} />
         ) : hasAnyWorks ? (

@@ -10,7 +10,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
-import { Platform } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import {
   DEFAULT_READER_PREFERENCES,
   EPUBReader,
@@ -36,7 +36,7 @@ import {
   type MediaChoice,
 } from '../../../features/consumption';
 import { Button, IconButton, Loading, Notice } from '../../../features/ui';
-import { Pressable, Text, View } from '../../../features/tw';
+import { Pressable, ScrollView, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
@@ -44,6 +44,7 @@ import { productAudioSource } from '../../../lib/media';
 type Mode = 'read' | 'listen';
 
 export default function ConsumeWorkScreen() {
+  const compact = useWindowDimensions().width < 600;
   const params = useLocalSearchParams<{ id: string; mode?: Mode; epub?: string; audio?: string }>();
   const [work, setWork] = useState<Work>();
   const [mode, setMode] = useState<Mode>(params.mode === 'listen' ? 'listen' : 'read');
@@ -559,7 +560,7 @@ export default function ConsumeWorkScreen() {
       : 'Synchronization is unavailable in this section.';
   return (
     <View className="min-h-full flex-1 bg-canvas">
-      <View className="min-h-[70px] flex-row items-center gap-3.5 border-b border-line bg-paper px-4 py-2.5">
+      <View className="min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper px-3 py-2">
         <IconButton
           icon="back"
           label="Back to work"
@@ -567,12 +568,14 @@ export default function ConsumeWorkScreen() {
           onPress={() => goBackOr(`/work/${params.id}`)}
         />
         <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-lg font-extrabold text-ink">
-            {work.title}
+          <Text numberOfLines={1} className="text-base font-extrabold text-ink">
+            {compact ? (mode === 'read' ? 'Reading' : 'Listening') : work.title}
           </Text>
-          <Text numberOfLines={1} className="mt-0.5 text-xs text-muted">
-            {work.author || 'Unknown author'}
-          </Text>
+          {!compact ? (
+            <Text numberOfLines={1} className="mt-0.5 text-xs text-muted">
+              {work.author || 'Unknown author'}
+            </Text>
+          ) : null}
         </View>
         <View className="flex-row gap-2">
           {mode === 'read' && selectedEPUB ? (
@@ -585,20 +588,40 @@ export default function ConsumeWorkScreen() {
             />
           ) : null}
           {selectedEPUB ? (
-            <Button
-              label="Read"
-              icon="read"
-              kind={mode === 'read' ? 'primary' : 'secondary'}
-              onPress={() => setMode('read')}
-            />
+            compact ? (
+              <IconButton
+                label="Read"
+                icon="read"
+                kind={mode === 'read' ? 'primary' : 'secondary'}
+                selected={mode === 'read'}
+                onPress={() => setMode('read')}
+              />
+            ) : (
+              <Button
+                label="Read"
+                icon="read"
+                kind={mode === 'read' ? 'primary' : 'secondary'}
+                onPress={() => setMode('read')}
+              />
+            )
           ) : null}
           {selectedAudio ? (
-            <Button
-              label="Listen"
-              icon="listen"
-              kind={mode === 'listen' ? 'primary' : 'secondary'}
-              onPress={() => setMode('listen')}
-            />
+            compact ? (
+              <IconButton
+                label="Listen"
+                icon="listen"
+                kind={mode === 'listen' ? 'primary' : 'secondary'}
+                selected={mode === 'listen'}
+                onPress={() => setMode('listen')}
+              />
+            ) : (
+              <Button
+                label="Listen"
+                icon="listen"
+                kind={mode === 'listen' ? 'primary' : 'secondary'}
+                onPress={() => setMode('listen')}
+              />
+            )
           ) : null}
         </View>
       </View>
@@ -649,13 +672,14 @@ export default function ConsumeWorkScreen() {
           <EmptyMode text="No EPUB is available for this Work." />
         )
       ) : selectedAudio ? (
-        <View className="w-full max-w-[620px] flex-1 items-center justify-center gap-2.5 self-center p-6">
-          <BookCover title={work.title} author={work.author} compact />
-          <Text className="mt-4 text-center font-editorial text-2xl font-bold leading-8 text-ink">
-            {work.title}
+        <ScrollView
+          className="flex-1"
+          contentContainerClassName="w-full max-w-[620px] flex-grow items-center justify-center gap-2.5 self-center p-6"
+        >
+          <BookCover title={work.title} author={work.author} size={compact ? 'continue' : 'hero'} />
+          <Text numberOfLines={2} className="mt-3 text-center text-sm font-semibold text-muted">
+            {selectedAudio.representation.label}
           </Text>
-          <Text className="text-sm text-ink">{work.author || 'Unknown author'}</Text>
-          <Text className="text-[13px] text-muted">{selectedAudio.representation.label}</Text>
           <Pressable
             accessibilityRole="adjustable"
             accessibilityLabel="Audiobook position"
@@ -704,6 +728,7 @@ export default function ConsumeWorkScreen() {
               icon={status.playing ? 'pause' : 'play'}
               label={status.playing ? 'Pause' : 'Play'}
               kind="primary"
+              size="large"
               disabled={!status.isLoaded}
               onPress={handlePlayPause}
             />
@@ -748,7 +773,7 @@ export default function ConsumeWorkScreen() {
               onPress={() => void switchToRead()}
             />
           </View>
-        </View>
+        </ScrollView>
       ) : (
         <EmptyMode text="No audiobook is available for this Work." />
       )}

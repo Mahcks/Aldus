@@ -1,10 +1,18 @@
 import type { Library } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
 import { AppIcon } from '../../features/icons';
 import { Pressable, Text, View } from '../../features/tw';
-import { Button, colors, Loading, Notice, Page, SectionHeader, TextField } from '../../features/ui';
+import {
+  Button,
+  colors,
+  Dialog,
+  Loading,
+  Notice,
+  Page,
+  SectionHeader,
+  TextField,
+} from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
 
 /**
@@ -94,6 +102,7 @@ export default function Libraries() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
 
@@ -123,6 +132,7 @@ export default function Libraries() {
     try {
       const library = await api.createLibrary({ name });
       setName('');
+      setCreateOpen(false);
       router.push(`/library/${library.id}`);
     } catch (value) {
       setCreateError(errorMessage(value));
@@ -131,19 +141,20 @@ export default function Libraries() {
     }
   }
 
-  const wide = useWindowDimensions().width >= 900;
-  const createForm = (
-    <CreateLibraryForm
-      name={name}
-      onNameChange={setName}
-      onSubmit={handleCreate}
-      busy={busy}
-      error={createError}
-    />
-  );
-
   return (
-    <Page title="Libraries">
+    <Page
+      title="Libraries"
+      actions={
+        items.length ? (
+          <Button
+            label="Add library"
+            icon="add"
+            kind="primary"
+            onPress={() => setCreateOpen(true)}
+          />
+        ) : null
+      }
+    >
       {error ? <Notice danger>{error}</Notice> : null}
       {loading ? (
         <Loading />
@@ -156,23 +167,24 @@ export default function Libraries() {
           error={createError}
         />
       ) : (
-        <View className={wide ? 'flex-row items-start gap-10' : 'gap-8'}>
-          <View className="flex-1 gap-3">
-            <SectionHeader title="Your libraries" />
-            <View className="gap-3">
-              {items.map((item) => (
-                <LibraryRow key={item.id} library={item} onPress={() => openLibrary(item)} />
-              ))}
-            </View>
-          </View>
-          <View className={wide ? 'w-[340px] gap-3' : 'gap-3'}>
-            <SectionHeader title="Create library" />
-            <View className="gap-4 rounded-card border border-line bg-paper p-5 shadow-sm">
-              {createForm}
-            </View>
+        <View className="max-w-[760px] gap-3">
+          <SectionHeader title="Your libraries" />
+          <View className="gap-3">
+            {items.map((item) => (
+              <LibraryRow key={item.id} library={item} onPress={() => openLibrary(item)} />
+            ))}
           </View>
         </View>
       )}
+      <Dialog visible={createOpen} title="Add library" onClose={() => setCreateOpen(false)}>
+        <CreateLibraryForm
+          name={name}
+          onNameChange={setName}
+          onSubmit={handleCreate}
+          busy={busy}
+          error={createError}
+        />
+      </Dialog>
     </Page>
   );
 }
