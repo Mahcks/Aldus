@@ -26,7 +26,6 @@ expo-dev:
 	cd app && bun run start:dev-client
 
 ios-dev:
-	@test -n "$$EXPO_PUBLIC_API_URL" || (echo "Set EXPO_PUBLIC_API_URL to the LAN-reachable Aldus origin" >&2; exit 1)
 	cd app && bun run ios:device
 
 generate:

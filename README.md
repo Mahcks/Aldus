@@ -26,7 +26,7 @@ Aldus uses an installed Expo development client, not Expo Go or EAS Build, for n
 
 ### Mac and iPhone prerequisites
 
-1. Install the current Xcode from the App Store, open it once, accept its license, and install the requested platform components.
+1. Install Xcode 26.4 or newer (required by Expo SDK 57), open it once, accept its license, and install the requested platform components.
 2. Select Xcode's command-line tools in Xcode Settings, or run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
 3. Install Node.js LTS and Bun 1.3.5. Run `cd app && bun install` after cloning or pulling dependency changes.
 4. CocoaPods is required by the generated iOS project. Expo normally runs it during prebuild; if `pod` is missing, install CocoaPods on the Mac before retrying. Watchman is optional and is not required by Aldus.
@@ -65,13 +65,13 @@ cd ..
 make dev-server
 ```
 
-Confirm `http://aldus-dev.local:8080/healthcheck` opens in iPhone Safari. Then, from the Mac checkout:
+Confirm `http://aldus-dev.local:8080/healthcheck` opens in iPhone Safari. Then, from the Mac checkout, install only the native development client:
 
 ```sh
-EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080 make ios-dev
+make ios-dev
 ```
 
-`make ios-dev` runs `expo run:ios --device`. Expo generates `app/ios/` when necessary, asks for the connected device, compiles with the local Xcode toolchain, installs the development client, and starts Metro. It does not use EAS.
+`make ios-dev` runs `expo run:ios --device --no-bundler`. Expo generates `app/ios/` when necessary, asks for the connected device, compiles with the local Xcode toolchain, and installs the development client without starting Metro on the Mac. It does not use EAS.
 
 If automatic signing needs attention, add your Apple Account under **Xcode → Settings → Accounts**, then open `app/ios/Aldus.xcworkspace`. Select the Aldus target, open **Signing & Capabilities**, enable **Automatically manage signing**, choose your Personal Team, select the connected iPhone as the run destination, and press Run. Do not commit a personal Team ID or signing certificate. A free Personal Team supports Aldus's current local-network, SecureStore, and background-audio development requirements. Its profiles are short-lived and it does not support capabilities such as production push notifications or App Store distribution, neither of which Aldus currently requires for this checklist. App Store and TestFlight setup are not required.
 
@@ -79,13 +79,13 @@ If iOS asks you to trust the development certificate, open **Settings → Genera
 
 ### Daily development after installation
 
-For TS, TSX, CSS, and ordinary application logic changes, start only Metro on the Mac that contains the checkout and dependencies:
+For TS, TSX, CSS, and ordinary application logic changes, start Metro on the development machine that contains the active checkout and dependencies:
 
 ```sh
 EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080 make expo-dev
 ```
 
-Open Aldus on the iPhone and select the detected development server, or scan Metro's development-client QR code. If discovery fails, use the development client's **Enter URL** action and paste the development-server URL printed by Metro. Metro uses LAN mode. If editing primarily on another computer, the simplest workflow is a synced or Git checkout on the Mac mini and running Metro there; alternatively Metro may run on the editing machine if the iPhone can reach its advertised LAN address.
+Open Aldus on the iPhone and select the detected development server, or scan Metro's development-client QR code. If discovery fails, use the development client's **Enter URL** action and paste the development-server URL printed by Metro. Metro uses LAN mode on port 8081, so the iPhone must be able to reach that port on the development machine. The Mac only needs a checkout when rebuilding the native client; normal code and Metro can remain on another LAN-reachable development machine.
 
 Rebuild with `make ios-dev` after adding or removing a native dependency, changing `app.json` native configuration or plugins, changing entitlements/capabilities, or upgrading Expo/React Native. A rebuild is normally unnecessary after TS/TSX, styling, API-client, copy, or most application-logic changes.
 
@@ -96,6 +96,7 @@ Rebuild with `make ios-dev` after adding or removing a native dependency, changi
 - **Phone cannot reach Aldus:** confirm `EXPO_PUBLIC_API_URL` is not `localhost`, open `/healthcheck` in iPhone Safari, verify both devices are on the same LAN, and allow port 8080 through the backend firewall.
 - **Development client cannot find Metro:** run `make expo-dev` on the Mac checkout, keep the phone and Mac on the same LAN, disable VPN/client isolation temporarily, and allow Node/Metro through the Mac firewall.
 - **Signing fails:** trust the phone, select the correct Team with automatic signing in Xcode, and ensure `com.mahcks.aldus` is available to that Team.
+- **`expo-modules-jsi` fails to compile in Swift:** run `xcodebuild -version` and upgrade to Xcode 26.4 or newer; Expo SDK 57 cannot compile with Xcode 26.3.
 - **Personal Team is unavailable:** add your Apple Account under Xcode Settings → Accounts, reopen Signing & Capabilities, and select the Personal Team associated with that account.
 - **Developer Mode is disabled:** enable it under Privacy & Security, restart, and reconfirm.
 - **Device is not trusted:** reconnect the unlocked phone, accept the trust prompts on both devices, and verify it appears in Xcode's Devices and Simulators window.
