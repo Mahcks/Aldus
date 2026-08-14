@@ -6,7 +6,7 @@ import type {
   Work,
 } from '../../../generated/api';
 import type { AudioSource } from 'expo-audio';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
@@ -91,6 +91,25 @@ export default function ConsumeWorkScreen() {
     ...(alignment?.segments.map((segment) => segment.audio_end_ms / 1000) ?? []),
   );
   const audioDuration = playableAudioDuration(status.duration, alignedDuration);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
+    }).catch(() => setNotice('Aldus could not configure background audio on this device.'));
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !work || !selectedAudio) return;
+    player.setActiveForLockScreen(true, {
+      title: work.title,
+      artist: work.author || 'Unknown author',
+      albumTitle: selectedAudio.representation.label,
+    });
+    return () => player.setActiveForLockScreen(false);
+  }, [player, selectedAudio, work]);
 
   useEffect(() => {
     let canceled = false;

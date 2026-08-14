@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 mock.module('react-native', () => ({ Platform: { OS: 'web' } }));
 const { api, APIError } = await import('./api');
+const { resolveAPIBaseURL } = await import('./api-base');
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
@@ -9,6 +10,13 @@ afterEach(() => {
 });
 
 describe('API transport', () => {
+  it('uses one normalized API origin for web, simulator, and physical-device configuration', () => {
+    expect(resolveAPIBaseURL('http://aldus-dev.local:8080/', 'ios')).toBe(
+      'http://aldus-dev.local:8080',
+    );
+    expect(resolveAPIBaseURL(undefined, 'web')).toBe('');
+    expect(resolveAPIBaseURL(undefined, 'ios')).toBe('http://localhost:8080');
+  });
   it('uses credentialed requests and generated setup fields', async () => {
     let request: RequestInit | undefined;
     globalThis.fetch = (async (_input, init) => {

@@ -1,16 +1,13 @@
-import { Platform } from 'react-native';
 import type { AudioSource } from 'expo-audio';
 import { getToken } from './auth-token';
-
-const baseURL =
-  process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? '' : 'http://localhost:8080');
+import { apiBaseURL } from './api-base';
 
 export function mediaURL(name: string) {
-  return `${baseURL}/media/${name}`;
+  return `${apiBaseURL}/media/${name}`;
 }
 
 export function productMediaURL(id: string) {
-  return `${baseURL}/api/media/${encodeURIComponent(id)}`;
+  return `${apiBaseURL}/api/media/${encodeURIComponent(id)}`;
 }
 
 export async function productAudioSource(id: string): Promise<AudioSource> {

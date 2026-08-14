@@ -5,6 +5,8 @@ data/
 app/.expo/
 app/dist/
 app/node_modules/
+app/ios/
+app/android/
 server/aldus
 AGENTS.md
 plans/

@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-
 import type {
   Alignment,
   AcceptImportProposalRequest,
@@ -41,9 +39,8 @@ import type {
   WorkProgressUpdate,
 } from '../generated/api';
 import { clearToken, getToken, setToken } from './auth-token';
+import { apiBaseURL } from './api-base';
 
-const baseURL =
-  process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'web' ? '' : 'http://localhost:8080');
 let unauthorized: (() => void) | undefined;
 export function onUnauthorized(handler?: () => void) {
   unauthorized = handler;
@@ -65,7 +62,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try {
-    response = await fetch(`${baseURL}/api${path}`, { ...init, headers, credentials: 'include' });
+    response = await fetch(`${apiBaseURL}/api${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    });
   } catch {
     throw new APIError(0, 'Unable to reach Aldus.');
   }
@@ -85,7 +86,7 @@ async function download(path: string) {
   const token = await getToken();
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${baseURL}/api${path}`, { headers, credentials: 'include' });
+  const response = await fetch(`${apiBaseURL}/api${path}`, { headers, credentials: 'include' });
   if (!response.ok)
     throw new APIError(
       response.status,

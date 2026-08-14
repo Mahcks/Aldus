@@ -20,6 +20,98 @@ Run both development servers with `make dev`, or separately with `make dev-serve
 
 The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_SOURCE_ROOTS` (comma-separated server-visible media roots), `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB), `ALDUS_KOREADER_USER` (default `aldus`), and `ALDUS_KOREADER_KEY` (default `aldus`). Set a unique `ALDUS_BOOTSTRAP_TOKEN` before creating the first administrator; setup is disabled when it is empty and permanently closes after the first user. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. KOReader sends its stored key exactly as `x-auth-key`; use the value KOReader generates for the configured password in a real deployment.
 
+## Test Aldus on a real iPhone
+
+Aldus uses an installed Expo development client, not Expo Go or EAS Build, for normal physical-device development. The generated `app/ios/` project is local CNG output and is intentionally ignored by Git.
+
+### Mac and iPhone prerequisites
+
+1. Install the current Xcode from the App Store, open it once, accept its license, and install the requested platform components.
+2. Select Xcode's command-line tools in Xcode Settings, or run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
+3. Install Node.js LTS and Bun 1.3.5. Run `cd app && bun install` after cloning or pulling dependency changes.
+4. CocoaPods is required by the generated iOS project. Expo normally runs it during prebuild; if `pod` is missing, install CocoaPods on the Mac before retrying. Watchman is optional and is not required by Aldus.
+5. Connect the unlocked iPhone to the Mac by cable, tap **Trust** on both devices, and leave the phone visible in Xcode's Devices and Simulators window.
+6. On iOS 16 or newer, open **Settings → Privacy & Security → Developer Mode**, enable it, restart when prompted, and confirm after restart.
+
+### Reach the backend over the LAN
+
+`localhost` on the iPhone means the iPhone itself. Set the public Expo variable to an address that the phone can reach. Do not commit a personal IP address.
+
+```sh
+export EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080
+# Or: export EXPO_PUBLIC_API_URL=http://192.168.x.x:8080
+```
+
+The phone, Mac running Metro, and backend machine normally need to be on the same network. The development server command already uses `ALDUS_ADDR=:8080`, which listens on LAN interfaces. Permit inbound TCP 8080 in the backend machine's firewall. Native requests are not governed by browser CORS; keep `ALDUS_ALLOWED_ORIGINS` limited to the actual web-development origins.
+
+Before opening the app, verify the backend from Safari on the iPhone:
+
+```text
+http://aldus-dev.local:8080/healthcheck
+```
+
+### Fresh checkout and first local development build
+
+Clone or open the checkout on the Mac mini, install dependencies, and start the backend on the backend machine:
+
+```sh
+git clone https://github.com/mahcks/aldus.git
+cd aldus
+cd app
+bun install
+cd ..
+
+# Run this on the backend machine if it is the same checkout.
+make dev-server
+```
+
+Confirm `http://aldus-dev.local:8080/healthcheck` opens in iPhone Safari. Then, from the Mac checkout:
+
+```sh
+EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080 make ios-dev
+```
+
+`make ios-dev` runs `expo run:ios --device`. Expo generates `app/ios/` when necessary, asks for the connected device, compiles with the local Xcode toolchain, installs the development client, and starts Metro. It does not use EAS.
+
+If automatic signing needs attention, add your Apple Account under **Xcode → Settings → Accounts**, then open `app/ios/Aldus.xcworkspace`. Select the Aldus target, open **Signing & Capabilities**, enable **Automatically manage signing**, choose your Personal Team, select the connected iPhone as the run destination, and press Run. Do not commit a personal Team ID or signing certificate. A free Personal Team supports Aldus's current local-network, SecureStore, and background-audio development requirements. Its profiles are short-lived and it does not support capabilities such as production push notifications or App Store distribution, neither of which Aldus currently requires for this checklist. App Store and TestFlight setup are not required.
+
+If iOS asks you to trust the development certificate, open **Settings → General → VPN & Device Management**, select the developer entry, and trust it.
+
+### Daily development after installation
+
+For TS, TSX, CSS, and ordinary application logic changes, start only Metro on the Mac that contains the checkout and dependencies:
+
+```sh
+EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080 make expo-dev
+```
+
+Open Aldus on the iPhone and select the detected development server, or scan Metro's development-client QR code. If discovery fails, use the development client's **Enter URL** action and paste the development-server URL printed by Metro. Metro uses LAN mode. If editing primarily on another computer, the simplest workflow is a synced or Git checkout on the Mac mini and running Metro there; alternatively Metro may run on the editing machine if the iPhone can reach its advertised LAN address.
+
+Rebuild with `make ios-dev` after adding or removing a native dependency, changing `app.json` native configuration or plugins, changing entitlements/capabilities, or upgrading Expo/React Native. A rebuild is normally unnecessary after TS/TSX, styling, API-client, copy, or most application-logic changes.
+
+`make web-dev` retains the existing web-only Metro workflow. The tagged GitHub release workflow only builds and publishes the combined Go/web Docker image; it is not a native build or Expo update script and remains separate from local iPhone development. No EAS configuration or update/publish script is currently present.
+
+### Common failures
+
+- **Phone cannot reach Aldus:** confirm `EXPO_PUBLIC_API_URL` is not `localhost`, open `/healthcheck` in iPhone Safari, verify both devices are on the same LAN, and allow port 8080 through the backend firewall.
+- **Development client cannot find Metro:** run `make expo-dev` on the Mac checkout, keep the phone and Mac on the same LAN, disable VPN/client isolation temporarily, and allow Node/Metro through the Mac firewall.
+- **Signing fails:** trust the phone, select the correct Team with automatic signing in Xcode, and ensure `com.mahcks.aldus` is available to that Team.
+- **Personal Team is unavailable:** add your Apple Account under Xcode Settings → Accounts, reopen Signing & Capabilities, and select the Personal Team associated with that account.
+- **Developer Mode is disabled:** enable it under Privacy & Security, restart, and reconfirm.
+- **Device is not trusted:** reconnect the unlocked phone, accept the trust prompts on both devices, and verify it appears in Xcode's Devices and Simulators window.
+- **Native changes are missing:** rebuild with `make ios-dev`; restarting Metro cannot update native modules or entitlements.
+- **HTTP development endpoint fails:** use a LAN or `.local` endpoint and rebuild after changing native local-network configuration. Use HTTPS outside a trusted development LAN.
+
+### Physical iPhone acceptance checklist
+
+- **Authentication:** setup/login, relaunch and session restore, logout.
+- **Consumer:** Home, Search, Library, Work, long-title layout, navigation and safe areas.
+- **Reader:** open EPUB, previous/next page, reading cursor, Listen from Here, lock/unlock, background/foreground.
+- **Audio:** play/pause, ±15 seconds, seek, 1×/1.5×/2× with preserved pitch, Bluetooth/AirPods when available, screen-lock and background playback, lock-screen metadata.
+- **Synchronization:** Read → Listen, Listen → Read, non-anchor positions, partial and unavailable synchronization.
+- **Persistence:** force quit, reopen, verify session and exact progress restoration.
+- **Native UX:** keyboard/forms, touch targets, text scaling, portrait orientation, and the current automatic system appearance behavior.
+
 ### Media folders
 
 Local Sources are folders visible to the Aldus server. Mount externally owned media read-only, then allowlist the container path. The included Compose file uses:

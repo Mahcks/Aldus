@@ -8,7 +8,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mahcks.aldus"
+      "bundleIdentifier": "com.mahcks.aldus",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Aldus connects to your local development server and Metro on your network.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "com.mahcks.aldus"
@@ -19,7 +25,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": true,
+          "enableBackgroundRecording": false
+        }
+      ],
       "expo-secure-store"
     ],
     "experiments": {
