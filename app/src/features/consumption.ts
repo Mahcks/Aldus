@@ -26,7 +26,19 @@ export function applyPlaybackRate(
 }
 
 export function clampAudioPosition(seconds: number, duration: number) {
-  return Math.max(0, Math.min(Number.isFinite(duration) ? duration : 0, seconds));
+  if (!Number.isFinite(seconds) || !Number.isFinite(duration) || duration < 0) return 0;
+  return Math.max(0, Math.min(duration, seconds));
+}
+
+export function playableAudioDuration(duration: number, alignedDuration: number) {
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  return Number.isFinite(alignedDuration) && alignedDuration > 0 ? alignedDuration : 0;
+}
+
+export function scrubberPosition(locationX: number, width: number, duration: number) {
+  if (![locationX, width, duration].every(Number.isFinite) || width <= 0 || duration <= 0)
+    return undefined;
+  return clampAudioPosition((locationX / width) * duration, duration);
 }
 
 export function choices(representations: Representation[], media: Media[], kinds: string[]) {

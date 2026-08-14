@@ -72,7 +72,7 @@ func (q *Queries) GetProgressRevision(ctx context.Context, arg GetProgressRevisi
 
 const getRepresentationState = `-- name: GetRepresentationState :one
 SELECT representation_id, epub_locator, audio_timestamp_ms, playback_speed_milli,
-       reader_layout, zoom_milli, revision, updated_at
+       reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli, revision, updated_at
 FROM representation_state
 WHERE user_id = ? AND representation_id = ?
 `
@@ -89,6 +89,9 @@ type GetRepresentationStateRow struct {
 	PlaybackSpeedMilli sql.NullInt64
 	ReaderLayout       sql.NullString
 	ZoomMilli          sql.NullInt64
+	ReaderTheme        sql.NullString
+	LineHeightMilli    sql.NullInt64
+	MarginMilli        sql.NullInt64
 	Revision           int64
 	UpdatedAt          string
 }
@@ -103,6 +106,9 @@ func (q *Queries) GetRepresentationState(ctx context.Context, arg GetRepresentat
 		&i.PlaybackSpeedMilli,
 		&i.ReaderLayout,
 		&i.ZoomMilli,
+		&i.ReaderTheme,
+		&i.LineHeightMilli,
+		&i.MarginMilli,
 		&i.Revision,
 		&i.UpdatedAt,
 	)
@@ -165,14 +171,18 @@ func (q *Queries) UpsertProgress(ctx context.Context, arg UpsertProgressParams) 
 const upsertRepresentationState = `-- name: UpsertRepresentationState :exec
 INSERT INTO representation_state (
     user_id, representation_id, epub_locator, audio_timestamp_ms,
-    playback_speed_milli, reader_layout, zoom_milli, revision, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    playback_speed_milli, reader_layout, zoom_milli, reader_theme,
+    line_height_milli, margin_milli, revision, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(user_id, representation_id) DO UPDATE SET
-    epub_locator = excluded.epub_locator,
-    audio_timestamp_ms = excluded.audio_timestamp_ms,
-    playback_speed_milli = excluded.playback_speed_milli,
-    reader_layout = excluded.reader_layout,
-    zoom_milli = excluded.zoom_milli,
+    epub_locator = COALESCE(excluded.epub_locator, representation_state.epub_locator),
+    audio_timestamp_ms = COALESCE(excluded.audio_timestamp_ms, representation_state.audio_timestamp_ms),
+    playback_speed_milli = COALESCE(excluded.playback_speed_milli, representation_state.playback_speed_milli),
+    reader_layout = COALESCE(excluded.reader_layout, representation_state.reader_layout),
+    zoom_milli = COALESCE(excluded.zoom_milli, representation_state.zoom_milli),
+    reader_theme = COALESCE(excluded.reader_theme, representation_state.reader_theme),
+    line_height_milli = COALESCE(excluded.line_height_milli, representation_state.line_height_milli),
+    margin_milli = COALESCE(excluded.margin_milli, representation_state.margin_milli),
     revision = excluded.revision,
     updated_at = excluded.updated_at
 `
@@ -185,6 +195,9 @@ type UpsertRepresentationStateParams struct {
 	PlaybackSpeedMilli sql.NullInt64
 	ReaderLayout       sql.NullString
 	ZoomMilli          sql.NullInt64
+	ReaderTheme        sql.NullString
+	LineHeightMilli    sql.NullInt64
+	MarginMilli        sql.NullInt64
 	Revision           int64
 	UpdatedAt          string
 }
@@ -198,6 +211,9 @@ func (q *Queries) UpsertRepresentationState(ctx context.Context, arg UpsertRepre
 		arg.PlaybackSpeedMilli,
 		arg.ReaderLayout,
 		arg.ZoomMilli,
+		arg.ReaderTheme,
+		arg.LineHeightMilli,
+		arg.MarginMilli,
 		arg.Revision,
 		arg.UpdatedAt,
 	)

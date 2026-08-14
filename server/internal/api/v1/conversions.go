@@ -37,7 +37,7 @@ func canonicalDTO(v position.Canonical) contracts.CanonicalPosition {
 	return contracts.CanonicalPosition{WorkID: v.WorkID, AlignmentID: v.AlignmentID, SegmentID: v.SegmentID, Offset: v.Offset, Revision: v.Revision, UpdatedAt: v.UpdatedAt, SourceDevice: v.SourceDevice, AlignmentState: v.AlignmentState, Resolvable: v.Resolvable}
 }
 func representationStateDTO(v position.RepresentationState) contracts.RepresentationState {
-	return contracts.RepresentationState{RepresentationID: v.RepresentationID, EPUBLocator: v.EPUBLocator, AudioTimestampMS: v.AudioTimestampMS, PlaybackSpeed: v.PlaybackSpeed, ReaderLayout: v.ReaderLayout, Zoom: v.Zoom, Revision: v.Revision, UpdatedAt: v.UpdatedAt}
+	return contracts.RepresentationState{RepresentationID: v.RepresentationID, EPUBLocator: v.EPUBLocator, AudioTimestampMS: v.AudioTimestampMS, PlaybackSpeed: v.PlaybackSpeed, ReaderLayout: v.ReaderLayout, Zoom: v.Zoom, ReaderTheme: v.ReaderTheme, LineHeight: v.LineHeight, Margin: v.Margin, Revision: v.Revision, UpdatedAt: v.UpdatedAt}
 }
 func epubLocatorDTO(v position.EPUBLocator) contracts.EPUBLocator {
 	return contracts.EPUBLocator{Href: v.Href, Locator: v.Locator, Offset: v.Offset}

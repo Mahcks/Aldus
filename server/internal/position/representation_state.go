@@ -47,12 +47,18 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 	if len(update.EPUBLocator) > 0 {
 		epub = sql.NullString{String: string(update.EPUBLocator), Valid: true}
 	}
-	var speed, zoom sql.NullInt64
+	var speed, zoom, lineHeight, margin sql.NullInt64
 	if update.PlaybackSpeed != nil {
 		speed = sql.NullInt64{Int64: int64(math.Round(*update.PlaybackSpeed * 1000)), Valid: true}
 	}
 	if update.Zoom != nil {
 		zoom = sql.NullInt64{Int64: int64(math.Round(*update.Zoom * 1000)), Valid: true}
+	}
+	if update.LineHeight != nil {
+		lineHeight = sql.NullInt64{Int64: int64(math.Round(*update.LineHeight * 1000)), Valid: true}
+	}
+	if update.Margin != nil {
+		margin = sql.NullInt64{Int64: int64(math.Round(*update.Margin * 1000)), Valid: true}
 	}
 	var audio sql.NullInt64
 	if update.AudioTimestampMS != nil {
@@ -62,6 +68,7 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 		UserID: userID, RepresentationID: representationID, EpubLocator: epub,
 		AudioTimestampMs: audio, PlaybackSpeedMilli: speed,
 		ReaderLayout: sql.NullString{String: update.ReaderLayout, Valid: update.ReaderLayout != ""}, ZoomMilli: zoom,
+		ReaderTheme: sql.NullString{String: update.ReaderTheme, Valid: update.ReaderTheme != ""}, LineHeightMilli: lineHeight, MarginMilli: margin,
 		Revision: currentRevision + 1, UpdatedAt: now.Format(time.RFC3339Nano),
 	})
 	if err != nil {
@@ -74,10 +81,10 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 }
 
 func validRepresentationUpdate(update RepresentationUpdate) bool {
-	if len(update.EPUBLocator) > 0 && !json.Valid(update.EPUBLocator) || update.AudioTimestampMS != nil && *update.AudioTimestampMS < 0 || update.PlaybackSpeed != nil && (*update.PlaybackSpeed < .25 || *update.PlaybackSpeed > 4) || update.Zoom != nil && (*update.Zoom < .5 || *update.Zoom > 3) || update.ReaderLayout != "" && update.ReaderLayout != "paginated" && update.ReaderLayout != "scrolled" {
+	if len(update.EPUBLocator) > 0 && !json.Valid(update.EPUBLocator) || update.AudioTimestampMS != nil && *update.AudioTimestampMS < 0 || update.PlaybackSpeed != nil && (*update.PlaybackSpeed < .25 || *update.PlaybackSpeed > 4) || update.Zoom != nil && (*update.Zoom < .5 || *update.Zoom > 3) || update.LineHeight != nil && (*update.LineHeight < 1.2 || *update.LineHeight > 2.2) || update.Margin != nil && (*update.Margin < 0 || *update.Margin > 4) || update.ReaderLayout != "" && update.ReaderLayout != "paginated" && update.ReaderLayout != "scrolled" || update.ReaderTheme != "" && update.ReaderTheme != "paper" && update.ReaderTheme != "sepia" {
 		return false
 	}
-	return len(update.EPUBLocator) > 0 || update.AudioTimestampMS != nil || update.PlaybackSpeed != nil || update.Zoom != nil || update.ReaderLayout != ""
+	return len(update.EPUBLocator) > 0 || update.AudioTimestampMS != nil || update.PlaybackSpeed != nil || update.Zoom != nil || update.LineHeight != nil || update.Margin != nil || update.ReaderLayout != "" || update.ReaderTheme != ""
 }
 
 func representationStateRow(row dbsql.GetRepresentationStateRow, err error) (RepresentationState, error) {
@@ -103,7 +110,16 @@ func representationStateRow(row dbsql.GetRepresentationStateRow, err error) (Rep
 		value := float64(row.ZoomMilli.Int64) / 1000
 		state.Zoom = &value
 	}
+	if row.LineHeightMilli.Valid {
+		value := float64(row.LineHeightMilli.Int64) / 1000
+		state.LineHeight = &value
+	}
+	if row.MarginMilli.Valid {
+		value := float64(row.MarginMilli.Int64) / 1000
+		state.Margin = &value
+	}
 	state.ReaderLayout = row.ReaderLayout.String
+	state.ReaderTheme = row.ReaderTheme.String
 	state.UpdatedAt, err = time.Parse(time.RFC3339Nano, row.UpdatedAt)
 	if err != nil {
 		return RepresentationState{}, fmt.Errorf("parse representation-state time: %w", err)

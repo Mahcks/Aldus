@@ -6,10 +6,12 @@ import {
   clampAudioPosition,
   defaultPair,
   listenToRead,
+  playableAudioDuration,
   playbackRate,
   PLAYBACK_RATES,
   readToListen,
   readyJob,
+  scrubberPosition,
   synchronizationLabel,
 } from './consumption';
 
@@ -50,7 +52,13 @@ describe('consumption selection', () => {
     expect(clampAudioPosition(-5, 60)).toBe(0);
     expect(clampAudioPosition(30, 60)).toBe(30);
     expect(clampAudioPosition(65, 60)).toBe(60);
+    expect(clampAudioPosition(Number.NaN, 60)).toBe(0);
+    expect(clampAudioPosition(Number.POSITIVE_INFINITY, 60)).toBe(0);
     expect(clampAudioPosition(5, Number.NaN)).toBe(0);
+    expect(playableAudioDuration(Number.POSITIVE_INFINITY, 90)).toBe(90);
+    expect(playableAudioDuration(120, 90)).toBe(120);
+    expect(scrubberPosition(50, 100, 120)).toBe(60);
+    expect(scrubberPosition(Number.NaN, 100, 120)).toBeUndefined();
   });
 
   it('supports EPUB-only, audio-only, and the ready exact revision pair', () => {

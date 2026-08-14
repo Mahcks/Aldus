@@ -26,6 +26,20 @@ export type EPUBReaderHandle = {
   restoreSelection: (capture: ReaderCapture) => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
 };
+export type ReaderPreferences = {
+  layout: 'paginated' | 'scrolled';
+  zoom: number;
+  lineHeight: number;
+  margin: number;
+  theme: 'paper' | 'sepia';
+};
+export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
+  layout: 'paginated',
+  zoom: 1,
+  lineHeight: 1.72,
+  margin: 2,
+  theme: 'paper',
+};
 
 export const EPUBReader = forwardRef<
   EPUBReaderHandle,
@@ -33,6 +47,7 @@ export const EPUBReader = forwardRef<
     source?: string | Blob;
     product?: boolean;
     segments?: unknown[];
+    preferences?: ReaderPreferences;
     onLocation?: (location: ReaderLocation) => void;
     onReady?: () => void;
     onError?: (error: Error) => void;

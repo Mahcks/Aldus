@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { IconButton } from '../features/ui';
+import { colors } from '../features/theme';
 import { activeContentIndex, classifyPageSync, relocatedCursor } from './reader-location';
 
 export type RangeBoundary = { dom_path: string; node_offset: number };
@@ -28,11 +29,26 @@ export type EPUBReaderHandle = {
   restoreSelection: (capture: ReaderCapture) => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
 };
+export type ReaderPreferences = {
+  layout: 'paginated' | 'scrolled';
+  zoom: number;
+  lineHeight: number;
+  margin: number;
+  theme: 'paper' | 'sepia';
+};
+export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
+  layout: 'paginated',
+  zoom: 1,
+  lineHeight: 1.72,
+  margin: 2,
+  theme: 'paper',
+};
 
 type Props = {
   source?: string | Blob;
   product?: boolean;
   segments?: SyncSegment[];
+  preferences?: ReaderPreferences;
   onLocation?: (location: ReaderLocation) => void;
   onReady?: () => void;
   onError?: (error: Error) => void;
@@ -46,7 +62,15 @@ type SyncSegment = {
 };
 
 export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReader(
-  { source = '/media/alice.epub', product, segments = [], onLocation, onReady, onError },
+  {
+    source = '/media/alice.epub',
+    product,
+    segments = [],
+    preferences = DEFAULT_READER_PREFERENCES,
+    onLocation,
+    onReady,
+    onError,
+  },
   ref,
 ) {
   const host = useRef<View>(null);
@@ -64,10 +88,19 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
   const segmentsRef = useRef(segments);
+  const preferencesRef = useRef(preferences);
   onLocationRef.current = onLocation;
   onReadyRef.current = onReady;
   onErrorRef.current = onError;
   segmentsRef.current = segments;
+  preferencesRef.current = preferences;
+
+  useEffect(() => {
+    const view = reader.current;
+    if (!view) return;
+    view.renderer.setAttribute('flow', preferences.layout);
+    for (const { doc } of view.renderer.getContents()) applyReaderStyles(doc, preferences);
+  }, [preferences]);
 
   useImperativeHandle(
     ref,
@@ -183,9 +216,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         (host.current as unknown as HTMLElement).append(view);
         view.addEventListener('load', ({ detail: { doc, index } }: CustomEvent) => {
           if (product) {
-            const style = doc.createElement('style');
-            style.textContent = `html { color: #2b241f; background: #fffdf8; } body { font-family: Georgia, 'Times New Roman', serif; font-size: 1.08rem; line-height: 1.72; padding-inline: clamp(1rem, 4vw, 3.5rem); } p { max-width: 68ch; margin-inline: auto; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: #ead0c3; color: #2b241f; }`;
-            doc.head.append(style);
+            applyReaderStyles(doc, preferencesRef.current);
           }
           doc.addEventListener('selectionchange', () => {
             const selected = doc.getSelection();
@@ -265,7 +296,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           view.remove();
           return;
         }
-        view.renderer.setAttribute('flow', 'paginated');
+        view.renderer.setAttribute('flow', preferencesRef.current.layout);
         reader.current = view;
         onReadyRef.current?.();
       })
@@ -514,6 +545,15 @@ function boundary(range: Range, end = false) {
   const node = end ? range.endContainer : range.startContainer;
   const offset = end ? range.endOffset : range.startOffset;
   return { dom_path: domPath(node), node_offset: offset };
+}
+
+function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
+  const style =
+    doc.querySelector<HTMLStyleElement>('#aldus-reader-style') ??
+    doc.head.appendChild(doc.createElement('style'));
+  style.id = 'aldus-reader-style';
+  const background = preferences.theme === 'sepia' ? colors.canvas : colors.paper;
+  style.textContent = `html { color: ${colors.ink}; background: ${background}; } body { font-family: Georgia, 'Times New Roman', serif; font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: ${colors.accentSoft}; color: ${colors.ink}; }`;
 }
 
 function serializeRange(view: any, index: number, range: Range): ReaderCapture {

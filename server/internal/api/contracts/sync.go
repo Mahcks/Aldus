@@ -25,6 +25,9 @@ type RepresentationState struct {
 	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
 	ReaderLayout     string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
 	Zoom             *float64        `json:"zoom,omitempty"`
+	ReaderTheme      string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia'"`
+	LineHeight       *float64        `json:"line_height,omitempty"`
+	Margin           *float64        `json:"margin,omitempty"`
 	Revision         int64           `json:"revision"`
 	UpdatedAt        time.Time       `json:"updated_at"`
 }
@@ -35,6 +38,9 @@ type RepresentationStateUpdate struct {
 	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
 	ReaderLayout     string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
 	Zoom             *float64        `json:"zoom,omitempty"`
+	ReaderTheme      string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia'"`
+	LineHeight       *float64        `json:"line_height,omitempty"`
+	Margin           *float64        `json:"margin,omitempty"`
 	ExpectedRevision int64           `json:"expected_revision"`
 }
 

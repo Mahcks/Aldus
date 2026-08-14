@@ -41,7 +41,10 @@ var importProposalsSchema string
 //go:embed migrations/010_import_acceptance.sql
 var importAcceptanceSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema}
+//go:embed migrations/011_reader_preferences.sql
+var readerPreferencesSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema}
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	path, err := filepath.Abs(path)

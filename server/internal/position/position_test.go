@@ -214,7 +214,8 @@ func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 		t.Fatalf("unresolved canonical update error = %v", err)
 	}
 	locator := json.RawMessage(`{"href":"text/chapter-1.xhtml","locations":{"cfi":"epubcfi(/6/2!/4/2:3)"}}`)
-	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", ExpectedRevision: 0}); err != nil {
+	zoom, lineHeight, margin := 1.2, 1.8, 2.0
+	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", Zoom: &zoom, ReaderTheme: "sepia", LineHeight: &lineHeight, Margin: &margin, ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -229,8 +230,13 @@ func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" {
+	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" || state.ReaderTheme != "sepia" || state.Zoom == nil || *state.Zoom != zoom || state.LineHeight == nil || *state.LineHeight != lineHeight || state.Margin == nil || *state.Margin != margin {
 		t.Fatalf("reopened EPUB state = %#v", state)
+	}
+	updatedMargin := 1.0
+	state, err = store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{Margin: &updatedMargin, ExpectedRevision: state.Revision})
+	if err != nil || string(state.EPUBLocator) != string(locator) || state.ReaderTheme != "sepia" || state.Margin == nil || *state.Margin != updatedMargin {
+		t.Fatalf("partial preference update = %#v, %v", state, err)
 	}
 }
 

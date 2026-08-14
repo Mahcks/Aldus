@@ -12,20 +12,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
 import { Platform } from 'react-native';
 import {
+  DEFAULT_READER_PREFERENCES,
   EPUBReader,
   type EPUBReaderHandle,
   type ReaderLocation,
+  type ReaderPreferences,
 } from '../../../components/EPUBReader';
 import { commitsReadingProgress } from '../../../components/reader-location';
 import { BookCover } from '../../../features/bookshelf';
+import { ReaderSettings } from '../../../features/reader-settings';
 import {
   applyPlaybackRate,
   choices,
   clampAudioPosition,
   defaultPair,
   listenToRead,
+  playableAudioDuration,
   readToListen,
   readyJob,
+  scrubberPosition,
   PLAYBACK_RATES,
   synchronizationLabel,
   type MediaChoice,
@@ -56,6 +61,11 @@ export default function ConsumeWorkScreen() {
   const [readerLocation, setReaderLocation] = useState<ReaderLocation>();
   const [readerTarget, setReaderTarget] = useState<unknown>();
   const [readerCommit, setReaderCommit] = useState<ReaderLocation>();
+  const [readerPreferences, setReaderPreferences] = useState<ReaderPreferences>(
+    DEFAULT_READER_PREFERENCES,
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [initialAudioMS, setInitialAudioMS] = useState<number>();
   const [trackWidth, setTrackWidth] = useState(1);
   const [syncAvailable, setSyncAvailable] = useState(false);
@@ -75,6 +85,11 @@ export default function ConsumeWorkScreen() {
   const selectedAudio = audio.find((item) => item.id === audioID);
   const job = readyJob(jobs, epubID, audioID);
   const alignmentID = job?.alignment_id;
+  const alignedDuration = Math.max(
+    0,
+    ...(alignment?.segments.map((segment) => segment.audio_end_ms / 1000) ?? []),
+  );
+  const audioDuration = playableAudioDuration(status.duration, alignedDuration);
 
   useEffect(() => {
     let canceled = false;
@@ -146,6 +161,7 @@ export default function ConsumeWorkScreen() {
         setAlignment(nextAlignment);
         setEPUBBlob(blob);
         setSource(audioSource);
+        setReaderPreferences(preferencesFromState(nextEPUBState));
         const canonical =
           progress?.resolvable && progress.alignment_id === selectedJob?.alignment_id
             ? progress
@@ -194,14 +210,15 @@ export default function ConsumeWorkScreen() {
   useEffect(() => {
     if (!status.isLoaded) return;
     if (initialAudioMS == null) return;
+    if (audioDuration <= 0) return;
     if (restoredAudio.current === `${audioID}:${initialAudioMS}`) return;
     restoredAudio.current = `${audioID}:${initialAudioMS}`;
     void (async () => {
-      await player.seekTo(initialAudioMS / 1000, 0, 0);
+      await player.seekTo(clampAudioPosition(initialAudioMS / 1000, audioDuration), 0, 0);
       applyPlaybackRate(player, audioState?.playback_speed);
       setAudioReady(true);
     })();
-  }, [status.isLoaded, initialAudioMS, audioID, audioState?.playback_speed, player]);
+  }, [status.isLoaded, audioDuration, initialAudioMS, audioID, audioState?.playback_speed, player]);
 
   const onReaderLocation = useCallback((location: ReaderLocation) => {
     setReaderLocation(location);
@@ -260,7 +277,7 @@ export default function ConsumeWorkScreen() {
         kind === 'epub'
           ? {
               epub_locator: value,
-              reader_layout: 'paginated',
+              reader_layout: readerPreferences.layout,
               expected_revision: state?.revision ?? 0,
             }
           : {
@@ -313,6 +330,33 @@ export default function ConsumeWorkScreen() {
       });
     await canonicalSaves.current;
     return saved;
+  }
+
+  async function updateReaderPreferences(next: ReaderPreferences) {
+    if (!selectedEPUB || settingsBusy) return;
+    setSettingsBusy(true);
+    try {
+      const state = await api.updateRepresentationState(selectedEPUB.representation.id, {
+        reader_layout: next.layout,
+        zoom: next.zoom,
+        reader_theme: next.theme,
+        line_height: next.lineHeight,
+        margin: next.margin,
+        expected_revision: epubState?.revision ?? 0,
+      });
+      setEPUBState(state);
+      setReaderPreferences(next);
+      setNotice('');
+    } catch (error) {
+      if (error instanceof APIError && error.status === 409) {
+        const current = await api.representationState(selectedEPUB.representation.id);
+        setEPUBState(current);
+        setReaderPreferences(preferencesFromState(current));
+        setNotice('Reader settings changed on another device. Reloaded the newer settings.');
+      } else setNotice(errorMessage(error));
+    } finally {
+      setSettingsBusy(false);
+    }
   }
 
   async function saveReadingCursor(location: ReaderLocation) {
@@ -374,7 +418,7 @@ export default function ConsumeWorkScreen() {
       setMode('listen');
       setNotice('');
       if (status.isLoaded) {
-        await player.seekTo(target.timestamp_ms / 1000, 0, 0);
+        await player.seekTo(clampAudioPosition(target.timestamp_ms / 1000, audioDuration), 0, 0);
         setAudioReady(true);
         player.play();
       }
@@ -447,10 +491,11 @@ export default function ConsumeWorkScreen() {
   }
 
   function seekToSeconds(targetSeconds: number) {
-    void player.seekTo(clampAudioPosition(targetSeconds, status.duration));
+    if (!Number.isFinite(targetSeconds) || audioDuration <= 0) return;
+    void player.seekTo(clampAudioPosition(targetSeconds, audioDuration));
   }
   function handleSkipBack() {
-    void player.seekTo(Math.max(0, status.currentTime - 15));
+    seekToSeconds(status.currentTime - 15);
   }
   function handlePlayPause() {
     if (status.playing) {
@@ -464,7 +509,14 @@ export default function ConsumeWorkScreen() {
     seekToSeconds(status.currentTime + 15);
   }
   function handleScrubberPress(event: GestureResponderEvent) {
-    seekToSeconds((event.nativeEvent.locationX / trackWidth) * status.duration);
+    const nativeEvent = event.nativeEvent as GestureResponderEvent['nativeEvent'] & {
+      offsetX?: number;
+    };
+    const x = Number.isFinite(nativeEvent.locationX)
+      ? nativeEvent.locationX
+      : (nativeEvent.offsetX ?? NaN);
+    const target = scrubberPosition(x, trackWidth, audioDuration);
+    if (target != null) seekToSeconds(target);
   }
   function handleScrubberAccessibilityAction(event: AccessibilityActionEvent) {
     if (event.nativeEvent.actionName === 'increment') seekToSeconds(status.currentTime + 5);
@@ -523,6 +575,15 @@ export default function ConsumeWorkScreen() {
           </Text>
         </View>
         <View className="flex-row gap-2">
+          {mode === 'read' && selectedEPUB ? (
+            <IconButton
+              icon="settings"
+              label={settingsOpen ? 'Close reader settings' : 'Open reader settings'}
+              kind="quiet"
+              selected={settingsOpen}
+              onPress={() => setSettingsOpen((open) => !open)}
+            />
+          ) : null}
           {selectedEPUB ? (
             <Button
               label="Read"
@@ -555,6 +616,13 @@ export default function ConsumeWorkScreen() {
           <Notice danger>{notice}</Notice>
         </View>
       ) : null}
+      {mode === 'read' && settingsOpen ? (
+        <ReaderSettings
+          value={readerPreferences}
+          disabled={settingsBusy}
+          onChange={(next) => void updateReaderPreferences(next)}
+        />
+      ) : null}
       {mode === 'read' ? (
         selectedEPUB && epubBlob ? (
           <View className="w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5">
@@ -563,6 +631,7 @@ export default function ConsumeWorkScreen() {
               source={epubBlob}
               product
               segments={alignment?.segments}
+              preferences={readerPreferences}
               onLocation={onReaderLocation}
               onReady={onReaderReady}
               onError={(error) => setNotice(errorMessage(error))}
@@ -592,9 +661,9 @@ export default function ConsumeWorkScreen() {
             accessibilityLabel="Audiobook position"
             accessibilityValue={{
               min: 0,
-              max: Math.round(status.duration),
+              max: Math.round(audioDuration),
               now: Math.round(status.currentTime),
-              text: `${formatTime(status.currentTime)} of ${formatTime(status.duration)}`,
+              text: `${formatTime(status.currentTime)} of ${formatTime(audioDuration)}`,
             }}
             accessibilityActions={[
               { name: 'increment', label: 'Skip ahead 5 seconds' },
@@ -604,7 +673,7 @@ export default function ConsumeWorkScreen() {
             disabled={!status.isLoaded}
             focusable
             onAccessibilityAction={handleScrubberAccessibilityAction}
-            className="mt-[18px] h-11 w-full justify-center border-b-4 border-panel-strong focus:border-focus"
+            className="mt-[18px] h-11 w-full justify-center border-b-4 border-panel-strong focus-visible:border-focus"
             onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
             onPress={handleScrubberPress}
             {...scrubberKeyboardProps}
@@ -612,7 +681,7 @@ export default function ConsumeWorkScreen() {
             <View
               className="absolute -bottom-1 left-0 h-1 bg-accent"
               style={{
-                width: `${status.duration ? Math.min(100, (status.currentTime / status.duration) * 100) : 0}%`,
+                width: `${audioDuration ? Math.min(100, (status.currentTime / audioDuration) * 100) : 0}%`,
               }}
             />
           </Pressable>
@@ -621,7 +690,7 @@ export default function ConsumeWorkScreen() {
               {formatTime(status.currentTime)}
             </Text>
             <Text className="text-[13px] text-muted" style={{ fontVariant: ['tabular-nums'] }}>
-              {formatTime(status.duration)}
+              {formatTime(audioDuration)}
             </Text>
           </View>
           <View className="my-2.5 flex-row flex-wrap items-center justify-center gap-3">
@@ -693,6 +762,15 @@ function EmptyMode({ text }: { text: string }) {
       <Text className="text-[13px] leading-[19px] text-muted">{text}</Text>
     </View>
   );
+}
+function preferencesFromState(state?: RepresentationState | null): ReaderPreferences {
+  return {
+    layout: state?.reader_layout ?? DEFAULT_READER_PREFERENCES.layout,
+    zoom: state?.zoom ?? DEFAULT_READER_PREFERENCES.zoom,
+    lineHeight: state?.line_height ?? DEFAULT_READER_PREFERENCES.lineHeight,
+    margin: state?.margin ?? DEFAULT_READER_PREFERENCES.margin,
+    theme: state?.reader_theme ?? DEFAULT_READER_PREFERENCES.theme,
+  };
 }
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return '0:00';
