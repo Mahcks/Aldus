@@ -25,6 +25,7 @@
       "output": "static"
     },
     "plugins": [
+      "./plugins/with-readium",
       [
         "expo-dev-client",
         {
