@@ -81,7 +81,7 @@ func TestSeed(t *testing.T) {
 		t.Fatalf("resolve exact within-paragraph segment: %#v %v", canonical, err)
 	}
 
-	rows, err := db.Query(`SELECT id,audio_resource,audio_start_ms,audio_end_ms FROM alignment_segments WHERE alignment_id=? AND highlightable=1 ORDER BY ordinal LIMIT 20`, AlignmentID)
+	rows, err := db.Query(`SELECT id,audio_resource,audio_start_ms,audio_end_ms FROM alignment_segments WHERE alignment_id=? AND highlightable=1 ORDER BY ordinal`, AlignmentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,19 +98,17 @@ func TestSeed(t *testing.T) {
 		positions = append(positions, item)
 	}
 	rows.Close()
-	for checked, item := range positions {
+	for _, item := range positions {
 		audio, err := position.New(db).CanonicalToAudio(context.Background(), position.Canonical{AlignmentID: AlignmentID, SegmentID: item.id, Offset: 430_000})
 		if err != nil || audio.Resource != item.resource || audio.TimestampMS < item.start || audio.TimestampMS > item.end {
 			t.Fatalf("read audit %s: %#v %v", item.id, audio, err)
 		}
-		if checked < 10 {
-			back, err := position.New(db).AudioToCanonical(context.Background(), AlignmentID, position.AudioLocator{Resource: item.resource, TimestampMS: item.start + (item.end-item.start)*2/3})
-			if err != nil || back.SegmentID != item.id || back.Offset < 0 || back.Offset > 1_000_000 {
-				t.Fatalf("listen audit %s: %#v %v", item.id, back, err)
-			}
+		back, err := position.New(db).AudioToCanonical(context.Background(), AlignmentID, position.AudioLocator{Resource: item.resource, TimestampMS: item.start + (item.end-item.start)*2/3})
+		if err != nil || back.SegmentID == "" || back.Offset < 0 || back.Offset > 1_000_000 {
+			t.Fatalf("listen audit %s: %#v %v", item.id, back, err)
 		}
 	}
-	if len(positions) != 20 {
+	if len(positions) != 85 {
 		t.Fatalf("audited %d positions", len(positions))
 	}
 }

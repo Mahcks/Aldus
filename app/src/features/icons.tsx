@@ -15,6 +15,8 @@ const names = {
   skipBack: 'rewind-15',
   skipForward: 'fast-forward-15',
   back: 'arrow-left',
+  previousPage: 'chevron-left',
+  nextPage: 'chevron-right',
   chevron: 'chevron-right',
   add: 'plus',
   users: 'account-group-outline',

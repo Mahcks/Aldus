@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { IconButton } from '../features/ui';
 import { activeContentIndex, classifyPageSync, relocatedCursor } from './reader-location';
 
 export type RangeBoundary = { dom_path: string; node_offset: number };
@@ -285,24 +286,22 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     <View style={styles.reader}>
       <View ref={host} style={styles.book} />
       <View style={styles.navigation}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.button}
+        <IconButton
+          icon="previousPage"
+          label="Previous page"
           onPress={() => {
             direction.current = 'backward';
             reader.current?.goLeft();
           }}
-        >
-          <Text style={styles.buttonText}>Previous page</Text>
-        </Pressable>
+        />
         <Text style={styles.hint}>
           {product
             ? 'Your place is saved as you turn pages.'
             : 'Highlight a passage in Alice, then click Capture selection.'}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.button}
+        <IconButton
+          icon="nextPage"
+          label="Next page"
           onPress={() => {
             direction.current = 'forward';
             const current = page.current;
@@ -321,9 +320,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             }
             reader.current?.goRight();
           }}
-        >
-          <Text style={styles.buttonText}>Next page</Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -590,14 +587,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  button: {
-    borderWidth: 1,
-    borderColor: '#a99d8e',
-    borderRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: '#fffdf9',
-  },
-  buttonText: { color: '#40372f', fontSize: 13, fontWeight: '600' },
   hint: { color: '#746a5f', fontSize: 12 },
 });
