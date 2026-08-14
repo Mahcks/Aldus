@@ -25,8 +25,12 @@ export function classifyPageSync(aligned: number, unresolved: number) {
       : ('full' as const);
 }
 
-export function relocatedCursor<T>(committed: T | undefined, fallback: T | undefined) {
-  return committed ?? fallback;
+export function relocatedCursor<T extends { href: string }>(
+  committed: T | undefined,
+  fallback: T | undefined,
+  href: string,
+) {
+  return committed?.href === href ? committed : fallback;
 }
 
 export function commitsReadingProgress(reason?: string) {

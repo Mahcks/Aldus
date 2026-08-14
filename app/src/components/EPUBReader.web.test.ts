@@ -65,10 +65,11 @@ describe('EPUB relocation', () => {
   });
 
   test('keeps committed progress across relocation and only commits trustworthy cursor events', () => {
-    const committed = { segment: 'later' };
-    const visibleStart = { segment: 'earlier' };
-    expect(relocatedCursor(committed, visibleStart)).toBe(committed);
-    expect(relocatedCursor(undefined, visibleStart)).toBe(visibleStart);
+    const committed = { href: 'chapter-1', segment: 'later' };
+    const visibleStart = { href: 'chapter-1', segment: 'earlier' };
+    expect(relocatedCursor(committed, visibleStart, 'chapter-1')).toBe(committed);
+    expect(relocatedCursor(undefined, visibleStart, 'chapter-1')).toBe(visibleStart);
+    expect(relocatedCursor(committed, undefined, 'chapter-2')).toBeUndefined();
     expect(commitsReadingProgress('relocate')).toBeFalse();
     expect(commitsReadingProgress('forward')).toBeTrue();
     expect(commitsReadingProgress('explicit')).toBeTrue();

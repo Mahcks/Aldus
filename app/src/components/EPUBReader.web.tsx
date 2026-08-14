@@ -232,6 +232,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           cursor.current = relocatedCursor(
             cursor.current,
             fallback ? syncLocation(href, detail.cfi, fallback, state, 'relocate') : undefined,
+            href,
           );
           const location: ReaderLocation = cursor.current
             ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason: 'relocate' }
