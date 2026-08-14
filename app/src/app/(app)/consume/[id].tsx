@@ -104,14 +104,24 @@ export default function ConsumeWorkScreen() {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS === 'web' || !work || !selectedAudio) return;
-    player.setActiveForLockScreen(true, {
-      title: work.title,
-      artist: work.author || 'Unknown author',
-      albumTitle: selectedAudio.representation.label,
-    });
-    return () => player.setActiveForLockScreen(false);
-  }, [player, selectedAudio, work]);
+    if (Platform.OS === 'web' || !status.isLoaded || !work || !selectedAudio) return;
+    try {
+      player.setActiveForLockScreen(true, {
+        title: work.title,
+        artist: work.author || 'Unknown author',
+        albumTitle: selectedAudio.representation.label,
+      });
+    } catch {
+      return;
+    }
+    return () => {
+      try {
+        player.setActiveForLockScreen(false);
+      } catch {
+        // The native player may already have been released while changing media.
+      }
+    };
+  }, [player, status.isLoaded, selectedAudio, work]);
 
   useEffect(() => {
     let canceled = false;
