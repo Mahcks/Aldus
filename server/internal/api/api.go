@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
+	"github.com/mahcks/aldus/server/internal/api/opds"
 	"github.com/mahcks/aldus/server/internal/api/v1"
 )
 
@@ -17,7 +18,8 @@ func Handler(deps Dependencies) http.Handler {
 	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs})
 	apiRouter.Mount("/api/v1", v1Handler)
 	apiRouter.Mount("/api", v1Handler)
-	koreaderHandler := koreader.Handler(deps.Position, deps.KOReader)
+	router.Mount("/opds", opds.Handler(opds.Dependencies{Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest}))
+	koreaderHandler := koreader.Handler(deps.Position, deps.Auth, deps.KOReader)
 	router.Handle("/healthcheck", koreaderHandler)
 	router.Handle("/users/*", koreaderHandler)
 	router.Handle("/syncs/*", koreaderHandler)

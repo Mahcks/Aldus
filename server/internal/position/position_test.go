@@ -84,6 +84,38 @@ func TestResolverRoundTrips(t *testing.T) {
 	}
 }
 
+func TestKOReaderContainerStartResolvesToFirstFragmentSegment(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	raw := MarshalKOReaderParagraph(EPUBParagraph{
+		KOReaderFragment: 4,
+		KOReaderNodes: []KOReaderTextNode{{
+			Path: "html[1]/body[1]/div[1]/p[1]/text()[1]",
+			Text: "Chapter opening paragraph.",
+		}},
+	})
+	next := MarshalKOReaderParagraph(EPUBParagraph{
+		KOReaderFragment: 4,
+		KOReaderNodes: []KOReaderTextNode{{
+			Path: "html[1]/body[1]/div[1]/p[2]/text()[1]",
+			Text: "First synchronized paragraph.",
+		}},
+	})
+	if _, err := store.db.ExecContext(ctx, `UPDATE alignment_segments SET koreader_locator=?, highlightable=0 WHERE alignment_id=? AND id='s0001'`, raw, FixtureAlignmentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE alignment_segments SET koreader_locator=? WHERE alignment_id=? AND id='s0002'`, next, FixtureAlignmentID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.KOReaderToCanonical(ctx, KOReaderLocator{
+		DocumentID: "fixture-koreader-document",
+		Progress:   "/body/DocFragment[4]/body/div.0",
+	})
+	if err != nil || got.SegmentID != "s0002" || got.Offset != 0 {
+		t.Fatalf("container start = %#v, %v", got, err)
+	}
+}
+
 func TestWordAwareOffsets(t *testing.T) {
 	words := `[{"text":"Alice","startTime":10.0,"endTime":10.4},{"text":"opened","startTime":10.6,"endTime":11.0},{"text":"the","startTime":11.1,"endTime":11.3},{"text":"door","startTime":11.4,"endTime":11.8}]`
 	text := "Alice opened the door"

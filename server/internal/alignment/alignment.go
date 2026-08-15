@@ -104,22 +104,24 @@ type Segment struct {
 	WordTimings   json.RawMessage `json:"word_timings"`
 }
 type workerInput struct {
-	Version       int            `json:"version"`
-	EPUBPath      string         `json:"epub_path"`
-	AudioPath     string         `json:"audio_path"`
-	EPUBSHA256    string         `json:"epub_sha256"`
-	AudioSHA256   string         `json:"audio_sha256"`
-	AudioResource string         `json:"audio_resource"`
-	AudioDuration int64          `json:"audio_duration_ms"`
-	Model         string         `json:"model"`
-	Segments      []inputSegment `json:"segments"`
+	Version            int            `json:"version"`
+	EPUBPath           string         `json:"epub_path"`
+	AudioPath          string         `json:"audio_path"`
+	EPUBSHA256         string         `json:"epub_sha256"`
+	AudioSHA256        string         `json:"audio_sha256"`
+	AudioResource      string         `json:"audio_resource"`
+	AudioDuration      int64          `json:"audio_duration_ms"`
+	Model              string         `json:"model"`
+	KOReaderDocumentID string         `json:"-"`
+	Segments           []inputSegment `json:"segments"`
 }
 type inputSegment struct {
-	ID      string `json:"id"`
-	Ordinal int    `json:"ordinal"`
-	Text    string `json:"text"`
-	Href    string `json:"href"`
-	DOMPath string `json:"dom_path"`
+	ID              string `json:"id"`
+	Ordinal         int    `json:"ordinal"`
+	Text            string `json:"text"`
+	KOReaderLocator string `json:"-"`
+	Href            string `json:"href"`
+	DOMPath         string `json:"dom_path"`
 }
 
 func New(db *sql.DB, o Options) (*Manager, error) {
@@ -162,6 +164,96 @@ func (m *Manager) Start(ctx context.Context) error {
 	return nil
 }
 func (m *Manager) Wait() { <-m.done }
+
+// BackfillKOReader upgrades ready alignments created before KOReader locators
+// were published. It leaves incompatible historical alignments untouched.
+func (m *Manager) BackfillKOReader(ctx context.Context) (updated, skipped int, err error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT DISTINCT a.id,a.epub_media_id FROM alignments a JOIN alignment_segments s ON s.alignment_id=a.id WHERE a.state='ready'`)
+	if err != nil {
+		return 0, 0, err
+	}
+	type target struct{ alignmentID, mediaID string }
+	var targets []target
+	for rows.Next() {
+		var value target
+		if err := rows.Scan(&value.alignmentID, &value.mediaID); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		targets = append(targets, value)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, 0, err
+	}
+	for _, target := range targets {
+		ok, err := m.backfillKOReaderAlignment(ctx, target.alignmentID, target.mediaID)
+		if err != nil {
+			return updated, skipped, err
+		}
+		if ok {
+			updated++
+		} else {
+			skipped++
+		}
+	}
+	return updated, skipped, nil
+}
+
+func (m *Manager) backfillKOReaderAlignment(ctx context.Context, alignmentID, mediaID string) (bool, error) {
+	file, err := m.media.OpenMedia(ctx, mediaID, true)
+	if err != nil {
+		return false, nil
+	}
+	defer file.Close()
+	book, err := position.ImportEPUB(file.Name())
+	if err != nil {
+		return false, nil
+	}
+	documentID, err := position.KOReaderPartialMD5(file)
+	if err != nil {
+		return false, err
+	}
+	paragraphs := make(map[string]position.EPUBParagraph, len(book.Paragraphs))
+	for _, paragraph := range book.Paragraphs {
+		paragraphs[paragraph.Href+"\x00"+paragraph.DOMPath] = paragraph
+	}
+	rows, err := m.db.QueryContext(ctx, `SELECT id,epub_href,json_extract(epub_locator,'$.dom_path'),text FROM alignment_segments WHERE alignment_id=? ORDER BY ordinal`, alignmentID)
+	if err != nil {
+		return false, err
+	}
+	locators := map[string]string{}
+	for rows.Next() {
+		var id, href, text string
+		var path sql.NullString
+		if err := rows.Scan(&id, &href, &path, &text); err != nil {
+			rows.Close()
+			return false, err
+		}
+		paragraph, ok := paragraphs[href+"\x00"+path.String]
+		if !path.Valid || !ok || strings.Join(strings.Fields(text), " ") != paragraph.Text {
+			rows.Close()
+			return false, nil
+		}
+		locators[id] = position.MarshalKOReaderParagraph(paragraph)
+	}
+	if err := rows.Close(); err != nil {
+		return false, err
+	}
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	for id, locator := range locators {
+		if _, err := tx.ExecContext(ctx, `UPDATE alignment_segments SET koreader_locator=? WHERE alignment_id=? AND id=?`, locator, alignmentID, id); err != nil {
+			return false, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO koreader_aliases(document_id,media_id) VALUES(?,?) ON CONFLICT(document_id) DO UPDATE SET media_id=excluded.media_id WHERE (SELECT representation_id FROM media WHERE id=koreader_aliases.media_id)=(SELECT representation_id FROM media WHERE id=excluded.media_id)`, documentID, mediaID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
 
 func (m *Manager) recover(ctx context.Context) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -455,6 +547,10 @@ func (m *Manager) input(ctx context.Context, job Job) (workerInput, error) {
 	if err != nil {
 		return workerInput{}, err
 	}
+	documentID, err := position.KOReaderPartialMD5(epub)
+	if err != nil {
+		return workerInput{}, fmt.Errorf("identify KOReader EPUB: %w", err)
+	}
 	duration, err := m.options.AudioDuration(ctx, ap)
 	if err != nil {
 		return workerInput{}, fmt.Errorf("read audio duration: %w", err)
@@ -462,9 +558,9 @@ func (m *Manager) input(ctx context.Context, job Job) (workerInput, error) {
 	if duration <= 0 {
 		return workerInput{}, errors.New("invalid audio duration")
 	}
-	input := workerInput{Version: ContractVersion, EPUBPath: ep, AudioPath: ap, EPUBSHA256: eh, AudioSHA256: ah, AudioResource: filepath.Base(ap), AudioDuration: duration, Model: m.options.Model}
+	input := workerInput{Version: ContractVersion, EPUBPath: ep, AudioPath: ap, EPUBSHA256: eh, AudioSHA256: ah, AudioResource: filepath.Base(ap), AudioDuration: duration, Model: m.options.Model, KOReaderDocumentID: documentID}
 	for i, p := range book.Paragraphs {
-		input.Segments = append(input.Segments, inputSegment{ID: fmt.Sprintf("s%06d", i+1), Ordinal: i, Text: p.Text, Href: p.Href, DOMPath: p.DOMPath})
+		input.Segments = append(input.Segments, inputSegment{ID: fmt.Sprintf("s%06d", i+1), Ordinal: i, Text: p.Text, Href: p.Href, DOMPath: p.DOMPath, KOReaderLocator: position.MarshalKOReaderParagraph(p)})
 	}
 	if len(input.Segments) == 0 {
 		return workerInput{}, ErrInvalid
@@ -534,12 +630,15 @@ func (m *Manager) publish(ctx context.Context, job Job, path, artifactID string)
 		if len(word) == 0 {
 			word = nil
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms,word_timings,highlightable,alignment_status,confidence_signals) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, alignmentID, segment.ID, segment.Ordinal, segment.Text, segment.EPUB.Href, string(locator), "unavailable:"+segment.ID, segment.Audio.Resource, segment.Audio.StartMS, segment.Audio.EndMS, string(word), segment.Highlightable, segment.Status, string(confidence))
+		_, err := tx.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms,word_timings,highlightable,alignment_status,confidence_signals) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, alignmentID, segment.ID, segment.Ordinal, segment.Text, segment.EPUB.Href, string(locator), input.Segments[segment.Ordinal].KOReaderLocator, segment.Audio.Resource, segment.Audio.StartMS, segment.Audio.EndMS, string(word), segment.Highlightable, segment.Status, string(confidence))
 		if err != nil {
 			return fmt.Errorf("insert alignment segment: %w", err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO alignment_inputs(alignment_id,media_id,role) VALUES(?,?,'epub'),(?,?,'audio')`, alignmentID, job.EPUBMediaID, alignmentID, job.AudioMediaID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO koreader_aliases(document_id,media_id) VALUES(?,?) ON CONFLICT(document_id) DO UPDATE SET media_id=excluded.media_id WHERE (SELECT representation_id FROM media WHERE id=koreader_aliases.media_id)=(SELECT representation_id FROM media WHERE id=excluded.media_id)`, input.KOReaderDocumentID, job.EPUBMediaID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE alignments SET state='stale' WHERE id!=? AND state='ready' AND EXISTS(SELECT 1 FROM alignment_inputs ai WHERE ai.alignment_id=alignments.id AND ai.media_id IN (?,?))`, alignmentID, job.EPUBMediaID, job.AudioMediaID); err != nil {

@@ -3,7 +3,16 @@ import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
 import { IconButton } from '../features/ui';
 import { colors } from '../features/theme';
 import { Text, View } from '../features/tw';
-import { activeContentIndex, classifyPageSync, relocatedCursor } from './reader-location';
+import {
+  activeContentIndex,
+  classifyPageSync,
+  commitsFoliateRelocation,
+  directionAfterRelocation,
+  deferredDisposal,
+  disposeReaderView,
+  relocationCursor,
+  segmentRangeMode,
+} from './reader-location';
 
 export type RangeBoundary = { dom_path: string; node_offset: number };
 export type ReaderCapture = {
@@ -90,6 +99,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     state: ReaderLocation['syncState'];
   }>(undefined);
   const direction = useRef<'initial' | 'forward' | 'backward'>('initial');
+  const relocated = useRef(false);
   const onLocationRef = useRef(onLocation);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
@@ -213,6 +223,11 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   useEffect(() => {
     let disposed = false;
     let view: any;
+    const disposal = deferredDisposal(() => disposeReaderView(view));
+    cursor.current = undefined;
+    page.current = undefined;
+    direction.current = 'initial';
+    relocated.current = false;
     setReady(false);
     void import('foliate-js/view.js')
       .then(async () => {
@@ -264,23 +279,29 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           if (!href) return;
           const state = pageSyncState(range, href, segmentsRef.current);
           page.current = { href, cfi: detail.cfi, range: range.cloneRange(), state };
-          const fallback = !cursor.current
-            ? containingSegment(range, href, segmentsRef.current)
+          const navigationDirection = direction.current;
+          const visible =
+            containingSegment(range, href, segmentsRef.current) ??
+            leadingSegment(range, href, segmentsRef.current);
+          const commit =
+            Boolean(visible) &&
+            commitsFoliateRelocation(detail.reason, relocated.current, navigationDirection);
+          if (visible) relocated.current = true;
+          direction.current = directionAfterRelocation(navigationDirection, Boolean(visible));
+          const reason = commit ? 'explicit' : 'relocate';
+          const visibleLocation = visible
+            ? syncLocation(href, detail.cfi, visible, state, reason)
             : undefined;
-          cursor.current = relocatedCursor(
-            cursor.current,
-            fallback ? syncLocation(href, detail.cfi, fallback, state, 'relocate') : undefined,
-            href,
-          );
+          cursor.current = relocationCursor(cursor.current, visibleLocation, href, commit);
           const location: ReaderLocation = cursor.current
-            ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason: 'relocate' }
-            : { href, cfi: detail.cfi, syncState: state, reason: 'relocate' };
+            ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason }
+            : { href, cfi: detail.cfi, syncState: state, reason };
           if (__DEV__)
             console.debug('Aldus relocation', {
               href,
               visible_start: boundary(range),
               visible_end: boundary(range, true),
-              direction: direction.current,
+              direction: navigationDirection,
               cursor: cursor.current?.sync,
               candidate_segments: intersectingSegments(range, href, segmentsRef.current).map(
                 (item) => item.id,
@@ -299,8 +320,8 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             ? new File([source], 'book.epub', { type: 'application/epub+zip' })
             : source,
         );
+        disposal.settle();
         if (disposed) {
-          view.remove();
           return;
         }
         view.renderer.setAttribute('flow', preferencesRef.current.layout);
@@ -309,7 +330,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         onReadyRef.current?.();
       })
       .catch((error: unknown) => {
-        view?.remove();
+        disposal.fail();
         if (!disposed)
           onErrorRef.current?.(
             error instanceof Error ? error : new Error('The EPUB could not be opened.'),
@@ -317,7 +338,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
       });
     return () => {
       disposed = true;
-      view?.remove();
+      disposal.request();
       if (reader.current === view) reader.current = null;
     };
   }, [source, product]);
@@ -361,20 +382,6 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             kind="quiet"
             onPress={() => {
               direction.current = 'forward';
-              const current = page.current;
-              if (current) {
-                const match = trailingSegment(current.range, current.href, segments);
-                if (match) {
-                  cursor.current = syncLocation(
-                    current.href,
-                    current.cfi,
-                    match,
-                    current.state,
-                    'forward',
-                  );
-                  onLocationRef.current?.(cursor.current);
-                }
-              }
               reader.current?.goRight();
             }}
           />
@@ -391,20 +398,13 @@ function containingSegment(point: Range, href: string, segments: SyncSegment[]) 
       start?: RangeBoundary;
       end?: RangeBoundary;
     };
-    if (
-      !segment.highlightable ||
-      segment.epub_href !== href ||
-      !locator?.dom_path ||
-      !locator.start ||
-      !locator.end
-    )
-      continue;
+    if (!segment.highlightable || segment.epub_href !== href || !locator?.dom_path) continue;
     try {
       const doc = point.startContainer.ownerDocument!;
       const range = segmentRange(doc, locator);
       if (
         range.comparePoint(point.startContainer, point.startOffset) !== 0 ||
-        sameBoundary(point, locator.end, doc)
+        (locator.end && sameBoundary(point, locator.end, doc))
       )
         continue;
       const before = range.cloneRange();
@@ -429,8 +429,12 @@ function containingSegment(point: Range, href: string, segments: SyncSegment[]) 
 function intersectingSegments(visible: Range, href: string, segments: SyncSegment[]) {
   return segments.filter((segment) => {
     if (segment.epub_href !== href) return false;
-    const locator = segment.epub_locator as { start?: RangeBoundary; end?: RangeBoundary };
-    if (!locator?.start || !locator.end) return false;
+    const locator = segment.epub_locator as {
+      dom_path?: string;
+      start?: RangeBoundary;
+      end?: RangeBoundary;
+    };
+    if (!locator?.dom_path) return false;
     try {
       const doc = visible.startContainer.ownerDocument!;
       const range = segmentRange(doc, locator);
@@ -468,32 +472,13 @@ function pageSyncState(
   );
 }
 
-function trailingSegment(visible: Range, href: string, segments: SyncSegment[]) {
-  const candidates = intersectingSegments(visible, href, segments)
-    .filter((segment) => segment.highlightable)
-    .sort((a, b) => a.ordinal - b.ordinal);
-  const segment = candidates.at(-1);
-  if (!segment) return;
-  const locator = segment.epub_locator as {
-    dom_path: string;
-    start: RangeBoundary;
-    end: RangeBoundary;
-  };
-  try {
-    const doc = visible.startContainer.ownerDocument!;
-    const range = segmentRange(doc, locator);
-    if (
-      range.comparePoint(visible.endContainer, visible.endOffset) === 0 &&
-      !sameBoundary(visible, locator.end, doc, true)
-    ) {
-      const point = visible.cloneRange();
-      point.collapse(false);
-      return containingSegment(point, href, [segment]);
-    }
-    return { id: segment.id, domPath: locator.dom_path, offset: 999_999 };
-  } catch {
-    return;
-  }
+function leadingSegment(visible: Range, href: string, segments: SyncSegment[]) {
+  const segment = intersectingSegments(visible, href, segments)
+    .filter((candidate) => candidate.highlightable)
+    .sort((a, b) => a.ordinal - b.ordinal)[0];
+  const locator = segment?.epub_locator as { dom_path?: string } | undefined;
+  if (!segment || !locator?.dom_path) return;
+  return { id: segment.id, domPath: locator.dom_path, offset: 0 };
 }
 
 function syncLocation(
@@ -516,11 +501,18 @@ function syncLocation(
   };
 }
 
-function segmentRange(doc: Document, locator: { start?: RangeBoundary; end?: RangeBoundary }) {
-  if (!locator.start || !locator.end) throw new Error('Missing segment boundaries');
+function segmentRange(
+  doc: Document,
+  locator: { dom_path?: string; start?: RangeBoundary; end?: RangeBoundary },
+) {
   const range = doc.createRange();
-  range.setStart(resolveDOMPath(doc, locator.start.dom_path), locator.start.node_offset);
-  range.setEnd(resolveDOMPath(doc, locator.end.dom_path), locator.end.node_offset);
+  const mode = segmentRangeMode(locator);
+  if (mode === 'boundaries') {
+    range.setStart(resolveDOMPath(doc, locator.start!.dom_path), locator.start!.node_offset);
+    range.setEnd(resolveDOMPath(doc, locator.end!.dom_path), locator.end!.node_offset);
+  } else if (mode === 'element') {
+    range.selectNodeContents(resolveDOMPath(doc, locator.dom_path!));
+  } else throw new Error('Missing segment locator');
   return range;
 }
 

@@ -39,6 +39,8 @@ import type {
   UpdateUserRequest,
   UpdateWorkRequest,
   UpdateCoverSettingsRequest,
+  ReaderCredential,
+  CreateReaderCredentialRequest,
   User,
   Work,
   WorkDetail,
@@ -63,6 +65,16 @@ export class APIError extends Error {
   }
 }
 
+async function responseErrorMessage(response: Response) {
+  const message = (await response.text()).trim();
+  if (
+    response.headers.get('Content-Type')?.includes('text/html') ||
+    /^<!doctype html/i.test(message)
+  )
+    return 'Aldus received a web page instead of an API response. Check the server URL.';
+  return message || `Request failed (${response.status}).`;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getToken();
   const headers = new Headers(init.headers);
@@ -79,14 +91,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new APIError(0, 'Unable to reach Aldus.');
   }
   if (!response.ok) {
-    const message = (await response.text()).trim();
+    const message = await responseErrorMessage(response);
     if (response.status === 401) {
       await clearToken();
       unauthorized?.();
     }
     throw new APIError(
       response.status,
-      message || `Request failed (${response.status}).`,
+      message,
       response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
     );
   }
@@ -102,7 +114,7 @@ async function download(path: string) {
   if (!response.ok)
     throw new APIError(
       response.status,
-      (await response.text()).trim() || `Request failed (${response.status}).`,
+      await responseErrorMessage(response),
       response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
     );
   return response.blob();
@@ -129,6 +141,14 @@ export const api = {
       await clearToken();
     }
   },
+  readerCredentials: () => request<ReaderCredential[]>('/me/reader-credentials'),
+  createReaderCredential: (body: CreateReaderCredentialRequest) =>
+    request<ReaderCredential>('/me/reader-credentials', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteReaderCredential: (id: string) =>
+    request<void>(`/me/reader-credentials/${id}`, { method: 'DELETE' }),
 
   users: (offset = 0) => request<User[]>(`/users?limit=100&offset=${offset}`),
   createUser: (body: CreateUserRequest) =>

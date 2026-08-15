@@ -83,6 +83,15 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	updated, skipped, err := alignmentManager.BackfillKOReader(ctx)
+	if err != nil {
+		slog.Error("upgrade KOReader alignment locators", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
+	if updated > 0 || skipped > 0 {
+		slog.Info("KOReader alignment upgrade complete", "updated", updated, "requires_realign", skipped)
+	}
 	if err := alignmentManager.Start(ctx); err != nil {
 		slog.Error("recover alignment jobs", "error", err)
 		db.Close()

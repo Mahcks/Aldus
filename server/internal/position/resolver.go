@@ -193,21 +193,41 @@ func normalizeText(text string) string {
 }
 
 func (s *Store) KOReaderToCanonical(ctx context.Context, locator KOReaderLocator) (Canonical, error) {
-	var p Canonical
-	err := s.db.QueryRowContext(ctx, `
-		SELECT s.alignment_id, s.id
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT s.alignment_id, s.id, s.koreader_locator
 		FROM koreader_aliases k
 		JOIN alignments a ON a.epub_media_id = k.media_id AND a.state = 'ready'
-	JOIN alignment_segments s ON s.alignment_id = a.id AND s.koreader_locator = ? AND s.highlightable=1 AND s.koreader_locator NOT LIKE 'unavailable:%'
-		WHERE k.document_id = ?`, locator.Progress, locator.DocumentID,
-	).Scan(&p.AlignmentID, &p.SegmentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Canonical{}, ErrNotFound
-	}
+		JOIN alignment_segments s ON s.alignment_id = a.id
+		WHERE k.document_id = ? AND s.highlightable = 1 ORDER BY s.ordinal`, locator.DocumentID)
 	if err != nil {
 		return Canonical{}, fmt.Errorf("resolve KOReader locator: %w", err)
 	}
-	return p, nil
+	defer rows.Close()
+	structuralFragment, structural := koReaderStructuralStart(locator.Progress)
+	var structuralFallback Canonical
+	for rows.Next() {
+		var p Canonical
+		var raw string
+		if err := rows.Scan(&p.AlignmentID, &p.SegmentID, &raw); err != nil {
+			return Canonical{}, fmt.Errorf("resolve KOReader locator: %w", err)
+		}
+		if raw == locator.Progress {
+			return p, nil
+		}
+		if structural && structuralFallback.SegmentID == "" && koReaderParagraphFragment(raw) == structuralFragment {
+			structuralFallback = p
+		}
+		if p.Offset, err = koReaderToCanonical(raw, locator.Progress); err == nil {
+			return p, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return Canonical{}, fmt.Errorf("resolve KOReader locator: %w", err)
+	}
+	if structuralFallback.SegmentID != "" {
+		return structuralFallback, nil
+	}
+	return Canonical{}, ErrNotFound
 }
 
 func (s *Store) AlignmentForKOReaderDocument(ctx context.Context, documentID string) (string, error) {
@@ -236,6 +256,7 @@ func (s *Store) KOReaderOwner(ctx context.Context, username, documentID string) 
 
 func (s *Store) CanonicalToKOReader(ctx context.Context, p Canonical) (KOReaderLocator, error) {
 	var locator KOReaderLocator
+	var raw string
 	var ordinal, total int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT k.document_id, s.koreader_locator, s.ordinal,
@@ -243,13 +264,23 @@ func (s *Store) CanonicalToKOReader(ctx context.Context, p Canonical) (KOReaderL
 		FROM alignment_segments s
 		JOIN alignments a ON a.id = s.alignment_id AND a.state = 'ready'
 		JOIN koreader_aliases k ON k.media_id = a.epub_media_id
-		WHERE s.alignment_id = ? AND s.id = ? AND s.highlightable=1 AND s.koreader_locator NOT LIKE 'unavailable:%'`, p.AlignmentID, p.SegmentID,
-	).Scan(&locator.DocumentID, &locator.Progress, &ordinal, &total)
+		WHERE s.alignment_id = ? AND s.id = ?`, p.AlignmentID, p.SegmentID,
+	).Scan(&locator.DocumentID, &raw, &ordinal, &total)
 	if errors.Is(err, sql.ErrNoRows) {
 		return KOReaderLocator{}, ErrNotFound
 	}
 	if err != nil {
 		return KOReaderLocator{}, fmt.Errorf("resolve canonical KOReader locator: %w", err)
+	}
+	if strings.HasPrefix(raw, "{") {
+		locator.Progress, err = canonicalToKOReader(raw, p.Offset)
+		if err != nil {
+			return KOReaderLocator{}, err
+		}
+	} else if !strings.HasPrefix(raw, "unavailable:") {
+		locator.Progress = raw
+	} else {
+		return KOReaderLocator{}, ErrNotFound
 	}
 	locator.Percentage = (float64(ordinal) + float64(p.Offset)/OffsetMax) / float64(total)
 	return locator, nil

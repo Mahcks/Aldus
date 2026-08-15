@@ -295,6 +295,58 @@ export default function ConsumeWorkScreen() {
   }, [readerTarget, progress?.resolvable, progress?.alignment_id, alignmentID]);
 
   useEffect(() => {
+    if (!work) return;
+    const workID = work.id;
+    let active = true;
+    let refreshing = false;
+    async function refreshProgress() {
+      if (refreshing || switching.current) return;
+      refreshing = true;
+      const pending = canonicalSaves.current;
+      try {
+        await pending;
+        const next = await api.workProgress(workID);
+        if (
+          !active ||
+          canonicalSaves.current !== pending ||
+          !next ||
+          (next.revision ?? 0) <= (progressRef.current?.revision ?? 0)
+        )
+          return;
+        progressRef.current = next;
+        setProgress(next);
+        if (!next.resolvable || next.alignment_id !== alignmentID) return;
+        if (mode === 'read') {
+          const target = await api.canonicalToEPUB(alignmentID, next);
+          if (!active) return;
+          setReaderTarget(target);
+        } else {
+          const target = await api.canonicalToAudio(alignmentID, next);
+          if (!active) return;
+          restoredAudio.current = '';
+          setAudioReady(false);
+          setInitialAudioMS(target.timestamp_ms);
+        }
+        setSyncAvailable(true);
+      } catch (error) {
+        if (active) setNotice(errorMessage(error));
+      } finally {
+        refreshing = false;
+      }
+    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshProgress();
+    });
+    const onFocus = () => void refreshProgress();
+    if (Platform.OS === 'web') window.addEventListener('focus', onFocus);
+    return () => {
+      active = false;
+      subscription.remove();
+      if (Platform.OS === 'web') window.removeEventListener('focus', onFocus);
+    };
+  }, [work, alignmentID, mode]);
+
+  useEffect(() => {
     if (mode !== 'listen') return;
     if (!status.isLoaded) return;
     if (initialAudioMS == null) return;
@@ -409,24 +461,43 @@ export default function ConsumeWorkScreen() {
       .catch(() => {})
       .then(async () => {
         try {
-          const next = await api.updateWorkProgress(work.id, {
+          const current = progressRef.current;
+          if (
+            current?.alignment_id === alignmentID &&
+            current.segment_id === canonical.segment_id &&
+            current.offset === canonical.offset
+          ) {
+            saved = true;
+            return;
+          }
+          const update = {
             alignment_id: alignmentID,
             segment_id: canonical.segment_id,
             offset: canonical.offset,
             expected_revision: progressRef.current?.revision ?? 0,
             source_device: Platform.OS,
-          });
+          };
+          let next: CanonicalPosition;
+          try {
+            next = await api.updateWorkProgress(work.id, update);
+          } catch (error) {
+            if (!(error instanceof APIError && error.status === 409)) throw error;
+            const latest = await api.workProgress(work.id);
+            next = await api.updateWorkProgress(work.id, {
+              ...update,
+              expected_revision: latest?.revision ?? 0,
+            });
+          }
           progressRef.current = next;
           setProgress(next);
           setSyncAvailable(true);
           saved = true;
         } catch (error) {
-          if (error instanceof APIError && error.status === 409) {
-            const current = await api.workProgress(work.id);
-            progressRef.current = current;
-            setProgress(current);
-            setNotice('Progress changed on another device. The newer saved position was kept.');
-          } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
+          if (error instanceof APIError && error.status === 409)
+            setNotice(
+              'Progress changed again on another device. Move once more to save this place.',
+            );
+          else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
           else setNotice(errorMessage(error));
         }
       })

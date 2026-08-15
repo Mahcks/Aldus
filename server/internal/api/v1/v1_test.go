@@ -52,6 +52,7 @@ func TestRouteContract(t *testing.T) {
 		"PUT /activity/{sessionID}", "PUT /alignments/{alignmentID}/progress", "PUT /libraries/{libraryID}/members/{userID}", "PUT /representations/{representationID}/state", "PUT /works/{workID}/cover", "PUT /works/{workID}/progress",
 	}
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
+	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {

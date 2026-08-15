@@ -56,7 +56,10 @@ var embeddedCoversSchema string
 //go:embed migrations/015_cover_studio.sql
 var coverStudioSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema}
+//go:embed migrations/016_reader_credentials.sql
+var readerCredentialsSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema}
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	path, err := filepath.Abs(path)

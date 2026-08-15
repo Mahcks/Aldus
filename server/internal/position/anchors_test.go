@@ -60,7 +60,7 @@ func TestSavedAliceAnchors(t *testing.T) {
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
 	}
-	if fixture.Version != 1 || fixture.EPUBSHA256 != "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c" || fixture.AudioSHA256 != "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a" || fixture.KOReaderDocumentHash != "efbf04efc9d43ecd89a033b329f49bdb" {
+	if fixture.Version != 1 || fixture.EPUBSHA256 != "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c" || fixture.AudioSHA256 != "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a" || fixture.KOReaderDocumentHash != "abb11be65399f96116fd90ab861dda0e" {
 		t.Fatal("anchor fixture references a different media revision")
 	}
 	if len(fixture.Anchors) == 0 {

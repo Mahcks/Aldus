@@ -19,6 +19,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
+	"github.com/mahcks/aldus/server/internal/position"
 )
 
 type testState struct {
@@ -177,6 +178,28 @@ func TestJobReadyDuplicateAndAuthorization(t *testing.T) {
 	s.manager.db.QueryRow(`SELECT COUNT(*) FROM alignment_inputs WHERE alignment_id=?`, job.ID).Scan(&inputs)
 	if alignments != 1 || segments != 1 || inputs != 2 {
 		t.Fatalf("published=%d/%d/%d", alignments, segments, inputs)
+	}
+	var documentID string
+	if err := s.manager.db.QueryRow(`SELECT document_id FROM koreader_aliases WHERE media_id='epub'`).Scan(&documentID); err != nil {
+		t.Fatal(err)
+	}
+	locator, err := position.New(s.manager.db).CanonicalToKOReader(ctx, position.Canonical{AlignmentID: job.ID, SegmentID: "s000001", Offset: 500_000})
+	if err != nil || locator.DocumentID != documentID || !strings.HasPrefix(locator.Progress, "/body/DocFragment[1]/body[1]/div[1]/p[1]/text()[1].") {
+		t.Fatalf("production KOReader locator=%#v, %v", locator, err)
+	}
+	canonical, err := position.New(s.manager.db).KOReaderToCanonical(ctx, locator)
+	if err != nil || canonical.AlignmentID != job.ID || canonical.SegmentID != "s000001" {
+		t.Fatalf("KOReader round trip=%#v, %v", canonical, err)
+	}
+	if _, err := s.manager.db.Exec(`UPDATE alignment_segments SET koreader_locator='unavailable:s000001' WHERE alignment_id=?; DELETE FROM koreader_aliases WHERE media_id='epub'`, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	updated, skipped, err := s.manager.BackfillKOReader(ctx)
+	if err != nil || updated != 1 || skipped != 0 {
+		t.Fatalf("KOReader backfill=%d/%d, %v", updated, skipped, err)
+	}
+	if _, err := position.New(s.manager.db).CanonicalToKOReader(ctx, position.Canonical{AlignmentID: job.ID, SegmentID: "s000001", Offset: 500_000}); err != nil {
+		t.Fatalf("backfilled locator: %v", err)
 	}
 }
 

@@ -217,6 +217,20 @@ export interface Media {
 }
 
 //////////
+// source: reader_credentials.go
+
+export interface ReaderCredential {
+  id: string;
+  label: string;
+  secret?: string;
+  last_used_at?: string;
+  created_at: string;
+}
+export interface CreateReaderCredentialRequest {
+  label: string;
+}
+
+//////////
 // source: sources.go
 
 export interface SourceRoot {

@@ -2,9 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import {
   activeContentIndex,
   classifyPageSync,
+  commitsFoliateRelocation,
   commitsReadingProgress,
   currentParagraph,
+  directionAfterRelocation,
+  deferredDisposal,
+  disposeReaderView,
+  relocationCursor,
   relocatedCursor,
+  segmentRangeMode,
 } from './reader-location';
 
 describe('EPUB relocation', () => {
@@ -73,6 +79,61 @@ describe('EPUB relocation', () => {
     expect(commitsReadingProgress('relocate')).toBeFalse();
     expect(commitsReadingProgress('forward')).toBeTrue();
     expect(commitsReadingProgress('explicit')).toBeTrue();
+    expect(commitsFoliateRelocation('page', false, 'initial')).toBeFalse();
+    expect(commitsFoliateRelocation('navigation', true, 'initial')).toBeFalse();
+    expect(commitsFoliateRelocation('navigation', true, 'forward')).toBeTrue();
+    expect(commitsFoliateRelocation('navigation', true, 'backward')).toBeTrue();
+    expect(commitsFoliateRelocation(undefined, true, 'initial')).toBeTrue();
+    expect(commitsFoliateRelocation('scroll', true, 'initial')).toBeTrue();
+    expect(commitsFoliateRelocation('snap', true, 'initial')).toBeTrue();
+  });
+
+  test('commits the destination cursor when navigating across chapters', () => {
+    const source = { href: 'chapter-1', segment: 'last-source-segment' };
+    const destination = { href: 'chapter-2', segment: 'first-destination-segment' };
+
+    expect(relocationCursor(source, destination, 'chapter-2', true)).toBe(destination);
+    expect(relocationCursor(source, destination, 'chapter-2', false)).toBe(destination);
+  });
+
+  test('keeps page-turn intent through Foliate empty transition pages', () => {
+    const afterEmpty = directionAfterRelocation('forward', false);
+    expect(afterEmpty).toBe('forward');
+    expect(commitsFoliateRelocation('navigation', true, afterEmpty)).toBeTrue();
+    expect(directionAfterRelocation(afterEmpty, true)).toBe('initial');
+  });
+
+  test('uses the stored paragraph path when optional text boundaries are absent', () => {
+    expect(segmentRangeMode({ dom_path: 'html[1]/body[1]/div[1]/p[1]' })).toBe('element');
+    expect(
+      segmentRangeMode({
+        dom_path: 'html[1]/body[1]/div[1]/p[1]',
+        start: { node_offset: 0 },
+        end: { node_offset: 12 },
+      }),
+    ).toBe('boundaries');
+    expect(segmentRangeMode({})).toBeUndefined();
+  });
+
+  test('closes Foliate before removing its element', () => {
+    const calls: string[] = [];
+    disposeReaderView({
+      close: () => calls.push('close'),
+      remove: () => calls.push('remove'),
+    });
+    expect(calls).toEqual(['close', 'remove']);
+  });
+
+  test('defers one-shot Foliate disposal until opening settles', () => {
+    const calls: string[] = [];
+    const disposal = deferredDisposal(() => calls.push('dispose'));
+
+    disposal.request();
+    expect(calls).toEqual([]);
+    disposal.settle();
+    disposal.request();
+    disposal.fail();
+    expect(calls).toEqual(['dispose']);
   });
 
   test('classifies full, partial, and unavailable visible pages', () => {

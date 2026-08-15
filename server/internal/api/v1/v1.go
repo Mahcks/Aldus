@@ -13,6 +13,7 @@ func Handler(deps Dependencies) http.Handler {
 	router.Group(func(router chi.Router) {
 		router.Use(deps.Auth.Middleware)
 		registerSessionRoutes(router, deps.Auth)
+		registerReaderCredentialRoutes(router, deps.Auth)
 		registerUserRoutes(router, deps.Auth)
 		registerLibraryRoutes(router, deps.Catalog)
 		registerSourceRoutes(router, deps.Sources)

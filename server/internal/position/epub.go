@@ -21,9 +21,21 @@ type EPUB struct {
 }
 
 type EPUBParagraph struct {
-	Href    string
-	DOMPath string
-	Text    string
+	Href             string
+	DOMPath          string
+	Text             string
+	KOReaderFragment int
+	KOReaderNodes    []KOReaderTextNode
+}
+
+type KOReaderTextNode struct {
+	Path string `json:"path"`
+	Text string `json:"text"`
+}
+
+type KOReaderParagraph struct {
+	Fragment int                `json:"fragment"`
+	Nodes    []KOReaderTextNode `json:"nodes"`
 }
 
 func ImportEPUB(filename string) (EPUB, error) {
@@ -73,14 +85,14 @@ func ImportEPUB(filename string) (EPUB, error) {
 		book.Resources[href] = item.Type
 		byID[item.ID] = href
 	}
-	for _, ref := range opf.Spine {
+	for spineIndex, ref := range opf.Spine {
 		href := byID[ref.ID]
 		if href == "" {
 			return EPUB{}, fmt.Errorf("spine item %q missing from manifest", ref.ID)
 		}
 		book.Spine = append(book.Spine, href)
 		if book.Resources[href] == "application/xhtml+xml" {
-			paragraphs, err := readParagraphs(files[href], href)
+			paragraphs, err := readParagraphs(files[href], href, spineIndex+1)
 			if err != nil {
 				return EPUB{}, err
 			}
@@ -107,7 +119,7 @@ func xmlFile[T any](files map[string]*zip.File, name string) (T, error) {
 	return value, nil
 }
 
-func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
+func readParagraphs(file *zip.File, href string, fragment int) ([]EPUBParagraph, error) {
 	if file == nil {
 		return nil, fmt.Errorf("EPUB resource %q not found", href)
 	}
@@ -123,10 +135,13 @@ func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
 		name     string
 		index    int
 		children map[string]int
+		texts    int
 	}
 	var stack []node
 	paragraphDepth := 0
 	paragraphPath := ""
+	var paragraphNodes []KOReaderTextNode
+	lastTextPath := ""
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -137,6 +152,7 @@ func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
 		}
 		switch token := token.(type) {
 		case xml.StartElement:
+			lastTextPath = ""
 			index := 1
 			if len(stack) > 0 {
 				parent := &stack[len(stack)-1]
@@ -152,17 +168,30 @@ func readParagraphs(file *zip.File, href string) ([]EPUBParagraph, error) {
 				}
 				paragraphPath = strings.Join(parts, "/")
 				text.Reset()
+				paragraphNodes = nil
 			}
 		case xml.CharData:
 			if paragraphDepth > 0 {
 				text.Write(token)
+				current := &stack[len(stack)-1]
+				if lastTextPath == "" {
+					current.texts++
+					parts := make([]string, len(stack))
+					for i, item := range stack {
+						parts[i] = fmt.Sprintf("%s[%d]", item.name, item.index)
+					}
+					lastTextPath = strings.Join(parts, "/") + fmt.Sprintf("/text()[%d]", current.texts)
+					paragraphNodes = append(paragraphNodes, KOReaderTextNode{Path: lastTextPath})
+				}
+				paragraphNodes[len(paragraphNodes)-1].Text += string(token)
 			}
 		case xml.EndElement:
 			if paragraphDepth == len(stack) {
-				paragraphs = append(paragraphs, EPUBParagraph{Href: href, DOMPath: paragraphPath, Text: strings.Join(strings.Fields(text.String()), " ")})
+				paragraphs = append(paragraphs, EPUBParagraph{Href: href, DOMPath: paragraphPath, Text: strings.Join(strings.Fields(text.String()), " "), KOReaderFragment: fragment, KOReaderNodes: paragraphNodes})
 				paragraphDepth = 0
 			}
 			stack = stack[:len(stack)-1]
+			lastTextPath = ""
 		}
 	}
 	return paragraphs, nil

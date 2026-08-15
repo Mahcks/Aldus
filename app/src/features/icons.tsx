@@ -12,6 +12,7 @@ const names = {
   listen: 'headphones',
   synced: 'link-variant',
   account: 'account-circle-outline',
+  devices: 'cellphone-link',
   enabled: 'check-circle-outline',
   disabled: 'cancel',
   play: 'play',

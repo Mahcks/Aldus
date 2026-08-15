@@ -64,6 +64,20 @@ describe('API transport', () => {
     );
   });
 
+  it('does not expose an HTML page as an API error', async () => {
+    globalThis.fetch = (async () =>
+      new Response('<!DOCTYPE html><html></html>', {
+        status: 404,
+        headers: { 'Content-Type': 'text/html' },
+      })) as unknown as typeof fetch;
+    await expect(api.me()).rejects.toEqual(
+      new APIError(
+        404,
+        'Aldus received a web page instead of an API response. Check the server URL.',
+      ),
+    );
+  });
+
   it('restores Work alignment jobs through the generated contract', async () => {
     let url = '';
     const jobs = [

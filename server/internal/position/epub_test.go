@@ -25,6 +25,10 @@ func TestImportAliceEPUB(t *testing.T) {
 	found := false
 	for _, paragraph := range book.Paragraphs {
 		if paragraph.Href == "OEBPS/6260297267691793459_11-h-1.htm.xhtml" && paragraph.DOMPath == "html[1]/body[1]/div[1]/p[1]" && len(paragraph.Text) >= len(first) && paragraph.Text[:len(first)] == first {
+			xpointer, err := canonicalToKOReader(MarshalKOReaderParagraph(paragraph), 0)
+			if err != nil || xpointer != "/body/DocFragment[3]/body[1]/div[1]/p[1]/text()[1].1" {
+				t.Fatalf("real EPUB XPointer = %q, %v", xpointer, err)
+			}
 			found = true
 		}
 	}

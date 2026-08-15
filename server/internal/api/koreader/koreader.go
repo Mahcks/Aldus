@@ -1,14 +1,17 @@
 package koreader
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -17,24 +20,26 @@ type Credentials struct {
 	Key  string
 }
 
-func Handler(store *position.Store, credentials Credentials) http.Handler {
+type usernameContextKey struct{}
+
+func Handler(store *position.Store, accounts *auth.Store, fallback Credentials) http.Handler {
 	router := chi.NewRouter()
 	router.Get("/healthcheck", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"state": "OK"})
 	})
-	router.Post("/users/create", register(credentials))
+	router.Post("/users/create", register(accounts, fallback))
 	router.Group(func(router chi.Router) {
-		router.Use(authorize(credentials))
+		router.Use(authorize(accounts, fallback))
 		router.Get("/users/auth", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"authorized": "OK"})
 		})
-		router.Put("/syncs/progress", putProgress(store, credentials.User))
-		router.Get("/syncs/progress/{document}", getProgress(store, credentials.User))
+		router.Put("/syncs/progress", putProgress(store))
+		router.Get("/syncs/progress/{document}", getProgress(store))
 	})
 	return router
 }
 
-func register(credentials Credentials) http.HandlerFunc {
+func register(accounts *auth.Store, fallback Credentials) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			Username string `json:"username"`
@@ -43,7 +48,12 @@ func register(credentials Credentials) http.HandlerFunc {
 		if !decode(w, r, &request) {
 			return
 		}
-		if request.Username != credentials.User || request.Password != credentials.Key {
+		if _, err := authenticate(r, accounts, fallback, request.Username, request.Password); err != nil {
+			if !errors.Is(err, auth.ErrInvalidCredentials) {
+				slog.Error("KOReader registration authentication failed", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
 			writeJSON(w, http.StatusPaymentRequired, map[string]any{"code": 2005, "message": "registration disabled"})
 			return
 		}
@@ -51,16 +61,38 @@ func register(credentials Credentials) http.HandlerFunc {
 	}
 }
 
-func authorize(credentials Credentials) func(http.Handler) http.Handler {
+func authorize(accounts *auth.Store, fallback Credentials) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("x-auth-user") != credentials.User || r.Header.Get("x-auth-key") != credentials.Key {
+			username, err := authenticate(r, accounts, fallback, r.Header.Get("x-auth-user"), r.Header.Get("x-auth-key"))
+			if err != nil {
+				if !errors.Is(err, auth.ErrInvalidCredentials) {
+					slog.Error("KOReader authentication failed", "error", err)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
 				writeJSON(w, http.StatusUnauthorized, map[string]any{"code": 2001, "message": "unauthorized"})
 				return
 			}
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), usernameContextKey{}, username)))
 		})
 	}
+}
+
+func authenticate(r *http.Request, accounts *auth.Store, fallback Credentials, username, key string) (string, error) {
+	if accounts != nil {
+		user, err := accounts.AuthenticateReader(r.Context(), username, key, true)
+		if err == nil {
+			return user.Username, nil
+		}
+		if !errors.Is(err, auth.ErrInvalidCredentials) {
+			return "", err
+		}
+	}
+	if username == fallback.User && key == fallback.Key && username != "" {
+		return username, nil
+	}
+	return "", auth.ErrInvalidCredentials
 }
 
 type progressRequest struct {
@@ -71,8 +103,9 @@ type progressRequest struct {
 	DeviceID   string  `json:"device_id"`
 }
 
-func putProgress(store *position.Store, username string) http.HandlerFunc {
+func putProgress(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		username, _ := r.Context().Value(usernameContextKey{}).(string)
 		var request progressRequest
 		if !decode(w, r, &request) {
 			return
@@ -86,11 +119,28 @@ func putProgress(store *position.Store, username string) http.HandlerFunc {
 			Progress:   request.Progress,
 		})
 		if err != nil {
+			if !errors.Is(err, position.ErrNotFound) {
+				slog.Error("KOReader progress resolution failed", "document", request.Document, "error", err)
+				http.Error(w, "resolve progress", http.StatusInternalServerError)
+				return
+			}
+			slog.Warn("KOReader progress rejected", "diagnosis", "document bytes or XPointer do not match a ready alignment", "document", request.Document, "xpointer", request.Progress)
 			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
 			return
 		}
 		userID, workID, alignmentID, err := store.KOReaderOwner(r.Context(), username, request.Document)
-		if err != nil || alignmentID != incoming.AlignmentID {
+		if err != nil {
+			if !errors.Is(err, position.ErrNotFound) {
+				slog.Error("KOReader progress authorization failed", "username", username, "document", request.Document, "error", err)
+				http.Error(w, "authorize progress", http.StatusInternalServerError)
+				return
+			}
+			slog.Warn("KOReader progress rejected", "diagnosis", "user cannot access the aligned work", "username", username, "document", request.Document)
+			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
+			return
+		}
+		if alignmentID != incoming.AlignmentID {
+			slog.Warn("KOReader progress rejected", "diagnosis", "document resolved to a different ready alignment", "document", request.Document, "expected_alignment", alignmentID, "resolved_alignment", incoming.AlignmentID)
 			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
 			return
 		}
@@ -98,19 +148,6 @@ func putProgress(store *position.Store, username string) http.HandlerFunc {
 		expected := int64(0)
 		if err == nil {
 			expected = current.Revision
-			incomingOrdinal, ordinalErr := store.Ordinal(r.Context(), incoming)
-			currentOrdinal, currentErr := store.Ordinal(r.Context(), current)
-			if ordinalErr != nil || currentErr != nil {
-				http.Error(w, "resolve progress", http.StatusInternalServerError)
-				return
-			}
-			if incomingOrdinal < currentOrdinal {
-				writeJSON(w, http.StatusAccepted, map[string]any{"document": request.Document, "conflict": true})
-				return
-			}
-			if incoming.SegmentID == current.SegmentID {
-				incoming.Offset = current.Offset
-			}
 		} else if !errors.Is(err, position.ErrNotFound) {
 			http.Error(w, "get progress", http.StatusInternalServerError)
 			return
@@ -124,18 +161,27 @@ func putProgress(store *position.Store, username string) http.HandlerFunc {
 			return
 		}
 		if err != nil {
+			slog.Error("KOReader progress save failed", "username", username, "document", request.Document, "error", err)
 			http.Error(w, "save progress", http.StatusInternalServerError)
 			return
 		}
+		slog.Debug("KOReader progress saved", "username", username, "document", request.Document, "segment", updated.SegmentID, "offset", updated.Offset, "revision", updated.Revision)
 		writeJSON(w, http.StatusOK, map[string]any{"document": request.Document, "timestamp": updated.UpdatedAt.Unix()})
 	}
 }
 
-func getProgress(store *position.Store, username string) http.HandlerFunc {
+func getProgress(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		username, _ := r.Context().Value(usernameContextKey{}).(string)
 		document := chi.URLParam(r, "document")
 		userID, workID, _, err := store.KOReaderOwner(r.Context(), username, document)
 		if err != nil {
+			if !errors.Is(err, position.ErrNotFound) {
+				slog.Error("KOReader progress lookup failed", "username", username, "document", document, "error", err)
+				http.Error(w, "find progress", http.StatusInternalServerError)
+				return
+			}
+			slog.Debug("KOReader progress unavailable", "diagnosis", "document is not an accessible ready alignment", "username", username, "document", document)
 			writeJSON(w, http.StatusOK, map[string]any{})
 			return
 		}
@@ -150,9 +196,11 @@ func getProgress(store *position.Store, username string) http.HandlerFunc {
 		}
 		locator, err := store.CanonicalToKOReader(r.Context(), progress)
 		if err != nil {
+			slog.Error("KOReader progress conversion failed", "username", username, "document", document, "alignment", progress.AlignmentID, "segment", progress.SegmentID, "offset", progress.Offset, "error", err)
 			http.Error(w, "resolve progress", http.StatusInternalServerError)
 			return
 		}
+		slog.Debug("KOReader progress returned", "username", username, "document", document, "segment", progress.SegmentID, "offset", progress.Offset, "revision", progress.Revision, "xpointer", locator.Progress)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"document": document, "progress": locator.Progress, "percentage": locator.Percentage,
 			"device": progress.SourceDevice, "timestamp": progress.UpdatedAt.Truncate(time.Second).Unix(),

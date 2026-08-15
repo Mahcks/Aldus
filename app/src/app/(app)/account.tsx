@@ -1,4 +1,4 @@
-import type { Library, WorkSummary } from '../../generated/api';
+import type { Library, ReaderCredential, WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
@@ -10,7 +10,9 @@ import { Text, View } from '../../features/tw';
 import {
   Button,
   colors,
+  ConfirmDialog,
   EmptyState,
+  Field,
   IconRow,
   Loading,
   Notice,
@@ -19,11 +21,18 @@ import {
   StatusBadge,
 } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
+import { apiBaseURL } from '../../lib/api-base';
 
 export default function AccountScreen() {
   const auth = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [activity, setActivity] = useState<WorkSummary[]>([]);
+  const [credentials, setCredentials] = useState<ReaderCredential[]>([]);
+  const [credentialLabel, setCredentialLabel] = useState('My KOReader');
+  const [createdCredential, setCreatedCredential] = useState<ReaderCredential>();
+  const [deletingCredential, setDeletingCredential] = useState<ReaderCredential>();
+  const [savingCredential, setSavingCredential] = useState(false);
+  const [serverOrigin, setServerOrigin] = useState(apiBaseURL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -32,11 +41,13 @@ export default function AccountScreen() {
     Promise.all([
       api.libraries(),
       api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 100 }),
+      api.readerCredentials(),
     ])
-      .then(([items, works]) => {
+      .then(([items, works, readerCredentials]) => {
         if (!canceled) {
           setLibraries(items);
           setActivity(works.items);
+          setCredentials(readerCredentials);
         }
       })
       .catch((value) => {
@@ -50,13 +61,48 @@ export default function AccountScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!serverOrigin && typeof window !== 'undefined') setServerOrigin(window.location.origin);
+  }, [serverOrigin]);
+
   async function signOut() {
     await auth.signOut();
     router.replace('/login');
   }
 
+  async function createCredential() {
+    if (!credentialLabel.trim()) return;
+    setSavingCredential(true);
+    setError('');
+    try {
+      const created = await api.createReaderCredential({ label: credentialLabel.trim() });
+      setCredentials((current) => [created, ...current]);
+      setCreatedCredential(created);
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingCredential(false);
+    }
+  }
+
+  async function deleteCredential() {
+    if (!deletingCredential) return;
+    setSavingCredential(true);
+    try {
+      await api.deleteReaderCredential(deletingCredential.id);
+      setCredentials((current) => current.filter((item) => item.id !== deletingCredential.id));
+      setDeletingCredential(undefined);
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingCredential(false);
+    }
+  }
+
   const readingSeconds = activity.reduce((total, work) => total + work.reading_seconds, 0);
   const listeningSeconds = activity.reduce((total, work) => total + work.listening_seconds, 0);
+  const opdsURL = serverOrigin ? `${serverOrigin}/opds/` : '/opds/';
 
   return (
     <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
@@ -140,8 +186,109 @@ export default function AccountScreen() {
             </EmptyState>
           )}
         </Section>
+        <Section title="KOReader and OPDS">
+          <View className="gap-5">
+            <Notice>
+              Create a reader credential for each device. It gives that device access only to your
+              libraries and reading progress.
+            </Notice>
+            <View className="gap-3 border-b border-line pb-5">
+              <Field
+                label="Device name"
+                value={credentialLabel}
+                onChangeText={setCredentialLabel}
+                placeholder="My Kobo"
+                help="Use a name you will recognize when revoking access later."
+              />
+              <View className="flex-row">
+                <Button
+                  label="Create reader credential"
+                  icon="add"
+                  loading={savingCredential}
+                  disabled={!credentialLabel.trim() || credentials.length >= 10}
+                  onPress={() => void createCredential()}
+                />
+              </View>
+              {credentials.length >= 10 ? (
+                <Notice tone="warning">Revoke an old credential before creating another.</Notice>
+              ) : null}
+            </View>
+            {createdCredential?.secret ? (
+              <View className="gap-3 border-b border-line pb-5">
+                <Notice tone="success">
+                  Credential created. Save this password now; Aldus will not show it again.
+                </Notice>
+                <CredentialValue label="Username" value={auth.user?.username || ''} />
+                <CredentialValue label="Password" value={createdCredential.secret} />
+                <CredentialValue label="OPDS catalog" value={opdsURL} />
+                <CredentialValue label="KOReader sync server" value={serverOrigin} />
+                <View className="flex-row">
+                  <Button
+                    label="I saved it"
+                    kind="secondary"
+                    onPress={() => setCreatedCredential(undefined)}
+                  />
+                </View>
+              </View>
+            ) : null}
+            {credentials.length ? (
+              <View className="gap-3">
+                {credentials.map((credential) => (
+                  <View
+                    key={credential.id}
+                    className="min-h-14 flex-row items-center gap-4 border-b border-line py-3"
+                  >
+                    <View className="min-w-0 flex-1">
+                      <Text className="text-base font-bold text-ink">{credential.label}</Text>
+                      <Text className="text-sm text-muted">
+                        {credential.last_used_at
+                          ? `Last used ${new Date(credential.last_used_at).toLocaleDateString()}`
+                          : 'Not used yet'}
+                      </Text>
+                    </View>
+                    <Button
+                      label="Revoke"
+                      kind="quiet"
+                      onPress={() => setDeletingCredential(credential)}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : loading ? (
+              <Loading label="Loading reader credentials…" />
+            ) : (
+              <EmptyState icon="devices" title="No reader devices connected">
+                Create a credential to connect KOReader or an OPDS reader.
+              </EmptyState>
+            )}
+          </View>
+        </Section>
       </View>
+      <ConfirmDialog
+        visible={Boolean(deletingCredential)}
+        title="Revoke reader credential?"
+        description={`“${deletingCredential?.label || 'This device'}” will immediately lose OPDS and progress-sync access.`}
+        confirmLabel="Revoke"
+        danger
+        busy={savingCredential}
+        onClose={() => setDeletingCredential(undefined)}
+        onConfirm={() => void deleteCredential()}
+      />
     </Page>
+  );
+}
+
+function CredentialValue({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="gap-1">
+      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text
+        selectable
+        className="rounded-control border border-line bg-panel px-3 py-2 text-sm text-ink"
+      >
+        {value}
+      </Text>
+    </View>
   );
 }
 

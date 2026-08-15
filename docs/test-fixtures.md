@@ -17,7 +17,7 @@ The fetch script downloads the exact files, checks their byte sizes, and refuses
 
 Acquired 2026-08-11. Gutenberg declares the text public domain in the USA. LibriVox recordings are public domain. The audiobook release uses one MP3 per chapter; Aldus fetches only Chapter 1 (reported duration 864.31 seconds).
 
-The EPUB package is `OEBPS/content.opf`; Chapter 1 is `OEBPS/6260297267691793459_11-h-1.htm.xhtml`. KOReader's `partial_md5_checksum` for the byte-identical EPUB is `efbf04efc9d43ecd89a033b329f49bdb`.
+The EPUB package is `OEBPS/content.opf`; Chapter 1 is `OEBPS/6260297267691793459_11-h-1.htm.xhtml`. KOReader's `partial_md5_checksum` for the byte-identical EPUB is `abb11be65399f96116fd90ab861dda0e`.
 
 Do not replace either file by editing this metadata. Intentionally adopting a new upstream revision requires new hashes, a new fixture ID, new KOReader identity, and a new manual alignment.
 
@@ -66,7 +66,7 @@ The output compares WhisperX word start and the fixed waveform-energy diagnostic
 ## Capturing KOReader XPointers
 
 1. Copy `test-fixtures/alice/media/alice.epub` directly to the KOReader device. Do not unzip, rebuild, convert, or pass it through Calibre.
-2. Confirm the document hash is `efbf04efc9d43ecd89a033b329f49bdb`.
+2. Confirm the document hash is `abb11be65399f96116fd90ab861dda0e`.
 3. Configure KOReader's Progress Sync plugin for the Aldus server using `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY`; the username must match an enabled Aldus user with access to the fixture library.
 4. Open the exact passage and trigger **Progress sync → Push progress**.
 5. Inspect the request body sent to `PUT /syncs/progress` with a debugging proxy or temporary request logging. Copy `progress` verbatim; for reflowable EPUB it is KOReader's native XPointer.

@@ -10,13 +10,13 @@ import (
 func TestKOReaderPartialMD5(t *testing.T) {
 	data := make([]byte, 20_000)
 	for i := range data {
-		data[i] = byte(i)
+		data[i] = byte(i*i + i/251)
 	}
 	got, err := KOReaderPartialMD5(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "2bcd3c4de20c918e19fab5c36249c70d" {
+	if got != "c3f6cf5339d36df99d4d616fe215e768" {
 		t.Fatalf("partial MD5 = %s", got)
 	}
 }
@@ -35,7 +35,7 @@ func TestAliceKOReaderPartialMD5(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "efbf04efc9d43ecd89a033b329f49bdb"
+	const want = "abb11be65399f96116fd90ab861dda0e"
 	if got != want {
 		t.Fatalf("Alice partial MD5 = %s, want %s", got, want)
 	}
