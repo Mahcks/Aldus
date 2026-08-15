@@ -5,13 +5,20 @@ import { Text, View } from './tw';
 type Props = {
   value: ReaderPreferences;
   disabled?: boolean;
+  compact?: boolean;
   onChange: (value: ReaderPreferences) => void;
 };
 
-export function ReaderSettings({ value, disabled, onChange }: Props) {
+export function ReaderSettings({ value, disabled, compact, onChange }: Props) {
   return (
-    <View className="border-b border-line bg-panel px-4 py-3">
-      <View className="mx-auto w-full max-w-[900px] flex-row flex-wrap items-end gap-x-6 gap-y-3">
+    <View className={compact ? 'bg-raised' : 'border-b border-line bg-panel px-4 py-3'}>
+      <View
+        className={
+          compact
+            ? 'w-full gap-5'
+            : 'mx-auto w-full max-w-[900px] flex-row flex-wrap items-end gap-x-6 gap-y-3'
+        }
+      >
         <ChoiceGroup
           label="Text size"
           options={[
@@ -87,7 +94,11 @@ function ChoiceGroup<T extends string | number>({
   return (
     <View className="gap-1.5">
       <Text className="text-xs font-semibold text-muted">{label}</Text>
-      <View accessibilityRole="radiogroup" accessibilityLabel={label} className="flex-row gap-1">
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+        className="flex-row flex-wrap gap-1"
+      >
         {options.map(([optionLabel, option]) => (
           <Button
             key={String(option)}

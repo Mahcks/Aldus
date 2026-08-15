@@ -48,6 +48,8 @@ export const EPUBReader = forwardRef<
     product?: boolean;
     segments?: unknown[];
     preferences?: ReaderPreferences;
+    compactChrome?: boolean;
+    statusLabel?: string;
     onLocation?: (location: ReaderLocation) => void;
     onReady?: () => void;
     onError?: (error: Error) => void;

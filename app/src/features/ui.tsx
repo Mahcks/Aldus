@@ -780,14 +780,22 @@ export function Page({
   title,
   actions,
   back,
-}: PropsWithChildren<{ title: string; actions?: ReactNode; back?: ReactNode }>) {
+  hideHeader = false,
+}: PropsWithChildren<{
+  title: string;
+  actions?: ReactNode;
+  back?: ReactNode;
+  hideHeader?: boolean;
+}>) {
   const compact = useWindowDimensions().width < 600;
   const contentPaddingClass = compact ? 'gap-6 px-4 py-6' : 'gap-8 px-6 py-8';
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <View className="flex-1 bg-canvas">
-        <PageHeader title={title} actions={actions} back={back} compact={compact} />
+        {hideHeader ? null : (
+          <PageHeader title={title} actions={actions} back={back} compact={compact} />
+        )}
         <ScrollView
           className="flex-1"
           contentContainerClassName={`w-full max-w-[1240px] self-center ${contentPaddingClass}`}

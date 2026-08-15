@@ -29,7 +29,8 @@
       [
         "expo-dev-client",
         {
-          "launchMode": "launcher"
+          "launchMode": "launcher",
+          "toolsButton": false
         }
       ],
       "expo-router",

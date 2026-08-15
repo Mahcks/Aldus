@@ -99,6 +99,9 @@ if args.job_input:
         coverage = len(target_indexes) / max(1, len(source_indexes))
         first_word_matched = bool(source_indexes and source_indexes[0] in matches)
         status = "aligned" if words and first_word_matched and coverage >= 0.8 and mean_score is not None and mean_score >= 0.5 else "unresolved"
+        if words and round(words[0]["start"] * 1000) < last_end_ms:
+            words = []
+            status = "unresolved"
         start_ms = max(last_end_ms, round(words[0]["start"] * 1000) if words else last_end_ms)
         end_ms = max(start_ms + 1, round(words[-1]["end"] * 1000) if words else start_ms + 1)
         last_end_ms = end_ms

@@ -99,13 +99,13 @@ export default function HomeScreen() {
   if (loading) return <Loading />;
 
   return (
-    <Page title="Home">
+    <Page title="Home" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
-      <View className="-mb-2 gap-1">
-        <Text className="text-sm font-semibold text-accent">Your reading room</Text>
-        <Text className="font-editorial text-2xl font-bold text-ink">
+      <View className="items-center gap-2 py-2">
+        <Text className="font-editorial text-3xl font-bold text-center text-ink">
           Welcome back{auth.user?.display_name ? `, ${auth.user.display_name}` : ''}.
         </Text>
+        <Text className="text-sm font-semibold text-center text-accent">Your reading room</Text>
       </View>
       {hasContinuing ? (
         <Section title="Continue">

@@ -127,7 +127,11 @@ function AppShellChrome() {
 
   return (
     <View className="min-h-full flex-1 bg-canvas">
-      <MobileHeader topInset={insets.top} onBrandPress={handleBrandPress} />
+      <MobileHeader
+        topInset={insets.top}
+        onBrandPress={handleBrandPress}
+        onAccountPress={() => router.push('/account')}
+      />
       <View className="min-h-0 flex-1">
         <Slot />
       </View>
@@ -243,19 +247,36 @@ function NavLink({
   );
 }
 
-/** Slim mobile top header: brand only, padded for the notch/status bar. */
-function MobileHeader({ topInset, onBrandPress }: { topInset: number; onBrandPress: () => void }) {
+/** Compact mobile masthead: centered brand with a familiar account affordance. */
+function MobileHeader({
+  topInset,
+  onBrandPress,
+  onAccountPress,
+}: {
+  topInset: number;
+  onBrandPress: () => void;
+  onAccountPress: () => void;
+}) {
   return (
     <View
-      className="w-full flex-row items-center border-b border-line bg-panel px-4 pb-2"
-      style={{ paddingTop: topInset + 8 }}
+      className="w-full flex-row items-center border-b border-line bg-panel px-4 pb-2.5"
+      style={{ paddingTop: topInset + 6 }}
     >
+      <View className="h-11 w-11" />
       <Pressable
         accessibilityRole="link"
         onPress={onBrandPress}
-        className="min-h-11 justify-center"
+        className="min-h-11 flex-1 items-center justify-center"
       >
-        <Text className="font-editorial text-xl font-bold text-accent">Aldus</Text>
+        <Text className="font-editorial text-2xl font-bold text-accent">Aldus</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open account"
+        onPress={onAccountPress}
+        className="h-11 w-11 items-center justify-center rounded-control"
+      >
+        <AppIcon name="account" size={22} color={colors.muted} />
       </Pressable>
     </View>
   );

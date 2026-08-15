@@ -36,7 +36,7 @@ import {
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
-import { Button, IconButton, Loading, Notice } from '../../../features/ui';
+import { Button, Dialog, IconButton, Loading, Notice } from '../../../features/ui';
 import { Pressable, ScrollView, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { productEPUBSource } from '../../../lib/epub-source';
@@ -47,6 +47,7 @@ type Mode = 'read' | 'listen';
 
 export default function ConsumeWorkScreen() {
   const compact = useWindowDimensions().width < 600;
+  const compactNative = compact && Platform.OS !== 'web';
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; mode?: Mode; epub?: string; audio?: string }>();
   const [work, setWork] = useState<Work>();
@@ -614,6 +615,12 @@ export default function ConsumeWorkScreen() {
       : readerLocation?.syncState === 'partial'
         ? 'Partially synchronized'
         : 'Synchronization unavailable here';
+  const compactPageSyncLabel =
+    readerLocation?.syncState === 'full'
+      ? 'Synchronized'
+      : readerLocation?.syncState === 'partial'
+        ? 'Partially synchronized'
+        : 'Synchronization unavailable';
   const readerHelper = canListenFromReader
     ? 'Continue with the narration at the marked passage.'
     : readerLocation?.syncState === 'partial'
@@ -622,8 +629,12 @@ export default function ConsumeWorkScreen() {
   return (
     <View className="flex-1 bg-canvas">
       <View
-        className="min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper px-3 pb-2"
-        style={{ paddingTop: insets.top + 8 }}
+        className={`min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper pb-2 ${compactNative ? '' : 'px-3'}`}
+        style={{
+          paddingTop: insets.top + 8,
+          paddingLeft: compactNative ? insets.left + 12 : undefined,
+          paddingRight: compactNative ? insets.right + 12 : undefined,
+        }}
       >
         <IconButton
           icon="back"
@@ -633,7 +644,7 @@ export default function ConsumeWorkScreen() {
         />
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-base font-extrabold text-ink">
-            {compact ? (mode === 'read' ? 'Reading' : 'Listening') : work.title}
+            {work.title}
           </Text>
           {!compact ? (
             <Text numberOfLines={1} className="mt-0.5 text-xs text-muted">
@@ -651,7 +662,7 @@ export default function ConsumeWorkScreen() {
               onPress={() => setSettingsOpen((open) => !open)}
             />
           ) : null}
-          {selectedEPUB ? (
+          {selectedEPUB && (!compactNative || mode === 'listen') ? (
             compact ? (
               <IconButton
                 label="Read"
@@ -669,7 +680,7 @@ export default function ConsumeWorkScreen() {
               />
             )
           ) : null}
-          {selectedAudio ? (
+          {selectedAudio && (!compactNative || mode === 'read') ? (
             compact ? (
               <IconButton
                 label="Listen"
@@ -689,50 +700,78 @@ export default function ConsumeWorkScreen() {
           ) : null}
         </View>
       </View>
-      <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
-        <Text className="text-xs font-semibold text-muted">
-          {mode === 'read' && alignmentID
-            ? pageSyncLabel
-            : syncAvailable
-              ? 'Synchronized here'
-              : syncLabel}
-        </Text>
-      </View>
+      {!compactNative || mode === 'listen' ? (
+        <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
+          <Text className="text-xs font-semibold text-muted">
+            {mode === 'read' && alignmentID
+              ? pageSyncLabel
+              : syncAvailable
+                ? 'Synchronized here'
+                : syncLabel}
+          </Text>
+        </View>
+      ) : null}
       {notice ? (
         <View className="px-5 pt-3">
           <Notice danger>{notice}</Notice>
         </View>
       ) : null}
-      {mode === 'read' && settingsOpen ? (
+      {mode === 'read' && settingsOpen && !compactNative ? (
         <ReaderSettings
           value={readerPreferences}
           disabled={settingsBusy}
           onChange={(next) => void updateReaderPreferences(next)}
         />
       ) : null}
+      <Dialog
+        visible={compactNative && mode === 'read' && settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title="Reading settings"
+      >
+        <ReaderSettings
+          compact
+          value={readerPreferences}
+          disabled={settingsBusy}
+          onChange={(next) => void updateReaderPreferences(next)}
+        />
+      </Dialog>
       {mode === 'read' ? (
         selectedEPUB && epubSource ? (
-          <View className="min-h-0 w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5">
+          <View
+            className={
+              compactNative
+                ? 'min-h-0 w-full flex-1'
+                : 'min-h-0 w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5'
+            }
+          >
             <EPUBReader
               ref={reader}
               source={epubSource}
               product
               segments={alignment?.segments}
               preferences={readerPreferences}
+              compactChrome={compactNative}
+              statusLabel={
+                alignmentID ? compactPageSyncLabel : syncAvailable ? 'Synchronized' : syncLabel
+              }
               onLocation={onReaderLocation}
               onReady={onReaderReady}
               onError={(error) => setNotice(error.message || 'Unable to open EPUB.')}
             />
-            <SafeAreaView edges={['bottom']}>
-              <View className="min-h-[62px] w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line py-2.5">
-                <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
-                <Button
-                  label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
-                  disabled={!canListenFromReader}
-                  onPress={() => void switchToListen()}
-                />
-              </View>
-            </SafeAreaView>
+            {!compactNative ? (
+              <SafeAreaView edges={['bottom']}>
+                <View className="min-h-[62px] w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line py-2.5">
+                  <Text className="flex-1 text-[13px] leading-[19px] text-muted">
+                    {readerHelper}
+                  </Text>
+                  <Button
+                    label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                    disabled={!canListenFromReader}
+                    onPress={() => void switchToListen()}
+                  />
+                </View>
+              </SafeAreaView>
+            ) : null}
           </View>
         ) : (
           <EmptyMode text="No EPUB is available for this Work." />

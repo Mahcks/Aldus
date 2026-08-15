@@ -1,6 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ReadiumView,
   type Locator,
@@ -58,11 +59,17 @@ export const EPUBReader = forwardRef<
     product?: boolean;
     segments?: unknown[];
     preferences?: ReaderPreferences;
+    compactChrome?: boolean;
+    statusLabel?: string;
     onLocation?: (location: ReaderLocation) => void;
     onReady?: () => void;
     onError?: (error: Error) => void;
   }
->(function EPUBReader({ source, segments = [], preferences, onLocation, onReady, onError }, ref) {
+>(function EPUBReader(
+  { source, segments = [], preferences, compactChrome, statusLabel, onLocation, onReady, onError },
+  ref,
+) {
+  const insets = useSafeAreaInsets();
   const reader = useRef<ReadiumViewRef>(null);
   const onErrorRef = useRef(onError);
   const segmentsRef = useRef(segments);
@@ -123,9 +130,8 @@ export const EPUBReader = forwardRef<
           typeof view.loadMoreSearchResults !== 'function' ||
           typeof view.cancelSearch !== 'function'
         ) {
-          onErrorRef.current?.(
-            new Error('Rebuild the Aldus iOS development client to enable synchronized reading.'),
-          );
+          if (__DEV__) console.warn('Aldus native EPUB search bridge is unavailable.');
+          onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
         }
         try {
@@ -152,12 +158,9 @@ export const EPUBReader = forwardRef<
           pendingRestore.current = target;
           view.goTo(matches[0].locator);
           return true;
-        } catch {
-          onErrorRef.current?.(
-            new Error(
-              'The installed Aldus iOS client does not include Readium search. Install a clean RC18 development build.',
-            ),
-          );
+        } catch (cause) {
+          if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
+          onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
         } finally {
           try {
@@ -248,45 +251,66 @@ export const EPUBReader = forwardRef<
 
   return (
     <View className="min-h-0 flex-1 bg-paper">
-      <ReadiumView
-        ref={reader}
-        file={{ url: fileURL }}
-        preferences={{
-          backgroundColor: colors.paper,
-          textColor: colors.ink,
-          scroll: preferences?.layout === 'scrolled',
-          fontSize: preferences?.zoom,
-          lineHeight: preferences?.lineHeight,
-          pageMargins: preferences?.margin,
-          theme: preferences?.theme === 'sepia' ? 'sepia' : 'light',
-        }}
-        selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
-        onLocationChange={handleLocation}
-        onPublicationReady={onReady}
-        onSelectionAction={handleSelection}
-        style={{ flex: 1 }}
-      />
-      {preferences?.layout !== 'scrolled' ? (
-        <View className="h-12 shrink-0 flex-row items-center justify-between border-t border-line bg-paper px-2">
-          <IconButton
-            icon="previousPage"
-            label="Previous page"
-            kind="quiet"
-            onPress={() => {
-              direction.current = 'backward';
-              reader.current?.goBackward();
-            }}
-          />
-          <Text className="text-xs text-muted">Swipe or use page controls</Text>
-          <IconButton
-            icon="nextPage"
-            label="Next page"
-            kind="quiet"
-            onPress={() => {
-              direction.current = 'forward';
-              reader.current?.goForward();
-            }}
-          />
+      <View className="min-h-0 flex-1">
+        <ReadiumView
+          ref={reader}
+          file={{ url: fileURL }}
+          preferences={{
+            backgroundColor: colors.paper,
+            textColor: colors.ink,
+            scroll: preferences?.layout === 'scrolled',
+            fontSize: preferences?.zoom,
+            lineHeight: preferences?.lineHeight,
+            pageMargins: preferences?.margin,
+            theme: preferences?.theme === 'sepia' ? 'sepia' : 'light',
+          }}
+          selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
+          onLocationChange={handleLocation}
+          onPublicationReady={onReady}
+          onSelectionAction={handleSelection}
+        />
+      </View>
+      {compactChrome || preferences?.layout !== 'scrolled' ? (
+        <View
+          className="min-h-12 shrink-0 flex-row items-center justify-between border-t border-line bg-paper px-2"
+          style={compactChrome ? { paddingBottom: insets.bottom } : undefined}
+        >
+          {preferences?.layout !== 'scrolled' ? (
+            <IconButton
+              icon="previousPage"
+              label="Previous page"
+              kind="quiet"
+              onPress={() => {
+                direction.current = 'backward';
+                reader.current?.goBackward();
+              }}
+            />
+          ) : (
+            <View className="h-11 w-11" />
+          )}
+          <Text
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={
+              statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
+            }
+            numberOfLines={1}
+            className="flex-shrink text-center text-xs text-muted"
+          >
+            {statusLabel ?? 'Page navigation'}
+          </Text>
+          {preferences?.layout !== 'scrolled' ? (
+            <IconButton
+              icon="nextPage"
+              label="Next page"
+              kind="quiet"
+              onPress={() => {
+                direction.current = 'forward';
+                reader.current?.goForward();
+              }}
+            />
+          ) : (
+            <View className="h-11 w-11" />
+          )}
         </View>
       ) : null}
     </View>
