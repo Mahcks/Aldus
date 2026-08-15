@@ -42,6 +42,32 @@ export function formatAudioTime(seconds: number) {
     : `${minutes}:${remainder}`;
 }
 
+export function progressSourceLabel(source?: string) {
+  if (source?.startsWith('koreader')) return 'KOReader';
+  if (source === 'web') return 'Aldus web';
+  if (source === 'ios') return 'Aldus on iOS';
+  if (source === 'android') return 'Aldus on Android';
+  return 'another device';
+}
+
+export function resumedProgressLabel(source?: string, audioSeconds?: number) {
+  const position = audioSeconds == null ? '' : ` at ${formatAudioTime(audioSeconds)}`;
+  return `Resumed from ${progressSourceLabel(source)}${position}`;
+}
+
+export function progressSaveLabel(
+  state: 'idle' | 'saving' | 'saved' | 'error',
+  mode: 'read' | 'listen',
+  audioMilliseconds?: number,
+) {
+  if (state === 'saving') return 'Saving…';
+  if (state === 'error') return 'Couldn’t save';
+  if (state !== 'saved') return '';
+  return mode === 'listen' && audioMilliseconds != null
+    ? `Saved at ${formatAudioTime(audioMilliseconds / 1000)}`
+    : 'Saved here';
+}
+
 export function playbackRate(rate?: number) {
   return PLAYBACK_RATES.find((candidate) => candidate === rate) ?? 1;
 }

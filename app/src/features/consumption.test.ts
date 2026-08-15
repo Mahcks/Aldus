@@ -11,8 +11,11 @@ import {
   playableAudioDuration,
   playbackRate,
   PLAYBACK_RATES,
+  progressSaveLabel,
+  progressSourceLabel,
   readToListen,
   readyJob,
+  resumedProgressLabel,
   scrubberPosition,
   synchronizationLabel,
 } from './consumption';
@@ -80,6 +83,22 @@ it('uses exact segment boundaries for read-along and skips unresolved text', () 
 it('formats audiobook durations with hours when needed', () => {
   expect(formatAudioTime(3522)).toBe('58:42');
   expect(formatAudioTime(12932)).toBe('3:35:32');
+});
+
+it('labels saved progress without exposing raw device identifiers', () => {
+  expect(progressSourceLabel('koreader:max:kindle')).toBe('KOReader');
+  expect(progressSourceLabel('web')).toBe('Aldus web');
+  expect(progressSourceLabel('unexpected-device-id')).toBe('another device');
+  expect(resumedProgressLabel('koreader:max:kindle')).toBe('Resumed from KOReader');
+  expect(resumedProgressLabel('android', 3522)).toBe('Resumed from Aldus on Android at 58:42');
+});
+
+it('only claims progress is saved after confirmation', () => {
+  expect(progressSaveLabel('idle', 'read')).toBe('');
+  expect(progressSaveLabel('saving', 'read')).toBe('Saving…');
+  expect(progressSaveLabel('error', 'read')).toBe('Couldn’t save');
+  expect(progressSaveLabel('saved', 'read')).toBe('Saved here');
+  expect(progressSaveLabel('saved', 'listen', 3_522_000)).toBe('Saved at 58:42');
 });
 
 const representations = [

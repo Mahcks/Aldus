@@ -33,6 +33,8 @@ import {
   listenToRead,
   playableAudioDuration,
   playbackRate,
+  progressSaveLabel,
+  resumedProgressLabel,
   readToListen,
   readyJob,
   scrubberPosition,
@@ -58,6 +60,7 @@ import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
 
 type Mode = 'read' | 'listen';
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export default function ConsumeWorkScreen() {
   const compact = useWindowDimensions().width < 600;
@@ -90,6 +93,9 @@ export default function ConsumeWorkScreen() {
   const [syncAvailable, setSyncAvailable] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [notice, setNotice] = useState('');
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [lastSavedAudioMS, setLastSavedAudioMS] = useState<number>();
+  const [resumeMessage, setResumeMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const reader = useRef<EPUBReaderHandle>(null);
   const readerReady = useRef(false);
@@ -99,6 +105,7 @@ export default function ConsumeWorkScreen() {
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
   const switching = useRef(false);
+  const saveAttempt = useRef(0);
   const player = useAudioPlayer(source, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
   const selectedEPUB = epubs.find((item) => item.id === epubID);
@@ -263,6 +270,12 @@ export default function ConsumeWorkScreen() {
               setReaderTarget(epubTarget);
               setInitialAudioMS(audioTarget.timestamp_ms);
               setSyncAvailable(true);
+              setResumeMessage(
+                resumedProgressLabel(
+                  canonical.source_device,
+                  mode === 'listen' ? audioTarget.timestamp_ms / 1000 : undefined,
+                ),
+              );
             }
           } catch {
             if (!canceled) {
@@ -316,6 +329,7 @@ export default function ConsumeWorkScreen() {
         progressRef.current = next;
         setProgress(next);
         if (!next.resolvable || next.alignment_id !== alignmentID) return;
+        let audioTimestampMS: number | undefined;
         if (mode === 'read') {
           const target = await api.canonicalToEPUB(alignmentID, next);
           if (!active) return;
@@ -326,8 +340,15 @@ export default function ConsumeWorkScreen() {
           restoredAudio.current = '';
           setAudioReady(false);
           setInitialAudioMS(target.timestamp_ms);
+          audioTimestampMS = target.timestamp_ms;
         }
         setSyncAvailable(true);
+        setResumeMessage(
+          resumedProgressLabel(
+            next.source_device,
+            audioTimestampMS == null ? undefined : audioTimestampMS / 1000,
+          ),
+        );
       } catch (error) {
         if (active) setNotice(errorMessage(error));
       } finally {
@@ -456,6 +477,8 @@ export default function ConsumeWorkScreen() {
 
   async function saveCanonical(canonical: CanonicalPosition) {
     if (!work || !alignmentID) return false;
+    const attempt = ++saveAttempt.current;
+    setSaveState('saving');
     let saved = false;
     canonicalSaves.current = canonicalSaves.current
       .catch(() => {})
@@ -468,6 +491,7 @@ export default function ConsumeWorkScreen() {
             current.offset === canonical.offset
           ) {
             saved = true;
+            if (attempt === saveAttempt.current) setSaveState('saved');
             return;
           }
           const update = {
@@ -491,8 +515,11 @@ export default function ConsumeWorkScreen() {
           progressRef.current = next;
           setProgress(next);
           setSyncAvailable(true);
+          setResumeMessage('');
           saved = true;
+          if (attempt === saveAttempt.current) setSaveState('saved');
         } catch (error) {
+          if (attempt === saveAttempt.current) setSaveState('error');
           if (error instanceof APIError && error.status === 409)
             setNotice(
               'Progress changed again on another device. Move once more to save this place.',
@@ -502,6 +529,7 @@ export default function ConsumeWorkScreen() {
         }
       })
       .catch((error) => {
+        if (attempt === saveAttempt.current) setSaveState('error');
         setNotice(errorMessage(error));
       });
     await canonicalSaves.current;
@@ -559,7 +587,8 @@ export default function ConsumeWorkScreen() {
       timestamp_ms: timestampMS,
     };
     try {
-      await saveCanonical(await api.audioToCanonical(alignmentID, locator));
+      if (await saveCanonical(await api.audioToCanonical(alignmentID, locator)))
+        setLastSavedAudioMS(timestampMS);
     } catch (error) {
       if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
       else setNotice(errorMessage(error));
@@ -765,6 +794,8 @@ export default function ConsumeWorkScreen() {
     : readerLocation?.syncState === 'partial'
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
+  const saveLabel = progressSaveLabel(saveState, mode, lastSavedAudioMS);
+  const progressStatus = resumeMessage || saveLabel;
   return (
     <View className="flex-1 bg-canvas">
       <View
@@ -841,12 +872,13 @@ export default function ConsumeWorkScreen() {
       </View>
       {!compactNative ? (
         <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
-          <Text className="text-xs font-semibold text-muted">
-            {mode === 'read' && alignmentID
-              ? pageSyncLabel
-              : syncAvailable
-                ? 'Synchronized here'
-                : syncLabel}
+          <Text accessibilityLiveRegion="polite" className="text-xs font-semibold text-muted">
+            {progressStatus ||
+              (mode === 'read' && alignmentID
+                ? pageSyncLabel
+                : syncAvailable
+                  ? 'Synchronized here'
+                  : syncLabel)}
           </Text>
         </View>
       ) : null}
@@ -894,11 +926,12 @@ export default function ConsumeWorkScreen() {
               compactChrome={compactNative}
               statusLabel={
                 compactNative
-                  ? alignmentID
-                    ? compactPageSyncLabel
-                    : syncAvailable
-                      ? 'Synchronized'
-                      : syncLabel
+                  ? progressStatus ||
+                    (alignmentID
+                      ? compactPageSyncLabel
+                      : syncAvailable
+                        ? 'Synchronized'
+                        : syncLabel)
                   : undefined
               }
               onLocation={onReaderLocation}
@@ -959,6 +992,14 @@ export default function ConsumeWorkScreen() {
                 >
                   {selectedAudio.representation.label}
                 </Text>
+                {progressStatus ? (
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    className="text-xs font-semibold text-muted"
+                  >
+                    {progressStatus}
+                  </Text>
+                ) : null}
               </View>
             </View>
             {status.error ? (
