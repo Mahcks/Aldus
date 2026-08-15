@@ -48,6 +48,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "react-native-readium@5.0.0-rc.18": "patches/react-native-readium@5.0.0-rc.18.patch",
+  },
   "overrides": {
     "lightningcss": "1.30.1",
   },

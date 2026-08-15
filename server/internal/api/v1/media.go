@@ -5,6 +5,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -74,6 +75,8 @@ func downloadMedia(store *ingest.Store) http.HandlerFunc {
 		contentType := "application/octet-stream"
 		if media.Kind == "epub" {
 			contentType = "application/epub+zip"
+		} else if detected := mime.TypeByExtension(filepath.Ext(media.OriginalFilename)); detected != "" {
+			contentType = detected
 		}
 		w.Header().Set("Content-Type", contentType)
 		if media.OriginalFilename != "" {

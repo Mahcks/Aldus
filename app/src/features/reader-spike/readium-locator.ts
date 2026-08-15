@@ -61,6 +61,51 @@ export function mapReadiumLocator(
   return { href: matches[0].epub_href, locator: matches[0].epub_locator, offset: 0 };
 }
 
+export function mapReadiumSelection(
+  locator: Locator,
+  selectedText: string,
+  segments: AlignmentSegment[],
+): EPUBLocator | undefined {
+  const href = normalizeHref(locator.href);
+  const selected = fold(selectedText || locator.text?.highlight || '');
+  const before = fold(locator.text?.before ?? '');
+  const after = fold(locator.text?.after ?? '');
+  if (!selected) return undefined;
+  const matches = segments.flatMap((segment) => {
+    if (!segment.highlightable || normalizeHref(segment.epub_href) !== href) return [];
+    const text = fold(segment.text);
+    const indexes = selectionIndexes(text, selected, before, after);
+    if (indexes.length !== 1) return [];
+    return [
+      {
+        segment,
+        offset: Math.round((codePoints(text.slice(0, indexes[0])) * 1_000_000) / codePoints(text)),
+      },
+    ];
+  });
+  if (matches.length === 1)
+    return {
+      href: matches[0].segment.epub_href,
+      locator: matches[0].segment.epub_locator,
+      offset: Math.min(1_000_000, matches[0].offset),
+    };
+  return undefined;
+}
+
+export function readiumSearchQuery(segment: AlignmentSegment, offset: number) {
+  const text = fold(segment.text);
+  const target = Math.round((Math.max(0, Math.min(1_000_000, offset)) * text.length) / 1_000_000);
+  const words = [...text.matchAll(/\S+/g)];
+  const index = Math.max(
+    0,
+    words.findIndex((word) => (word.index ?? 0) + word[0].length >= target),
+  );
+  return words
+    .slice(index, index + 8)
+    .map((word) => word[0])
+    .join(' ');
+}
+
 export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSegment[]) {
   const locator = JSON.stringify(target.locator);
   const matches = segments.filter(
@@ -78,5 +123,29 @@ const normalize = (value: string) =>
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+const fold = (value: string) =>
+  value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+const codePoints = (value: string) => [...value].length;
+function selectionIndexes(text: string, selected: string, before: string, after: string) {
+  for (const window of [80, 40, 20, 8]) {
+    const anchors = [
+      [before.slice(-window), selected].filter(Boolean).join(' '),
+      [selected, after.slice(0, window)].filter(Boolean).join(' '),
+    ];
+    for (const anchor of anchors) {
+      const indexes = occurrences(text, anchor).map((index) =>
+        anchor.startsWith(selected) ? index : index + anchor.length - selected.length,
+      );
+      if (indexes.length === 1) return indexes;
+    }
+  }
+  return occurrences(text, selected);
+}
+function occurrences(text: string, query: string) {
+  const indexes: number[] = [];
+  for (let index = text.indexOf(query); index >= 0; index = text.indexOf(query, index + 1))
+    indexes.push(index);
+  return indexes;
+}
 const normalizeHref = (value: string) =>
   decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];

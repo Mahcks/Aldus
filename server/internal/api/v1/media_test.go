@@ -62,7 +62,7 @@ func TestOpaqueMediaDownloadSupportsRanges(t *testing.T) {
 	request.Header.Set("Range", "bytes=2-5")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" || response.Header().Get("Accept-Ranges") != "bytes" {
+	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" || response.Header().Get("Accept-Ranges") != "bytes" || response.Header().Get("Content-Type") != "audio/mpeg" {
 		t.Fatalf("range=%d %q %#v", response.Code, response.Body.String(), response.Header())
 	}
 }

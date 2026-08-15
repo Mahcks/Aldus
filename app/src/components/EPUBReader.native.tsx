@@ -11,7 +11,9 @@ import {
 import type { AlignmentSegment, EPUBLocator } from '../generated/api';
 import {
   mapReadiumLocator,
+  mapReadiumSelection,
   parseReadiumLocator,
+  readiumSearchQuery,
   segmentForEPUBLocator,
 } from '../features/reader-spike/readium-locator';
 import { colors } from '../features/theme';
@@ -66,6 +68,8 @@ export const EPUBReader = forwardRef<
   const segmentsRef = useRef(segments);
   const lastProgression = useRef<number | undefined>(undefined);
   const direction = useRef<'forward' | 'backward' | undefined>(undefined);
+  const locationRequest = useRef(0);
+  const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
   const [fileURL, setFileURL] = useState('');
   onErrorRef.current = onError;
   segmentsRef.current = segments;
@@ -112,6 +116,8 @@ export const EPUBReader = forwardRef<
         const target = location as EPUBLocator;
         const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
         if (!segment) return false;
+        const query = readiumSearchQuery(segment, target.offset);
+        if (!query) return false;
         if (
           typeof view.search !== 'function' ||
           typeof view.loadMoreSearchResults !== 'function' ||
@@ -123,7 +129,7 @@ export const EPUBReader = forwardRef<
           return false;
         }
         try {
-          let page = await view.search(segment.text, {
+          let page = await view.search(query, {
             caseSensitive: false,
             diacriticSensitive: false,
             wholeWord: false,
@@ -136,13 +142,14 @@ export const EPUBReader = forwardRef<
                 (result) =>
                   normalizeHref(result.locator.href) === normalizeHref(segment.epub_href) &&
                   normalize(result.highlight ?? result.locator.text?.highlight ?? '') ===
-                    normalize(segment.text),
+                    normalize(query),
               ),
             );
             if (!page.hasMore || matches.length > 1) break;
             page = await view.loadMoreSearchResults();
           }
           if (matches.length !== 1) return false;
+          pendingRestore.current = target;
           view.goTo(matches[0].locator);
           return true;
         } catch {
@@ -164,12 +171,32 @@ export const EPUBReader = forwardRef<
     [],
   );
 
-  function handleLocation(locator: Locator) {
+  async function handleLocation(locator: Locator) {
+    const request = ++locationRequest.current;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
-    const sync = mapReadiumLocator(locator, currentSegments);
+    const restored = pendingRestore.current;
+    if (restored && normalizeHref(restored.href) === normalizeHref(locator.href)) {
+      pendingRestore.current = undefined;
+      onLocation?.({
+        href: locator.href,
+        cfi: JSON.stringify(locator),
+        sync: restored,
+        syncState: 'full',
+        reason: 'restore',
+      });
+      return;
+    }
+    let visible: Locator | undefined;
+    try {
+      visible = await reader.current?.currentVisibleLocation();
+    } catch {
+      // The installed native client predates the visible-location bridge.
+    }
+    if (request !== locationRequest.current) return;
+    const sync = mapReadiumLocator(visible ?? locator, currentSegments);
     if (__DEV__)
       console.debug('Aldus native EPUB location', {
-        locator,
+        locator: visible ?? locator,
         segmentCount: currentSegments.length,
         sync,
       });
@@ -193,8 +220,9 @@ export const EPUBReader = forwardRef<
   }
 
   function handleSelection(event: SelectionActionEvent) {
+    locationRequest.current += 1;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
-    const sync = mapReadiumLocator(event.locator, currentSegments);
+    const sync = mapReadiumSelection(event.locator, event.selectedText, currentSegments);
     if (__DEV__)
       console.debug('Aldus native EPUB selection', {
         locator: event.locator,

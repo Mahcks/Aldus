@@ -140,13 +140,21 @@ func wordTimestamp(offset int, text, raw string) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
-	total := len([]rune(normalizeText(text)))
+	normalized := normalizeText(text)
+	textWords := strings.Fields(normalized)
+	if len(textWords) == 0 {
+		return 0, false
+	}
+	total := len([]rune(normalized))
 	position := offset * total / OffsetMax
 	cursor := 0
-	for _, word := range words {
-		end := cursor + len([]rune(word.Text))
-		if position <= end {
-			return int64(word.StartTime * 1000), true
+	for index, word := range textWords {
+		end := cursor + len([]rune(word))
+		if position < end {
+			if index >= len(words) {
+				return int64(words[len(words)-1].StartTime * 1000), true
+			}
+			return int64(words[index].StartTime * 1000), true
 		}
 		cursor = end + 1
 	}
@@ -158,15 +166,26 @@ func wordOffset(timestamp int64, text, raw string) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	total := len([]rune(normalizeText(text)))
-	cursor := 0
-	for _, word := range words {
-		if timestamp <= int64(word.EndTime*1000) {
-			return cursor * OffsetMax / total, true
-		}
-		cursor += len([]rune(word.Text)) + 1
+	normalized := normalizeText(text)
+	textWords := strings.Fields(normalized)
+	if len(textWords) == 0 {
+		return 0, false
 	}
-	return OffsetMax, true
+	index := len(words) - 1
+	for candidate, word := range words {
+		if timestamp <= int64(word.EndTime*1000) {
+			index = candidate
+			break
+		}
+	}
+	if index >= len(textWords) {
+		index = len(textWords) - 1
+	}
+	cursor := len([]rune(strings.Join(textWords[:index], " ")))
+	if index > 0 {
+		cursor++
+	}
+	return cursor * OffsetMax / len([]rune(normalized)), true
 }
 
 func normalizeText(text string) string {

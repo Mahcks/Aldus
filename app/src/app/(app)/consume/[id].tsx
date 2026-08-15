@@ -11,7 +11,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
 import { Platform, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   DEFAULT_READER_PREFERENCES,
   EPUBReader,
@@ -79,6 +79,7 @@ export default function ConsumeWorkScreen() {
   const reader = useRef<EPUBReaderHandle>(null);
   const readerReady = useRef(false);
   const restoredAudio = useRef('');
+  const playAfterRestore = useRef(false);
   const lastAudioSave = useRef(-1);
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
@@ -175,6 +176,8 @@ export default function ConsumeWorkScreen() {
       setAlignment(undefined);
       setReaderTarget(undefined);
       setInitialAudioMS(undefined);
+      restoredAudio.current = '';
+      playAfterRestore.current = false;
       setSyncAvailable(false);
       setAudioReady(false);
       readerReady.current = false;
@@ -242,17 +245,35 @@ export default function ConsumeWorkScreen() {
   }, [readerTarget, progress?.resolvable, progress?.alignment_id, alignmentID]);
 
   useEffect(() => {
+    if (mode !== 'listen') return;
     if (!status.isLoaded) return;
     if (initialAudioMS == null) return;
     if (audioDuration <= 0) return;
     if (restoredAudio.current === `${audioID}:${initialAudioMS}`) return;
-    restoredAudio.current = `${audioID}:${initialAudioMS}`;
     void (async () => {
-      await player.seekTo(clampAudioPosition(initialAudioMS / 1000, audioDuration), 0, 0);
-      applyPlaybackRate(player, audioState?.playback_speed);
-      setAudioReady(true);
+      try {
+        await player.seekTo(clampAudioPosition(initialAudioMS / 1000, audioDuration), 0, 0);
+        applyPlaybackRate(player, audioState?.playback_speed);
+        restoredAudio.current = `${audioID}:${initialAudioMS}`;
+        setAudioReady(true);
+        if (!playAfterRestore.current) return;
+        playAfterRestore.current = false;
+        player.play();
+      } catch (error) {
+        playAfterRestore.current = false;
+        setAudioReady(false);
+        setNotice(errorMessage(error));
+      }
     })();
-  }, [status.isLoaded, audioDuration, initialAudioMS, audioID, audioState?.playback_speed, player]);
+  }, [
+    mode,
+    status.isLoaded,
+    audioDuration,
+    initialAudioMS,
+    audioID,
+    audioState?.playback_speed,
+    player,
+  ]);
 
   const onReaderLocation = useCallback((location: ReaderLocation) => {
     setReaderLocation(location);
@@ -448,15 +469,13 @@ export default function ConsumeWorkScreen() {
       progressRef.current = next;
       setProgress(next);
       setAudioReady(false);
+      playAfterRestore.current = true;
+      restoredAudio.current = '';
       setInitialAudioMS(target.timestamp_ms);
       setMode('listen');
       setNotice('');
-      if (status.isLoaded) {
-        await player.seekTo(clampAudioPosition(target.timestamp_ms / 1000, audioDuration), 0, 0);
-        setAudioReady(true);
-        player.play();
-      }
     } catch (error) {
+      playAfterRestore.current = false;
       if (error instanceof APIError && error.status === 409) {
         const current = await api.workProgress(work.id);
         progressRef.current = current;
@@ -481,20 +500,21 @@ export default function ConsumeWorkScreen() {
     switching.current = true;
     try {
       await canonicalSaves.current;
+      const timestampMS = Math.round(player.currentTime * 1000);
       const { progress: next, target } = await listenToRead(
         api,
         work.id,
         alignmentID,
         {
           resource: alignment.segments[0].audio_resource,
-          timestamp_ms: Math.round(status.currentTime * 1000),
+          timestamp_ms: timestampMS,
         },
         progressRef.current?.revision ?? 0,
         Platform.OS,
       );
       if (__DEV__)
         console.debug('Aldus Listen → Read', {
-          audio_timestamp_ms: Math.round(status.currentTime * 1000),
+          audio_timestamp_ms: timestampMS,
           canonical: { segment_id: next.segment_id, offset: next.offset },
           epub: target,
         });
@@ -534,7 +554,7 @@ export default function ConsumeWorkScreen() {
   function handlePlayPause() {
     if (status.playing) {
       player.pause();
-      void saveListeningPosition(Math.round(status.currentTime * 1000));
+      void saveListeningPosition(Math.round(player.currentTime * 1000));
     } else {
       player.play();
     }
@@ -568,6 +588,14 @@ export default function ConsumeWorkScreen() {
   function handlePlaybackRate(rate: number) {
     const next = applyPlaybackRate(player, rate);
     void saveRepresentation('audio', Math.round(status.currentTime * 1000), next);
+  }
+  function handleReadMode() {
+    if (mode === 'listen' && syncAvailable && status.isLoaded) void switchToRead();
+    else setMode('read');
+  }
+  function handleListenMode() {
+    if (mode === 'read' && readerLocation?.sync && alignmentID) void switchToListen();
+    else setMode('listen');
   }
   const scrubberKeyboardProps = Platform.OS === 'web' ? { onKeyDown: handleScrubberKeyDown } : {};
 
@@ -630,14 +658,14 @@ export default function ConsumeWorkScreen() {
                 icon="read"
                 kind={mode === 'read' ? 'primary' : 'secondary'}
                 selected={mode === 'read'}
-                onPress={() => setMode('read')}
+                onPress={handleReadMode}
               />
             ) : (
               <Button
                 label="Read"
                 icon="read"
                 kind={mode === 'read' ? 'primary' : 'secondary'}
-                onPress={() => setMode('read')}
+                onPress={handleReadMode}
               />
             )
           ) : null}
@@ -648,14 +676,14 @@ export default function ConsumeWorkScreen() {
                 icon="listen"
                 kind={mode === 'listen' ? 'primary' : 'secondary'}
                 selected={mode === 'listen'}
-                onPress={() => setMode('listen')}
+                onPress={handleListenMode}
               />
             ) : (
               <Button
                 label="Listen"
                 icon="listen"
                 kind={mode === 'listen' ? 'primary' : 'secondary'}
-                onPress={() => setMode('listen')}
+                onPress={handleListenMode}
               />
             )
           ) : null}
@@ -695,17 +723,16 @@ export default function ConsumeWorkScreen() {
               onReady={onReaderReady}
               onError={(error) => setNotice(error.message || 'Unable to open EPUB.')}
             />
-            <View
-              className="w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line pt-2.5"
-              style={{ paddingBottom: insets.bottom + 10 }}
-            >
-              <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
-              <Button
-                label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
-                disabled={!canListenFromReader}
-                onPress={() => void switchToListen()}
-              />
-            </View>
+            <SafeAreaView edges={['bottom']}>
+              <View className="min-h-[62px] w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line py-2.5">
+                <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
+                <Button
+                  label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                  disabled={!canListenFromReader}
+                  onPress={() => void switchToListen()}
+                />
+              </View>
+            </SafeAreaView>
           </View>
         ) : (
           <EmptyMode text="No EPUB is available for this Work." />
@@ -717,6 +744,11 @@ export default function ConsumeWorkScreen() {
           contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         >
           <BookCover title={work.title} author={work.author} size={compact ? 'continue' : 'hero'} />
+          {status.error ? (
+            <Notice danger>{status.error}</Notice>
+          ) : !status.isLoaded ? (
+            <Text className="text-sm text-muted">Loading audiobook…</Text>
+          ) : null}
           <Text numberOfLines={2} className="mt-3 text-center text-sm font-semibold text-muted">
             {selectedAudio.representation.label}
           </Text>

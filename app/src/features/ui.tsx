@@ -141,24 +141,20 @@ export function Button({
   accessibilityRole?: 'button' | 'radio';
 }) {
   const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
-  const handlePressIn = () => setPressed(true);
-  const handlePressOut = () => setPressed(false);
 
   const isInactive = Boolean(disabled || loading);
   const backgroundClass = resolveButtonBackgroundClass({
     kind,
     selected,
-    pressed,
+    pressed: false,
     inactive: isInactive,
   });
   const borderClass = resolveButtonBorderClass({ kind, selected, focused, inactive: isInactive });
   const textClass = resolveButtonTextClass({ kind, selected, inactive: isInactive });
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive });
-  const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed });
+  const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed: false });
   const paddingClass = kind === 'quiet' ? 'px-2' : 'px-4';
   const inactiveClass = isInactive ? 'opacity-50' : '';
 
@@ -175,8 +171,6 @@ export function Button({
       disabled={isInactive}
       onBlur={handleBlur}
       onFocus={handleFocus}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       onPress={onPress}
       className={`will-change-variable min-h-11 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass} ${inactiveClass}`}
     >
@@ -218,17 +212,13 @@ export function IconButton({
   size?: 'default' | 'large';
 }) {
   const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
-  const handlePressIn = () => setPressed(true);
-  const handlePressOut = () => setPressed(false);
 
   const backgroundClass = resolveButtonBackgroundClass({
     kind,
     selected,
-    pressed,
+    pressed: false,
     inactive: Boolean(disabled),
   });
   const borderClass = resolveButtonBorderClass({
@@ -251,8 +241,6 @@ export function IconButton({
       disabled={disabled}
       onBlur={handleBlur}
       onFocus={handleFocus}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       onPress={onPress}
       className={`${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${opacityClass}`}
     >

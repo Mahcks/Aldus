@@ -96,6 +96,15 @@ func TestWordAwareOffsets(t *testing.T) {
 	if _, ok := wordTimestamp(500_000, text, `[{"text":"","startTime":0}]`); ok {
 		t.Fatal("malformed timing did not fail closed")
 	}
+	punctuated := "Alice said, ‘cut your finger very deeply.’"
+	punctuatedWords := `[{"text":"Alice","startTime":1,"endTime":1.1},{"text":"said","startTime":2,"endTime":2.1},{"text":"cut","startTime":3,"endTime":3.1},{"text":"your","startTime":4,"endTime":4.1},{"text":"finger","startTime":5,"endTime":5.1},{"text":"deeply","startTime":6,"endTime":6.1}]`
+	fingerOffset := len([]rune("Alice said, ‘cut your ")) * OffsetMax / len([]rune(punctuated))
+	if timestamp, ok := wordTimestamp(fingerOffset, punctuated, punctuatedWords); !ok || timestamp != 5_000 {
+		t.Fatalf("punctuated text position = %d, %v", timestamp, ok)
+	}
+	if offset, ok := wordOffset(5_050, punctuated, punctuatedWords); !ok || offset != fingerOffset {
+		t.Fatalf("punctuated audio position = %d, %v", offset, ok)
+	}
 }
 
 func TestProgressRejectsStaleUpdate(t *testing.T) {

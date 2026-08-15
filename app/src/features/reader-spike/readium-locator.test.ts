@@ -3,6 +3,8 @@ import type { AlignmentSegment } from '../../generated/api';
 import {
   deserializeReadiumLocator,
   mapReadiumLocator,
+  mapReadiumSelection,
+  readiumSearchQuery,
   segmentForEPUBLocator,
   serializeReadiumLocator,
 } from './readium-locator';
@@ -56,5 +58,58 @@ describe('Readium spike locator', () => {
         segment,
       ]),
     ).toEqual(segment);
+  });
+
+  test('maps a short selection from boundary-centered context without matching adjacent text', () => {
+    const bottle = {
+      ...segment,
+      id: 'bottle',
+      text: 'This time she found a little bottle on it and round the neck was a paper label.',
+    };
+    const next = { ...segment, id: 'next', text: 'It was all very well to say Drink me.' };
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.5 },
+      text: {
+        before: 'she found a little bottle on it and round the neck was',
+        highlight: 'a',
+        after: 'paper label. It was all very well to say Drink me.',
+      },
+    };
+    expect(mapReadiumSelection(locator, 'a', [bottle, next])).toEqual({
+      href: bottle.epub_href,
+      locator: bottle.epub_locator,
+      offset: expect.any(Number),
+    });
+  });
+
+  test('maps a short selection at the start of a segment and preserves its text offset', () => {
+    const previous = { ...segment, id: 'previous', text: 'The candle was blown out.' };
+    const next = {
+      ...segment,
+      id: 'next',
+      text: 'After a while, Alice decided on going into the garden.',
+    };
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.5 },
+      text: {
+        before: previous.text,
+        highlight: 'After',
+        after: 'a while, Alice decided on going into the garden.',
+      },
+    };
+    expect(mapReadiumSelection(locator, 'After', [previous, next])).toEqual({
+      href: next.epub_href,
+      locator: next.epub_locator,
+      offset: 0,
+    });
+  });
+
+  test('builds a restore search at the canonical within-segment offset', () => {
+    const long = { ...segment, text: 'zero one two three four five six seven eight nine ten' };
+    expect(readiumSearchQuery(long, 500_000)).toBe('five six seven eight nine ten');
   });
 });
