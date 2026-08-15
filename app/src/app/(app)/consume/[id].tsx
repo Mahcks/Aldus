@@ -94,6 +94,7 @@ export default function ConsumeWorkScreen() {
     ...(alignment?.segments.map((segment) => segment.audio_end_ms / 1000) ?? []),
   );
   const audioDuration = playableAudioDuration(status.duration, alignedDuration);
+  const canListenFromReader = Boolean(readerLocation?.sync);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -585,7 +586,7 @@ export default function ConsumeWorkScreen() {
       : readerLocation?.syncState === 'partial'
         ? 'Partially synchronized'
         : 'Synchronization unavailable here';
-  const readerHelper = syncAvailable
+  const readerHelper = canListenFromReader
     ? 'Continue with the narration at the marked passage.'
     : readerLocation?.syncState === 'partial'
       ? 'Move to synchronized text to continue listening.'
@@ -697,8 +698,8 @@ export default function ConsumeWorkScreen() {
             <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
               <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
               <Button
-                label={syncAvailable ? 'Listen from here' : 'Listen unavailable here'}
-                disabled={!syncAvailable}
+                label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                disabled={!canListenFromReader}
                 onPress={() => void switchToListen()}
               />
             </View>
