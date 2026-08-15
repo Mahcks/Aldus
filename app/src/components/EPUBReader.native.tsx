@@ -166,6 +166,7 @@ export const EPUBReader = forwardRef<
 
   function handleLocation(locator: Locator) {
     const sync = mapReadiumLocator(locator, segments as AlignmentSegment[]);
+    if (__DEV__) console.debug('Aldus native EPUB location', { locator, sync });
     const progression = locator.locations?.totalProgression;
     const reason =
       direction.current === 'forward' ||
@@ -187,6 +188,7 @@ export const EPUBReader = forwardRef<
 
   function handleSelection(event: SelectionActionEvent) {
     const sync = mapReadiumLocator(event.locator, segments as AlignmentSegment[]);
+    if (__DEV__) console.debug('Aldus native EPUB selection', { locator: event.locator, sync });
     onLocation?.({
       href: event.locator.href,
       cfi: JSON.stringify(event.locator),
@@ -251,6 +253,11 @@ export const EPUBReader = forwardRef<
   );
 });
 
-const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+const normalize = (value: string) =>
+  value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 const normalizeHref = (value: string) =>
   decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];

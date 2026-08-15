@@ -42,11 +42,11 @@ export function mapReadiumLocator(
   const href = normalizeHref(locator.href);
   const evidence = [locator.text?.highlight, locator.text?.after, locator.text?.before]
     .map((value) => normalize(value ?? ''))
-    .filter((value) => value.length >= 24);
+    .filter((value) => value.length >= 16);
   const context = normalize(
     [locator.text?.before, locator.text?.highlight, locator.text?.after].filter(Boolean).join(' '),
   );
-  if (context.length >= 24) evidence.push(context);
+  if (context.length >= 16) evidence.push(context);
   if (!evidence.length) return undefined;
   const matches = segments.filter(
     (segment) =>
@@ -72,6 +72,11 @@ export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSe
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+const normalize = (value: string) =>
+  value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 const normalizeHref = (value: string) =>
   decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];

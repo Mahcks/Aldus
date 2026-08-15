@@ -47,7 +47,7 @@ describe('Readium spike locator', () => {
     });
     expect(mapReadiumLocator(locator, [segment, { ...segment, id: 'duplicate' }])).toBeUndefined();
     expect(
-      mapReadiumLocator({ ...locator, text: { after: 'Alice was beginning to get very tired' } }, [
+      mapReadiumLocator({ ...locator, text: { after: 'ALICE was beginning—to get very tired!' } }, [
         segment,
       ]),
     ).toEqual({ href: segment.epub_href, locator: segment.epub_locator, offset: 0 });
