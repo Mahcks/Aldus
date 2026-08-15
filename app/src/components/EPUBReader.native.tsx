@@ -145,8 +145,19 @@ export const EPUBReader = forwardRef<
           if (matches.length !== 1) return false;
           view.goTo(matches[0].locator);
           return true;
+        } catch {
+          onErrorRef.current?.(
+            new Error(
+              'The installed Aldus iOS client does not include Readium search. Install a clean RC18 development build.',
+            ),
+          );
+          return false;
         } finally {
-          view.cancelSearch();
+          try {
+            view.cancelSearch();
+          } catch {
+            // An older native binary has no search iterator to cancel.
+          }
         }
       },
     }),
