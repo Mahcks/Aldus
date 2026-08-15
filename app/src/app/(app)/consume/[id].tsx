@@ -39,6 +39,7 @@ import {
 import { Button, IconButton, Loading, Notice } from '../../../features/ui';
 import { Pressable, ScrollView, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
+import { productEPUBSource } from '../../../lib/epub-source';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
 
@@ -59,7 +60,7 @@ export default function ConsumeWorkScreen() {
   const [progress, setProgress] = useState<CanonicalPosition | null>(null);
   const [epubState, setEPUBState] = useState<RepresentationState | null>(null);
   const [audioState, setAudioState] = useState<RepresentationState | null>(null);
-  const [epubBlob, setEPUBBlob] = useState<Blob>();
+  const [epubSource, setEPUBSource] = useState<string | Blob>();
   const [source, setSource] = useState<AudioSource>(null);
   const [readerLocation, setReaderLocation] = useState<ReaderLocation>();
   const [readerTarget, setReaderTarget] = useState<unknown>();
@@ -183,7 +184,7 @@ export default function ConsumeWorkScreen() {
             selectedEPUB ? api.representationState(selectedEPUB.representation.id) : null,
             selectedAudio ? api.representationState(selectedAudio.representation.id) : null,
             selectedJob?.alignment_id ? api.alignment(selectedJob.alignment_id) : undefined,
-            selectedEPUB ? api.mediaBlob(selectedEPUB.id) : undefined,
+            selectedEPUB ? productEPUBSource(selectedEPUB.id) : undefined,
             selectedAudio ? productAudioSource(selectedAudio.id) : null,
           ],
         );
@@ -191,7 +192,7 @@ export default function ConsumeWorkScreen() {
         setEPUBState(nextEPUBState);
         setAudioState(nextAudioState);
         setAlignment(nextAlignment);
-        setEPUBBlob(blob);
+        setEPUBSource(blob);
         setSource(audioSource);
         setReaderPreferences(preferencesFromState(nextEPUBState));
         const canonical =
@@ -681,11 +682,11 @@ export default function ConsumeWorkScreen() {
         />
       ) : null}
       {mode === 'read' ? (
-        selectedEPUB && epubBlob ? (
+        selectedEPUB && epubSource ? (
           <View className="w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5">
             <EPUBReader
               ref={reader}
-              source={epubBlob}
+              source={epubSource}
               product
               segments={alignment?.segments}
               preferences={readerPreferences}
