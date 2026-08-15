@@ -3,6 +3,7 @@ import type { AlignmentSegment } from '../../generated/api';
 import {
   deserializeReadiumLocator,
   mapReadiumLocator,
+  segmentForEPUBLocator,
   serializeReadiumLocator,
 } from './readium-locator';
 
@@ -45,5 +46,15 @@ describe('Readium spike locator', () => {
       offset: 0,
     });
     expect(mapReadiumLocator(locator, [segment, { ...segment, id: 'duplicate' }])).toBeUndefined();
+    expect(
+      mapReadiumLocator({ ...locator, text: { after: 'Alice was beginning to get very tired' } }, [
+        segment,
+      ]),
+    ).toEqual({ href: segment.epub_href, locator: segment.epub_locator, offset: 0 });
+    expect(
+      segmentForEPUBLocator({ href: segment.epub_href, locator: segment.epub_locator, offset: 0 }, [
+        segment,
+      ]),
+    ).toEqual(segment);
   });
 });

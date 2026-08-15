@@ -39,19 +39,37 @@ export function mapReadiumLocator(
   locator: Locator,
   segments: AlignmentSegment[],
 ): EPUBLocator | undefined {
+  const href = normalizeHref(locator.href);
+  const evidence = [locator.text?.highlight, locator.text?.after, locator.text?.before]
+    .map((value) => normalize(value ?? ''))
+    .filter((value) => value.length >= 24);
   const context = normalize(
     [locator.text?.before, locator.text?.highlight, locator.text?.after].filter(Boolean).join(' '),
   );
-  if (!context) return undefined;
-  const href = normalizeHref(locator.href);
+  if (context.length >= 24) evidence.push(context);
+  if (!evidence.length) return undefined;
   const matches = segments.filter(
     (segment) =>
       segment.highlightable &&
       normalizeHref(segment.epub_href) === href &&
-      context.includes(normalize(segment.text)),
+      evidence.some((fragment) => {
+        const text = normalize(segment.text);
+        return fragment.includes(text) || text.includes(fragment);
+      }),
   );
   if (matches.length !== 1) return undefined;
   return { href: matches[0].epub_href, locator: matches[0].epub_locator, offset: 0 };
+}
+
+export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSegment[]) {
+  const locator = JSON.stringify(target.locator);
+  const matches = segments.filter(
+    (segment) =>
+      segment.highlightable &&
+      normalizeHref(segment.epub_href) === normalizeHref(target.href) &&
+      JSON.stringify(segment.epub_locator) === locator,
+  );
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim();

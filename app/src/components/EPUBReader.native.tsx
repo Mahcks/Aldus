@@ -1,11 +1,22 @@
 import { File, Paths } from 'expo-file-system';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator } from 'react-native';
-import { ReadiumView, type Locator, type ReadiumViewRef } from 'react-native-readium';
-import type { AlignmentSegment } from '../generated/api';
-import { mapReadiumLocator, parseReadiumLocator } from '../features/reader-spike/readium-locator';
+import {
+  ReadiumView,
+  type Locator,
+  type ReadiumViewRef,
+  type SearchResult,
+  type SelectionActionEvent,
+} from 'react-native-readium';
+import type { AlignmentSegment, EPUBLocator } from '../generated/api';
+import {
+  mapReadiumLocator,
+  parseReadiumLocator,
+  segmentForEPUBLocator,
+} from '../features/reader-spike/readium-locator';
 import { colors } from '../features/theme';
 import { Text, View } from '../features/tw';
+import { IconButton } from '../features/ui';
 
 type ReaderLocation = {
   href: string;
@@ -52,8 +63,12 @@ export const EPUBReader = forwardRef<
 >(function EPUBReader({ source, segments = [], preferences, onLocation, onReady, onError }, ref) {
   const reader = useRef<ReadiumViewRef>(null);
   const onErrorRef = useRef(onError);
+  const segmentsRef = useRef(segments);
+  const lastProgression = useRef<number | undefined>(undefined);
+  const direction = useRef<'forward' | 'backward' | undefined>(undefined);
   const [fileURL, setFileURL] = useState('');
   onErrorRef.current = onError;
+  segmentsRef.current = segments;
 
   useEffect(() => {
     let active = true;
@@ -86,10 +101,43 @@ export const EPUBReader = forwardRef<
       captureSelection: () => null,
       restoreSelection: async () => '',
       restoreLocation: async (location) => {
-        const target = savedLocator(location);
-        if (!target) return false;
-        reader.current?.goTo(target);
-        return true;
+        const view = reader.current;
+        if (!view) return false;
+        const saved = savedLocator(location);
+        if (saved) {
+          view.goTo(saved);
+          return true;
+        }
+        if (!location || typeof location !== 'object') return false;
+        const target = location as EPUBLocator;
+        const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
+        if (!segment) return false;
+        try {
+          let page = await view.search(segment.text, {
+            caseSensitive: false,
+            diacriticSensitive: false,
+            wholeWord: false,
+          });
+          if (!page.isSupported) return false;
+          const matches: SearchResult[] = [];
+          while (true) {
+            matches.push(
+              ...page.results.filter(
+                (result) =>
+                  normalizeHref(result.locator.href) === normalizeHref(segment.epub_href) &&
+                  normalize(result.highlight ?? result.locator.text?.highlight ?? '') ===
+                    normalize(segment.text),
+              ),
+            );
+            if (!page.hasMore || matches.length > 1) break;
+            page = await view.loadMoreSearchResults();
+          }
+          if (matches.length !== 1) return false;
+          view.goTo(matches[0].locator);
+          return true;
+        } finally {
+          view.cancelSearch();
+        }
       },
     }),
     [],
@@ -97,12 +145,33 @@ export const EPUBReader = forwardRef<
 
   function handleLocation(locator: Locator) {
     const sync = mapReadiumLocator(locator, segments as AlignmentSegment[]);
+    const progression = locator.locations?.totalProgression;
+    const reason =
+      direction.current === 'forward' ||
+      (progression != null &&
+        lastProgression.current != null &&
+        progression > lastProgression.current)
+        ? 'forward'
+        : 'relocate';
+    direction.current = undefined;
+    lastProgression.current = progression;
     onLocation?.({
       href: locator.href,
       cfi: JSON.stringify(locator),
       sync,
       syncState: sync ? 'full' : 'none',
-      reason: 'relocate',
+      reason,
+    });
+  }
+
+  function handleSelection(event: SelectionActionEvent) {
+    const sync = mapReadiumLocator(event.locator, segments as AlignmentSegment[]);
+    onLocation?.({
+      href: event.locator.href,
+      cfi: JSON.stringify(event.locator),
+      sync,
+      syncState: sync ? 'full' : 'none',
+      reason: 'explicit',
     });
   }
 
@@ -115,21 +184,52 @@ export const EPUBReader = forwardRef<
     );
 
   return (
-    <ReadiumView
-      ref={reader}
-      file={{ url: fileURL }}
-      preferences={{
-        backgroundColor: colors.paper,
-        textColor: colors.ink,
-        scroll: preferences?.layout === 'scrolled',
-        fontSize: preferences?.zoom,
-        lineHeight: preferences?.lineHeight,
-        pageMargins: preferences?.margin,
-        theme: 'light',
-      }}
-      onLocationChange={handleLocation}
-      onPublicationReady={onReady}
-      style={{ flex: 1 }}
-    />
+    <View className="min-h-0 flex-1 bg-paper">
+      <ReadiumView
+        ref={reader}
+        file={{ url: fileURL }}
+        preferences={{
+          backgroundColor: colors.paper,
+          textColor: colors.ink,
+          scroll: preferences?.layout === 'scrolled',
+          fontSize: preferences?.zoom,
+          lineHeight: preferences?.lineHeight,
+          pageMargins: preferences?.margin,
+          theme: preferences?.theme === 'sepia' ? 'sepia' : 'light',
+        }}
+        selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
+        onLocationChange={handleLocation}
+        onPublicationReady={onReady}
+        onSelectionAction={handleSelection}
+        style={{ flex: 1 }}
+      />
+      {preferences?.layout !== 'scrolled' ? (
+        <View className="h-12 shrink-0 flex-row items-center justify-between border-t border-line bg-paper px-2">
+          <IconButton
+            icon="previousPage"
+            label="Previous page"
+            kind="quiet"
+            onPress={() => {
+              direction.current = 'backward';
+              reader.current?.goBackward();
+            }}
+          />
+          <Text className="text-xs text-muted">Swipe or use page controls</Text>
+          <IconButton
+            icon="nextPage"
+            label="Next page"
+            kind="quiet"
+            onPress={() => {
+              direction.current = 'forward';
+              reader.current?.goForward();
+            }}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 });
+
+const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+const normalizeHref = (value: string) =>
+  decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];

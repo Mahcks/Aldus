@@ -592,7 +592,7 @@ export default function ConsumeWorkScreen() {
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
   return (
-    <View className="min-h-full flex-1 bg-canvas" style={{ paddingBottom: insets.bottom }}>
+    <View className="flex-1 bg-canvas">
       <View
         className="min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper px-3 pb-2"
         style={{ paddingTop: insets.top + 8 }}
@@ -684,7 +684,7 @@ export default function ConsumeWorkScreen() {
       ) : null}
       {mode === 'read' ? (
         selectedEPUB && epubSource ? (
-          <View className="w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5">
+          <View className="min-h-0 w-full max-w-[1100px] flex-1 self-center px-4 pt-2.5">
             <EPUBReader
               ref={reader}
               source={epubSource}
@@ -695,7 +695,10 @@ export default function ConsumeWorkScreen() {
               onReady={onReaderReady}
               onError={(error) => setNotice(errorMessage(error))}
             />
-            <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
+            <View
+              className="w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line pt-2.5"
+              style={{ paddingBottom: insets.bottom + 10 }}
+            >
               <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
               <Button
                 label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
@@ -711,6 +714,7 @@ export default function ConsumeWorkScreen() {
         <ScrollView
           className="flex-1"
           contentContainerClassName="w-full max-w-[620px] flex-grow items-center justify-center gap-2.5 self-center p-6"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         >
           <BookCover title={work.title} author={work.author} size={compact ? 'continue' : 'hero'} />
           <Text numberOfLines={2} className="mt-3 text-center text-sm font-semibold text-muted">
