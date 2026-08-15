@@ -165,8 +165,14 @@ export const EPUBReader = forwardRef<
   );
 
   function handleLocation(locator: Locator) {
-    const sync = mapReadiumLocator(locator, segments as AlignmentSegment[]);
-    if (__DEV__) console.debug('Aldus native EPUB location', { locator, sync });
+    const currentSegments = segmentsRef.current as AlignmentSegment[];
+    const sync = mapReadiumLocator(locator, currentSegments);
+    if (__DEV__)
+      console.debug('Aldus native EPUB location', {
+        locator,
+        segmentCount: currentSegments.length,
+        sync,
+      });
     const progression = locator.locations?.totalProgression;
     const reason =
       direction.current === 'forward' ||
@@ -187,8 +193,14 @@ export const EPUBReader = forwardRef<
   }
 
   function handleSelection(event: SelectionActionEvent) {
-    const sync = mapReadiumLocator(event.locator, segments as AlignmentSegment[]);
-    if (__DEV__) console.debug('Aldus native EPUB selection', { locator: event.locator, sync });
+    const currentSegments = segmentsRef.current as AlignmentSegment[];
+    const sync = mapReadiumLocator(event.locator, currentSegments);
+    if (__DEV__)
+      console.debug('Aldus native EPUB selection', {
+        locator: event.locator,
+        segmentCount: currentSegments.length,
+        sync,
+      });
     onLocation?.({
       href: event.locator.href,
       cfi: JSON.stringify(event.locator),
