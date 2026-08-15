@@ -693,7 +693,7 @@ export default function ConsumeWorkScreen() {
               preferences={readerPreferences}
               onLocation={onReaderLocation}
               onReady={onReaderReady}
-              onError={(error) => setNotice(errorMessage(error))}
+              onError={(error) => setNotice(error.message || 'Unable to open EPUB.')}
             />
             <View
               className="w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line pt-2.5"

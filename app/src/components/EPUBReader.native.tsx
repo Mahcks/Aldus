@@ -112,6 +112,16 @@ export const EPUBReader = forwardRef<
         const target = location as EPUBLocator;
         const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
         if (!segment) return false;
+        if (
+          typeof view.search !== 'function' ||
+          typeof view.loadMoreSearchResults !== 'function' ||
+          typeof view.cancelSearch !== 'function'
+        ) {
+          onErrorRef.current?.(
+            new Error('Rebuild the Aldus iOS development client to enable synchronized reading.'),
+          );
+          return false;
+        }
         try {
           let page = await view.search(segment.text, {
             caseSensitive: false,
