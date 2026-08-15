@@ -108,6 +108,29 @@ describe('Readium spike locator', () => {
     });
   });
 
+  test('keeps punctuation attached when selection context starts with a comma', () => {
+    const next = {
+      ...segment,
+      id: 'next',
+      text: 'However, this bottle was not marked “poison,” so Alice ventured to taste it.',
+    };
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.5 },
+      text: {
+        before: 'It is almost certain to disagree with you, sooner or later.',
+        highlight: 'However',
+        after: ', this bottle was not marked “poison,” so Alice ventured to taste it.',
+      },
+    };
+    expect(mapReadiumSelection(locator, 'However', [segment, next])).toEqual({
+      href: next.epub_href,
+      locator: next.epub_locator,
+      offset: 0,
+    });
+  });
+
   test('builds a restore search at the canonical within-segment offset', () => {
     const long = { ...segment, text: 'zero one two three four five six seven eight nine ten' };
     expect(readiumSearchQuery(long, 500_000)).toBe('five six seven eight nine ten');

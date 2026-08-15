@@ -129,8 +129,8 @@ const codePoints = (value: string) => [...value].length;
 function selectionIndexes(text: string, selected: string, before: string, after: string) {
   for (const window of [80, 40, 20, 8]) {
     const anchors = [
-      [before.slice(-window), selected].filter(Boolean).join(' '),
-      [selected, after.slice(0, window)].filter(Boolean).join(' '),
+      joinText(before.slice(-window), selected),
+      joinText(selected, after.slice(0, window)),
     ];
     for (const anchor of anchors) {
       const indexes = occurrences(text, anchor).map((index) =>
@@ -140,6 +140,11 @@ function selectionIndexes(text: string, selected: string, before: string, after:
     }
   }
   return occurrences(text, selected);
+}
+function joinText(left: string, right: string) {
+  if (!left) return right;
+  if (!right) return left;
+  return /^[\p{P}\p{S}]/u.test(right) ? `${left}${right}` : `${left} ${right}`;
 }
 function occurrences(text: string, query: string) {
   const indexes: number[] = [];
