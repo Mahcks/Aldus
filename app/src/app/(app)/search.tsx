@@ -64,7 +64,7 @@ export default function SearchScreen() {
                 author={work.author}
                 context={work.library_name}
                 availability={work}
-                progress={work.in_progress ? 'Continue where you left off' : undefined}
+                progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
                 onPress={() =>
                   router.push(
                     `/work/${work.id}?libraryId=${work.library_id}&role=${work.library_role ?? ''}`,

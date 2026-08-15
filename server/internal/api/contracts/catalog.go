@@ -23,6 +23,16 @@ type Work struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+type WorkDetail struct {
+	Work              `tstype:",extends,required"`
+	InProgress        bool      `json:"in_progress"`
+	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
+	CompletionPercent int       `json:"completion_percent"`
+	ActiveSeconds     int       `json:"active_seconds"`
+	ReadingSeconds    int       `json:"reading_seconds"`
+	ListeningSeconds  int       `json:"listening_seconds"`
+	LastMode          string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
+}
 type WorkSummary struct {
 	ID                string    `json:"id"`
 	LibraryID         string    `json:"library_id"`
@@ -35,6 +45,11 @@ type WorkSummary struct {
 	Synchronized      bool      `json:"synchronized"`
 	InProgress        bool      `json:"in_progress"`
 	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
+	CompletionPercent int       `json:"completion_percent"`
+	ActiveSeconds     int       `json:"active_seconds"`
+	ReadingSeconds    int       `json:"reading_seconds"`
+	ListeningSeconds  int       `json:"listening_seconds"`
+	LastMode          string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }

@@ -48,10 +48,20 @@ type Work struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type WorkDetail struct {
+	Work
+	InProgress                                                         bool
+	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
+	LastMode                                                           string
+	ProgressUpdatedAt                                                  time.Time
+}
+
 type WorkSummary struct {
-	ID, LibraryID, LibraryName, LibraryRole, Title, Author string
-	Readable, Listenable, Synchronized, InProgress         bool
-	CreatedAt, UpdatedAt, ProgressUpdatedAt                time.Time
+	ID, LibraryID, LibraryName, LibraryRole, Title, Author             string
+	LastMode                                                           string
+	Readable, Listenable, Synchronized, InProgress                     bool
+	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
+	CreatedAt, UpdatedAt, ProgressUpdatedAt                            time.Time
 }
 
 type BrowseOptions struct {
@@ -294,7 +304,12 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`),
 			EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id),
-			COALESCE((SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id),'')
+			COALESCE((SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id),''),
+			COALESCE((SELECT CAST(((s.ordinal + p.offset/1000000.0) * 100) / MAX(1,(SELECT MAX(last.ordinal)+1 FROM alignment_segments last WHERE last.alignment_id=p.alignment_id AND last.highlightable=1)) AS INTEGER) FROM progress p JOIN alignment_segments s ON s.alignment_id=p.alignment_id AND s.id=p.segment_id WHERE p.user_id=? AND p.work_id=w.id),0),
+			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id),0),
+			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id AND a.mode='read'),0),
+			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id AND a.mode='listen'),0),
+			COALESCE((SELECT a.mode FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id ORDER BY a.last_seen_at DESC,a.id DESC LIMIT 1),'')
 		FROM works w
 		JOIN libraries l ON l.id=w.library_id
 		LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=?
@@ -312,8 +327,8 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			CASE WHEN ?='updated' THEN w.updated_at END DESC,
 			CASE WHEN ?='recent' THEN w.created_at END DESC,
 			CASE WHEN ?='progress' THEN (SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id) END DESC,
-			w.id ASC
-		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.Admin,
+		w.id ASC
+		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.Admin,
 		options.LibraryID, options.LibraryID, pattern, pattern, pattern,
 		options.Availability, options.Availability, options.Availability, options.Availability, options.Availability, actor.ID,
 		options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, actor.ID, limit+1, offset)
@@ -325,7 +340,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	for rows.Next() {
 		var value WorkSummary
 		var created, updated, progress string
-		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress); err != nil {
+		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode); err != nil {
 			return nil, false, err
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -356,6 +371,31 @@ func (s *Store) Work(ctx context.Context, actor auth.User, id string) (Work, err
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 	return v, nil
+}
+
+func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (WorkDetail, error) {
+	work, err := s.Work(ctx, actor, id)
+	if err != nil {
+		return WorkDetail{}, err
+	}
+	value := WorkDetail{Work: work}
+	var updated string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT p.work_id IS NOT NULL,COALESCE(p.updated_at,''),
+			COALESCE(CAST(((s.ordinal + p.offset/1000000.0) * 100) / MAX(1,(SELECT MAX(last.ordinal)+1 FROM alignment_segments last WHERE last.alignment_id=p.alignment_id AND last.highlightable=1)) AS INTEGER),0),
+			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id),0),
+			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id AND a.mode='read'),0),
+			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id AND a.mode='listen'),0),
+			COALESCE((SELECT a.mode FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id ORDER BY a.last_seen_at DESC,a.id DESC LIMIT 1),'')
+		FROM works w
+		LEFT JOIN progress p ON p.work_id=w.id AND p.user_id=?
+		LEFT JOIN alignment_segments s ON s.alignment_id=p.alignment_id AND s.id=p.segment_id
+		WHERE w.id=?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, id).Scan(&value.InProgress, &updated, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode)
+	if err != nil {
+		return WorkDetail{}, fmt.Errorf("get work progress summary: %w", err)
+	}
+	value.ProgressUpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+	return value, nil
 }
 
 func (s *Store) CreateRepresentation(ctx context.Context, actor auth.User, workID, kind, label string) (Representation, error) {

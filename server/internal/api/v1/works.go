@@ -31,7 +31,7 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		}
 		items := make([]contracts.WorkSummary, len(values))
 		for i, value := range values {
-			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, LibraryRole: value.LibraryRole, Title: value.Title, Author: value.Author, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, LibraryRole: value.LibraryRole, Title: value.Title, Author: value.Author, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 		}
 		writeJSON(w, http.StatusOK, contracts.WorkBrowsePage{Items: items, Offset: offset, HasMore: hasMore})
 	}
@@ -60,8 +60,8 @@ func createWork(s *catalog.Store) http.HandlerFunc {
 }
 func getWork(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.Work(r.Context(), actor(r), chi.URLParam(r, "workID"))
-		writeCatalogResult(w, workDTO(v), e)
+		v, e := s.WorkDetail(r.Context(), actor(r), chi.URLParam(r, "workID"))
+		writeCatalogResult(w, workDetailDTO(v), e)
 	}
 }
 func updateWork(s *catalog.Store) http.HandlerFunc {

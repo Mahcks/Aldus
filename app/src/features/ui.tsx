@@ -876,16 +876,20 @@ export function PageHeader({
   actions,
   back,
   compact,
+  editorial = true,
 }: {
   title: string;
   actions?: ReactNode;
   back?: ReactNode;
   compact: boolean;
+  /** Consumer screens show the Work/Library title in editorial serif; administration titles ("Sources & imports", "Users", "Manage · …") are operational text and use system sans instead. */
+  editorial?: boolean;
 }) {
   const paddingClass = compact ? 'px-4' : 'px-6';
   const layoutClass = compact ? 'items-stretch' : 'items-center';
   const titleSizeClass = compact ? 'text-2xl leading-7' : 'text-[26px] leading-8';
   const actionsWidthClass = compact ? 'w-full' : '';
+  const titleFontClass = editorial ? 'font-editorial' : 'font-sans';
 
   return (
     <View
@@ -895,7 +899,7 @@ export function PageHeader({
         {back}
         <Text
           accessibilityRole="header"
-          className={`flex-shrink font-editorial font-bold text-ink ${titleSizeClass}`}
+          className={`flex-shrink font-bold text-ink ${titleFontClass} ${titleSizeClass}`}
         >
           {title}
         </Text>
@@ -915,11 +919,14 @@ export function Page({
   actions,
   back,
   hideHeader = false,
+  editorial = true,
 }: PropsWithChildren<{
   title: string;
   actions?: ReactNode;
   back?: ReactNode;
   hideHeader?: boolean;
+  /** See `PageHeader`'s `editorial` prop — set false for administration screens. */
+  editorial?: boolean;
 }>) {
   const compact = useWindowDimensions().width < 600;
   const contentPaddingClass = compact ? 'gap-6 px-4 py-6' : 'gap-8 px-6 py-8';
@@ -928,7 +935,13 @@ export function Page({
     <SafeAreaView style={{ flex: 1 }}>
       <View className="flex-1 bg-canvas">
         {hideHeader ? null : (
-          <PageHeader title={title} actions={actions} back={back} compact={compact} />
+          <PageHeader
+            title={title}
+            actions={actions}
+            back={back}
+            compact={compact}
+            editorial={editorial}
+          />
         )}
         <ScrollView
           className="flex-1"

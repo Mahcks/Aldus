@@ -62,7 +62,7 @@ export default function RepresentationScreen() {
   if (loading) return <Loading />;
   if (!representation)
     return (
-      <Page title="Representation">
+      <Page title="Representation" editorial={false}>
         <Notice danger>{error || 'Representation unavailable.'}</Notice>
       </Page>
     );
@@ -124,6 +124,7 @@ export default function RepresentationScreen() {
     <Page
       title={representation.label}
       back={<Button label="Work" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />}
+      editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <Section

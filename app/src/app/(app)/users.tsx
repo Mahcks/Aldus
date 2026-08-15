@@ -99,7 +99,7 @@ export default function UsersScreen() {
 
   if (!auth.user?.admin)
     return (
-      <Page title="Users">
+      <Page title="Users" editorial={false}>
         <Notice tone="info">This page is available to global administrators.</Notice>
       </Page>
     );
@@ -110,6 +110,7 @@ export default function UsersScreen() {
       actions={
         <Button label="Add user" icon="add" kind="primary" onPress={() => setCreateOpen(true)} />
       }
+      editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}

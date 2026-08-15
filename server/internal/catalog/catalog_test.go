@@ -178,7 +178,7 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `INSERT INTO media(id,representation_id,kind,path,sha256,created_at) VALUES('browse-epub',?,'epub','a.epub',?,'2026-01-01T00:00:00Z'),('browse-audio',?,'audio','a.mp3',?,'2026-01-01T00:00:00Z'); INSERT INTO alignments(id,epub_media_id,audio_media_id,revision,state,created_at) VALUES('browse-alignment','browse-epub','browse-audio',1,'ready','2026-01-01T00:00:00Z')`, epub.ID, strings.Repeat("c", 64), audio.ID, strings.Repeat("d", 64)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms) VALUES('browse-alignment','segment',0,'Alice','chapter.xhtml','{}','/body/p[1]','a.mp3',0,1000); INSERT INTO progress(user_id,work_id,alignment_id,segment_id,offset,revision,updated_at,source_device) VALUES(?,?,'browse-alignment','segment',1,1,'2026-01-02T00:00:00Z','test')`, reader.ID, alice.ID); err != nil {
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms) VALUES('browse-alignment','segment',0,'Alice','chapter.xhtml','{"p":1}','/body/p[1]','a.mp3',0,1000),('browse-alignment','segment-2',1,'Later','chapter.xhtml','{"p":2}','/body/p[2]','a.mp3',1000,2000); INSERT INTO progress(user_id,work_id,alignment_id,segment_id,offset,revision,updated_at,source_device) VALUES(?,?,'browse-alignment','segment',500000,1,'2026-01-02T00:00:00Z','test'); INSERT INTO reading_activity_sessions(id,user_id,work_id,mode,started_at,last_seen_at,ended_at,active_seconds) VALUES('activity',?,?,'read','2026-01-02T00:00:00Z','2026-01-02T00:10:00Z','2026-01-02T00:10:00Z',600)`, reader.ID, alice.ID, reader.ID, alice.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -199,8 +199,12 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 		t.Fatalf("second page = %#v, more=%v, err=%v", values, more, err)
 	}
 	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Availability: "in_progress", Sort: "progress"})
-	if err != nil || len(values) != 1 || values[0].ID != alice.ID || !values[0].InProgress || values[0].ProgressUpdatedAt.IsZero() {
+	if err != nil || len(values) != 1 || values[0].ID != alice.ID || !values[0].InProgress || values[0].ProgressUpdatedAt.IsZero() || values[0].CompletionPercent != 25 || values[0].ActiveSeconds != 600 || values[0].ReadingSeconds != 600 || values[0].ListeningSeconds != 0 || values[0].LastMode != "read" {
 		t.Fatalf("progress browse = %#v, %v", values, err)
+	}
+	detail, err := store.WorkDetail(ctx, reader, alice.ID)
+	if err != nil || detail.ID != alice.ID || !detail.InProgress || detail.CompletionPercent != 25 || detail.ActiveSeconds != 600 || detail.ReadingSeconds != 600 || detail.ListeningSeconds != 0 || detail.LastMode != "read" {
+		t.Fatalf("work detail = %#v, %v", detail, err)
 	}
 	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Sort: "title"})
 	if err != nil || len(values) != 2 {

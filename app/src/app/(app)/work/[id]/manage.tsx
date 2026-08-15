@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { choices, type MediaChoice } from '../../../../features/consumption';
 import { useAuth } from '../../../../features/auth/AuthProvider';
+import { representationKinds } from '../../../../features/source-administration';
 import { TechnicalDetails } from '../../../../features/sources/TechnicalDetails';
 import { Pressable, Text, View } from '../../../../features/tw';
 import {
@@ -24,11 +25,6 @@ import { api, errorMessage } from '../../../../lib/api';
 import { goBackOr } from '../../../../lib/navigation';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
-const representationKinds = [
-  { value: 'epub', label: 'EPUB' },
-  { value: 'audio', label: 'Audio' },
-  { value: 'audiobook', label: 'Audiobook' },
-];
 
 function alignmentJobTone(state: string): 'neutral' | 'info' | 'success' | 'warning' | 'danger' {
   if (state === 'ready') return 'success';
@@ -122,7 +118,7 @@ export default function ManageWorkScreen() {
   if (loading) return <Loading label="Loading work…" />;
   if (!work)
     return (
-      <Page title="Manage work">
+      <Page title="Manage work" editorial={false}>
         <Notice danger>{error || 'Work unavailable.'}</Notice>
       </Page>
     );
@@ -197,6 +193,7 @@ export default function ManageWorkScreen() {
       <Page
         title="Manage work"
         back={<Button label="Work" icon="back" kind="quiet" onPress={backToWork} />}
+        editorial={false}
       >
         <Notice danger>You don&apos;t have permission to manage this work.</Notice>
       </Page>
@@ -206,6 +203,7 @@ export default function ManageWorkScreen() {
     <Page
       title={`Manage · ${work.title}`}
       back={<Button label="Work" icon="back" kind="quiet" onPress={backToWork} />}
+      editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <Section title="Manage representations">

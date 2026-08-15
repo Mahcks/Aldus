@@ -70,21 +70,23 @@ export function SourceCard({
       </Row>
 
       {admin ? (
-        <Row>
-          <Button
-            label={source.enabled ? 'Disable' : 'Enable'}
-            kind="quiet"
-            disabled={busy}
-            onPress={onToggle}
-          />
-          <Button
-            label="Remove"
-            icon="delete"
-            kind="danger"
-            disabled={busy || active}
-            onPress={onRemove}
-          />
-        </Row>
+        <View className="border-t border-line pt-3.5">
+          <Row>
+            <Button
+              label={source.enabled ? 'Disable' : 'Enable'}
+              kind="quiet"
+              disabled={busy}
+              onPress={onToggle}
+            />
+            <Button
+              label="Remove"
+              icon="delete"
+              kind="danger"
+              disabled={busy || active}
+              onPress={onRemove}
+            />
+          </Row>
+        </View>
       ) : null}
 
       {expanded ? (

@@ -56,6 +56,25 @@ type WorkProgressUpdate struct {
 	ProgressUpdate `tstype:",extends,required"`
 }
 
+type ActivitySession struct {
+	ID            string     `json:"id"`
+	WorkID        string     `json:"work_id"`
+	Mode          string     `json:"mode" tstype:"'read' | 'listen'"`
+	StartedAt     time.Time  `json:"started_at"`
+	LastSeenAt    time.Time  `json:"last_seen_at"`
+	EndedAt       *time.Time `json:"ended_at,omitempty"`
+	ActiveSeconds int        `json:"active_seconds"`
+}
+
+type StartActivityRequest struct {
+	Mode string `json:"mode" tstype:"'read' | 'listen'"`
+}
+
+type UpdateActivityRequest struct {
+	ActiveSeconds int  `json:"active_seconds"`
+	Ended         bool `json:"ended"`
+}
+
 type Alignment struct {
 	ID          string             `json:"id"`
 	Revision    int                `json:"revision"`

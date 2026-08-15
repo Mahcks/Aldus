@@ -134,7 +134,7 @@ export function WorkGrid({
             title={work.title}
             author={work.author}
             availability={work}
-            progress={work.in_progress ? 'Continue where you left off' : undefined}
+            progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
             context={showLibrary ? work.library_name : undefined}
             narrow={narrow}
             onPress={() => onOpen(work)}

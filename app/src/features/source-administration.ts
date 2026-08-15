@@ -1,5 +1,12 @@
 import type { ImportProposal, Library } from '../generated/api';
 
+/** The representation kinds the server accepts, shared by every admin surface that creates or edits one. */
+export const representationKinds = [
+  { value: 'epub', label: 'EPUB' },
+  { value: 'audio', label: 'Audio' },
+  { value: 'audiobook', label: 'Audiobook' },
+];
+
 export type ReviewDraft = {
   title: string;
   author: string;

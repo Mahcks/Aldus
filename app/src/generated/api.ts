@@ -90,6 +90,15 @@ export interface Work {
   created_at: string;
   updated_at: string;
 }
+export interface WorkDetail extends Work {
+  in_progress: boolean;
+  progress_updated_at?: string;
+  completion_percent: number /* int */;
+  active_seconds: number /* int */;
+  reading_seconds: number /* int */;
+  listening_seconds: number /* int */;
+  last_mode?: 'read' | 'listen' | '';
+}
 export interface WorkSummary {
   id: string;
   library_id: string;
@@ -102,6 +111,11 @@ export interface WorkSummary {
   synchronized: boolean;
   in_progress: boolean;
   progress_updated_at?: string;
+  completion_percent: number /* int */;
+  active_seconds: number /* int */;
+  reading_seconds: number /* int */;
+  listening_seconds: number /* int */;
+  last_mode?: 'read' | 'listen' | '';
   created_at: string;
   updated_at: string;
 }
@@ -317,6 +331,22 @@ export interface ProgressUpdate {
 }
 export interface WorkProgressUpdate extends ProgressUpdate {
   alignment_id: string;
+}
+export interface ActivitySession {
+  id: string;
+  work_id: string;
+  mode: 'read' | 'listen';
+  started_at: string;
+  last_seen_at: string;
+  ended_at?: string;
+  active_seconds: number /* int */;
+}
+export interface StartActivityRequest {
+  mode: 'read' | 'listen';
+}
+export interface UpdateActivityRequest {
+  active_seconds: number /* int */;
+  ended: boolean;
 }
 export interface Alignment {
   id: string;

@@ -32,7 +32,7 @@ function RecentShelf({
             title={work.title}
             author={work.author}
             availability={work}
-            progress={work.in_progress ? 'Continue where you left off' : undefined}
+            progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
             context={work.library_name}
             narrow={narrow}
             onPress={() => onOpen(work)}
@@ -85,7 +85,8 @@ export default function HomeScreen() {
   }
 
   function continueWork(work: WorkSummary) {
-    router.push(`/consume/${work.id}?mode=${work.readable ? 'read' : 'listen'}`);
+    const mode = work.last_mode || (work.readable ? 'read' : 'listen');
+    router.push(`/consume/${work.id}?mode=${mode}`);
   }
 
   function consumeWork(work: WorkSummary, mode: 'read' | 'listen') {
@@ -124,7 +125,8 @@ export default function HomeScreen() {
                       author={work.author}
                       context={work.library_name}
                       availability={work}
-                      continueMode={work.readable ? 'read' : 'listen'}
+                      continueMode={work.last_mode || (work.readable ? 'read' : 'listen')}
+                      progress={`${work.completion_percent}% complete${work.active_seconds ? ` · ${Math.max(1, Math.round(work.active_seconds / 60))} min` : ''}`}
                       onOpen={() => openWork(work)}
                       onContinue={() => continueWork(work)}
                       onRead={() => consumeWork(work, 'read')}

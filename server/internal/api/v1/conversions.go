@@ -21,6 +21,9 @@ func libraryDTO(v catalog.Library) contracts.Library {
 func workDTO(v catalog.Work) contracts.Work {
 	return contracts.Work{ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
+func workDetailDTO(v catalog.WorkDetail) contracts.WorkDetail {
+	return contracts.WorkDetail{Work: workDTO(v.Work), InProgress: v.InProgress, ProgressUpdatedAt: v.ProgressUpdatedAt, CompletionPercent: v.CompletionPercent, ActiveSeconds: v.ActiveSeconds, ReadingSeconds: v.ReadingSeconds, ListeningSeconds: v.ListeningSeconds, LastMode: v.LastMode}
+}
 func representationDTO(v catalog.Representation) contracts.Representation {
 	return contracts.Representation{ID: v.ID, WorkID: v.WorkID, Kind: v.Kind, Label: v.Label, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
@@ -35,6 +38,9 @@ func jobDTO(v alignment.Job) contracts.AlignmentJob {
 }
 func canonicalDTO(v position.Canonical) contracts.CanonicalPosition {
 	return contracts.CanonicalPosition{WorkID: v.WorkID, AlignmentID: v.AlignmentID, SegmentID: v.SegmentID, Offset: v.Offset, Revision: v.Revision, UpdatedAt: v.UpdatedAt, SourceDevice: v.SourceDevice, AlignmentState: v.AlignmentState, Resolvable: v.Resolvable}
+}
+func activityDTO(v position.ActivitySession) contracts.ActivitySession {
+	return contracts.ActivitySession{ID: v.ID, WorkID: v.WorkID, Mode: v.Mode, StartedAt: v.StartedAt, LastSeenAt: v.LastSeenAt, EndedAt: v.EndedAt, ActiveSeconds: v.ActiveSeconds}
 }
 func representationStateDTO(v position.RepresentationState) contracts.RepresentationState {
 	return contracts.RepresentationState{RepresentationID: v.RepresentationID, EPUBLocator: v.EPUBLocator, AudioTimestampMS: v.AudioTimestampMS, PlaybackSpeed: v.PlaybackSpeed, ReaderLayout: v.ReaderLayout, Zoom: v.Zoom, ReaderTheme: v.ReaderTheme, LineHeight: v.LineHeight, Margin: v.Margin, Revision: v.Revision, UpdatedAt: v.UpdatedAt}

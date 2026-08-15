@@ -1,4 +1,4 @@
-import type { AlignmentJob, Representation, Work } from '../../../generated/api';
+import type { AlignmentJob, Representation, WorkDetail } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
@@ -11,6 +11,7 @@ import {
   type MediaChoice,
 } from '../../../features/consumption';
 import { useAuth } from '../../../features/auth/AuthProvider';
+import { formatDuration } from '../../../features/format';
 import { fadeIn, listItemEnter } from '../../../features/motion';
 import { Text, View } from '../../../features/tw';
 import {
@@ -36,7 +37,7 @@ export default function WorkScreen() {
     role = '',
   } = useLocalSearchParams<{ id: string; libraryId: string; role?: string }>();
   const auth = useAuth();
-  const [work, setWork] = useState<Work>();
+  const [work, setWork] = useState<WorkDetail>();
   const [media, setMedia] = useState<MediaChoice[]>([]);
   const [jobs, setJobs] = useState<AlignmentJob[]>([]);
   const [hasProgress, setHasProgress] = useState(false);
@@ -154,6 +155,26 @@ export default function WorkScreen() {
                 synchronized: syncLabel === 'Read + Listen available',
               }}
             />
+            {work.in_progress ? (
+              <View className="w-full max-w-md gap-1.5 py-1">
+                <View
+                  className="h-1.5 overflow-hidden rounded-full bg-line"
+                  accessibilityRole="progressbar"
+                  accessibilityValue={{ min: 0, max: 100, now: work.completion_percent }}
+                >
+                  <View
+                    className="h-full rounded-full bg-accent-strong"
+                    style={{ width: `${work.completion_percent}%` }}
+                  />
+                </View>
+                <Text className="text-sm text-muted">
+                  {work.completion_percent}% complete
+                  {work.active_seconds > 0
+                    ? ` · ${formatDuration(work.active_seconds)} active`
+                    : ''}
+                </Text>
+              </View>
+            ) : null}
             <Row>
               <Button
                 label={hasProgress ? 'Continue reading' : 'Read'}

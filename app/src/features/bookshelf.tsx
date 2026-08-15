@@ -153,10 +153,10 @@ export function WorkCard({
           <View
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
-            className="absolute left-2 top-2 rounded-pill bg-accent px-2 py-1 shadow-xs"
+            className="absolute left-2 top-2 max-w-[85%] rounded-pill bg-accent px-2 py-1 shadow-xs"
           >
-            <Text className="text-[10px] font-bold uppercase tracking-wide text-on-accent">
-              Continue
+            <Text numberOfLines={1} className="text-[10px] font-bold text-on-accent">
+              {progress}
             </Text>
           </View>
         ) : null}
@@ -234,17 +234,26 @@ export function WorkRow({
 
 export type WorkAvailability = { readable: boolean; listenable: boolean; synchronized: boolean };
 
+/**
+ * Synchronized only ever occurs when both an EPUB and audio edition are
+ * available (a ready alignment requires both), so a synced Work collapses to
+ * one "Read & Listen" chip instead of three chips repeating the same fact.
+ */
 export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
-  const items: { enabled: boolean; icon: AppIconName; label: string; short: string }[] = [
-    { enabled: value.readable, icon: 'read', label: 'Readable', short: 'Read' },
-    { enabled: value.listenable, icon: 'listen', label: 'Listenable', short: 'Listen' },
-    {
-      enabled: value.synchronized,
-      icon: 'synced',
-      label: 'Read and Listen synchronized',
-      short: 'Synced',
-    },
-  ];
+  const items: { enabled: boolean; icon: AppIconName; label: string; short: string }[] =
+    value.synchronized
+      ? [
+          {
+            enabled: true,
+            icon: 'synced',
+            label: 'Read and Listen, synchronized',
+            short: 'Read & Listen',
+          },
+        ]
+      : [
+          { enabled: value.readable, icon: 'read', label: 'Readable', short: 'Read' },
+          { enabled: value.listenable, icon: 'listen', label: 'Listenable', short: 'Listen' },
+        ];
   const available = items.filter((item) => item.enabled);
   return (
     <View
@@ -266,6 +275,7 @@ export function ContinueCard({
   author,
   context,
   availability,
+  progress,
   continueMode,
   onOpen,
   onContinue,
@@ -276,6 +286,7 @@ export function ContinueCard({
   author?: string;
   context?: string;
   availability: WorkAvailability;
+  progress?: string;
   continueMode: 'read' | 'listen';
   onOpen: () => void;
   onContinue: () => void;
@@ -324,6 +335,11 @@ export function ContinueCard({
           {context ? (
             <Text numberOfLines={1} className="mt-1 text-[11px] font-semibold text-subtle">
               {context}
+            </Text>
+          ) : null}
+          {progress ? (
+            <Text numberOfLines={1} className="mt-1 text-xs font-bold text-accent">
+              {progress}
             </Text>
           ) : null}
         </Pressable>

@@ -10,7 +10,7 @@ import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-au
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
-import { Platform, useWindowDimensions } from 'react-native';
+import { AppState, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -127,6 +127,33 @@ export default function ConsumeWorkScreen() {
       interruptionMode: 'doNotMix',
     }).catch(() => setNotice('Aldus could not configure background audio on this device.'));
   }, []);
+
+  useEffect(() => {
+    if (!work) return;
+    let sessionID = '';
+    let activeSeconds = 0;
+    let stopped = false;
+    void api
+      .startActivity(work.id, { mode })
+      .then((session) => {
+        sessionID = session.id;
+        if (stopped)
+          void api.updateActivity(session.id, { active_seconds: activeSeconds, ended: true });
+      })
+      .catch(() => {});
+    const timer = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
+      activeSeconds += 15;
+      if (sessionID)
+        void api.updateActivity(sessionID, { active_seconds: activeSeconds, ended: false });
+    }, 15_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      if (sessionID)
+        void api.updateActivity(sessionID, { active_seconds: activeSeconds, ended: true });
+    };
+  }, [work, mode]);
 
   useEffect(() => {
     if (Platform.OS === 'web' || !status.isLoaded || !work || !selectedAudio) return;

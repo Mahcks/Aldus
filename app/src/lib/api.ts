@@ -1,5 +1,6 @@
 import type {
   Alignment,
+  ActivitySession,
   AcceptImportProposalRequest,
   AcceptImportProposalResponse,
   AlignmentJob,
@@ -28,13 +29,16 @@ import type {
   SourceRoot,
   SourceScan,
   SetupStatus,
+  StartActivityRequest,
   UpdateLibraryRequest,
+  UpdateActivityRequest,
   UpdateLibrarySourceRequest,
   UpdateRepresentationRequest,
   UpdateUserRequest,
   UpdateWorkRequest,
   User,
   Work,
+  WorkDetail,
   WorkBrowsePage,
   WorkProgressUpdate,
 } from '../generated/api';
@@ -203,7 +207,7 @@ export const api = {
     if (options.offset) query.set('offset', String(options.offset));
     return request<WorkBrowsePage>(`/works?${query}`);
   },
-  work: (id: string) => request<Work>(`/works/${id}`),
+  work: (id: string) => request<WorkDetail>(`/works/${id}`),
   createWork: (libraryID: string, body: CreateWorkRequest) =>
     request<Work>(`/libraries/${libraryID}/works`, { method: 'POST', body: JSON.stringify(body) }),
   updateWork: (id: string, body: UpdateWorkRequest) =>
@@ -272,6 +276,16 @@ export const api = {
     }),
   updateWorkProgress: (id: string, body: WorkProgressUpdate) =>
     request<CanonicalPosition>(`/works/${id}/progress`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  startActivity: (id: string, body: StartActivityRequest) =>
+    request<ActivitySession>(`/works/${id}/activity`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateActivity: (id: string, body: UpdateActivityRequest) =>
+    request<ActivitySession>(`/activity/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
     }),

@@ -1,6 +1,6 @@
 import type { ImportProposal, Representation, Work } from '../../generated/api';
-import type { ReviewDraft } from '../source-administration';
-import { Button, Dialog, Field, Notice, Row } from '../ui';
+import { representationKinds, type ReviewDraft } from '../source-administration';
+import { Button, Dialog, Field, Notice, Row, Select } from '../ui';
 import { Pressable, Text, View } from '../tw';
 import { humanState } from './helpers';
 import { TechnicalDetails } from './TechnicalDetails';
@@ -43,7 +43,7 @@ export function ReviewDialog({
       <View className="gap-6 pb-1.5">
         {conflict ? <Notice danger>{conflict}</Notice> : null}
         <View>
-          <Text className="font-editorial text-2xl font-bold text-ink">
+          <Text className="text-2xl font-bold text-ink">
             {proposal.title || 'Untitled discovery'}
           </Text>
           <Text className="text-sm text-muted">
@@ -184,10 +184,11 @@ function ReviewItemRow({
       <TechnicalDetails rows={[{ label: 'SHA-256', value: item.sha256, copyable: true }]} />
       <View className="flex-row flex-wrap gap-3">
         <View className="grow basis-[240px]">
-          <Field
+          <Select
             label="Kind"
+            options={representationKinds}
             value={edit.kind}
-            onChangeText={(value) => onItemChange(item.source_entry_id, 'kind', value)}
+            onChange={(value) => onItemChange(item.source_entry_id, 'kind', value)}
           />
         </View>
         <View className="grow basis-[240px]">

@@ -336,6 +336,7 @@ export default function SourcesAdministration() {
           />
         ) : undefined
       }
+      editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
 

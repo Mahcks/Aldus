@@ -14,6 +14,39 @@ func registerProgressRoutes(router chi.Router, store *position.Store, catalogSto
 	router.Put("/works/{workID}/progress", updateWorkProgress(store, catalogStore))
 	router.Get("/representations/{representationID}/state", representationState(store, catalogStore))
 	router.Put("/representations/{representationID}/state", updateRepresentationState(store, catalogStore))
+	router.Post("/works/{workID}/activity", startActivity(store, catalogStore))
+	router.Put("/activity/{sessionID}", updateActivity(store))
+}
+
+func startActivity(store *position.Store, catalogStore *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workID := chi.URLParam(r, "workID")
+		if _, err := catalogStore.Work(r.Context(), actor(r), workID); err != nil {
+			writeCatalogResult(w, nil, err)
+			return
+		}
+		var request contracts.StartActivityRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		value, err := store.StartActivity(r.Context(), actor(r).ID, workID, request.Mode)
+		if err != nil {
+			writePositionResult(w, nil, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, activityDTO(value))
+	}
+}
+
+func updateActivity(store *position.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request contracts.UpdateActivityRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		value, err := store.UpdateActivity(r.Context(), actor(r).ID, chi.URLParam(r, "sessionID"), request.ActiveSeconds, request.Ended)
+		writePositionResult(w, activityDTO(value), err)
+	}
 }
 
 func workProgress(store *position.Store, catalogStore *catalog.Store) http.HandlerFunc {
