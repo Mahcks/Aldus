@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -22,9 +24,15 @@ type Config struct {
 	AlignmentTimeout  time.Duration
 	AlignmentModelDir string
 	SourceRoots       []string
+	Environment       string
+	LogLevel          slog.Level
 }
 
-func Load() Config {
+func Load() (Config, error) {
+	level, err := parseLogLevel(envOr("ALDUS_LOG_LEVEL", "info"))
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		Addr:              envOr("ALDUS_ADDR", ":8080"),
 		DataDir:           envOr("ALDUS_DATA_DIR", "/data"),
@@ -40,6 +48,23 @@ func Load() Config {
 		AlignmentTimeout:  time.Duration(envInt64("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", 7200)) * time.Second,
 		AlignmentModelDir: os.Getenv("ALDUS_ALIGNMENT_MODEL_DIR"),
 		SourceRoots:       envList("ALDUS_SOURCE_ROOTS"),
+		Environment:       envOr("ALDUS_ENV", "production"),
+		LogLevel:          level,
+	}, nil
+}
+
+func parseLogLevel(value string) (slog.Level, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("invalid ALDUS_LOG_LEVEL %q: use debug, info, warn, or error", value)
 	}
 }
 

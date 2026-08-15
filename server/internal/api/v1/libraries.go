@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -110,6 +111,7 @@ func writeCatalogResult(w http.ResponseWriter, value any, err error) {
 	case errors.Is(err, catalog.ErrReferenced):
 		http.Error(w, "resource is referenced", http.StatusConflict)
 	case err != nil:
+		slog.Error("catalog request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	default:
 		writeJSON(w, http.StatusOK, value)

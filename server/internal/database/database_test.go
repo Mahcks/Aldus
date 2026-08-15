@@ -14,8 +14,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 14 {
-		t.Fatalf("schema version = %d, want 14", version)
+	if version := schemaVersion(t, db); version != 15 {
+		t.Fatalf("schema version = %d, want 15", version)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -24,8 +24,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 14 {
-		t.Fatalf("schema version after reopen = %d, want 14", version)
+	if version := schemaVersion(t, db); version != 15 {
+		t.Fatalf("schema version after reopen = %d, want 15", version)
 	}
 }
 
@@ -79,8 +79,8 @@ INSERT INTO progress (alignment_id, segment_id, offset, revision, updated_at, so
 	if err := db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
 		t.Fatalf("foreign key check = %q, %v", violation, err)
 	}
-	if version := schemaVersion(t, db); version != 14 {
-		t.Fatalf("migrated schema version = %d, want 14", version)
+	if version := schemaVersion(t, db); version != 15 {
+		t.Fatalf("migrated schema version = %d, want 15", version)
 	}
 	var epubHash, representationID string
 	if err := db.QueryRowContext(ctx, `SELECT sha256,representation_id FROM media WHERE id='epub'`).Scan(&epubHash, &representationID); err != nil || epubHash != strings.Repeat("a", 64) || representationID != "legacy-representation-epub" {
@@ -109,12 +109,12 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`PRAGMA user_version = 15`); err != nil {
+	if _, err := db.Exec(`PRAGMA user_version = 16`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
 	_, err = Open(context.Background(), path)
-	if err == nil || !strings.Contains(err.Error(), "schema version 15 is newer than supported version 14") {
+	if err == nil || !strings.Contains(err.Error(), "schema version 16 is newer than supported version 15") {
 		t.Fatalf("Open error = %v", err)
 	}
 }
@@ -136,7 +136,7 @@ func TestMigrationFromVersionTwo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 14 {
+	if version := schemaVersion(t, db); version != 15 {
 		t.Fatalf("version=%d", version)
 	}
 	var users, tables int
@@ -163,7 +163,7 @@ func TestMigrationFromVersionThree(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 14 {
+	if version := schemaVersion(t, db); version != 15 {
 		t.Fatalf("version=%d", version)
 	}
 	var columns int
@@ -187,7 +187,7 @@ func TestMigrationFromVersionFour(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 14 {
+	if version := schemaVersion(t, db); version != 15 {
 		t.Fatalf("version=%d", version)
 	}
 	var jobs int
@@ -258,8 +258,8 @@ func TestMigrationRollsBackFailedVersion(t *testing.T) {
 	if err := migrate(ctx, db); err == nil {
 		t.Fatal("failed migration succeeded")
 	}
-	if version := schemaVersion(t, db); version != 14 {
-		t.Fatalf("schema version after rollback = %d, want 14", version)
+	if version := schemaVersion(t, db); version != 15 {
+		t.Fatalf("schema version after rollback = %d, want 15", version)
 	}
 	var exists int
 	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'partial')`).Scan(&exists); err != nil || exists != 0 {

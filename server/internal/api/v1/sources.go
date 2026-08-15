@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -250,5 +251,6 @@ func writeSourceError(w http.ResponseWriter, err error) {
 		http.Error(w, "proposal changed; refresh and review again", http.StatusConflict)
 		return
 	}
+	slog.Error("source request failed", "error", err)
 	http.Error(w, "internal server error", http.StatusInternalServerError)
 }

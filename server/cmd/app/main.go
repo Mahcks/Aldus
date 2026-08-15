@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,9 +25,23 @@ import (
 	"github.com/mahcks/aldus/server/internal/source"
 )
 
+var version = "dev"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	cfg := config.Load()
+	defer stop()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel, AddSource: cfg.LogLevel == slog.LevelDebug})))
+	fmt.Fprintf(os.Stdout, "\n  ALDUS  ·  your library, in sync\n  %s  |  %s  |  log=%s\n\n", version, cfg.Environment, strings.ToLower(cfg.LogLevel.String()))
+	slog.Info("starting Aldus", "version", version, "environment", cfg.Environment)
+	if version == "dev" {
+		slog.Warn("development build", "diagnosis", "not intended for production")
+	}
+	slog.Debug("runtime configuration", "addr", cfg.Addr, "data_dir", cfg.DataDir, "media_dir", cfg.MediaDir, "source_roots", len(cfg.SourceRoots), "allowed_origins", len(cfg.AllowedOrigins), "secure_cookies", cfg.SecureCookies, "alignment_timeout", cfg.AlignmentTimeout)
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		slog.Error("create data directory", "error", err)
 		os.Exit(1)
@@ -37,6 +52,7 @@ func main() {
 		slog.Error("open database", "error", err)
 		os.Exit(1)
 	}
+	slog.Debug("database ready", "path", databasePath)
 	store := position.New(db)
 	catalogStore := catalog.New(db)
 	mediaDir := cfg.MediaDir
@@ -54,6 +70,7 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	slog.Debug("library source scanner ready", "roots", len(cfg.SourceRoots))
 	ingestStore, err := ingest.New(db, ingest.Options{Root: mediaDir, MaxBytes: cfg.MaxUploadBytes, Resolver: sourceStore})
 	if err != nil {
 		slog.Error("open media storage", "error", err)
@@ -71,6 +88,7 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	slog.Debug("alignment worker ready")
 	if err := store.RemoveLegacyFixture(ctx); err != nil {
 		slog.Error("remove legacy synthetic fixture", "error", err)
 		db.Close()
@@ -94,7 +112,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("listening", "addr", cfg.Addr, "data_dir", cfg.DataDir)
+		slog.Info("Aldus is ready", "addr", cfg.Addr, "version", version, "environment", cfg.Environment, "data_dir", cfg.DataDir)
 		errCh <- server.ListenAndServe()
 	}()
 
@@ -111,6 +129,7 @@ func main() {
 		db.Close()
 		return
 	case <-ctx.Done():
+		slog.Info("shutdown requested", "signal", "interrupt")
 		stop()
 	}
 
@@ -134,4 +153,5 @@ func main() {
 		slog.Error("close database", "error", err)
 		os.Exit(1)
 	}
+	slog.Info("shutdown complete")
 }

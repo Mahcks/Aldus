@@ -2,19 +2,21 @@ import type { Media, Representation } from '../../../generated/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 import { useAuth } from '../../../features/auth/AuthProvider';
+import { representationKinds } from '../../../features/source-administration';
 import { TechnicalDetails } from '../../../features/sources/TechnicalDetails';
 import { Text, View } from '../../../features/tw';
 import {
   Button,
-  Empty,
+  ConfirmDialog,
+  EmptyState,
   Field,
   Loading,
   Notice,
   Page,
   Row,
   Section,
+  Select,
   shared,
 } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
@@ -34,6 +36,8 @@ export default function RepresentationScreen() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     if (!id || !libraryId) return;
@@ -59,7 +63,12 @@ export default function RepresentationScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, libraryId]);
 
-  if (loading) return <Loading />;
+  if (loading)
+    return (
+      <Page title="Representation" editorial={false}>
+        <Loading label="Loading representation…" />
+      </Page>
+    );
   if (!representation)
     return (
       <Page title="Representation" editorial={false}>
@@ -98,26 +107,15 @@ export default function RepresentationScreen() {
     }
   }
 
-  function confirmDeleteRepresentation() {
-    Alert.alert(
-      'Delete representation?',
-      'Representations with uploaded media cannot be deleted.',
-      [
-        { text: 'Cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.deleteRepresentation(id);
-              goBackOr('/libraries');
-            } catch (value) {
-              setError(errorMessage(value));
-            }
-          },
-        },
-      ],
-    );
+  async function deleteRepresentation() {
+    setDeleting(true);
+    try {
+      await api.deleteRepresentation(id);
+      goBackOr('/libraries');
+    } catch (value) {
+      setError(errorMessage(value));
+      setDeleting(false);
+    }
   }
 
   return (
@@ -144,7 +142,9 @@ export default function RepresentationScreen() {
           <Notice>Uploading and validating the selected file. Keep this screen open.</Notice>
         ) : null}
         {media.length === 0 ? (
-          <Empty>No media uploaded.</Empty>
+          <EmptyState icon="folder" title="No media uploaded">
+            Upload a revision above to attach a file to this representation.
+          </EmptyState>
         ) : (
           media.map((item, index) => (
             <View key={item.id} className={shared.listItem}>
@@ -168,19 +168,30 @@ export default function RepresentationScreen() {
       {canEdit ? (
         <Section title="Representation settings">
           <View className={shared.form}>
-            <Field label="Kind" value={kind} onChangeText={setKind} autoCapitalize="none" />
+            <Select label="Kind" options={representationKinds} value={kind} onChange={setKind} />
             <Field label="Label" value={label} onChangeText={setLabel} />
             <Row>
-              <Button label="Save" onPress={() => void saveRepresentation()} />
+              <Button label="Save" kind="primary" onPress={() => void saveRepresentation()} />
               <Button
                 label="Delete representation"
                 kind="danger"
-                onPress={confirmDeleteRepresentation}
+                onPress={() => setConfirmingDelete(true)}
               />
             </Row>
           </View>
         </Section>
       ) : null}
+
+      <ConfirmDialog
+        visible={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={() => void deleteRepresentation()}
+        title="Delete representation?"
+        description="Representations with uploaded media cannot be deleted."
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+      />
     </Page>
   );
 }

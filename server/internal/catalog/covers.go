@@ -25,6 +25,17 @@ type CoverCandidate struct {
 	FirstPublishYear                                           int
 }
 
+type CoverAsset struct {
+	ID, Source, SourceID, ImageURL, Label string
+	Selected                              bool
+	CreatedAt                             time.Time
+}
+
+type CoverSettings struct {
+	Fit, Style, Layout   string
+	FocalX, FocalY, Tone int
+}
+
 type openLibraryResult struct {
 	Docs []struct {
 		CoverID          int      `json:"cover_i"`
@@ -101,7 +112,11 @@ func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, source
 		return err
 	}
 	imageURL := ""
-	if source == "embedded" {
+	if source == "upload" {
+		if err := s.db.QueryRowContext(ctx, `SELECT image_url FROM work_covers WHERE work_id=? AND source='upload' AND source_id=?`, workID, sourceID).Scan(&imageURL); err != nil {
+			return ErrInvalid
+		}
+	} else if source == "embedded" {
 		var count int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media m JOIN representations r ON r.id=m.representation_id WHERE m.id=? AND r.work_id=?`, sourceID, workID).Scan(&count); err != nil || count != 1 {
 			return ErrInvalid
@@ -126,9 +141,11 @@ func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, source
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(work_id,source,source_id) DO NOTHING`, id, workID, source, sourceID, imageURL, time.Now().UTC().Format(time.RFC3339Nano))
-	if err != nil {
-		return fmt.Errorf("save work cover: %w", err)
+	if source != "upload" {
+		_, err = tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(work_id,source,source_id) DO NOTHING`, id, workID, source, sourceID, imageURL, time.Now().UTC().Format(time.RFC3339Nano))
+		if err != nil {
+			return fmt.Errorf("save work cover: %w", err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE works SET selected_cover_id=(SELECT id FROM work_covers WHERE work_id=? AND source=? AND source_id=?),updated_at=? WHERE id=?`, workID, source, sourceID, time.Now().UTC().Format(time.RFC3339Nano), workID); err != nil {
 		return fmt.Errorf("select work cover: %w", err)
@@ -142,6 +159,54 @@ func (s *Store) RestoreCover(ctx context.Context, actor auth.User, workID string
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE works SET selected_cover_id=NULL,updated_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339Nano), workID)
 	return err
+}
+
+func (s *Store) Covers(ctx context.Context, actor auth.User, workID string) ([]CoverAsset, error) {
+	if _, err := s.editableWork(ctx, actor, workID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.source,c.source_id,c.image_url,COALESCE(c.id=w.selected_cover_id,0),c.created_at FROM work_covers c JOIN works w ON w.id=c.work_id WHERE c.work_id=? ORDER BY c.created_at DESC,c.id`, workID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var values []CoverAsset
+	for rows.Next() {
+		var value CoverAsset
+		var created string
+		if err := rows.Scan(&value.ID, &value.Source, &value.SourceID, &value.ImageURL, &value.Selected, &created); err != nil {
+			return nil, err
+		}
+		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		value.Label = coverSourceLabel(value.Source)
+		values = append(values, value)
+	}
+	return values, rows.Err()
+}
+
+func (s *Store) UpdateCoverSettings(ctx context.Context, actor auth.User, workID string, settings CoverSettings) error {
+	if _, err := s.editableWork(ctx, actor, workID); err != nil {
+		return err
+	}
+	if !oneOf(settings.Fit, "cover", "contain") || settings.FocalX < 0 || settings.FocalX > 100 || settings.FocalY < 0 || settings.FocalY > 100 || !oneOf(settings.Style, "classic", "minimal", "framed") || settings.Tone < -1 || settings.Tone > 4 || !oneOf(settings.Layout, "top", "center", "bottom") {
+		return ErrInvalid
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE works SET cover_fit=?,cover_focal_x=?,cover_focal_y=?,generated_cover_style=?,generated_cover_tone=?,generated_cover_layout=?,updated_at=? WHERE id=?`, settings.Fit, settings.FocalX, settings.FocalY, settings.Style, settings.Tone, settings.Layout, time.Now().UTC().Format(time.RFC3339Nano), workID)
+	return err
+}
+
+func (s *Store) DeleteCover(ctx context.Context, actor auth.User, workID, coverID string) error {
+	if _, err := s.editableWork(ctx, actor, workID); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `DELETE FROM work_covers WHERE id=? AND work_id=? AND source='upload'`, coverID, workID)
+	if err != nil {
+		return err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) UploadCover(ctx context.Context, actor auth.User, workID string, reader io.Reader) error {
@@ -197,4 +262,15 @@ func (s *Store) editableWork(ctx context.Context, actor auth.User, workID string
 
 func openLibraryCoverURL(sourceID string) string {
 	return "https://covers.openlibrary.org/b/id/" + sourceID + "-L.jpg?default=false"
+}
+
+func coverSourceLabel(source string) string {
+	switch source {
+	case "embedded":
+		return "Embedded artwork"
+	case "upload":
+		return "Uploaded image"
+	default:
+		return "Open Library"
+	}
 }

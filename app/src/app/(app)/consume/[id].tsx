@@ -10,7 +10,7 @@ import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-au
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
-import { AppState, Platform, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, AppState, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -21,7 +21,7 @@ import {
   type ReaderPreferences,
 } from '../../../components/EPUBReader';
 import { commitsReadingProgress } from '../../../components/reader-location';
-import { BookCover } from '../../../features/bookshelf';
+import { BookCover, coverPresentation } from '../../../features/bookshelf';
 import { ReaderSettings } from '../../../features/reader-settings';
 import {
   applyPlaybackRate,
@@ -43,6 +43,7 @@ import {
 import { fadeIn as passageEntrance } from '../../../features/motion';
 import {
   Button,
+  colors,
   Dialog,
   EmptyState,
   IconButton,
@@ -821,7 +822,13 @@ export default function ConsumeWorkScreen() {
               preferences={readerPreferences}
               compactChrome={compactNative}
               statusLabel={
-                alignmentID ? compactPageSyncLabel : syncAvailable ? 'Synchronized' : syncLabel
+                compactNative
+                  ? alignmentID
+                    ? compactPageSyncLabel
+                    : syncAvailable
+                      ? 'Synchronized'
+                      : syncLabel
+                  : undefined
               }
               onLocation={onReaderLocation}
               onReady={onReaderReady}
@@ -863,6 +870,7 @@ export default function ConsumeWorkScreen() {
                 author={work.author}
                 coverURL={work.cover_url}
                 size="hero"
+                {...coverPresentation(work)}
               />
               <View className="items-center gap-1.5 px-4">
                 <Text
@@ -887,12 +895,10 @@ export default function ConsumeWorkScreen() {
                 <Notice danger>The audiobook could not be opened on this device.</Notice>
               </View>
             ) : !status.isLoaded ? (
-              <Text
-                accessibilityLiveRegion="polite"
-                className="mt-5 text-center text-sm text-muted"
-              >
-                Loading audiobook…
-              </Text>
+              <View accessibilityLiveRegion="polite" className="mt-5 items-center gap-2">
+                <ActivityIndicator color={colors.accent} />
+                <Text className="text-sm text-muted">Loading audiobook…</Text>
+              </View>
             ) : null}
             <View className="mt-9 w-full gap-2">
               <Pressable

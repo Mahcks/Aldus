@@ -7,6 +7,33 @@ import { Image, Pressable, Text, View } from './tw';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
 
+export type CoverPresentation = {
+  coverFit?: 'cover' | 'contain';
+  coverFocalX?: number;
+  coverFocalY?: number;
+  generatedCoverStyle?: 'classic' | 'minimal' | 'framed';
+  generatedCoverTone?: number;
+  generatedCoverLayout?: 'top' | 'center' | 'bottom';
+};
+
+export function coverPresentation(work: {
+  cover_fit: 'cover' | 'contain';
+  cover_focal_x: number;
+  cover_focal_y: number;
+  generated_cover_style: 'classic' | 'minimal' | 'framed';
+  generated_cover_tone: number;
+  generated_cover_layout: 'top' | 'center' | 'bottom';
+}): CoverPresentation {
+  return {
+    coverFit: work.cover_fit,
+    coverFocalX: work.cover_focal_x,
+    coverFocalY: work.cover_focal_y,
+    generatedCoverStyle: work.generated_cover_style,
+    generatedCoverTone: work.generated_cover_tone,
+    generatedCoverLayout: work.generated_cover_layout,
+  };
+}
+
 function hash(value: string) {
   let result = 0;
   for (const character of value) result = (result * 31 + character.charCodeAt(0)) >>> 0;
@@ -19,13 +46,19 @@ export function BookCover({
   compact,
   size,
   coverURL,
+  coverFit = 'cover',
+  coverFocalX = 50,
+  coverFocalY = 50,
+  generatedCoverStyle = 'classic',
+  generatedCoverTone = -1,
+  generatedCoverLayout = 'center',
 }: {
   title: string;
   author?: string;
   compact?: boolean;
   size?: 'mini' | 'small' | 'tile' | 'continue' | 'hero';
   coverURL?: string;
-}) {
+} & CoverPresentation) {
   const [failedURL, setFailedURL] = useState('');
   const showImage = Boolean(coverURL && failedURL !== coverURL);
   const resolvedSize = size ?? (compact ? 'hero' : 'tile');
@@ -44,7 +77,10 @@ export function BookCover({
         : resolvedSize === 'continue'
           ? 'text-base leading-5'
           : 'text-xl leading-6';
-  const coverTone = coverTones[hash(title + author) % coverTones.length];
+  const coverTone =
+    coverTones[
+      generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length
+    ];
   const outerPaddingClass = resolvedSize === 'mini' ? 'p-1' : 'p-3';
   const innerPaddingClass = resolvedSize === 'mini' ? 'px-1 py-2' : 'px-3 py-5';
   const coverTitle =
@@ -57,21 +93,23 @@ export function BookCover({
           .toUpperCase()
       : title;
 
+  const layoutClass = {
+    top: 'justify-start',
+    center: 'justify-center',
+    bottom: 'justify-end',
+  }[generatedCoverLayout];
+  const frameClass = generatedCoverStyle === 'minimal' ? '' : 'border border-paper/60';
+
   return (
     <View
       accessibilityLabel={`Cover for ${title}`}
-      className={`relative shrink-0 overflow-hidden rounded-[3px] shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
-      style={{
-        shadowColor: colors.ink,
-        shadowOpacity: 0.16,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 3 },
-      }}
+      className={`relative shrink-0 overflow-hidden rounded-control shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
     >
       {showImage ? (
         <Image
           source={{ uri: coverURL?.startsWith('/') ? `${apiBaseURL}${coverURL}` : coverURL }}
-          resizeMode="cover"
+          resizeMode={coverFit}
+          style={{ objectPosition: `${coverFocalX}% ${coverFocalY}%` } as never}
           accessibilityIgnoresInvertColors
           className="absolute inset-0 h-full w-full bg-panel"
           onError={() => setFailedURL(coverURL || '')}
@@ -79,11 +117,13 @@ export function BookCover({
       ) : null}
       {showImage ? null : (
         <>
-          <View className="absolute bottom-0 left-0 top-0 w-1 bg-paper/20" />
+          {generatedCoverStyle === 'classic' ? (
+            <View className="absolute bottom-0 left-0 top-0 w-1 bg-paper/20" />
+          ) : null}
           <View
-            className={`flex-1 items-center justify-between border border-paper/60 ${innerPaddingClass}`}
+            className={`flex-1 items-center gap-5 ${layoutClass} ${frameClass} ${innerPaddingClass}`}
           >
-            {resolvedSize !== 'mini' ? (
+            {resolvedSize !== 'mini' && generatedCoverStyle !== 'minimal' ? (
               <Text className="text-center text-[9px] font-bold uppercase tracking-[2px] text-paper/70">
                 Aldus edition
               </Text>
@@ -117,7 +157,7 @@ export function BookCover({
 /** Legacy plain chip. Prefer `StatusBadge` for new call sites. */
 export function Badge({ children }: PropsWithChildren) {
   return (
-    <View className="rounded border border-line bg-panel px-1.5 py-0.5">
+    <View className="rounded-control border border-line bg-panel px-1.5 py-0.5">
       <Text className="text-[11px] font-bold text-muted">{children}</Text>
     </View>
   );
@@ -127,6 +167,7 @@ type WorkPresentationProps = {
   title: string;
   author?: string;
   coverURL?: string;
+  coverPresentation?: CoverPresentation;
   availability?: WorkAvailability;
   progress?: string;
   context?: string;
@@ -139,6 +180,7 @@ export function WorkCard({
   title,
   author,
   coverURL,
+  coverPresentation,
   availability,
   progress,
   context,
@@ -165,13 +207,14 @@ export function WorkCard({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`gap-1.5 rounded ${widthClass} ${stateClass}`}
+      className={`gap-1.5 rounded-control ${widthClass} ${stateClass}`}
     >
       <View className="relative">
         <BookCover
           title={title}
           author={author}
           coverURL={coverURL}
+          {...coverPresentation}
           size={narrow ? 'small' : 'tile'}
         />
         {progress ? (
@@ -209,6 +252,7 @@ export function WorkRow({
   title,
   author,
   coverURL,
+  coverPresentation,
   availability,
   progress,
   context,
@@ -234,10 +278,16 @@ export function WorkRow({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`flex-row items-center gap-4 rounded border-b border-line py-3 ${progressBorderClass} ${stateClass}`}
+      className={`flex-row items-center gap-4 rounded-control border-b border-line py-3 ${progressBorderClass} ${stateClass}`}
     >
       <View className="w-14">
-        <BookCover title={title} author={author} coverURL={coverURL} size="mini" />
+        <BookCover
+          title={title}
+          author={author}
+          coverURL={coverURL}
+          size="mini"
+          {...coverPresentation}
+        />
       </View>
       <View className="min-w-0 flex-1 gap-1">
         <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
@@ -300,6 +350,7 @@ export function ContinueCard({
   title,
   author,
   coverURL,
+  coverPresentation,
   context,
   availability,
   progress,
@@ -312,6 +363,7 @@ export function ContinueCard({
   title: string;
   author?: string;
   coverURL?: string;
+  coverPresentation?: CoverPresentation;
   context?: string;
   availability: WorkAvailability;
   progress?: string;
@@ -339,9 +391,15 @@ export function ContinueCard({
         onPressIn={() => setCoverPressed(true)}
         onPressOut={() => setCoverPressed(false)}
         onPress={onOpen}
-        className={`shrink-0 rounded ${coverStateClass}`}
+        className={`shrink-0 rounded-control ${coverStateClass}`}
       >
-        <BookCover title={title} author={author} coverURL={coverURL} size="continue" />
+        <BookCover
+          title={title}
+          author={author}
+          coverURL={coverURL}
+          size="continue"
+          {...coverPresentation}
+        />
       </Pressable>
       <View className="min-w-0 flex-1 justify-between gap-2 py-0.5">
         <Pressable
@@ -352,7 +410,7 @@ export function ContinueCard({
           onPressIn={() => setTitlePressed(true)}
           onPressOut={() => setTitlePressed(false)}
           onPress={onOpen}
-          className={`rounded ${titleStateClass}`}
+          className={`rounded-control ${titleStateClass}`}
         >
           <Text numberOfLines={2} className="font-editorial text-base font-bold leading-5 text-ink">
             {title}

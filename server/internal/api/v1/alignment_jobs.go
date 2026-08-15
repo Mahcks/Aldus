@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -77,6 +78,7 @@ func writeAlignmentJobError(w http.ResponseWriter, err error) {
 	case errors.Is(err, alignment.ErrInvalid):
 		http.Error(w, "invalid alignment job", http.StatusBadRequest)
 	default:
+		slog.Error("alignment job request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }

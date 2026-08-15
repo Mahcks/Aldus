@@ -40,13 +40,15 @@ type Membership struct {
 }
 
 type Work struct {
-	ID        string    `json:"id"`
-	LibraryID string    `json:"library_id"`
-	Title     string    `json:"title"`
-	Author    string    `json:"author,omitempty"`
-	CoverURL  string    `json:"cover_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                                                  string `json:"id"`
+	LibraryID                                           string `json:"library_id"`
+	Title                                               string `json:"title"`
+	Author                                              string `json:"author,omitempty"`
+	CoverURL                                            string `json:"cover_url,omitempty"`
+	CoverFit, GeneratedCoverStyle, GeneratedCoverLayout string
+	CoverFocalX, CoverFocalY, GeneratedCoverTone        int
+	CreatedAt                                           time.Time `json:"created_at"`
+	UpdatedAt                                           time.Time `json:"updated_at"`
 }
 
 type WorkDetail struct {
@@ -59,9 +61,11 @@ type WorkDetail struct {
 
 type WorkSummary struct {
 	ID, LibraryID, LibraryName, LibraryRole, Title, Author, CoverURL   string
+	CoverFit, GeneratedCoverStyle, GeneratedCoverLayout                string
 	LastMode                                                           string
 	Readable, Listenable, Synchronized, InProgress                     bool
 	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
+	CoverFocalX, CoverFocalY, GeneratedCoverTone                       int
 	CreatedAt, UpdatedAt, ProgressUpdatedAt                            time.Time
 }
 
@@ -257,7 +261,7 @@ func (s *Store) CreateWork(ctx context.Context, actor auth.User, libraryID, titl
 	if err != nil {
 		return Work{}, fmt.Errorf("create work: %w", err)
 	}
-	return Work{ID: id, LibraryID: libraryID, Title: title, Author: authorName, CreatedAt: now, UpdatedAt: now}, nil
+	return Work{ID: id, LibraryID: libraryID, Title: title, Author: authorName, CoverFit: "cover", CoverFocalX: 50, CoverFocalY: 50, GeneratedCoverStyle: "classic", GeneratedCoverTone: -1, GeneratedCoverLayout: "center", CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (s *Store) Works(ctx context.Context, actor auth.User, libraryID string, limit, offset int) ([]Work, error) {
@@ -267,7 +271,7 @@ func (s *Store) Works(ctx context.Context, actor auth.User, libraryID string, li
 		return nil, ErrNotFound
 	}
 	limit, offset = page(limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.created_at,w.updated_at FROM works w LEFT JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.library_id=? ORDER BY w.created_at,w.id LIMIT ? OFFSET ?`, libraryID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.cover_fit,w.cover_focal_x,w.cover_focal_y,w.generated_cover_style,w.generated_cover_tone,w.generated_cover_layout,w.created_at,w.updated_at FROM works w LEFT JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.library_id=? ORDER BY w.created_at,w.id LIMIT ? OFFSET ?`, libraryID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +304,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	limit, offset := page(options.Limit, options.Offset)
 	pattern := "%" + escapeLike(strings.ToLower(options.Query)) + "%"
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id,w.library_id,l.name,COALESCE(lm.role,''),w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.created_at,w.updated_at,
+		SELECT w.id,w.library_id,l.name,COALESCE(lm.role,''),w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.cover_fit,w.cover_focal_x,w.cover_focal_y,w.generated_cover_style,w.generated_cover_tone,w.generated_cover_layout,w.created_at,w.updated_at,
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`),
@@ -342,7 +346,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	for rows.Next() {
 		var value WorkSummary
 		var created, updated, progress string
-		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &value.CoverURL, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode); err != nil {
+		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &value.CoverURL, &value.CoverFit, &value.CoverFocalX, &value.CoverFocalY, &value.GeneratedCoverStyle, &value.GeneratedCoverTone, &value.GeneratedCoverLayout, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode); err != nil {
 			return nil, false, err
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -363,7 +367,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 func (s *Store) Work(ctx context.Context, actor auth.User, id string) (Work, error) {
 	var v Work
 	var c, u string
-	err := s.db.QueryRowContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.created_at,w.updated_at FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &v.CoverURL, &c, &u)
+	err := s.db.QueryRowContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.cover_fit,w.cover_focal_x,w.cover_focal_y,w.generated_cover_style,w.generated_cover_tone,w.generated_cover_layout,w.created_at,w.updated_at FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &v.CoverURL, &v.CoverFit, &v.CoverFocalX, &v.CoverFocalY, &v.GeneratedCoverStyle, &v.GeneratedCoverTone, &v.GeneratedCoverLayout, &c, &u)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Work{}, ErrNotFound
 	}
@@ -501,7 +505,7 @@ func canManage(ctx context.Context, tx *sql.Tx, actor auth.User, libraryID strin
 func scanWork(rows *sql.Rows) (Work, error) {
 	var v Work
 	var c, u string
-	err := rows.Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &v.CoverURL, &c, &u)
+	err := rows.Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &v.CoverURL, &v.CoverFit, &v.CoverFocalX, &v.CoverFocalY, &v.GeneratedCoverStyle, &v.GeneratedCoverTone, &v.GeneratedCoverLayout, &c, &u)
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 	return v, err

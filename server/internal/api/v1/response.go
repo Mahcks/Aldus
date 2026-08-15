@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -45,6 +46,7 @@ func writePositionResult(w http.ResponseWriter, value any, err error) {
 	case errors.Is(err, position.ErrInvalid):
 		http.Error(w, "invalid position", http.StatusBadRequest)
 	case err != nil:
+		slog.Error("position request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	default:
 		writeJSON(w, http.StatusOK, value)

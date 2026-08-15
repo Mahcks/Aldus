@@ -322,7 +322,12 @@ export default function SourcesAdministration() {
     }
   }
 
-  if (loading) return <Loading label="Loading source administration…" />;
+  if (loading)
+    return (
+      <Page title="Sources & imports" editorial={false}>
+        <Loading label="Loading source administration…" />
+      </Page>
+    );
 
   return (
     <Page

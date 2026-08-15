@@ -44,7 +44,7 @@ function resolveButtonBackgroundClass({
   pressed: boolean;
   inactive: boolean;
 }) {
-  if (inactive && (kind === 'primary' || kind === 'danger')) return 'bg-panel-strong';
+  if (inactive && kind !== 'quiet') return 'bg-panel-strong';
   if (selected) return 'bg-accent-soft';
   if (kind === 'primary') return pressed ? 'bg-accent-strong' : 'bg-accent';
   if (kind === 'danger') return pressed ? 'bg-danger-soft' : 'bg-transparent';
@@ -64,7 +64,7 @@ function resolveButtonBorderClass({
   inactive: boolean;
 }) {
   if (focused) return 'border-2 border-focus';
-  if (inactive && (kind === 'primary' || kind === 'danger')) return 'border border-line-strong';
+  if (inactive && kind !== 'quiet') return 'border border-line-strong';
   if (selected) return 'border border-accent';
   if (kind === 'primary') return 'border border-accent';
   if (kind === 'danger') return 'border border-danger';
@@ -81,7 +81,7 @@ function resolveButtonTextClass({
   selected: boolean;
   inactive: boolean;
 }) {
-  if (inactive && (kind === 'primary' || kind === 'danger')) return 'text-subtle';
+  if (inactive && kind !== 'quiet') return 'text-subtle';
   if (selected) return 'text-accent-strong';
   if (kind === 'primary') return 'text-on-accent';
   if (kind === 'danger') return 'text-danger';
@@ -98,7 +98,7 @@ function resolveButtonIconColor({
   selected: boolean;
   inactive: boolean;
 }) {
-  if (inactive && (kind === 'primary' || kind === 'danger')) return colors.subtle;
+  if (inactive && kind !== 'quiet') return colors.subtle;
   if (selected) return colors.accentStrong;
   if (kind === 'primary') return colors.onAccent;
   if (kind === 'danger') return colors.danger;
@@ -106,18 +106,30 @@ function resolveButtonIconColor({
   return colors.ink;
 }
 
-/** Primary/danger buttons get a soft lift; flat kinds stay flat (one depth strategy, used with intent). */
+/**
+ * Solid/outlined buttons get a soft lift so they read as physical controls
+ * rather than flat HTML rectangles; `quiet` and `danger` stay flat by design
+ * (quiet is meant to read as text, danger already reads via its red outline).
+ * Radiogroup members (Select, filter chips, …) stay flat too — a shadow on
+ * every pill in a row makes each one float individually instead of reading
+ * as one connected control; the selected pill's accent border/fill already
+ * carries the distinction.
+ */
 function resolveButtonShadowClass({
   kind,
   inactive,
   pressed,
+  grouped,
 }: {
   kind: ButtonKind;
   inactive: boolean;
   pressed: boolean;
+  grouped: boolean;
 }) {
-  if (inactive || pressed || kind !== 'primary') return '';
-  return 'shadow-xs';
+  if (inactive || pressed || grouped) return '';
+  if (kind === 'primary') return 'shadow-sm';
+  if (kind === 'secondary') return 'shadow-xs';
+  return '';
 }
 
 /**
@@ -176,7 +188,12 @@ export function Button({
   const borderClass = resolveButtonBorderClass({ kind, selected, focused, inactive: isInactive });
   const textClass = resolveButtonTextClass({ kind, selected, inactive: isInactive });
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive });
-  const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed });
+  const shadowClass = resolveButtonShadowClass({
+    kind,
+    inactive: isInactive,
+    pressed,
+    grouped: accessibilityRole === 'radio',
+  });
   const paddingClass = kind === 'quiet' ? 'px-2' : 'px-4';
   const inactiveClass = isInactive ? 'opacity-50' : '';
 
@@ -255,7 +272,12 @@ export function IconButton({
     inactive: Boolean(disabled),
   });
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: Boolean(disabled) });
-  const shadowClass = resolveButtonShadowClass({ kind, inactive: Boolean(disabled), pressed });
+  const shadowClass = resolveButtonShadowClass({
+    kind,
+    inactive: Boolean(disabled),
+    pressed,
+    grouped: false,
+  });
   const opacityClass = disabled ? 'opacity-50' : '';
 
   const sizeClass = size === 'large' ? 'h-16 w-16 rounded-pill' : 'h-11 w-11 rounded-control';
@@ -444,9 +466,9 @@ export function Checkbox({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-2 rounded ${stateClass}`}
+      className={`min-h-11 flex-row items-center gap-2 rounded-control ${stateClass}`}
     >
-      <View className={`h-6 w-6 items-center justify-center rounded border ${boxClass}`}>
+      <View className={`h-6 w-6 items-center justify-center rounded-control border ${boxClass}`}>
         {checked ? <AppIcon name="check" size={16} color={colors.onAccent} /> : null}
       </View>
       <Text className="text-base text-ink">{label}</Text>
@@ -484,7 +506,7 @@ export function Radio({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-2 rounded ${stateClass}`}
+      className={`min-h-11 flex-row items-center gap-2 rounded-control ${stateClass}`}
     >
       <View
         className={`h-6 w-6 items-center justify-center rounded-full border bg-paper ${ringClass}`}
@@ -746,13 +768,13 @@ export function LoadingState({ label = 'Loading your library…' }: { label?: st
       className="min-h-[240px] w-full overflow-hidden px-4 py-4 opacity-60"
     >
       <View className="gap-3">
-        <View className="h-5 w-36 rounded bg-panel-strong" />
+        <View className="h-5 w-36 rounded-control bg-panel-strong" />
         <View className="flex-row gap-5">
           {placeholders.map((item) => (
             <View key={item} className="w-[148px] gap-2">
-              <View className="h-[218px] rounded bg-panel-strong" />
-              <View className="h-3 rounded bg-panel-strong" />
-              <View className="h-3 w-2/3 rounded bg-panel-strong" />
+              <View className="h-[218px] rounded-control bg-panel-strong" />
+              <View className="h-3 rounded-control bg-panel-strong" />
+              <View className="h-3 w-2/3 rounded-control bg-panel-strong" />
             </View>
           ))}
         </View>

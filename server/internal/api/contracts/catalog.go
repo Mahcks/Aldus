@@ -16,13 +16,19 @@ type Membership struct {
 	Role        string `json:"role"`
 }
 type Work struct {
-	ID        string    `json:"id"`
-	LibraryID string    `json:"library_id"`
-	Title     string    `json:"title"`
-	Author    string    `json:"author,omitempty"`
-	CoverURL  string    `json:"cover_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                   string    `json:"id"`
+	LibraryID            string    `json:"library_id"`
+	Title                string    `json:"title"`
+	Author               string    `json:"author,omitempty"`
+	CoverURL             string    `json:"cover_url,omitempty"`
+	CoverFit             string    `json:"cover_fit" tstype:"'cover' | 'contain'"`
+	CoverFocalX          int       `json:"cover_focal_x"`
+	CoverFocalY          int       `json:"cover_focal_y"`
+	GeneratedCoverStyle  string    `json:"generated_cover_style" tstype:"'classic' | 'minimal' | 'framed'"`
+	GeneratedCoverTone   int       `json:"generated_cover_tone"`
+	GeneratedCoverLayout string    `json:"generated_cover_layout" tstype:"'top' | 'center' | 'bottom'"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 type WorkDetail struct {
 	Work              `tstype:",extends,required"`
@@ -35,25 +41,31 @@ type WorkDetail struct {
 	LastMode          string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
 }
 type WorkSummary struct {
-	ID                string    `json:"id"`
-	LibraryID         string    `json:"library_id"`
-	LibraryName       string    `json:"library_name"`
-	LibraryRole       string    `json:"library_role,omitempty"`
-	Title             string    `json:"title"`
-	Author            string    `json:"author,omitempty"`
-	CoverURL          string    `json:"cover_url,omitempty"`
-	Readable          bool      `json:"readable"`
-	Listenable        bool      `json:"listenable"`
-	Synchronized      bool      `json:"synchronized"`
-	InProgress        bool      `json:"in_progress"`
-	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
-	CompletionPercent int       `json:"completion_percent"`
-	ActiveSeconds     int       `json:"active_seconds"`
-	ReadingSeconds    int       `json:"reading_seconds"`
-	ListeningSeconds  int       `json:"listening_seconds"`
-	LastMode          string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                   string    `json:"id"`
+	LibraryID            string    `json:"library_id"`
+	LibraryName          string    `json:"library_name"`
+	LibraryRole          string    `json:"library_role,omitempty"`
+	Title                string    `json:"title"`
+	Author               string    `json:"author,omitempty"`
+	CoverURL             string    `json:"cover_url,omitempty"`
+	CoverFit             string    `json:"cover_fit" tstype:"'cover' | 'contain'"`
+	CoverFocalX          int       `json:"cover_focal_x"`
+	CoverFocalY          int       `json:"cover_focal_y"`
+	GeneratedCoverStyle  string    `json:"generated_cover_style" tstype:"'classic' | 'minimal' | 'framed'"`
+	GeneratedCoverTone   int       `json:"generated_cover_tone"`
+	GeneratedCoverLayout string    `json:"generated_cover_layout" tstype:"'top' | 'center' | 'bottom'"`
+	Readable             bool      `json:"readable"`
+	Listenable           bool      `json:"listenable"`
+	Synchronized         bool      `json:"synchronized"`
+	InProgress           bool      `json:"in_progress"`
+	ProgressUpdatedAt    time.Time `json:"progress_updated_at,omitempty"`
+	CompletionPercent    int       `json:"completion_percent"`
+	ActiveSeconds        int       `json:"active_seconds"`
+	ReadingSeconds       int       `json:"reading_seconds"`
+	ListeningSeconds     int       `json:"listening_seconds"`
+	LastMode             string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 type WorkBrowsePage struct {
 	Items   []WorkSummary `json:"items"`
@@ -95,9 +107,26 @@ type CoverCandidate struct {
 	ISBN             string `json:"isbn,omitempty"`
 	FirstPublishYear int    `json:"first_publish_year,omitempty"`
 }
+type CoverAsset struct {
+	ID        string    `json:"id,omitempty"`
+	Source    string    `json:"source" tstype:"'open_library' | 'embedded' | 'upload'"`
+	SourceID  string    `json:"source_id"`
+	ImageURL  string    `json:"image_url"`
+	Label     string    `json:"label"`
+	Selected  bool      `json:"selected"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+}
 type SelectCoverRequest struct {
 	Source   string `json:"source"`
 	SourceID string `json:"source_id"`
+}
+type UpdateCoverSettingsRequest struct {
+	Fit    string `json:"fit"`
+	FocalX int    `json:"focal_x"`
+	FocalY int    `json:"focal_y"`
+	Style  string `json:"style"`
+	Tone   int    `json:"tone"`
+	Layout string `json:"layout"`
 }
 type CreateRepresentationRequest struct {
 	Kind  string `json:"kind"`

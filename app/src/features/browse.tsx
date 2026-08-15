@@ -1,7 +1,7 @@
 import type { WorkSummary } from '../generated/api';
 import { useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { WorkCard } from './bookshelf';
+import { coverPresentation, WorkCard } from './bookshelf';
 import { listItemEnter } from './motion';
 import { ScrollView, Text, View } from './tw';
 import { Button, SearchField, Select } from './ui';
@@ -134,6 +134,7 @@ export function WorkGrid({
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
+            coverPresentation={coverPresentation(work)}
             availability={work}
             progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
             context={showLibrary ? work.library_name : undefined}

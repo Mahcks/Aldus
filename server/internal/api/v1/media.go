@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -111,6 +112,7 @@ func writeMediaError(w http.ResponseWriter, err error) {
 	case errors.Is(err, http.ErrBodyReadAfterClose):
 		http.Error(w, "upload interrupted", http.StatusBadRequest)
 	default:
+		slog.Error("media request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }

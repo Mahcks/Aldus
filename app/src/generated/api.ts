@@ -88,6 +88,12 @@ export interface Work {
   title: string;
   author?: string;
   cover_url?: string;
+  cover_fit: 'cover' | 'contain';
+  cover_focal_x: number /* int */;
+  cover_focal_y: number /* int */;
+  generated_cover_style: 'classic' | 'minimal' | 'framed';
+  generated_cover_tone: number /* int */;
+  generated_cover_layout: 'top' | 'center' | 'bottom';
   created_at: string;
   updated_at: string;
 }
@@ -108,6 +114,12 @@ export interface WorkSummary {
   title: string;
   author?: string;
   cover_url?: string;
+  cover_fit: 'cover' | 'contain';
+  cover_focal_x: number /* int */;
+  cover_focal_y: number /* int */;
+  generated_cover_style: 'classic' | 'minimal' | 'framed';
+  generated_cover_tone: number /* int */;
+  generated_cover_layout: 'top' | 'center' | 'bottom';
   readable: boolean;
   listenable: boolean;
   synchronized: boolean;
@@ -161,9 +173,26 @@ export interface CoverCandidate {
   isbn?: string;
   first_publish_year?: number /* int */;
 }
+export interface CoverAsset {
+  id?: string;
+  source: 'open_library' | 'embedded' | 'upload';
+  source_id: string;
+  image_url: string;
+  label: string;
+  selected: boolean;
+  created_at?: string;
+}
 export interface SelectCoverRequest {
   source: string;
   source_id: string;
+}
+export interface UpdateCoverSettingsRequest {
+  fit: string;
+  focal_x: number /* int */;
+  focal_y: number /* int */;
+  style: string;
+  tone: number /* int */;
+  layout: string;
 }
 export interface CreateRepresentationRequest {
   kind: string;

@@ -8,6 +8,7 @@ import type {
   BootstrapRequest,
   CanonicalPosition,
   CoverCandidate,
+  CoverAsset,
   CreateAlignmentJobRequest,
   CreateLibraryRequest,
   CreateLibrarySourceRequest,
@@ -37,6 +38,7 @@ import type {
   UpdateRepresentationRequest,
   UpdateUserRequest,
   UpdateWorkRequest,
+  UpdateCoverSettingsRequest,
   User,
   Work,
   WorkDetail,
@@ -55,8 +57,9 @@ export class APIError extends Error {
   constructor(
     public status: number,
     message: string,
+    public reference?: string,
   ) {
-    super(message);
+    super(reference ? `${message} (reference ${reference})` : message);
   }
 }
 
@@ -81,7 +84,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       await clearToken();
       unauthorized?.();
     }
-    throw new APIError(response.status, message || `Request failed (${response.status}).`);
+    throw new APIError(
+      response.status,
+      message || `Request failed (${response.status}).`,
+      response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
+    );
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -96,6 +103,7 @@ async function download(path: string) {
     throw new APIError(
       response.status,
       (await response.text()).trim() || `Request failed (${response.status}).`,
+      response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
     );
   return response.blob();
 }
@@ -217,6 +225,7 @@ export const api = {
   searchCovers: (id: string, query: string) =>
     request<CoverCandidate[]>(`/works/${id}/covers/search?q=${encodeURIComponent(query)}`),
   embeddedCovers: (id: string) => request<CoverCandidate[]>(`/works/${id}/covers/search`),
+  covers: (id: string) => request<CoverAsset[]>(`/works/${id}/covers`),
   selectCover: (id: string, source: string, sourceID: string) =>
     request<void>(`/works/${id}/cover`, {
       method: 'PUT',
@@ -228,6 +237,13 @@ export const api = {
     body.append('file', file, filename);
     return request<void>(`/works/${id}/cover`, { method: 'POST', body });
   },
+  updateCoverSettings: (id: string, body: UpdateCoverSettingsRequest) =>
+    request<void>(`/works/${id}/cover/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteCover: (workID: string, coverID: string) =>
+    request<void>(`/works/${workID}/covers/${coverID}`, { method: 'DELETE' }),
 
   representations: (workID: string) =>
     request<Representation[]>(`/works/${workID}/representations`),

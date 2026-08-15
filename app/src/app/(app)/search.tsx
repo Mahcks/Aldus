@@ -2,7 +2,7 @@ import type { WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
-import { WorkRow } from '../../features/bookshelf';
+import { coverPresentation, WorkRow } from '../../features/bookshelf';
 import { BrowseControls } from '../../features/browse';
 import { listItemEnter } from '../../features/motion';
 import { View } from '../../features/tw';
@@ -63,6 +63,7 @@ export default function SearchScreen() {
                 title={work.title}
                 author={work.author}
                 coverURL={work.cover_url}
+                coverPresentation={coverPresentation(work)}
                 context={work.library_name}
                 availability={work}
                 progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}

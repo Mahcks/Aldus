@@ -22,6 +22,8 @@ Run both development servers with `make dev`, or separately with `make dev-serve
 
 The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_SOURCE_ROOTS` (comma-separated server-visible media roots), `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB), `ALDUS_KOREADER_USER` (default `aldus`), and `ALDUS_KOREADER_KEY` (default `aldus`). Set a unique `ALDUS_BOOTSTRAP_TOKEN` before creating the first administrator; setup is disabled when it is empty and permanently closes after the first user. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. KOReader sends its stored key exactly as `x-auth-key`; use the value KOReader generates for the configured password in a real deployment.
 
+Set `ALDUS_ENV` to the deployment name and `ALDUS_LOG_LEVEL` to `debug`, `info`, `warn`, or `error` (`info` by default). Development targets use `development` and `debug` automatically.
+
 ## Test Aldus on a real iPhone
 
 Aldus uses an installed Expo development client, not Expo Go or EAS Build, for normal physical-device development. The generated `app/ios/` project is local CNG output and is intentionally ignored by Git.

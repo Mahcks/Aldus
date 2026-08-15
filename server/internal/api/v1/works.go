@@ -15,12 +15,60 @@ func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.S
 	router.Post("/libraries/{libraryID}/works", createWork(store))
 	router.Get("/works/{workID}", getWork(store))
 	router.Get("/works/{workID}/covers/search", searchCovers(store, media))
+	router.Get("/works/{workID}/covers", listCovers(store, media))
 	router.Put("/works/{workID}/cover", selectCover(store))
 	router.Post("/works/{workID}/cover", uploadCover(store))
+	router.Patch("/works/{workID}/cover/settings", updateCoverSettings(store))
+	router.Delete("/works/{workID}/covers/{coverID}", deleteCover(store))
 	router.Get("/covers/{coverID}", getCover(store))
-	router.Delete("/works/{workID}/cover", restoreCover(store, media))
+	router.Delete("/works/{workID}/cover", restoreCover(store))
 	router.Patch("/works/{workID}", updateWork(store))
 	router.Delete("/works/{workID}", deleteWork(store))
+}
+
+func listCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workID := chi.URLParam(r, "workID")
+		stored, err := s.Covers(r.Context(), actor(r), workID)
+		if err != nil {
+			writeCatalogResult(w, nil, err)
+			return
+		}
+		embedded, err := media.Covers(r.Context(), actor(r), workID)
+		if err != nil {
+			writeMediaError(w, err)
+			return
+		}
+		items := make([]contracts.CoverAsset, 0, len(stored)+len(embedded))
+		seen := make(map[string]bool)
+		for _, value := range stored {
+			seen[value.Source+"\x00"+value.SourceID] = true
+			items = append(items, contracts.CoverAsset{ID: value.ID, Source: value.Source, SourceID: value.SourceID, ImageURL: value.ImageURL, Label: value.Label, Selected: value.Selected, CreatedAt: value.CreatedAt})
+		}
+		for _, value := range embedded {
+			if seen["embedded\x00"+value.MediaID] {
+				continue
+			}
+			items = append(items, contracts.CoverAsset{Source: "embedded", SourceID: value.MediaID, ImageURL: "/api/media/" + value.MediaID + "/cover", Label: value.Label})
+		}
+		writeJSON(w, http.StatusOK, items)
+	}
+}
+
+func updateCoverSettings(s *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.UpdateCoverSettingsRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		writeNoContent(w, s.UpdateCoverSettings(r.Context(), actor(r), chi.URLParam(r, "workID"), catalog.CoverSettings{Fit: body.Fit, FocalX: body.FocalX, FocalY: body.FocalY, Style: body.Style, Tone: body.Tone, Layout: body.Layout}))
+	}
+}
+
+func deleteCover(s *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeNoContent(w, s.DeleteCover(r.Context(), actor(r), chi.URLParam(r, "workID"), chi.URLParam(r, "coverID")))
+	}
 }
 
 func uploadCover(s *catalog.Store) http.HandlerFunc {
@@ -63,7 +111,7 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		}
 		items := make([]contracts.WorkSummary, len(values))
 		for i, value := range values {
-			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, LibraryRole: value.LibraryRole, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, LibraryRole: value.LibraryRole, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, CoverFit: value.CoverFit, CoverFocalX: value.CoverFocalX, CoverFocalY: value.CoverFocalY, GeneratedCoverStyle: value.GeneratedCoverStyle, GeneratedCoverTone: value.GeneratedCoverTone, GeneratedCoverLayout: value.GeneratedCoverLayout, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 		}
 		writeJSON(w, http.StatusOK, contracts.WorkBrowsePage{Items: items, Offset: offset, HasMore: hasMore})
 	}
@@ -107,16 +155,9 @@ func selectCover(s *catalog.Store) http.HandlerFunc {
 	}
 }
 
-func restoreCover(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
+func restoreCover(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		workID := chi.URLParam(r, "workID")
-		covers, err := media.Covers(r.Context(), actor(r), workID)
-		if err == nil && len(covers) > 0 {
-			err = s.SelectCover(r.Context(), actor(r), workID, "embedded", covers[0].MediaID)
-		} else if err == nil {
-			err = s.RestoreCover(r.Context(), actor(r), workID)
-		}
-		writeNoContent(w, err)
+		writeNoContent(w, s.RestoreCover(r.Context(), actor(r), chi.URLParam(r, "workID")))
 	}
 }
 

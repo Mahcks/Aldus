@@ -1,14 +1,67 @@
+import type { AppIconName } from '../../features/icons';
 import type { Library, WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Pressable, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { ContinueCard, WorkCard } from '../../features/bookshelf';
+import { ContinueCard, coverPresentation, WorkCard } from '../../features/bookshelf';
+import { AppIcon } from '../../features/icons';
+import { colors } from '../../features/theme';
 import { listItemEnter } from '../../features/motion';
 import { ScrollView, Text, View } from '../../features/tw';
-import { Button, EmptyState, IconRow, Loading, Notice, Page, Section } from '../../features/ui';
+import {
+  Button,
+  EmptyState,
+  Loading,
+  Notice,
+  Page,
+  resolvePressStateClass,
+  Section,
+} from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
+
+/** Compact card tile for the Libraries grid — richer than a flat list row, scales to fill wide viewports. */
+function LibraryTile({ library, onPress }: { library: Library; onPress: () => void }) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={library.name}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`w-[228px] max-w-full flex-row items-center gap-3 rounded-card bg-paper p-4 shadow-sm ${stateClass}`}
+    >
+      <View className="h-11 w-11 items-center justify-center rounded-full bg-canvas">
+        <AppIcon name="libraries" size={20} color={colors.accent} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+          {library.name}
+        </Text>
+        <Text numberOfLines={1} className="mt-0.5 text-xs font-semibold text-subtle">
+          {library.role || 'Administrator access'}
+        </Text>
+      </View>
+      <AppIcon name="chevron" size={16} color={colors.subtle} />
+    </Pressable>
+  );
+}
+
+function StatChip({ icon, label }: { icon: AppIconName; label: string }) {
+  return (
+    <View className="flex-row items-center gap-1.5 rounded-pill bg-canvas px-3 py-1.5">
+      <AppIcon name={icon} size={14} color={colors.accent} />
+      <Text className="text-xs font-bold text-ink">{label}</Text>
+    </View>
+  );
+}
 
 /** Dense horizontal shelf of recently added Works, distinct from the browse grid's flex-wrap layout. */
 function RecentShelf({
@@ -32,6 +85,7 @@ function RecentShelf({
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
+            coverPresentation={coverPresentation(work)}
             availability={work}
             progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
             context={work.library_name}
@@ -108,9 +162,20 @@ export default function HomeScreen() {
     <Page title="Home" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
       <View>
-        <Text className="font-editorial text-2xl font-bold leading-7 text-ink">
-          Welcome back{auth.user?.display_name ? `, ${auth.user.display_name}` : ''}.
-        </Text>
+        <View className="gap-3 rounded-card bg-accent-soft p-5 shadow-sm">
+          <Text className="font-editorial text-2xl font-bold leading-7 text-ink">
+            Welcome back{auth.user?.display_name ? `, ${auth.user.display_name}` : ''}.
+          </Text>
+          <View className="flex-row flex-wrap gap-2">
+            <StatChip
+              icon="libraries"
+              label={`${libraries.length} librar${libraries.length === 1 ? 'y' : 'ies'}`}
+            />
+            {hasContinuing ? (
+              <StatChip icon="read" label={`${continuing.length} in progress`} />
+            ) : null}
+          </View>
+        </View>
         {hasContinuing ? (
           <View className="mt-5">
             <Section title="Continue">
@@ -125,6 +190,7 @@ export default function HomeScreen() {
                       title={work.title}
                       author={work.author}
                       coverURL={work.cover_url}
+                      coverPresentation={coverPresentation(work)}
                       context={work.library_name}
                       availability={work}
                       continueMode={work.last_mode || (work.readable ? 'read' : 'listen')}
@@ -171,15 +237,10 @@ export default function HomeScreen() {
         </View>
         <View className="mt-9">
           <Section title="Libraries">
-            <View className="max-w-[720px] gap-3">
+            <View className="flex-row flex-wrap gap-3">
               {libraries.map((library, index) => (
                 <Animated.View key={library.id} entering={listItemEnter(index)}>
-                  <IconRow
-                    icon="libraries"
-                    title={library.name}
-                    subtitle={library.role || 'Administrator access'}
-                    onPress={() => openLibrary(library)}
-                  />
+                  <LibraryTile library={library} onPress={() => openLibrary(library)} />
                 </Animated.View>
               ))}
             </View>

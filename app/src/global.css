@@ -68,9 +68,11 @@
   --color-neutral: #6c6258;
   --color-neutral-soft: #e7e0d4;
 
-  --radius-control: 0.375rem;
+  /* Deliberately tighter than Tailwind's stock rounded-md/rounded-2xl (0.375rem/1rem) —
+     a considered, printed-label geometry instead of the generic default. */
+  --radius-control: 0.1875rem;
   --radius-card: 0.625rem;
-  --radius-dialog: 1rem;
+  --radius-dialog: 0.875rem;
   --radius-pill: 999px;
 
   /* Layered shadow scale — the only depth strategy used in this app */

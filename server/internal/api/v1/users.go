@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -73,6 +74,7 @@ func writeAuthResult(w http.ResponseWriter, value any, err error) {
 	case errors.Is(err, auth.ErrLastAdmin):
 		http.Error(w, "last administrator", http.StatusConflict)
 	case err != nil:
+		slog.Error("auth request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	default:
 		writeJSON(w, http.StatusOK, value)

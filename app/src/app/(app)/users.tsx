@@ -238,19 +238,23 @@ export default function UsersScreen() {
               Disabling an account also revokes its active sessions. Library roles are managed from
               each Library.
             </Notice>
-            <Button
-              label={selected.disabled ? 'Enable account' : 'Disable account'}
-              kind={selected.disabled ? 'secondary' : 'danger'}
-              loading={busy}
-              onPress={() =>
-                selected.disabled ? void toggleSelected() : setConfirmingDisable(true)
-              }
-            />
-            <Button
-              label={technicalOpen ? 'Hide technical details' : 'Technical details'}
-              kind="quiet"
-              onPress={() => setTechnicalOpen((open) => !open)}
-            />
+            <View className="self-start">
+              <Button
+                label={selected.disabled ? 'Enable account' : 'Disable account'}
+                kind={selected.disabled ? 'secondary' : 'danger'}
+                loading={busy}
+                onPress={() =>
+                  selected.disabled ? void toggleSelected() : setConfirmingDisable(true)
+                }
+              />
+            </View>
+            <View className="self-start">
+              <Button
+                label={technicalOpen ? 'Hide technical details' : 'Technical details'}
+                kind="quiet"
+                onPress={() => setTechnicalOpen((open) => !open)}
+              />
+            </View>
             {technicalOpen ? (
               <View className="rounded-control bg-panel p-3">
                 <Text className="text-xs font-semibold text-muted">Account ID</Text>

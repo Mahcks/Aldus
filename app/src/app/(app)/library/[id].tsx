@@ -18,6 +18,7 @@ import {
   Notice,
   Page,
   Radio,
+  resolvePressStateClass,
   Row,
   shared,
 } from '../../../features/ui';
@@ -30,6 +31,12 @@ type Role = 'owner' | 'editor' | 'reader';
 const roles: Role[] = ['owner', 'editor', 'reader'];
 
 /** Quiet row inside the compact mobile "Library management" sheet. */
+/**
+ * A flat divider row, not `IconRow`'s bordered card — this sits inside the
+ * "Library management" Dialog, and giving each row its own card border would
+ * nest a card inside a card. Uses the same icon-badge treatment as IconRow
+ * for visual consistency without the nesting.
+ */
 function ManagementRow({
   icon,
   label,
@@ -39,13 +46,23 @@ function ManagementRow({
   label: string;
   onPress: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
   return (
     <Pressable
       accessibilityRole="button"
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className="min-h-11 flex-row items-center gap-3 border-b border-line-subtle py-3"
+      className={`min-h-11 flex-row items-center gap-3 border-b border-line-subtle py-3 ${stateClass}`}
     >
-      <AppIcon name={icon} size={18} color={colors.muted} />
+      <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
+        <AppIcon name={icon} size={18} color={colors.accent} />
+      </View>
       <Text className="flex-1 text-base font-semibold text-ink">{label}</Text>
       <AppIcon name="chevron" size={18} color={colors.subtle} />
     </Pressable>
@@ -428,17 +445,26 @@ export default function LibraryScreen() {
       <Dialog visible={panel === 'settings'} title="Library settings" onClose={closePanel}>
         <View className={shared.form}>
           <Field label="Library name" value={name} onChangeText={setName} />
-          <Button label="Save changes" kind="primary" disabled={!name.trim()} onPress={saveName} />
+          <View className="self-start">
+            <Button
+              label="Save changes"
+              kind="primary"
+              disabled={!name.trim()}
+              onPress={saveName}
+            />
+          </View>
           <View className="mt-4 gap-2 border-t border-line pt-4">
             <Text className="text-sm font-extrabold text-ink">Delete library</Text>
             <Text className={shared.itemMeta}>
               The library must contain no works before it can be deleted.
             </Text>
-            <Button
-              label="Delete library"
-              kind="danger"
-              onPress={() => setConfirmingDelete(true)}
-            />
+            <View className="self-start">
+              <Button
+                label="Delete library"
+                kind="danger"
+                onPress={() => setConfirmingDelete(true)}
+              />
+            </View>
           </View>
         </View>
       </Dialog>
@@ -492,16 +518,23 @@ function RolePill({
   selected: boolean;
   onPress: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const borderClass = selected ? 'border-accent bg-accent-soft' : 'border-line-strong bg-paper';
   const textClass = selected ? 'text-accent-strong' : 'text-muted';
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityState={{ checked: selected }}
       accessibilityLabel={label}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className={`min-h-9 items-center justify-center rounded-control border px-2.5 py-1.5 ${borderClass}`}
+      className={`min-h-11 items-center justify-center rounded-control border px-2.5 py-1.5 ${borderClass} ${stateClass}`}
     >
       <Text className={`text-xs font-bold capitalize ${textClass}`}>{label}</Text>
     </Pressable>

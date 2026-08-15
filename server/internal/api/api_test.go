@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"io/fs"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
+	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -135,6 +138,65 @@ func TestAliasesShareLoginLimiter(t *testing.T) {
 		handler.ServeHTTP(recorder, request)
 		if i == 10 && recorder.Code != http.StatusTooManyRequests {
 			t.Fatalf("shared attempt 11 = %d", recorder.Code)
+		}
+	}
+}
+
+func TestCookieAuthenticatedLibraryWorkCoverFlow(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	authStore, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := authStore.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "max", Password: "Password321!"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogStore := catalog.New(db)
+	library, err := catalogStore.CreateLibrary(ctx, admin.User, "Library")
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := catalogStore.CreateWork(ctx, admin.User, library.ID, "Alice", "Lewis Carroll")
+	if err != nil {
+		t.Fatal(err)
+	}
+	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if err := catalogStore.UploadCover(ctx, admin.User, work.ID, strings.NewReader(string(png))); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalogStore.RestoreCover(ctx, admin.User, work.ID); err != nil {
+		t.Fatal(err)
+	}
+	mediaStore, err := ingest.New(db, ingest.Options{Root: t.TempDir(), MaxBytes: 1 << 20, Probe: func(context.Context, string) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalogStore, Ingest: mediaStore}))
+	defer server.Close()
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	login, err := client.Post(server.URL+"/api/auth/login", "application/json", strings.NewReader(`{"username":"max","password":"Password321!"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("login = %d", login.StatusCode)
+	}
+	login.Body.Close()
+	for _, target := range []string{"/api/libraries", "/api/works/" + work.ID, "/api/works/" + work.ID + "/covers"} {
+		response, err := client.Get(server.URL + target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s = %d", target, response.StatusCode)
 		}
 	}
 }

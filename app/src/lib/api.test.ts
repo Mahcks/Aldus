@@ -53,6 +53,17 @@ describe('API transport', () => {
     );
   });
 
+  it('includes the server request reference in unexpected errors', async () => {
+    globalThis.fetch = (async () =>
+      new Response('internal server error\n', {
+        status: 500,
+        headers: { 'X-Request-ID': 'abc123' },
+      })) as unknown as typeof fetch;
+    await expect(api.libraries()).rejects.toEqual(
+      new APIError(500, 'internal server error', 'abc123'),
+    );
+  });
+
   it('restores Work alignment jobs through the generated contract', async () => {
     let url = '';
     const jobs = [
