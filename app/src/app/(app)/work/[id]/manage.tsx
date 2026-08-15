@@ -1,7 +1,9 @@
-import type { AlignmentJob, Representation, Work } from '../../../../generated/api';
+import type { AlignmentJob, CoverCandidate, Representation, Work } from '../../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useState } from 'react';
 import { choices, type MediaChoice } from '../../../../features/consumption';
+import { BookCover } from '../../../../features/bookshelf';
 import { useAuth } from '../../../../features/auth/AuthProvider';
 import { representationKinds } from '../../../../features/source-administration';
 import { TechnicalDetails } from '../../../../features/sources/TechnicalDetails';
@@ -15,8 +17,10 @@ import {
   Loading,
   Notice,
   Page,
+  resolvePressStateClass,
   Row,
   Section,
+  SearchField,
   Select,
   StatusBadge,
   shared,
@@ -55,22 +59,31 @@ export default function ManageWorkScreen() {
   const [author, setAuthor] = useState('');
   const [epubID, setEPUBID] = useState('');
   const [audioID, setAudioID] = useState('');
+  const [coverQuery, setCoverQuery] = useState('');
+  const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[]>([]);
+  const [searchingCovers, setSearchingCovers] = useState(false);
+  const [savingCover, setSavingCover] = useState('');
 
   async function load() {
     if (!id || !libraryId) return;
     try {
-      const [nextWork, nextRepresentations, nextJobs] = await Promise.all([
+      const [nextWork, nextRepresentations, nextJobs, embeddedCovers] = await Promise.all([
         api.work(id),
         api.representations(id),
         api.alignmentJobs(id),
+        api.embeddedCovers(id),
       ]);
       const revisions = await loadRevisions(libraryId, nextRepresentations);
       setWork(nextWork);
       setTitle(nextWork.title);
       setAuthor(nextWork.author || '');
+      setCoverQuery((current) => current || `${nextWork.title} ${nextWork.author || ''}`.trim());
       setRepresentations(nextRepresentations);
       setMedia(revisions);
       setJobs(nextJobs);
+      setCoverCandidates((current) =>
+        current.some((candidate) => candidate.source === 'open_library') ? current : embeddedCovers,
+      );
       setEPUBID((current) =>
         revisions.some((item) => item.id === current)
           ? current
@@ -177,6 +190,59 @@ export default function ManageWorkScreen() {
     }
   }
 
+  async function searchCovers() {
+    setSearchingCovers(true);
+    setError('');
+    try {
+      setCoverCandidates(await api.searchCovers(id, coverQuery));
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSearchingCovers(false);
+    }
+  }
+
+  async function chooseCover(candidate: CoverCandidate) {
+    setSavingCover(candidate.source_id);
+    try {
+      await api.selectCover(id, candidate.source, candidate.source_id);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingCover('');
+    }
+  }
+
+  async function restoreCover() {
+    setSavingCover('restore');
+    try {
+      await api.restoreCover(id);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingCover('');
+    }
+  }
+
+  async function uploadCover() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['image/jpeg', 'image/png'] });
+    if (result.canceled) return;
+    setSavingCover('upload');
+    setError('');
+    try {
+      const asset = result.assets[0];
+      const blob = await fetch(asset.uri).then((response) => response.blob());
+      await api.uploadCover(id, blob, asset.name);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingCover('');
+    }
+  }
+
   async function deleteWork() {
     setDeletingWork(true);
     try {
@@ -206,6 +272,79 @@ export default function ManageWorkScreen() {
       editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
+      <Section title="Cover artwork">
+        <View className="gap-5">
+          <View className="flex-row flex-wrap items-center gap-5">
+            <BookCover
+              title={work.title}
+              author={work.author}
+              coverURL={work.cover_url}
+              size="small"
+            />
+            <View className="min-w-[240px] max-w-[560px] flex-1 gap-3">
+              <Text className={shared.itemTitle}>
+                {work.cover_url ? 'Selected artwork' : 'Aldus-generated cover'}
+              </Text>
+              <Text className={shared.itemMeta}>
+                Aldus changes only the displayed artwork. Your EPUB and audiobook files are never
+                modified.
+              </Text>
+              <Row>
+                {work.cover_url ? (
+                  <Button
+                    label="Restore original cover"
+                    kind="secondary"
+                    disabled={Boolean(savingCover)}
+                    onPress={() => void restoreCover()}
+                  />
+                ) : null}
+                <Button
+                  label={savingCover === 'upload' ? 'Uploading…' : 'Upload an image'}
+                  kind="secondary"
+                  disabled={Boolean(savingCover)}
+                  onPress={() => void uploadCover()}
+                />
+              </Row>
+            </View>
+          </View>
+          <View className="max-w-[720px] gap-3 border-t border-line pt-5">
+            <SearchField
+              label="Find another edition cover"
+              value={coverQuery}
+              onChangeText={setCoverQuery}
+            />
+            <View className="self-start">
+              <Button
+                label={searchingCovers ? 'Searching…' : 'Search Open Library'}
+                icon="search"
+                kind="primary"
+                disabled={searchingCovers || !coverQuery.trim()}
+                onPress={() => void searchCovers()}
+              />
+            </View>
+          </View>
+          {coverCandidates.length ? (
+            <View className="flex-row flex-wrap items-start gap-5">
+              {coverCandidates.map((candidate) => (
+                <CoverCandidateCard
+                  key={`${candidate.source}-${candidate.source_id}`}
+                  candidate={candidate}
+                  fallbackTitle={work.title}
+                  fallbackAuthor={work.author}
+                  selecting={savingCover === candidate.source_id}
+                  disabled={Boolean(savingCover)}
+                  onPress={() => void chooseCover(candidate)}
+                />
+              ))}
+            </View>
+          ) : null}
+          {!searchingCovers && coverCandidates.length === 0 ? (
+            <Text className={shared.itemMeta}>
+              Search results include edition details so you can avoid film tie-in artwork.
+            </Text>
+          ) : null}
+        </View>
+      </Section>
       <Section title="Manage representations">
         {representations.length === 0 ? (
           <EmptyState icon="folder" title="No representations yet">
@@ -242,12 +381,14 @@ export default function ManageWorkScreen() {
             onChangeText={setLabel}
             placeholder="Narrated by… or 2026 EPUB"
           />
-          <Button
-            label="Create representation"
-            kind="primary"
-            disabled={!kind.trim() || !label.trim()}
-            onPress={createRepresentation}
-          />
+          <View className="self-start">
+            <Button
+              label="Create representation"
+              kind="primary"
+              disabled={!kind.trim() || !label.trim()}
+              onPress={createRepresentation}
+            />
+          </View>
         </View>
       </Section>
       <Section title="Alignment management">
@@ -297,7 +438,9 @@ export default function ManageWorkScreen() {
                 ]}
               />
               {!terminal.has(job.state) ? (
-                <Button label="Cancel" kind="danger" onPress={() => void cancelJob(job.id)} />
+                <View className="self-start">
+                  <Button label="Cancel" kind="danger" onPress={() => void cancelJob(job.id)} />
+                </View>
               ) : null}
             </View>
           ))
@@ -307,13 +450,17 @@ export default function ManageWorkScreen() {
         <View className={shared.form}>
           <Field label="Title" value={title} onChangeText={setTitle} />
           <Field label="Author" value={author} onChangeText={setAuthor} />
-          <Button label="Save" kind="primary" onPress={() => void saveWorkSettings()} />
+          <View className="self-start">
+            <Button label="Save" kind="primary" onPress={() => void saveWorkSettings()} />
+          </View>
           <View className="mt-4 gap-2 border-t border-line pt-4">
             <Text className="text-sm font-extrabold text-ink">Delete work</Text>
             <Text className={shared.itemMeta}>
               The work must have no representations before it can be deleted.
             </Text>
-            <Button label="Delete work" kind="danger" onPress={() => setConfirmingDelete(true)} />
+            <View className="self-start">
+              <Button label="Delete work" kind="danger" onPress={() => setConfirmingDelete(true)} />
+            </View>
           </View>
         </View>
       </Section>
@@ -329,6 +476,62 @@ export default function ManageWorkScreen() {
         busy={deletingWork}
       />
     </Page>
+  );
+}
+
+/** One tappable cover search result — the whole card is the target, not a bordered button underneath it. */
+function CoverCandidateCard({
+  candidate,
+  fallbackTitle,
+  fallbackAuthor,
+  selecting,
+  disabled,
+  onPress,
+}: {
+  candidate: CoverCandidate;
+  fallbackTitle: string;
+  fallbackAuthor?: string;
+  selecting: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+  const title = candidate.title || fallbackTitle;
+  const meta =
+    [candidate.publisher, candidate.first_publish_year || undefined].filter(Boolean).join(' · ') ||
+    (candidate.source === 'embedded' ? 'Embedded artwork' : 'Open Library');
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Use this cover: ${title}, ${meta}`}
+      accessibilityState={{ disabled, busy: selecting }}
+      disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`w-[148px] gap-2 rounded ${stateClass} ${disabled && !selecting ? 'opacity-50' : ''}`}
+    >
+      <BookCover
+        title={title}
+        author={candidate.author || fallbackAuthor}
+        coverURL={candidate.image_url}
+        size="small"
+      />
+      <Text numberOfLines={2} className="font-editorial text-sm font-bold text-ink">
+        {title}
+      </Text>
+      <Text numberOfLines={1} className="text-xs text-muted">
+        {meta}
+      </Text>
+      <Text className="text-xs font-bold text-accent">
+        {selecting ? 'Selecting…' : 'Use this cover'}
+      </Text>
+    </Pressable>
   );
 }
 

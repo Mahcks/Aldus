@@ -2,6 +2,8 @@
 
 Aldus is a self-hosted books and audiobooks platform. This repository contains a universal Expo client and a Go HTTP server; the production image serves both the API and exported web client.
 
+Library administrators and editors can choose artwork embedded in an EPUB or audiobook, search Open Library for alternate edition artwork, or upload a JPEG/PNG from a Work's management screen. The choice is shared by reading and listening views, source media is never rewritten, and broken or missing artwork falls back to the generated Aldus cover.
+
 ## Layout
 
 - `app/` — Expo Router app for iOS, Android, and web

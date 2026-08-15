@@ -62,6 +62,7 @@ export default function SearchScreen() {
               <WorkRow
                 title={work.title}
                 author={work.author}
+                coverURL={work.cover_url}
                 context={work.library_name}
                 availability={work}
                 progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}

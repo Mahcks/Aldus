@@ -19,7 +19,7 @@ func libraryDTO(v catalog.Library) contracts.Library {
 	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func workDTO(v catalog.Work) contracts.Work {
-	return contracts.Work{ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.Work{ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CoverURL: v.CoverURL, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func workDetailDTO(v catalog.WorkDetail) contracts.WorkDetail {
 	return contracts.WorkDetail{Work: workDTO(v.Work), InProgress: v.InProgress, ProgressUpdatedAt: v.ProgressUpdatedAt, CompletionPercent: v.CompletionPercent, ActiveSeconds: v.ActiveSeconds, ReadingSeconds: v.ReadingSeconds, ListeningSeconds: v.ListeningSeconds, LastMode: v.LastMode}

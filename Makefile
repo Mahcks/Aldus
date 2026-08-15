@@ -17,14 +17,15 @@ dev-app:
 	cd app && EXPO_PUBLIC_API_URL=$${EXPO_PUBLIC_API_URL:-http://localhost:8080} bun run start
 
 dev-server:
-	cd server && ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081} ALDUS_BOOTSTRAP_TOKEN=$${ALDUS_BOOTSTRAP_TOKEN:-aldus-dev-bootstrap} go run ./cmd/app
+	@LAN_ORIGINS=$$(ip -4 -o addr show scope global | awk '{split($$4, address, "/"); printf ",http://%s:8081", address[1]}'); \
+	cd server && ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081$$LAN_ORIGINS} ALDUS_BOOTSTRAP_TOKEN=$${ALDUS_BOOTSTRAP_TOKEN:-aldus-dev-bootstrap} go run ./cmd/app
 
 web-dev: dev-app
 
 expo-dev:
 	@test -n "$$EXPO_PUBLIC_API_URL" || (echo "Set EXPO_PUBLIC_API_URL to the LAN-reachable Aldus origin" >&2; exit 1)
 	@PACKAGER_HOST=$$(printf '%s\n' "$$EXPO_PUBLIC_API_URL" | sed -E 's,https?://([^:/]+).*,\1,'); \
-	cd app && REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
+	 cd app && EXPO_PUBLIC_WEB_API_URL=$${EXPO_PUBLIC_WEB_API_URL:-http://localhost:8080} REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
 
 ios-dev:
 	cd app && bun run ios:device

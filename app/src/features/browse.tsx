@@ -133,6 +133,7 @@ export function WorkGrid({
           <WorkCard
             title={work.title}
             author={work.author}
+            coverURL={work.cover_url}
             availability={work}
             progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
             context={showLibrary ? work.library_name : undefined}

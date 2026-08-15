@@ -1,8 +1,9 @@
 import { useState, type PropsWithChildren } from 'react';
 import { useWindowDimensions } from 'react-native';
+import { apiBaseURL } from '../lib/api-base';
 import { AppIcon, type AppIconName } from './icons';
 import { Button, colors, IconButton, resolvePressStateClass } from './ui';
-import { Pressable, Text, View } from './tw';
+import { Image, Pressable, Text, View } from './tw';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
 
@@ -17,12 +18,16 @@ export function BookCover({
   author,
   compact,
   size,
+  coverURL,
 }: {
   title: string;
   author?: string;
   compact?: boolean;
   size?: 'mini' | 'small' | 'tile' | 'continue' | 'hero';
+  coverURL?: string;
 }) {
+  const [failedURL, setFailedURL] = useState('');
+  const showImage = Boolean(coverURL && failedURL !== coverURL);
   const resolvedSize = size ?? (compact ? 'hero' : 'tile');
   const sizeClass = {
     mini: 'h-20 w-14',
@@ -63,35 +68,48 @@ export function BookCover({
         shadowOffset: { width: 0, height: 3 },
       }}
     >
-      <View className="absolute bottom-0 left-0 top-0 w-1 bg-paper/20" />
-      <View
-        className={`flex-1 items-center justify-between border border-paper/60 ${innerPaddingClass}`}
-      >
-        {resolvedSize !== 'mini' ? (
-          <Text className="text-center text-[9px] font-bold uppercase tracking-[2px] text-paper/70">
-            Aldus edition
-          </Text>
-        ) : (
-          <View />
-        )}
-        <Text
-          numberOfLines={3}
-          className={`text-center font-editorial font-bold text-paper ${titleSizeClass}`}
-        >
-          {coverTitle}
-        </Text>
-        <View className="items-center gap-2">
-          <View className="h-px w-7 bg-paper/70" />
-          {resolvedSize !== 'mini' ? (
+      {showImage ? (
+        <Image
+          source={{ uri: coverURL?.startsWith('/') ? `${apiBaseURL}${coverURL}` : coverURL }}
+          resizeMode="cover"
+          accessibilityIgnoresInvertColors
+          className="absolute inset-0 h-full w-full bg-panel"
+          onError={() => setFailedURL(coverURL || '')}
+        />
+      ) : null}
+      {showImage ? null : (
+        <>
+          <View className="absolute bottom-0 left-0 top-0 w-1 bg-paper/20" />
+          <View
+            className={`flex-1 items-center justify-between border border-paper/60 ${innerPaddingClass}`}
+          >
+            {resolvedSize !== 'mini' ? (
+              <Text className="text-center text-[9px] font-bold uppercase tracking-[2px] text-paper/70">
+                Aldus edition
+              </Text>
+            ) : (
+              <View />
+            )}
             <Text
-              numberOfLines={1}
-              className="text-center font-editorial text-[11px] text-paper/80"
+              numberOfLines={3}
+              className={`text-center font-editorial font-bold text-paper ${titleSizeClass}`}
             >
-              {author || 'Aldus Library'}
+              {coverTitle}
             </Text>
-          ) : null}
-        </View>
-      </View>
+            <View className="items-center gap-2">
+              <View className="h-px w-7 bg-paper/70" />
+              {resolvedSize !== 'mini' ? (
+                <Text
+                  numberOfLines={1}
+                  className="text-center font-editorial text-[11px] text-paper/80"
+                >
+                  {author || 'Aldus Library'}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -108,6 +126,7 @@ export function Badge({ children }: PropsWithChildren) {
 type WorkPresentationProps = {
   title: string;
   author?: string;
+  coverURL?: string;
   availability?: WorkAvailability;
   progress?: string;
   context?: string;
@@ -119,6 +138,7 @@ type WorkPresentationProps = {
 export function WorkCard({
   title,
   author,
+  coverURL,
   availability,
   progress,
   context,
@@ -148,7 +168,12 @@ export function WorkCard({
       className={`gap-1.5 rounded ${widthClass} ${stateClass}`}
     >
       <View className="relative">
-        <BookCover title={title} author={author} size={narrow ? 'small' : 'tile'} />
+        <BookCover
+          title={title}
+          author={author}
+          coverURL={coverURL}
+          size={narrow ? 'small' : 'tile'}
+        />
         {progress ? (
           <View
             accessibilityElementsHidden
@@ -183,6 +208,7 @@ export const WorkTile = WorkCard;
 export function WorkRow({
   title,
   author,
+  coverURL,
   availability,
   progress,
   context,
@@ -211,7 +237,7 @@ export function WorkRow({
       className={`flex-row items-center gap-4 rounded border-b border-line py-3 ${progressBorderClass} ${stateClass}`}
     >
       <View className="w-14">
-        <BookCover title={title} author={author} size="mini" />
+        <BookCover title={title} author={author} coverURL={coverURL} size="mini" />
       </View>
       <View className="min-w-0 flex-1 gap-1">
         <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
@@ -273,6 +299,7 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
 export function ContinueCard({
   title,
   author,
+  coverURL,
   context,
   availability,
   progress,
@@ -284,6 +311,7 @@ export function ContinueCard({
 }: {
   title: string;
   author?: string;
+  coverURL?: string;
   context?: string;
   availability: WorkAvailability;
   progress?: string;
@@ -313,7 +341,7 @@ export function ContinueCard({
         onPress={onOpen}
         className={`shrink-0 rounded ${coverStateClass}`}
       >
-        <BookCover title={title} author={author} size="continue" />
+        <BookCover title={title} author={author} coverURL={coverURL} size="continue" />
       </Pressable>
       <View className="min-w-0 flex-1 justify-between gap-2 py-0.5">
         <Pressable

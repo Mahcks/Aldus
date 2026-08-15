@@ -137,7 +137,7 @@ export default function WorkScreen() {
       {error ? <Notice danger>{error}</Notice> : null}
       <Animated.View entering={fadeIn}>
         <View className="flex-row flex-wrap items-center gap-8 border-b border-line py-5 pb-10">
-          <BookCover title={work.title} author={work.author} compact />
+          <BookCover title={work.title} author={work.author} coverURL={work.cover_url} compact />
           <View className="min-w-[250px] flex-1 items-start gap-3">
             <Text
               numberOfLines={3}

@@ -858,7 +858,12 @@ export default function ConsumeWorkScreen() {
         >
           <View className="mx-auto w-full max-w-[560px] px-6">
             <View className="items-center gap-4 pt-2">
-              <BookCover title={work.title} author={work.author} size="hero" />
+              <BookCover
+                title={work.title}
+                author={work.author}
+                coverURL={work.cover_url}
+                size="hero"
+              />
               <View className="items-center gap-1.5 px-4">
                 <Text
                   numberOfLines={2}

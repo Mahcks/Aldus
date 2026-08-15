@@ -9,6 +9,7 @@ import {
   Pressable as RNPressable,
   ScrollView as RNScrollView,
   TextInput as RNTextInput,
+  Image as RNImage,
 } from 'react-native';
 
 /**
@@ -98,6 +99,17 @@ export const TextInput = (props: TextInputProps): React.ReactElement => {
   }) as React.ReactElement;
 };
 TextInput.displayName = 'CSS(TextInput)';
+
+export type ImageProps = React.ComponentProps<typeof RNImage> & {
+  className?: string;
+};
+
+export const Image = (props: ImageProps): React.ReactElement => {
+  return useCssElement(RNImage as unknown as MinimalStyledComponent, props, {
+    className: 'style',
+  }) as React.ReactElement;
+};
+Image.displayName = 'CSS(Image)';
 
 export type AnimatedScrollViewProps = React.ComponentProps<typeof Animated.ScrollView> & {
   className?: string;

@@ -87,6 +87,7 @@ export interface Work {
   library_id: string;
   title: string;
   author?: string;
+  cover_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +107,7 @@ export interface WorkSummary {
   library_role?: string;
   title: string;
   author?: string;
+  cover_url?: string;
   readable: boolean;
   listenable: boolean;
   synchronized: boolean;
@@ -148,6 +150,20 @@ export interface CreateWorkRequest {
 export interface UpdateWorkRequest {
   title: string;
   author: string;
+}
+export interface CoverCandidate {
+  source: 'open_library' | 'embedded';
+  source_id: string;
+  image_url: string;
+  title: string;
+  author?: string;
+  publisher?: string;
+  isbn?: string;
+  first_publish_year?: number /* int */;
+}
+export interface SelectCoverRequest {
+  source: string;
+  source_id: string;
 }
 export interface CreateRepresentationRequest {
   kind: string;

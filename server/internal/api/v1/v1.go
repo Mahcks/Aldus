@@ -16,7 +16,7 @@ func Handler(deps Dependencies) http.Handler {
 		registerUserRoutes(router, deps.Auth)
 		registerLibraryRoutes(router, deps.Catalog)
 		registerSourceRoutes(router, deps.Sources)
-		registerWorkRoutes(router, deps.Catalog)
+		registerWorkRoutes(router, deps.Catalog, deps.Ingest)
 		registerRepresentationRoutes(router, deps.Catalog)
 		registerMediaRoutes(router, deps.Ingest)
 		registerAlignmentJobRoutes(router, deps.AlignmentJobs, deps.Catalog)

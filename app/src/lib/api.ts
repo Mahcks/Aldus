@@ -7,6 +7,7 @@ import type {
   AudioLocator,
   BootstrapRequest,
   CanonicalPosition,
+  CoverCandidate,
   CreateAlignmentJobRequest,
   CreateLibraryRequest,
   CreateLibrarySourceRequest,
@@ -213,6 +214,20 @@ export const api = {
   updateWork: (id: string, body: UpdateWorkRequest) =>
     request<void>(`/works/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteWork: (id: string) => request<void>(`/works/${id}`, { method: 'DELETE' }),
+  searchCovers: (id: string, query: string) =>
+    request<CoverCandidate[]>(`/works/${id}/covers/search?q=${encodeURIComponent(query)}`),
+  embeddedCovers: (id: string) => request<CoverCandidate[]>(`/works/${id}/covers/search`),
+  selectCover: (id: string, source: string, sourceID: string) =>
+    request<void>(`/works/${id}/cover`, {
+      method: 'PUT',
+      body: JSON.stringify({ source, source_id: sourceID }),
+    }),
+  restoreCover: (id: string) => request<void>(`/works/${id}/cover`, { method: 'DELETE' }),
+  uploadCover: (id: string, file: Blob, filename: string) => {
+    const body = new FormData();
+    body.append('file', file, filename);
+    return request<void>(`/works/${id}/cover`, { method: 'POST', body });
+  },
 
   representations: (workID: string) =>
     request<Representation[]>(`/works/${workID}/representations`),

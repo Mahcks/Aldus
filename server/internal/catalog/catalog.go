@@ -44,6 +44,7 @@ type Work struct {
 	LibraryID string    `json:"library_id"`
 	Title     string    `json:"title"`
 	Author    string    `json:"author,omitempty"`
+	CoverURL  string    `json:"cover_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -57,7 +58,7 @@ type WorkDetail struct {
 }
 
 type WorkSummary struct {
-	ID, LibraryID, LibraryName, LibraryRole, Title, Author             string
+	ID, LibraryID, LibraryName, LibraryRole, Title, Author, CoverURL   string
 	LastMode                                                           string
 	Readable, Listenable, Synchronized, InProgress                     bool
 	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
@@ -266,7 +267,7 @@ func (s *Store) Works(ctx context.Context, actor auth.User, libraryID string, li
 		return nil, ErrNotFound
 	}
 	limit, offset = page(limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT id,library_id,title,COALESCE(author,''),created_at,updated_at FROM works WHERE library_id=? ORDER BY created_at,id LIMIT ? OFFSET ?`, libraryID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.created_at,w.updated_at FROM works w LEFT JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.library_id=? ORDER BY w.created_at,w.id LIMIT ? OFFSET ?`, libraryID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +300,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	limit, offset := page(options.Limit, options.Offset)
 	pattern := "%" + escapeLike(strings.ToLower(options.Query)) + "%"
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id,w.library_id,l.name,COALESCE(lm.role,''),w.title,COALESCE(w.author,''),w.created_at,w.updated_at,
+		SELECT w.id,w.library_id,l.name,COALESCE(lm.role,''),w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.created_at,w.updated_at,
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`),
@@ -312,6 +313,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			COALESCE((SELECT a.mode FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id ORDER BY a.last_seen_at DESC,a.id DESC LIMIT 1),'')
 		FROM works w
 		JOIN libraries l ON l.id=w.library_id
+		LEFT JOIN work_covers c ON c.id=w.selected_cover_id
 		LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=?
 		WHERE (? OR lm.user_id IS NOT NULL)
 			AND (?='' OR w.library_id=?)
@@ -340,7 +342,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	for rows.Next() {
 		var value WorkSummary
 		var created, updated, progress string
-		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode); err != nil {
+		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &value.CoverURL, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode); err != nil {
 			return nil, false, err
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -361,7 +363,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 func (s *Store) Work(ctx context.Context, actor auth.User, id string) (Work, error) {
 	var v Work
 	var c, u string
-	err := s.db.QueryRowContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),w.created_at,w.updated_at FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &c, &u)
+	err := s.db.QueryRowContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.created_at,w.updated_at FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &v.CoverURL, &c, &u)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Work{}, ErrNotFound
 	}
@@ -499,7 +501,7 @@ func canManage(ctx context.Context, tx *sql.Tx, actor auth.User, libraryID strin
 func scanWork(rows *sql.Rows) (Work, error) {
 	var v Work
 	var c, u string
-	err := rows.Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &c, &u)
+	err := rows.Scan(&v.ID, &v.LibraryID, &v.Title, &v.Author, &v.CoverURL, &c, &u)
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 	return v, err

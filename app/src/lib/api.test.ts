@@ -15,6 +15,9 @@ describe('API transport', () => {
       'http://aldus-dev.local:8080',
     );
     expect(resolveAPIBaseURL(undefined, 'web')).toBe('');
+    expect(resolveAPIBaseURL('http://192.168.86.28:8080', 'web', 'http://localhost:8080')).toBe(
+      'http://localhost:8080',
+    );
     expect(resolveAPIBaseURL(undefined, 'ios')).toBe('http://localhost:8080');
   });
   it('uses credentialed requests and generated setup fields', async () => {

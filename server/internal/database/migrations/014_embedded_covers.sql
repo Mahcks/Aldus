@@ -1,0 +1,1 @@
+-- Compatibility marker: the uncommitted cover schema was consolidated into migration 013.

@@ -31,6 +31,7 @@ function RecentShelf({
           <WorkCard
             title={work.title}
             author={work.author}
+            coverURL={work.cover_url}
             availability={work}
             progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
             context={work.library_name}
@@ -123,6 +124,7 @@ export default function HomeScreen() {
                     <ContinueCard
                       title={work.title}
                       author={work.author}
+                      coverURL={work.cover_url}
                       context={work.library_name}
                       availability={work}
                       continueMode={work.last_mode || (work.readable ? 'read' : 'listen')}

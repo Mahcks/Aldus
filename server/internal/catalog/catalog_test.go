@@ -206,6 +206,23 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if err != nil || detail.ID != alice.ID || !detail.InProgress || detail.CompletionPercent != 25 || detail.ActiveSeconds != 600 || detail.ReadingSeconds != 600 || detail.ListeningSeconds != 0 || detail.LastMode != "read" {
 		t.Fatalf("work detail = %#v, %v", detail, err)
 	}
+	if err := store.SelectCover(ctx, admin, alice.ID, "open_library", "10521270"); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.WorkDetail(ctx, reader, alice.ID)
+	if err != nil || detail.CoverURL != "https://covers.openlibrary.org/b/id/10521270-L.jpg?default=false" {
+		t.Fatalf("selected cover = %q, %v", detail.CoverURL, err)
+	}
+	if err := store.SelectCover(ctx, reader, alice.ID, "open_library", "1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reader selected cover: %v", err)
+	}
+	if err := store.RestoreCover(ctx, admin, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.WorkDetail(ctx, reader, alice.ID)
+	if err != nil || detail.CoverURL != "" {
+		t.Fatalf("restored cover = %q, %v", detail.CoverURL, err)
+	}
 	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Sort: "title"})
 	if err != nil || len(values) != 2 {
 		t.Fatalf("authorized global browse = %#v, %v", values, err)

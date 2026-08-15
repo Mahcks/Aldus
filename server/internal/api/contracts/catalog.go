@@ -20,6 +20,7 @@ type Work struct {
 	LibraryID string    `json:"library_id"`
 	Title     string    `json:"title"`
 	Author    string    `json:"author,omitempty"`
+	CoverURL  string    `json:"cover_url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -40,6 +41,7 @@ type WorkSummary struct {
 	LibraryRole       string    `json:"library_role,omitempty"`
 	Title             string    `json:"title"`
 	Author            string    `json:"author,omitempty"`
+	CoverURL          string    `json:"cover_url,omitempty"`
 	Readable          bool      `json:"readable"`
 	Listenable        bool      `json:"listenable"`
 	Synchronized      bool      `json:"synchronized"`
@@ -82,6 +84,20 @@ type CreateWorkRequest struct {
 type UpdateWorkRequest struct {
 	Title  string `json:"title"`
 	Author string `json:"author"`
+}
+type CoverCandidate struct {
+	Source           string `json:"source" tstype:"'open_library' | 'embedded'"`
+	SourceID         string `json:"source_id"`
+	ImageURL         string `json:"image_url"`
+	Title            string `json:"title"`
+	Author           string `json:"author,omitempty"`
+	Publisher        string `json:"publisher,omitempty"`
+	ISBN             string `json:"isbn,omitempty"`
+	FirstPublishYear int    `json:"first_publish_year,omitempty"`
+}
+type SelectCoverRequest struct {
+	Source   string `json:"source"`
+	SourceID string `json:"source_id"`
 }
 type CreateRepresentationRequest struct {
 	Kind  string `json:"kind"`
