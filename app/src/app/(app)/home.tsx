@@ -1,41 +1,45 @@
 import type { Library, WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { ContinueCard } from '../../features/bookshelf';
-import { WorkGrid } from '../../features/browse';
-import { AppIcon } from '../../features/icons';
-import { Pressable, ScrollView, Text, View } from '../../features/tw';
-import { Button, colors, EmptyState, Loading, Notice, Page, Section } from '../../features/ui';
+import { ContinueCard, WorkCard } from '../../features/bookshelf';
+import { listItemEnter } from '../../features/motion';
+import { ScrollView, Text, View } from '../../features/tw';
+import { Button, EmptyState, IconRow, Loading, Notice, Page, Section } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
 
-/**
- * Duplicates the list-row markup in `libraries.tsx`. A future pass could
- * extract a shared `features/libraries.tsx` list-row component; not required
- * for this redesign.
- */
-function LibraryRow({ library, onPress }: { library: Library; onPress: () => void }) {
+/** Dense horizontal shelf of recently added Works, distinct from the browse grid's flex-wrap layout. */
+function RecentShelf({
+  works,
+  onOpen,
+}: {
+  works: WorkSummary[];
+  onOpen: (work: WorkSummary) => void;
+}) {
+  const narrow = useWindowDimensions().width < 600;
+
   return (
-    <Pressable
-      accessibilityRole="link"
-      onPress={onPress}
-      className="flex-row items-center justify-between gap-4 rounded-card border border-line bg-paper px-4 py-3.5"
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="flex-row gap-4 pb-1"
     >
-      <View className="min-w-0 flex-1 flex-row items-center gap-3">
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
-          <AppIcon name="libraries" size={18} color={colors.accent} />
-        </View>
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text numberOfLines={1} className="text-base font-bold text-ink">
-            {library.name}
-          </Text>
-          <Text numberOfLines={1} className="text-sm text-muted">
-            {library.role || 'Administrator access'}
-          </Text>
-        </View>
-      </View>
-      <AppIcon name="chevron" size={20} color={colors.subtle} />
-    </Pressable>
+      {works.map((work, index) => (
+        <Animated.View key={work.id} entering={listItemEnter(index)}>
+          <WorkCard
+            title={work.title}
+            author={work.author}
+            availability={work}
+            progress={work.in_progress ? 'Continue where you left off' : undefined}
+            context={work.library_name}
+            narrow={narrow}
+            onPress={() => onOpen(work)}
+          />
+        </Animated.View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -101,70 +105,83 @@ export default function HomeScreen() {
   return (
     <Page title="Home" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
-      <View className="items-center gap-2 py-2">
-        <Text className="font-editorial text-3xl font-bold text-center text-ink">
+      <View>
+        <Text className="font-editorial text-2xl font-bold leading-7 text-ink">
           Welcome back{auth.user?.display_name ? `, ${auth.user.display_name}` : ''}.
         </Text>
-        <Text className="text-sm font-semibold text-center text-accent">Your reading room</Text>
-      </View>
-      {hasContinuing ? (
-        <Section title="Continue">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerClassName="flex-row gap-4 pb-1"
+        {hasContinuing ? (
+          <View className="mt-5">
+            <Section title="Continue">
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerClassName="flex-row gap-4 pb-1"
+              >
+                {continuing.map((work, index) => (
+                  <Animated.View key={work.id} entering={listItemEnter(index)}>
+                    <ContinueCard
+                      title={work.title}
+                      author={work.author}
+                      context={work.library_name}
+                      availability={work}
+                      continueMode={work.readable ? 'read' : 'listen'}
+                      onOpen={() => openWork(work)}
+                      onContinue={() => continueWork(work)}
+                      onRead={() => consumeWork(work, 'read')}
+                      onListen={() => consumeWork(work, 'listen')}
+                    />
+                  </Animated.View>
+                ))}
+              </ScrollView>
+            </Section>
+          </View>
+        ) : null}
+        <View className={hasContinuing ? 'mt-9' : 'mt-5'}>
+          <Section
+            title={hasContinuing ? 'Recently added' : 'Start reading'}
+            action={<Button label="View all" kind="quiet" onPress={() => router.push('/search')} />}
           >
-            {continuing.map((work) => (
-              <ContinueCard
-                key={work.id}
-                title={work.title}
-                author={work.author}
-                context={work.library_name}
-                availability={work}
-                continueMode={work.readable ? 'read' : 'listen'}
-                onOpen={() => openWork(work)}
-                onContinue={() => continueWork(work)}
-                onRead={() => consumeWork(work, 'read')}
-                onListen={() => consumeWork(work, 'listen')}
-              />
-            ))}
-          </ScrollView>
-        </Section>
-      ) : null}
-      <Section
-        title={hasContinuing ? 'Recently added' : 'Start reading'}
-        action={<Button label="View all" kind="quiet" onPress={() => router.push('/search')} />}
-      >
-        {recent.length ? (
-          <WorkGrid works={recent} showLibrary onOpen={openWork} />
-        ) : hasAnyWorks ? (
-          <EmptyState title="Nothing new to show">
-            Check back once new works are added to your libraries.
-          </EmptyState>
-        ) : (
-          <EmptyState
-            title="Your shelves are waiting"
-            action={
-              <Button
-                label="Browse libraries"
-                kind="primary"
-                icon="libraries"
-                onPress={goToLibraries}
-              />
-            }
-          >
-            Open a Library and add your first Work to begin reading or listening, or create a new
-            Library to get started.
-          </EmptyState>
-        )}
-      </Section>
-      <Section title="Libraries">
-        <View className="max-w-[720px] gap-3">
-          {libraries.map((library) => (
-            <LibraryRow key={library.id} library={library} onPress={() => openLibrary(library)} />
-          ))}
+            {recent.length ? (
+              <RecentShelf works={recent} onOpen={openWork} />
+            ) : hasAnyWorks ? (
+              <EmptyState title="Nothing new to show">
+                Check back once new works are added to your libraries.
+              </EmptyState>
+            ) : (
+              <EmptyState
+                title="Your shelves are waiting"
+                action={
+                  <Button
+                    label="Browse libraries"
+                    kind="primary"
+                    icon="libraries"
+                    onPress={goToLibraries}
+                  />
+                }
+              >
+                Open a Library and add your first Work to begin reading or listening, or create a
+                new Library to get started.
+              </EmptyState>
+            )}
+          </Section>
         </View>
-      </Section>
+        <View className="mt-9">
+          <Section title="Libraries">
+            <View className="max-w-[720px] gap-3">
+              {libraries.map((library, index) => (
+                <Animated.View key={library.id} entering={listItemEnter(index)}>
+                  <IconRow
+                    icon="libraries"
+                    title={library.name}
+                    subtitle={library.role || 'Administrator access'}
+                    onPress={() => openLibrary(library)}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          </Section>
+        </View>
+      </View>
     </Page>
   );
 }

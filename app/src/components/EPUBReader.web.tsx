@@ -1,7 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
 import { IconButton } from '../features/ui';
 import { colors } from '../features/theme';
+import { Text, View } from '../features/tw';
 import { activeContentIndex, classifyPageSync, relocatedCursor } from './reader-location';
 
 export type RangeBoundary = { dom_path: string; node_offset: number };
@@ -49,6 +50,8 @@ type Props = {
   product?: boolean;
   segments?: SyncSegment[];
   preferences?: ReaderPreferences;
+  compactChrome?: boolean;
+  statusLabel?: string;
   onLocation?: (location: ReaderLocation) => void;
   onReady?: () => void;
   onError?: (error: Error) => void;
@@ -67,13 +70,16 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     product,
     segments = [],
     preferences = DEFAULT_READER_PREFERENCES,
+    compactChrome,
+    statusLabel,
     onLocation,
     onReady,
     onError,
   },
   ref,
 ) {
-  const host = useRef<View>(null);
+  const [ready, setReady] = useState(false);
+  const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
   const selection = useRef<{ index: number; range: Range } | undefined>(undefined);
   const cursor = useRef<ReaderLocation>(undefined);
@@ -207,6 +213,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   useEffect(() => {
     let disposed = false;
     let view: any;
+    setReady(false);
     void import('foliate-js/view.js')
       .then(async () => {
         if (disposed || !host.current) return;
@@ -298,6 +305,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         }
         view.renderer.setAttribute('flow', preferencesRef.current.layout);
         reader.current = view;
+        setReady(true);
         onReadyRef.current?.();
       })
       .catch((error: unknown) => {
@@ -315,45 +323,63 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   }, [source, product]);
 
   return (
-    <View style={styles.reader}>
-      <View ref={host} style={styles.book} />
-      <View style={styles.navigation}>
-        <IconButton
-          icon="previousPage"
-          label="Previous page"
-          onPress={() => {
-            direction.current = 'backward';
-            reader.current?.goLeft();
-          }}
-        />
-        <Text style={styles.hint}>
-          {product
-            ? 'Your place is saved as you turn pages.'
-            : 'Highlight a passage in Alice, then click Capture selection.'}
-        </Text>
-        <IconButton
-          icon="nextPage"
-          label="Next page"
-          onPress={() => {
-            direction.current = 'forward';
-            const current = page.current;
-            if (current) {
-              const match = trailingSegment(current.range, current.href, segments);
-              if (match) {
-                cursor.current = syncLocation(
-                  current.href,
-                  current.cfi,
-                  match,
-                  current.state,
-                  'forward',
-                );
-                onLocationRef.current?.(cursor.current);
-              }
+    <View className="relative min-h-[560px] flex-1">
+      <RNView ref={host} style={styles.book} />
+      {!ready ? (
+        <View className="absolute inset-0 items-center justify-center gap-3 bg-paper">
+          <ActivityIndicator color={colors.accent} />
+          <Text className="text-sm text-muted">Opening EPUB…</Text>
+        </View>
+      ) : null}
+      {compactChrome || preferences.layout !== 'scrolled' ? (
+        <View className="min-h-12 shrink-0 flex-row items-center justify-between border-t border-line bg-paper px-2">
+          <IconButton
+            icon="previousPage"
+            label="Previous page"
+            kind="quiet"
+            onPress={() => {
+              direction.current = 'backward';
+              reader.current?.goLeft();
+            }}
+          />
+          <Text
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={
+              statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
             }
-            reader.current?.goRight();
-          }}
-        />
-      </View>
+            numberOfLines={1}
+            className="flex-shrink text-center text-xs text-muted"
+          >
+            {statusLabel ??
+              (product
+                ? 'Your place is saved as you turn pages.'
+                : 'Highlight a passage in Alice, then click Capture selection.')}
+          </Text>
+          <IconButton
+            icon="nextPage"
+            label="Next page"
+            kind="quiet"
+            onPress={() => {
+              direction.current = 'forward';
+              const current = page.current;
+              if (current) {
+                const match = trailingSegment(current.range, current.href, segments);
+                if (match) {
+                  cursor.current = syncLocation(
+                    current.href,
+                    current.cfi,
+                    match,
+                    current.state,
+                    'forward',
+                  );
+                  onLocationRef.current?.(cursor.current);
+                }
+              }
+              reader.current?.goRight();
+            }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -617,16 +643,5 @@ function domPath(node: Node): string {
 }
 
 const styles = StyleSheet.create({
-  reader: { flex: 1, minHeight: 560 },
-  book: { flex: 1, minHeight: 500, overflow: 'hidden', backgroundColor: '#fffdf8' },
-  navigation: {
-    minHeight: 52,
-    borderTopWidth: 1,
-    borderTopColor: '#c9c0b3',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  hint: { color: '#746a5f', fontSize: 12 },
+  book: { flex: 1, minHeight: 500, overflow: 'hidden', backgroundColor: colors.paper },
 });

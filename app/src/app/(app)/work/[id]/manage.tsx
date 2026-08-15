@@ -1,13 +1,14 @@
 import type { AlignmentJob, Representation, Work } from '../../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
 import { choices, type MediaChoice } from '../../../../features/consumption';
 import { useAuth } from '../../../../features/auth/AuthProvider';
 import { TechnicalDetails } from '../../../../features/sources/TechnicalDetails';
 import { Pressable, Text, View } from '../../../../features/tw';
 import {
   Button,
+  ConfirmDialog,
+  EmptyState,
   Empty,
   Field,
   Loading,
@@ -15,12 +16,27 @@ import {
   Page,
   Row,
   Section,
+  Select,
+  StatusBadge,
   shared,
 } from '../../../../features/ui';
 import { api, errorMessage } from '../../../../lib/api';
 import { goBackOr } from '../../../../lib/navigation';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
+const representationKinds = [
+  { value: 'epub', label: 'EPUB' },
+  { value: 'audio', label: 'Audio' },
+  { value: 'audiobook', label: 'Audiobook' },
+];
+
+function alignmentJobTone(state: string): 'neutral' | 'info' | 'success' | 'warning' | 'danger' {
+  if (state === 'ready') return 'success';
+  if (state === 'failed') return 'danger';
+  if (state === 'stale') return 'warning';
+  if (state === 'processing') return 'info';
+  return 'neutral';
+}
 
 export default function ManageWorkScreen() {
   const {
@@ -35,6 +51,8 @@ export default function ManageWorkScreen() {
   const [jobs, setJobs] = useState<AlignmentJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingWork, setDeletingWork] = useState(false);
   const [kind, setKind] = useState('epub');
   const [label, setLabel] = useState('');
   const [title, setTitle] = useState('');
@@ -101,7 +119,7 @@ export default function ManageWorkScreen() {
     };
   }, [jobs]);
 
-  if (loading) return <Loading />;
+  if (loading) return <Loading label="Loading work…" />;
   if (!work)
     return (
       <Page title="Manage work">
@@ -163,22 +181,15 @@ export default function ManageWorkScreen() {
     }
   }
 
-  function confirmDeleteWork() {
-    Alert.alert('Delete work?', 'The work must have no representations.', [
-      { text: 'Cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.deleteWork(id);
-            goBackOr(`/library/${libraryId}`);
-          } catch (value) {
-            setError(errorMessage(value));
-          }
-        },
-      },
-    ]);
+  async function deleteWork() {
+    setDeletingWork(true);
+    try {
+      await api.deleteWork(id);
+      goBackOr(`/library/${libraryId}`);
+    } catch (value) {
+      setError(errorMessage(value));
+      setDeletingWork(false);
+    }
   }
 
   if (!canEdit)
@@ -199,7 +210,9 @@ export default function ManageWorkScreen() {
       {error ? <Notice danger>{error}</Notice> : null}
       <Section title="Manage representations">
         {representations.length === 0 ? (
-          <Empty>No representations yet.</Empty>
+          <EmptyState icon="folder" title="No representations yet">
+            Add an EPUB or audio representation below to start building this Work.
+          </EmptyState>
         ) : (
           representations.map((item) => {
             const revisions = media.filter((revision) => revision.representation_id === item.id);
@@ -224,12 +237,7 @@ export default function ManageWorkScreen() {
       </Section>
       <Section title="Add representation">
         <View className={shared.form}>
-          <Field
-            label="Kind (epub, audio, audiobook)"
-            value={kind}
-            onChangeText={setKind}
-            autoCapitalize="none"
-          />
+          <Select label="Kind" options={representationKinds} value={kind} onChange={setKind} />
           <Field
             label="Label"
             value={label}
@@ -269,11 +277,13 @@ export default function ManageWorkScreen() {
           />
         </Row>
         {jobs.length === 0 ? (
-          <Empty>No alignment jobs for this Work.</Empty>
+          <EmptyState icon="synced" title="No alignment jobs">
+            Start alignment above once an EPUB and audiobook revision are selected.
+          </EmptyState>
         ) : (
           jobs.map((job) => (
             <View key={job.id} className={shared.listItem}>
-              <Text className={shared.itemTitle}>Alignment {job.state}</Text>
+              <StatusBadge tone={alignmentJobTone(job.state)} label={job.state} />
               <Text className={shared.itemMeta}>
                 {new Date(job.created_at).toLocaleString()}
                 {job.error ? ` · ${job.error}` : ''}
@@ -299,12 +309,27 @@ export default function ManageWorkScreen() {
         <View className={shared.form}>
           <Field label="Title" value={title} onChangeText={setTitle} />
           <Field label="Author" value={author} onChangeText={setAuthor} />
-          <Row>
-            <Button label="Save" onPress={() => void saveWorkSettings()} />
-            <Button label="Delete work" icon="delete" kind="danger" onPress={confirmDeleteWork} />
-          </Row>
+          <Button label="Save" kind="primary" onPress={() => void saveWorkSettings()} />
+          <View className="mt-4 gap-2 border-t border-line pt-4">
+            <Text className="text-sm font-extrabold text-ink">Delete work</Text>
+            <Text className={shared.itemMeta}>
+              The work must have no representations before it can be deleted.
+            </Text>
+            <Button label="Delete work" kind="danger" onPress={() => setConfirmingDelete(true)} />
+          </View>
         </View>
       </Section>
+
+      <ConfirmDialog
+        visible={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={() => void deleteWork()}
+        title="Delete work?"
+        description="This cannot be undone. The work must have no representations before it can be deleted."
+        confirmLabel="Delete"
+        danger
+        busy={deletingWork}
+      />
     </Page>
   );
 }
@@ -338,23 +363,32 @@ function RevisionChoiceList({
       {items.length === 0 ? (
         <Empty>None available.</Empty>
       ) : (
-        items.map((item) => (
-          <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ checked: selected === item.id }}
-            key={item.id}
-            className={shared.listItem}
-            onPress={() => onSelect(item.id)}
-          >
-            <Text className={shared.itemTitle}>
-              {selected === item.id ? '● ' : '○ '}
-              {item.original_filename || item.representation.label}
-            </Text>
-            <Text className={shared.itemMeta}>
-              {formatBytes(item.size_bytes)} · {item.representation.label}
-            </Text>
-          </Pressable>
-        ))
+        items.map((item) => {
+          const checked = selected === item.id;
+          return (
+            <Pressable
+              accessibilityRole="radio"
+              accessibilityState={{ checked }}
+              key={item.id}
+              className="min-h-11 flex-row items-start gap-3 border-b border-line py-3.5"
+              onPress={() => onSelect(item.id)}
+            >
+              <View
+                className={`mt-0.5 h-5 w-5 items-center justify-center rounded-full border bg-paper ${checked ? 'border-accent' : 'border-line'}`}
+              >
+                {checked ? <View className="h-2.5 w-2.5 rounded-full bg-accent" /> : null}
+              </View>
+              <View className="min-w-0 flex-1 gap-1">
+                <Text className={shared.itemTitle}>
+                  {item.original_filename || item.representation.label}
+                </Text>
+                <Text className={shared.itemMeta}>
+                  {formatBytes(item.size_bytes)} · {item.representation.label}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })
       )}
     </View>
   );

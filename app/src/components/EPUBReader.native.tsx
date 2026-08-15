@@ -14,7 +14,8 @@ import {
   mapReadiumLocator,
   mapReadiumSelection,
   parseReadiumLocator,
-  readiumSearchQuery,
+  readiumRestoreDisposition,
+  readiumSearchQueries,
   segmentForEPUBLocator,
 } from '../features/reader-spike/readium-locator';
 import { colors } from '../features/theme';
@@ -113,18 +114,37 @@ export const EPUBReader = forwardRef<
       restoreSelection: async () => '',
       restoreLocation: async (location) => {
         const view = reader.current;
-        if (!view) return false;
+        if (!view) {
+          if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
+          return false;
+        }
         const saved = savedLocator(location);
         if (saved) {
+          if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
           view.goTo(saved);
           return true;
         }
-        if (!location || typeof location !== 'object') return false;
+        if (!location || typeof location !== 'object') {
+          if (__DEV__) console.debug('Aldus native EPUB restore skipped: invalid target', location);
+          return false;
+        }
         const target = location as EPUBLocator;
         const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
-        if (!segment) return false;
-        const query = readiumSearchQuery(segment, target.offset);
-        if (!query) return false;
+        if (!segment) {
+          if (__DEV__)
+            console.debug('Aldus native EPUB restore skipped: alignment segment not found', target);
+          return false;
+        }
+        const queries = readiumSearchQueries(
+          segment,
+          target.offset,
+          segmentsRef.current as AlignmentSegment[],
+        );
+        if (!queries[0]) {
+          if (__DEV__)
+            console.debug('Aldus native EPUB restore skipped: empty search query', target);
+          return false;
+        }
         if (
           typeof view.search !== 'function' ||
           typeof view.loadMoreSearchResults !== 'function' ||
@@ -134,31 +154,54 @@ export const EPUBReader = forwardRef<
           onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
         }
+        pendingRestore.current = target;
         try {
-          let page = await view.search(query, {
-            caseSensitive: false,
-            diacriticSensitive: false,
-            wholeWord: false,
-          });
-          if (!page.isSupported) return false;
-          const matches: SearchResult[] = [];
-          while (true) {
-            matches.push(
-              ...page.results.filter(
-                (result) =>
-                  normalizeHref(result.locator.href) === normalizeHref(segment.epub_href) &&
-                  normalize(result.highlight ?? result.locator.text?.highlight ?? '') ===
-                    normalize(query),
-              ),
-            );
-            if (!page.hasMore || matches.length > 1) break;
-            page = await view.loadMoreSearchResults();
+          let matches: SearchResult[] = [];
+          let matchedQuery = '';
+          for (const query of queries) {
+            let page = await view.search(query, {
+              caseSensitive: false,
+              diacriticSensitive: false,
+              wholeWord: !query.includes(' '),
+            });
+            if (!page.isSupported) {
+              if (__DEV__)
+                console.debug('Aldus native EPUB restore skipped: search is unsupported');
+              pendingRestore.current = undefined;
+              return false;
+            }
+            matches = [];
+            while (true) {
+              matches.push(...page.results);
+              if (!page.hasMore || matches.length > 1) break;
+              page = await view.loadMoreSearchResults();
+            }
+            if (matches.length === 1) {
+              matchedQuery = query;
+              break;
+            }
           }
-          if (matches.length !== 1) return false;
-          pendingRestore.current = target;
+          if (matches.length !== 1) {
+            if (__DEV__)
+              console.debug('Aldus native EPUB restore search was not unique', {
+                href: target.href,
+                queries,
+                matches: matches.length,
+              });
+            pendingRestore.current = undefined;
+            return false;
+          }
+          if (__DEV__)
+            console.debug('Aldus native EPUB restoring canonical target', {
+              segment_id: segment.id,
+              offset: target.offset,
+              href: target.href,
+              query: matchedQuery,
+            });
           view.goTo(matches[0].locator);
           return true;
         } catch (cause) {
+          pendingRestore.current = undefined;
           if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
           onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
@@ -178,15 +221,18 @@ export const EPUBReader = forwardRef<
     const request = ++locationRequest.current;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
     const restored = pendingRestore.current;
-    if (restored && normalizeHref(restored.href) === normalizeHref(locator.href)) {
-      pendingRestore.current = undefined;
-      onLocation?.({
-        href: locator.href,
-        cfi: JSON.stringify(locator),
-        sync: restored,
-        syncState: 'full',
-        reason: 'restore',
-      });
+    const restoreDisposition = readiumRestoreDisposition(restored, locator.href);
+    if (restoreDisposition !== 'publish') {
+      if (restoreDisposition === 'restore' && restored) {
+        pendingRestore.current = undefined;
+        onLocation?.({
+          href: locator.href,
+          cfi: JSON.stringify(locator),
+          sync: restored,
+          syncState: 'full',
+          reason: 'restore',
+        });
+      }
       return;
     }
     let visible: Locator | undefined;
@@ -316,12 +362,3 @@ export const EPUBReader = forwardRef<
     </View>
   );
 });
-
-const normalize = (value: string) =>
-  value
-    .normalize('NFKC')
-    .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-const normalizeHref = (value: string) =>
-  decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];

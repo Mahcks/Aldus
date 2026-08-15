@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import type { AlignmentJob, Media, Representation } from '../generated/api';
 import {
+  audioPassage,
   applyPlaybackRate,
   choices,
   clampAudioPosition,
   defaultPair,
+  formatAudioTime,
   listenToRead,
   playableAudioDuration,
   playbackRate,
@@ -14,6 +16,71 @@ import {
   scrubberPosition,
   synchronizationLabel,
 } from './consumption';
+
+const passageSegments = [
+  {
+    id: 'one',
+    ordinal: 1,
+    text: 'First passage.',
+    epub_href: 'chapter.xhtml',
+    epub_locator: {},
+    koreader_locator: '',
+    audio_resource: 'book.mp3',
+    audio_start_ms: 100,
+    audio_end_ms: 200,
+    highlightable: true,
+    alignment_status: 'aligned',
+  },
+  {
+    id: 'gap',
+    ordinal: 2,
+    text: 'Not readable.',
+    epub_href: 'chapter.xhtml',
+    epub_locator: {},
+    koreader_locator: '',
+    audio_resource: 'book.mp3',
+    audio_start_ms: 200,
+    audio_end_ms: 300,
+    highlightable: false,
+    alignment_status: 'unresolved',
+  },
+  {
+    id: 'two',
+    ordinal: 3,
+    text: 'Second passage.',
+    epub_href: 'chapter.xhtml',
+    epub_locator: {},
+    koreader_locator: '',
+    audio_resource: 'book.mp3',
+    audio_start_ms: 300,
+    audio_end_ms: 400,
+    highlightable: true,
+    alignment_status: 'aligned',
+  },
+];
+
+it('uses exact segment boundaries for read-along and skips unresolved text', () => {
+  expect(audioPassage(passageSegments, 0)).toMatchObject({ active: false, current: { id: 'one' } });
+  expect(audioPassage(passageSegments, 100)).toMatchObject({
+    active: true,
+    current: { id: 'one' },
+  });
+  expect(audioPassage(passageSegments, 199)?.next?.id).toBe('two');
+  expect(audioPassage(passageSegments, 200)).toMatchObject({
+    active: false,
+    current: { id: 'two' },
+  });
+  expect(audioPassage(passageSegments, 300)?.current.id).toBe('two');
+  expect(audioPassage(passageSegments, 400)).toMatchObject({
+    active: false,
+    current: { id: 'two' },
+  });
+});
+
+it('formats audiobook durations with hours when needed', () => {
+  expect(formatAudioTime(3522)).toBe('58:42');
+  expect(formatAudioTime(12932)).toBe('3:35:32');
+});
 
 const representations = [
   { id: 'r1', work_id: 'w', kind: 'epub', label: 'Book', created_at: '', updated_at: '' },

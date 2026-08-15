@@ -1,10 +1,12 @@
 import type { WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import Animated from 'react-native-reanimated';
 import { WorkRow } from '../../features/bookshelf';
 import { BrowseControls } from '../../features/browse';
+import { listItemEnter } from '../../features/motion';
 import { View } from '../../features/tw';
-import { Button, EmptyState, Loading, Notice, Page } from '../../features/ui';
+import { Button, EmptyState, Loading, Notice, Page, SectionHeader } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
 
 export default function SearchScreen() {
@@ -52,20 +54,24 @@ export default function SearchScreen() {
         <Loading label="Searching your libraries…" />
       ) : works.length ? (
         <View className="max-w-[900px] items-stretch gap-1">
-          {works.map((work) => (
-            <WorkRow
-              key={work.id}
-              title={work.title}
-              author={work.author}
-              context={work.library_name}
-              availability={work}
-              progress={work.in_progress ? 'Continue where you left off' : undefined}
-              onPress={() =>
-                router.push(
-                  `/work/${work.id}?libraryId=${work.library_id}&role=${work.library_role ?? ''}`,
-                )
-              }
-            />
+          <SectionHeader
+            title={`${works.length}${hasMore ? '+' : ''} result${works.length === 1 ? '' : 's'}`}
+          />
+          {works.map((work, index) => (
+            <Animated.View key={work.id} entering={listItemEnter(index)}>
+              <WorkRow
+                title={work.title}
+                author={work.author}
+                context={work.library_name}
+                availability={work}
+                progress={work.in_progress ? 'Continue where you left off' : undefined}
+                onPress={() =>
+                  router.push(
+                    `/work/${work.id}?libraryId=${work.library_id}&role=${work.library_role ?? ''}`,
+                  )
+                }
+              />
+            </Animated.View>
           ))}
           {hasMore ? (
             <Button

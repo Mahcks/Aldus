@@ -7,7 +7,6 @@ import type {
 } from '../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
 import {
   canManageSources,
@@ -20,7 +19,15 @@ import { ImportReviewSection } from '../../features/sources/ImportReviewSection'
 import { ReviewDialog } from '../../features/sources/ReviewDialog';
 import { SourceCard } from '../../features/sources/SourceCard';
 import type { SourceDetails } from '../../features/sources/types';
-import { Button, Empty, Loading, Notice, Page, Section } from '../../features/ui';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Loading,
+  Notice,
+  Page,
+  Section,
+} from '../../features/ui';
 import { Pressable, Text, View } from '../../features/tw';
 import { APIError, api, errorMessage } from '../../lib/api';
 
@@ -42,6 +49,8 @@ export default function SourcesAdministration() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState('');
+  const [removeSourceTarget, setRemoveSourceTarget] = useState<LibrarySource | null>(null);
+  const [ignoreProposalTarget, setIgnoreProposalTarget] = useState<ImportProposal | null>(null);
 
   const selectedLibrary = libraries.find((library) => library.id === selectedLibraryID);
   const canAdminister = canManageSources(Boolean(auth.user?.admin), selectedLibrary);
@@ -175,25 +184,11 @@ export default function SourcesAdministration() {
     }
   }
 
-  function confirmRemoveSource(source: LibrarySource) {
-    Alert.alert(
-      `Remove ${source.name}?`,
-      'Imported Works stay in the Library. Files available only through this Source will become unavailable.',
-      [
-        { text: 'Cancel' },
-        {
-          text: 'Remove source',
-          style: 'destructive',
-          onPress: () => void removeSource(source),
-        },
-      ],
-    );
-  }
-
   async function removeSource(source: LibrarySource) {
     setBusy(true);
     try {
       await api.deleteSource(selectedLibraryID, source.id);
+      setRemoveSourceTarget(null);
       await loadAdministration();
     } catch (value) {
       setError(errorMessage(value));
@@ -308,22 +303,12 @@ export default function SourcesAdministration() {
     }
   }
 
-  function confirmIgnoreProposal(proposal: ImportProposal) {
-    Alert.alert('Ignore this proposal?', 'It will leave the review inbox.', [
-      { text: 'Cancel' },
-      {
-        text: 'Ignore',
-        style: 'destructive',
-        onPress: () => void ignoreProposal(proposal),
-      },
-    ]);
-  }
-
   async function ignoreProposal(proposal: ImportProposal) {
     setBusy(true);
     try {
       await api.ignoreImportProposal(selectedLibraryID, proposal.id, proposal.revision);
       if (review?.id === proposal.id) setReview(undefined);
+      setIgnoreProposalTarget(null);
       await loadAdministration();
     } catch (value) {
       if (value instanceof APIError && value.status === 409) {
@@ -386,7 +371,9 @@ export default function SourcesAdministration() {
             }
           >
             {sources.length === 0 ? (
-              <Empty>No sources configured for this Library.</Empty>
+              <EmptyState icon="folder" title="No sources configured">
+                Add a Source to let Aldus discover books and audiobooks in a folder you own.
+              </EmptyState>
             ) : (
               <View className="flex-row flex-wrap items-start gap-4">
                 {sources.map((source) => (
@@ -398,7 +385,7 @@ export default function SourcesAdministration() {
                     key={source.id}
                     source={source}
                     onEdit={() => openEditSource(source)}
-                    onRemove={() => confirmRemoveSource(source)}
+                    onRemove={() => setRemoveSourceTarget(source)}
                     onScan={() => void scanSource(source)}
                     onToggle={() => void toggleSource(source)}
                     onToggleEntries={() =>
@@ -413,7 +400,7 @@ export default function SourcesAdministration() {
           <ImportReviewSection
             proposals={proposals}
             works={works}
-            onIgnore={confirmIgnoreProposal}
+            onIgnore={setIgnoreProposalTarget}
             onReview={(proposal) => void openReview(proposal)}
           />
         </>
@@ -441,8 +428,30 @@ export default function SourcesAdministration() {
         onChooseWork={(workID) => void chooseWork(workID)}
         onClose={() => setReview(undefined)}
         onDraftChange={setDraft}
-        onIgnore={() => review && confirmIgnoreProposal(review)}
+        onIgnore={() => review && setIgnoreProposalTarget(review)}
         onItemChange={updateReviewItem}
+      />
+
+      <ConfirmDialog
+        visible={Boolean(removeSourceTarget)}
+        onClose={() => setRemoveSourceTarget(null)}
+        onConfirm={() => removeSourceTarget && void removeSource(removeSourceTarget)}
+        title={`Remove ${removeSourceTarget?.name}?`}
+        description="Imported Works stay in the Library. Files available only through this Source will become unavailable."
+        confirmLabel="Remove source"
+        danger
+        busy={busy}
+      />
+
+      <ConfirmDialog
+        visible={Boolean(ignoreProposalTarget)}
+        onClose={() => setIgnoreProposalTarget(null)}
+        onConfirm={() => ignoreProposalTarget && void ignoreProposal(ignoreProposalTarget)}
+        title="Ignore this proposal?"
+        description="It will leave the review inbox."
+        confirmLabel="Ignore"
+        danger
+        busy={busy}
       />
     </Page>
   );

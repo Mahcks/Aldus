@@ -1,5 +1,6 @@
 import type {
   AlignmentJob,
+  AlignmentSegment,
   AudioLocator,
   CanonicalPosition,
   EPUBLocator,
@@ -11,6 +12,35 @@ import type {
 export type MediaChoice = Media & { representation: Representation };
 
 export const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+
+export function audioPassage(segments: AlignmentSegment[] | undefined, timestampMS: number) {
+  if (!segments || !Number.isFinite(timestampMS)) return undefined;
+  const readable = segments.filter((segment) => segment.highlightable && segment.text.trim());
+  const activeIndex = readable.findIndex(
+    (segment) => segment.audio_start_ms <= timestampMS && timestampMS < segment.audio_end_ms,
+  );
+  const nextIndex = readable.findIndex((segment) => segment.audio_start_ms > timestampMS);
+  const index = activeIndex >= 0 ? activeIndex : nextIndex >= 0 ? nextIndex : readable.length - 1;
+  if (index < 0) return undefined;
+  return {
+    active: activeIndex >= 0,
+    previous: readable[index - 1],
+    current: readable[index],
+    next: readable[index + 1],
+    following: readable[index + 2],
+  };
+}
+
+export function formatAudioTime(seconds: number) {
+  if (!Number.isFinite(seconds)) return '0:00';
+  const whole = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const remainder = String(whole % 60).padStart(2, '0');
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
+    : `${minutes}:${remainder}`;
+}
 
 export function playbackRate(rate?: number) {
   return PLAYBACK_RATES.find((candidate) => candidate === rate) ?? 1;

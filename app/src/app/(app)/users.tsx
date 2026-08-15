@@ -5,6 +5,7 @@ import { Text, View } from '../../features/tw';
 import {
   Button,
   Checkbox,
+  ConfirmDialog,
   Dialog,
   EmptyState,
   Field,
@@ -27,6 +28,7 @@ export default function UsersScreen() {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<User>();
   const [createOpen, setCreateOpen] = useState(false);
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -239,7 +241,9 @@ export default function UsersScreen() {
               label={selected.disabled ? 'Enable account' : 'Disable account'}
               kind={selected.disabled ? 'secondary' : 'danger'}
               loading={busy}
-              onPress={() => void toggleSelected()}
+              onPress={() =>
+                selected.disabled ? void toggleSelected() : setConfirmingDisable(true)
+              }
             />
             <Button
               label={technicalOpen ? 'Hide technical details' : 'Technical details'}
@@ -257,6 +261,22 @@ export default function UsersScreen() {
           </View>
         ) : null}
       </Dialog>
+
+      <ConfirmDialog
+        visible={confirmingDisable}
+        onClose={() => setConfirmingDisable(false)}
+        onConfirm={() => {
+          setConfirmingDisable(false);
+          void toggleSelected();
+        }}
+        title="Disable account?"
+        description={`${
+          selected?.display_name || selected?.username
+        } will lose access and their active sessions will be revoked immediately.`}
+        confirmLabel="Disable"
+        danger
+        busy={busy}
+      />
     </Page>
   );
 }

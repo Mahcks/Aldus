@@ -1,11 +1,14 @@
 import type { Library, Membership, User, WorkSummary } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { BrowseControls, WorkGrid } from '../../../features/browse';
 import { useAuth } from '../../../features/auth/AuthProvider';
+import { AppIcon, type AppIconName } from '../../../features/icons';
 import { Pressable, Text, View } from '../../../features/tw';
 import {
   Button,
+  colors,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -26,9 +29,33 @@ type Role = 'owner' | 'editor' | 'reader';
 
 const roles: Role[] = ['owner', 'editor', 'reader'];
 
+/** Quiet row inside the compact mobile "Library management" sheet. */
+function ManagementRow({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: AppIconName;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      className="min-h-11 flex-row items-center gap-3 border-b border-line-subtle py-3"
+    >
+      <AppIcon name={icon} size={18} color={colors.muted} />
+      <Text className="flex-1 text-base font-semibold text-ink">{label}</Text>
+      <AppIcon name="chevron" size={18} color={colors.subtle} />
+    </Pressable>
+  );
+}
+
 export default function LibraryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const auth = useAuth();
+  const compact = useWindowDimensions().width < 600;
   const [library, setLibrary] = useState<Library>();
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [members, setMembers] = useState<Membership[]>([]);
@@ -41,6 +68,7 @@ export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -115,6 +143,7 @@ export default function LibraryScreen() {
     auth.user?.admin || library.role === 'owner' || library.role === 'editor',
   );
   const canManage = Boolean(auth.user?.admin || library.role === 'owner');
+  const hasManagementActions = canManage || canEdit;
   const filtersActive = Boolean(query || availability !== 'all');
   const availableUsers = users.filter(
     (user) => !user.disabled && !members.some((member) => member.user_id === user.id),
@@ -122,6 +151,16 @@ export default function LibraryScreen() {
 
   function closePanel() {
     setPanel(null);
+  }
+
+  function openPanelFromManage(next: Exclude<Panel, null>) {
+    setManageOpen(false);
+    setPanel(next);
+  }
+
+  function openSourcesFromManage() {
+    setManageOpen(false);
+    router.push(`/sources?libraryId=${id}`);
   }
 
   function clearFilters() {
@@ -202,81 +241,133 @@ export default function LibraryScreen() {
         <Button label="Libraries" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />
       }
       actions={
-        <Row>
-          {canManage ? (
-            <Button label="Members" kind="quiet" onPress={() => setPanel('members')} />
-          ) : null}
-          {canEdit ? (
-            <Button
-              label="Sources"
-              kind="quiet"
-              onPress={() => router.push(`/sources?libraryId=${id}`)}
-            />
-          ) : null}
-          {canManage ? (
-            <IconButton
-              icon="settings"
-              label="Library settings"
-              kind="quiet"
-              onPress={() => setPanel('settings')}
-            />
-          ) : null}
-          {canEdit ? (
-            <Button label="Add work" icon="add" kind="primary" onPress={() => setPanel('work')} />
-          ) : null}
-        </Row>
+        compact ? undefined : (
+          <Row>
+            {canManage ? (
+              <Button label="Members" kind="quiet" onPress={() => setPanel('members')} />
+            ) : null}
+            {canEdit ? (
+              <Button
+                label="Sources"
+                kind="quiet"
+                onPress={() => router.push(`/sources?libraryId=${id}`)}
+              />
+            ) : null}
+            {canManage ? (
+              <IconButton
+                icon="settings"
+                label="Library settings"
+                kind="quiet"
+                onPress={() => setPanel('settings')}
+              />
+            ) : null}
+            {canEdit ? (
+              <Button label="Add work" icon="add" kind="primary" onPress={() => setPanel('work')} />
+            ) : null}
+          </Row>
+        )
       }
     >
       {error ? <Notice danger>{error}</Notice> : null}
-      <Text className="-mt-3 text-sm text-muted">
-        {works.length} {works.length === 1 ? 'work' : 'works'} shown · {members.length}{' '}
-        {members.length === 1 ? 'member' : 'members'}
-      </Text>
-      <BrowseControls
-        query={query}
-        sort={sort}
-        availability={availability}
-        onQueryChange={setQuery}
-        onSortChange={setSort}
-        onAvailabilityChange={setAvailability}
-      />
-      {loadingWorks && works.length === 0 ? (
-        <Loading label="Finding books…" />
-      ) : works.length === 0 && filtersActive ? (
-        <EmptyState
-          icon="search"
-          title="No matching works"
-          action={<Button label="Clear search and filters" onPress={clearFilters} />}
-        >
-          Try another title, author, or availability filter.
-        </EmptyState>
-      ) : works.length === 0 ? (
-        <EmptyState
-          icon="read"
-          title="Your library is empty"
-          action={
-            canEdit ? (
-              <Button label="Add your first work" kind="primary" onPress={() => setPanel('work')} />
-            ) : undefined
-          }
-        >
-          Add a book or audiobook to start building this shelf.
-        </EmptyState>
-      ) : (
-        <View className="items-start gap-6">
-          <WorkGrid
-            works={works}
-            onOpen={(work) => router.push(`/work/${work.id}?libraryId=${id}&role=${library.role}`)}
-          />
-          {hasMore ? (
-            <Button
-              label={loadingWorks ? 'Loading…' : 'Load more'}
-              disabled={loadingWorks}
-              onPress={() => void loadWorks(works.length)}
+      <View>
+        <View className="flex-row items-center justify-between gap-3">
+          <Text className="flex-1 text-sm text-muted">
+            {works.length} {works.length === 1 ? 'work' : 'works'} shown · {members.length}{' '}
+            {members.length === 1 ? 'member' : 'members'}
+          </Text>
+          {compact && hasManagementActions ? (
+            <IconButton
+              icon="more"
+              label="Library management"
+              kind="quiet"
+              onPress={() => setManageOpen(true)}
             />
           ) : null}
         </View>
-      )}
+        <View className="mt-4">
+          <BrowseControls
+            query={query}
+            sort={sort}
+            availability={availability}
+            onQueryChange={setQuery}
+            onSortChange={setSort}
+            onAvailabilityChange={setAvailability}
+          />
+        </View>
+        <View className="mt-6">
+          {loadingWorks && works.length === 0 ? (
+            <Loading label="Finding books…" />
+          ) : works.length === 0 && filtersActive ? (
+            <EmptyState
+              icon="search"
+              title="No matching works"
+              action={<Button label="Clear search and filters" onPress={clearFilters} />}
+            >
+              Try another title, author, or availability filter.
+            </EmptyState>
+          ) : works.length === 0 ? (
+            <EmptyState
+              icon="read"
+              title="Your library is empty"
+              action={
+                canEdit ? (
+                  <Button
+                    label="Add your first work"
+                    kind="primary"
+                    onPress={() => setPanel('work')}
+                  />
+                ) : undefined
+              }
+            >
+              Add a book or audiobook to start building this shelf.
+            </EmptyState>
+          ) : (
+            <View className="items-start gap-6">
+              <WorkGrid
+                works={works}
+                onOpen={(work) =>
+                  router.push(`/work/${work.id}?libraryId=${id}&role=${library.role}`)
+                }
+              />
+              {hasMore ? (
+                <Button
+                  label={loadingWorks ? 'Loading…' : 'Load more'}
+                  disabled={loadingWorks}
+                  onPress={() => void loadWorks(works.length)}
+                />
+              ) : null}
+            </View>
+          )}
+        </View>
+      </View>
+      <Dialog visible={manageOpen} title="Library management" onClose={() => setManageOpen(false)}>
+        <View>
+          {canEdit ? (
+            <ManagementRow
+              icon="add"
+              label="Add work"
+              onPress={() => openPanelFromManage('work')}
+            />
+          ) : null}
+          {canManage ? (
+            <ManagementRow
+              icon="users"
+              label="Members"
+              onPress={() => openPanelFromManage('members')}
+            />
+          ) : null}
+          {canEdit ? (
+            <ManagementRow icon="folder" label="Sources" onPress={openSourcesFromManage} />
+          ) : null}
+          {canManage ? (
+            <ManagementRow
+              icon="settings"
+              label="Library settings"
+              onPress={() => openPanelFromManage('settings')}
+            />
+          ) : null}
+        </View>
+      </Dialog>
       <Dialog visible={panel === 'work'} title="Add work" onClose={closePanel}>
         <View className={shared.form}>
           <Field label="Title" autoFocus value={title} onChangeText={setTitle} />

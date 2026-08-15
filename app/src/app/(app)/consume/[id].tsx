@@ -11,6 +11,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
 import { Platform, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   DEFAULT_READER_PREFERENCES,
@@ -24,11 +25,14 @@ import { BookCover } from '../../../features/bookshelf';
 import { ReaderSettings } from '../../../features/reader-settings';
 import {
   applyPlaybackRate,
+  audioPassage,
   choices,
   clampAudioPosition,
   defaultPair,
+  formatAudioTime,
   listenToRead,
   playableAudioDuration,
+  playbackRate,
   readToListen,
   readyJob,
   scrubberPosition,
@@ -36,7 +40,16 @@ import {
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
-import { Button, Dialog, IconButton, Loading, Notice } from '../../../features/ui';
+import { fadeIn as passageEntrance } from '../../../features/motion';
+import {
+  Button,
+  Dialog,
+  EmptyState,
+  IconButton,
+  Loading,
+  Notice,
+  StatusBadge,
+} from '../../../features/ui';
 import { Pressable, ScrollView, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { productEPUBSource } from '../../../lib/epub-source';
@@ -85,7 +98,7 @@ export default function ConsumeWorkScreen() {
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
   const switching = useRef(false);
-  const player = useAudioPlayer(source, { updateInterval: 500 });
+  const player = useAudioPlayer(source, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
   const selectedEPUB = epubs.find((item) => item.id === epubID);
   const selectedAudio = audio.find((item) => item.id === audioID);
@@ -96,7 +109,15 @@ export default function ConsumeWorkScreen() {
     ...(alignment?.segments.map((segment) => segment.audio_end_ms / 1000) ?? []),
   );
   const audioDuration = playableAudioDuration(status.duration, alignedDuration);
+  const audioProgress = audioDuration
+    ? Math.max(0, Math.min(1, status.currentTime / audioDuration))
+    : 0;
+  const audioThumbLeft = Math.max(8, Math.min(trackWidth - 8, audioProgress * trackWidth));
   const canListenFromReader = Boolean(readerLocation?.sync);
+  const passage = audioPassage(alignment?.segments, status.currentTime * 1000);
+  const currentPlaybackRate = playbackRate(status.playbackRate);
+  const playbackRateIndex = PLAYBACK_RATES.indexOf(currentPlaybackRate);
+  const canAdjustPlaybackRate = Boolean(source) && !status.error;
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -587,8 +608,27 @@ export default function ConsumeWorkScreen() {
     }
   }
   function handlePlaybackRate(rate: number) {
-    const next = applyPlaybackRate(player, rate);
-    void saveRepresentation('audio', Math.round(status.currentTime * 1000), next);
+    if (!canAdjustPlaybackRate) return;
+    try {
+      const next = applyPlaybackRate(player, rate);
+      void saveRepresentation('audio', Math.round(status.currentTime * 1000), next);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    }
+  }
+  function stepPlaybackRate(direction: -1 | 1) {
+    const nextIndex = Math.max(
+      0,
+      Math.min(PLAYBACK_RATES.length - 1, playbackRateIndex + direction),
+    );
+    handlePlaybackRate(PLAYBACK_RATES[nextIndex]);
+  }
+  function cyclePlaybackRate() {
+    handlePlaybackRate(PLAYBACK_RATES[(playbackRateIndex + 1) % PLAYBACK_RATES.length]);
+  }
+  function handlePlaybackRateAccessibilityAction(event: AccessibilityActionEvent) {
+    if (event.nativeEvent.actionName === 'increment') stepPlaybackRate(1);
+    else if (event.nativeEvent.actionName === 'decrement') stepPlaybackRate(-1);
   }
   function handleReadMode() {
     if (mode === 'listen' && syncAvailable && status.isLoaded) void switchToRead();
@@ -700,7 +740,7 @@ export default function ConsumeWorkScreen() {
           ) : null}
         </View>
       </View>
-      {!compactNative || mode === 'listen' ? (
+      {!compactNative ? (
         <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
           <Text className="text-xs font-semibold text-muted">
             {mode === 'read' && alignmentID
@@ -717,11 +757,13 @@ export default function ConsumeWorkScreen() {
         </View>
       ) : null}
       {mode === 'read' && settingsOpen && !compactNative ? (
-        <ReaderSettings
-          value={readerPreferences}
-          disabled={settingsBusy}
-          onChange={(next) => void updateReaderPreferences(next)}
-        />
+        <Animated.View entering={passageEntrance}>
+          <ReaderSettings
+            value={readerPreferences}
+            disabled={settingsBusy}
+            onChange={(next) => void updateReaderPreferences(next)}
+          />
+        </Animated.View>
       ) : null}
       <Dialog
         visible={compactNative && mode === 'read' && settingsOpen}
@@ -766,6 +808,7 @@ export default function ConsumeWorkScreen() {
                   </Text>
                   <Button
                     label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                    icon="listen"
                     disabled={!canListenFromReader}
                     onPress={() => void switchToListen()}
                   />
@@ -774,131 +817,225 @@ export default function ConsumeWorkScreen() {
             ) : null}
           </View>
         ) : (
-          <EmptyMode text="No EPUB is available for this Work." />
+          <View className="flex-1 items-center justify-center p-8">
+            <EmptyState icon="read" title="No EPUB available">
+              This Work doesn&apos;t have a readable edition yet.
+            </EmptyState>
+          </View>
         )
       ) : selectedAudio ? (
         <ScrollView
           className="flex-1"
-          contentContainerClassName="w-full max-w-[620px] flex-grow items-center justify-center gap-2.5 self-center p-6"
+          contentContainerClassName="w-full flex-grow pt-6"
           contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         >
-          <BookCover title={work.title} author={work.author} size={compact ? 'continue' : 'hero'} />
-          {status.error ? (
-            <Notice danger>{status.error}</Notice>
-          ) : !status.isLoaded ? (
-            <Text className="text-sm text-muted">Loading audiobook…</Text>
-          ) : null}
-          <Text numberOfLines={2} className="mt-3 text-center text-sm font-semibold text-muted">
-            {selectedAudio.representation.label}
-          </Text>
-          <Pressable
-            accessibilityRole="adjustable"
-            accessibilityLabel="Audiobook position"
-            accessibilityValue={{
-              min: 0,
-              max: Math.round(audioDuration),
-              now: Math.round(status.currentTime),
-              text: `${formatTime(status.currentTime)} of ${formatTime(audioDuration)}`,
-            }}
-            accessibilityActions={[
-              { name: 'increment', label: 'Skip ahead 5 seconds' },
-              { name: 'decrement', label: 'Skip back 5 seconds' },
-            ]}
-            accessibilityState={{ disabled: !status.isLoaded }}
-            disabled={!status.isLoaded}
-            focusable
-            onAccessibilityAction={handleScrubberAccessibilityAction}
-            className="mt-[18px] h-11 w-full justify-center border-b-4 border-panel-strong focus-visible:border-focus"
-            onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-            onPress={handleScrubberPress}
-            {...scrubberKeyboardProps}
-          >
-            <View
-              className="absolute -bottom-1 left-0 h-1 bg-accent"
-              style={{
-                width: `${audioDuration ? Math.min(100, (status.currentTime / audioDuration) * 100) : 0}%`,
-              }}
-            />
-          </Pressable>
-          <View className="w-full flex-row justify-between">
-            <Text className="text-[13px] text-ink" style={{ fontVariant: ['tabular-nums'] }}>
-              {formatTime(status.currentTime)}
-            </Text>
-            <Text className="text-[13px] text-muted" style={{ fontVariant: ['tabular-nums'] }}>
-              {formatTime(audioDuration)}
-            </Text>
-          </View>
-          <View className="my-2.5 flex-row flex-wrap items-center justify-center gap-3">
-            <IconButton
-              icon="skipBack"
-              label="Rewind 15 seconds"
-              disabled={!status.isLoaded}
-              onPress={handleSkipBack}
-            />
-            <IconButton
-              icon={status.playing ? 'pause' : 'play'}
-              label={status.playing ? 'Pause' : 'Play'}
-              kind="primary"
-              size="large"
-              disabled={!status.isLoaded}
-              onPress={handlePlayPause}
-            />
-            <IconButton
-              icon="skipForward"
-              label="Skip forward 15 seconds"
-              disabled={!status.isLoaded}
-              onPress={handleSkipForward}
-            />
-          </View>
-          <View className="items-center gap-2">
-            <Text className="text-xs font-semibold text-muted">Playback speed</Text>
-            <View
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Playback speed"
-              className="flex-row flex-wrap items-center justify-center gap-1.5"
-            >
-              {PLAYBACK_RATES.map((rate) => {
-                const selected = status.playbackRate === rate;
-                return (
-                  <Button
-                    key={rate}
-                    label={`${rate}×`}
-                    accessibilityRole="radio"
-                    disabled={!status.isLoaded}
-                    selected={selected}
-                    onPress={() => handlePlaybackRate(rate)}
-                  />
-                );
-              })}
+          <View className="mx-auto w-full max-w-[560px] px-6">
+            <View className="items-center gap-4 pt-2">
+              <BookCover title={work.title} author={work.author} size="hero" />
+              <View className="items-center gap-1.5 px-4">
+                <Text
+                  numberOfLines={2}
+                  className="text-center font-editorial text-[26px] font-bold leading-8 text-ink"
+                >
+                  {work.title}
+                </Text>
+                <Text numberOfLines={1} className="text-center text-sm text-text-secondary">
+                  {work.author || 'Unknown author'}
+                </Text>
+                <Text
+                  numberOfLines={2}
+                  className="mt-1 text-center text-[11px] font-semibold uppercase tracking-[1.5px] text-subtle"
+                >
+                  {selectedAudio.representation.label}
+                </Text>
+              </View>
             </View>
-          </View>
-          <View className="min-h-[62px] w-full flex-row items-center justify-between gap-3 border-t border-line py-2.5">
-            <Text className="flex-1 text-[13px] leading-[19px] text-muted">
-              {syncAvailable
-                ? 'Return to the matching text.'
-                : 'Playback continues without synchronized text here.'}
-            </Text>
-            <Button
-              label={syncAvailable ? 'Read from here' : 'Read unavailable here'}
-              disabled={!syncAvailable}
-              onPress={() => void switchToRead()}
-            />
+            {status.error ? (
+              <View className="mt-5">
+                <Notice danger>The audiobook could not be opened on this device.</Notice>
+              </View>
+            ) : !status.isLoaded ? (
+              <Text
+                accessibilityLiveRegion="polite"
+                className="mt-5 text-center text-sm text-muted"
+              >
+                Loading audiobook…
+              </Text>
+            ) : null}
+            <View className="mt-9 w-full gap-2">
+              <Pressable
+                accessibilityRole="adjustable"
+                accessibilityLabel="Audiobook position"
+                accessibilityValue={{
+                  min: 0,
+                  max: Math.round(audioDuration),
+                  now: Math.round(status.currentTime),
+                  text: `${formatAudioTime(status.currentTime)} of ${formatAudioTime(audioDuration)}`,
+                }}
+                accessibilityActions={[
+                  { name: 'increment', label: 'Skip ahead 5 seconds' },
+                  { name: 'decrement', label: 'Skip back 5 seconds' },
+                ]}
+                accessibilityState={{ disabled: !status.isLoaded }}
+                disabled={!status.isLoaded}
+                focusable
+                onAccessibilityAction={handleScrubberAccessibilityAction}
+                className={`h-11 w-full justify-center rounded-control focus-visible:border focus-visible:border-focus ${status.isLoaded ? '' : 'opacity-50'}`}
+                onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+                onPress={handleScrubberPress}
+                {...scrubberKeyboardProps}
+              >
+                <View className="absolute left-0 right-0 h-1.5 rounded-pill bg-panel-strong" />
+                <View
+                  className="absolute left-0 h-1.5 rounded-pill bg-accent"
+                  style={{
+                    width: `${audioProgress * 100}%`,
+                  }}
+                />
+                {status.isLoaded && audioDuration ? (
+                  <View
+                    className="absolute h-4 w-4 rounded-pill bg-accent shadow-xs"
+                    style={{
+                      left: audioThumbLeft,
+                      transform: [{ translateX: -8 }],
+                    }}
+                  />
+                ) : null}
+              </Pressable>
+              <View className="flex-row justify-between">
+                <Text
+                  className="text-[13px] font-semibold text-ink"
+                  style={{ fontVariant: ['tabular-nums'] }}
+                >
+                  {formatAudioTime(status.currentTime)}
+                </Text>
+                <Text className="text-[13px] text-subtle" style={{ fontVariant: ['tabular-nums'] }}>
+                  {formatAudioTime(audioDuration)}
+                </Text>
+              </View>
+            </View>
+            <View className="mt-8 w-full flex-row items-center justify-between">
+              <View className="w-16 items-start">
+                <Pressable
+                  accessibilityRole="adjustable"
+                  accessibilityLabel="Playback speed"
+                  accessibilityHint="Cycles through playback speeds"
+                  accessibilityValue={{ text: `${currentPlaybackRate} times` }}
+                  accessibilityActions={[
+                    { name: 'increment', label: 'Increase playback speed' },
+                    { name: 'decrement', label: 'Decrease playback speed' },
+                  ]}
+                  accessibilityState={{ disabled: !canAdjustPlaybackRate }}
+                  disabled={!canAdjustPlaybackRate}
+                  onAccessibilityAction={handlePlaybackRateAccessibilityAction}
+                  onPress={cyclePlaybackRate}
+                  className={`h-11 min-w-14 items-center justify-center rounded-pill bg-panel px-3 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
+                >
+                  <Text className="text-sm font-bold text-ink">{currentPlaybackRate}×</Text>
+                </Pressable>
+              </View>
+              <View className="flex-1 flex-row items-center justify-center gap-7">
+                <View className="h-14 w-14 items-center justify-center rounded-pill bg-panel">
+                  <IconButton
+                    icon="skipBack"
+                    label="Rewind 15 seconds"
+                    kind="quiet"
+                    disabled={!status.isLoaded}
+                    onPress={handleSkipBack}
+                  />
+                </View>
+                <IconButton
+                  icon={status.playing ? 'pause' : 'play'}
+                  label={status.playing ? 'Pause' : 'Play'}
+                  kind="primary"
+                  size="large"
+                  disabled={!status.isLoaded}
+                  onPress={handlePlayPause}
+                />
+                <View className="h-14 w-14 items-center justify-center rounded-pill bg-panel">
+                  <IconButton
+                    icon="skipForward"
+                    label="Skip forward 15 seconds"
+                    kind="quiet"
+                    disabled={!status.isLoaded}
+                    onPress={handleSkipForward}
+                  />
+                </View>
+              </View>
+              <View className="w-16" />
+            </View>
+            <View className="mt-9 w-full gap-3 border-t border-line-subtle pt-6">
+              <View className="flex-row items-center justify-between gap-3">
+                <Text className="text-[11px] font-bold uppercase tracking-[1.5px] text-subtle">
+                  Read Along
+                </Text>
+                <StatusBadge
+                  tone={passage?.active ? 'success' : 'neutral'}
+                  icon={passage?.active ? 'synced' : undefined}
+                  label={passage?.active ? 'Synced' : passage ? 'Up next' : 'Audio only'}
+                />
+              </View>
+              {passage ? (
+                <View className="gap-4 rounded-card bg-paper p-5 shadow-xs">
+                  <Animated.View key={passage.current.id} entering={passageEntrance}>
+                    <Text
+                      accessibilityLabel={`${passage.active ? 'Current' : 'Upcoming'} passage: ${passage.current.text}`}
+                      numberOfLines={6}
+                      className={
+                        passage.active
+                          ? 'font-editorial text-lg leading-7 text-ink'
+                          : 'font-editorial text-base leading-6 text-muted'
+                      }
+                    >
+                      {passage.current.text}
+                    </Text>
+                  </Animated.View>
+                  {passage.next || passage.following ? (
+                    <View className="gap-2 border-t border-line-subtle pt-3">
+                      <Text className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
+                        Coming next
+                      </Text>
+                      {[passage.next, passage.following].map((segment) =>
+                        segment ? (
+                          <Text
+                            key={segment.id}
+                            numberOfLines={2}
+                            className="font-editorial text-sm leading-5 text-subtle"
+                          >
+                            {segment.text}
+                          </Text>
+                        ) : null,
+                      )}
+                    </View>
+                  ) : null}
+                  <View className="items-start pt-1">
+                    <Button
+                      label={passage.active ? 'Open in book' : 'Text coming up'}
+                      icon="read"
+                      disabled={!passage.active}
+                      onPress={() => void switchToRead()}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <Text className="pt-1 text-sm leading-5 text-muted">
+                  Synchronized text is not available at this moment. Listening continues normally.
+                </Text>
+              )}
+            </View>
           </View>
         </ScrollView>
       ) : (
-        <EmptyMode text="No audiobook is available for this Work." />
+        <View className="flex-1 items-center justify-center p-8">
+          <EmptyState icon="listen" title="No audiobook available">
+            This Work doesn&apos;t have a listenable edition yet.
+          </EmptyState>
+        </View>
       )}
     </View>
   );
 }
 
-function EmptyMode({ text }: { text: string }) {
-  return (
-    <View className="flex-1 items-center justify-center p-8">
-      <Text className="text-[13px] leading-[19px] text-muted">{text}</Text>
-    </View>
-  );
-}
 function preferencesFromState(state?: RepresentationState | null): ReaderPreferences {
   return {
     layout: state?.reader_layout ?? DEFAULT_READER_PREFERENCES.layout,
@@ -907,9 +1044,4 @@ function preferencesFromState(state?: RepresentationState | null): ReaderPrefere
     margin: state?.margin ?? DEFAULT_READER_PREFERENCES.margin,
     theme: state?.reader_theme ?? DEFAULT_READER_PREFERENCES.theme,
   };
-}
-function formatTime(seconds: number) {
-  if (!Number.isFinite(seconds)) return '0:00';
-  const whole = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }

@@ -4,7 +4,9 @@ import {
   deserializeReadiumLocator,
   mapReadiumLocator,
   mapReadiumSelection,
+  readiumRestoreDisposition,
   readiumSearchQuery,
+  readiumSearchQueries,
   segmentForEPUBLocator,
   serializeReadiumLocator,
 } from './readium-locator';
@@ -33,6 +35,13 @@ describe('Readium spike locator', () => {
     };
     expect(deserializeReadiumLocator(serializeReadiumLocator(locator))).toEqual(locator);
     expect(deserializeReadiumLocator('{')).toBeUndefined();
+  });
+
+  test('suppresses startup locations until the canonical target arrives', () => {
+    const target = { href: segment.epub_href, locator: segment.epub_locator, offset: 500_000 };
+    expect(readiumRestoreDisposition(target, 'OEBPS/title.xhtml')).toBe('suppress');
+    expect(readiumRestoreDisposition(target, `/${segment.epub_href}#page`)).toBe('restore');
+    expect(readiumRestoreDisposition(undefined, 'OEBPS/title.xhtml')).toBe('publish');
   });
 
   test('maps unique text context to the existing canonical EPUB locator and fails closed', () => {
@@ -134,5 +143,32 @@ describe('Readium spike locator', () => {
   test('builds a restore search at the canonical within-segment offset', () => {
     const long = { ...segment, text: 'zero one two three four five six seven eight nine ten' };
     expect(readiumSearchQuery(long, 500_000)).toBe('five six seven eight nine ten');
+  });
+
+  test('falls back to a nearby word that is unique across the book', () => {
+    const target = {
+      ...segment,
+      text: 'because they would not remember the simple rules',
+    };
+    const other = { ...segment, id: 'other', text: 'because simple words can repeat' };
+    expect(readiumSearchQueries(target, 0, [target, other])).toEqual([
+      'because they would not remember the simple rules',
+      'would',
+      'remember',
+      'rules',
+    ]);
+  });
+
+  test('finds a unique nearby fallback when the phrase words all repeat', () => {
+    const target = {
+      ...segment,
+      text: 'common words repeat often nearby uniquemarker after common words repeat often nearby',
+    };
+    const other = {
+      ...segment,
+      id: 'other',
+      text: 'common words repeat often nearby somewhere else',
+    };
+    expect(readiumSearchQueries(target, 0, [target, other])).toContain('uniquemarker');
   });
 });

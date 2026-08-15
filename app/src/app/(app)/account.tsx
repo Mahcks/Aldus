@@ -1,13 +1,16 @@
 import type { Library } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { AppIcon } from '../../features/icons';
-import { Pressable, Text, View } from '../../features/tw';
+import { listItemEnter } from '../../features/motion';
+import { Text, View } from '../../features/tw';
 import {
   Button,
   colors,
   EmptyState,
+  IconRow,
   Loading,
   Notice,
   Page,
@@ -50,17 +53,19 @@ export default function AccountScreen() {
       {error ? <Notice danger>{error}</Notice> : null}
       <View className="max-w-[680px] gap-8">
         <Section title="Profile">
-          <View className="flex-row items-center gap-4 border-b border-line pb-5">
-            <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-soft">
-              <AppIcon name="account" size={26} color={colors.accent} />
-            </View>
-            <View className="min-w-0 flex-1">
-              <Text numberOfLines={1} className="text-lg font-bold text-ink">
-                {auth.user?.display_name || auth.user?.username}
-              </Text>
-              <Text numberOfLines={1} className="text-sm text-muted">
-                @{auth.user?.username}
-              </Text>
+          <View className="gap-3 border-b border-line pb-5">
+            <View className="flex-row items-center gap-4">
+              <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-soft">
+                <AppIcon name="account" size={26} color={colors.accent} />
+              </View>
+              <View className="min-w-0 flex-1">
+                <Text numberOfLines={1} className="text-lg font-bold text-ink">
+                  {auth.user?.display_name || auth.user?.username}
+                </Text>
+                <Text numberOfLines={1} className="text-sm text-muted">
+                  @{auth.user?.username}
+                </Text>
+              </View>
             </View>
             {auth.user?.admin ? (
               <StatusBadge tone="info" label="Administrator" icon="users" />
@@ -71,24 +76,16 @@ export default function AccountScreen() {
           {loading ? (
             <Loading label="Loading libraries…" />
           ) : libraries.length ? (
-            <View className="gap-1">
-              {libraries.map((library) => (
-                <Pressable
-                  key={library.id}
-                  accessibilityRole="link"
-                  onPress={() => router.push(`/library/${library.id}`)}
-                  className="min-h-14 flex-row items-center justify-between gap-4 border-b border-line py-2 focus:outline focus:outline-2 focus:outline-focus"
-                >
-                  <View className="min-w-0 flex-1">
-                    <Text numberOfLines={1} className="font-bold text-ink">
-                      {library.name}
-                    </Text>
-                    <Text className="text-xs capitalize text-muted">
-                      {library.role || 'Administrator access'}
-                    </Text>
-                  </View>
-                  <AppIcon name="chevron" size={20} color={colors.subtle} />
-                </Pressable>
+            <View className="gap-3">
+              {libraries.map((library, index) => (
+                <Animated.View key={library.id} entering={listItemEnter(index)}>
+                  <IconRow
+                    icon="libraries"
+                    title={library.name}
+                    subtitle={library.role || 'Administrator access'}
+                    onPress={() => router.push(`/library/${library.id}`)}
+                  />
+                </Animated.View>
               ))}
             </View>
           ) : (

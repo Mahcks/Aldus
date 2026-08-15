@@ -1,7 +1,7 @@
 import { useState, type PropsWithChildren } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { AppIcon, type AppIconName } from './icons';
-import { Button, colors, IconButton } from './ui';
+import { Button, colors, IconButton, resolvePressStateClass } from './ui';
 import { Pressable, Text, View } from './tw';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
@@ -105,12 +105,6 @@ export function Badge({ children }: PropsWithChildren) {
   );
 }
 
-function resolvePressStateClass({ focused, pressed }: { focused: boolean; pressed: boolean }) {
-  if (focused) return 'outline outline-2 outline-focus';
-  if (pressed) return 'opacity-75';
-  return '';
-}
-
 type WorkPresentationProps = {
   title: string;
   author?: string;
@@ -145,7 +139,7 @@ export function WorkCard({
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
+      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
@@ -153,7 +147,20 @@ export function WorkCard({
       onPress={onPress}
       className={`gap-1.5 rounded ${widthClass} ${stateClass}`}
     >
-      <BookCover title={title} author={author} size={narrow ? 'small' : 'tile'} />
+      <View className="relative">
+        <BookCover title={title} author={author} size={narrow ? 'small' : 'tile'} />
+        {progress ? (
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            className="absolute left-2 top-2 rounded-pill bg-accent px-2 py-1 shadow-xs"
+          >
+            <Text className="text-[10px] font-bold uppercase tracking-wide text-on-accent">
+              Continue
+            </Text>
+          </View>
+        ) : null}
+      </View>
       <Text
         numberOfLines={2}
         className="mt-1 font-editorial text-base font-bold leading-5 text-ink"
@@ -164,11 +171,6 @@ export function WorkCard({
         {author || 'Unknown author'}
       </Text>
       {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
-      {progress ? (
-        <Text numberOfLines={1} className="text-xs font-bold text-accent">
-          {progress}
-        </Text>
-      ) : null}
       {availability ? <AvailabilityIcons value={availability} /> : null}
     </Pressable>
   );
@@ -195,17 +197,18 @@ export function WorkRow({
   const handlePressOut = () => setPressed(false);
 
   const stateClass = resolvePressStateClass({ focused, pressed });
+  const progressBorderClass = progress ? 'border-l-2 border-l-accent pl-3' : 'pl-3.5';
 
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
+      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`flex-row items-center gap-4 rounded border-b border-line py-3 ${stateClass}`}
+      className={`flex-row items-center gap-4 rounded border-b border-line py-3 ${progressBorderClass} ${stateClass}`}
     >
       <View className="w-14">
         <BookCover title={title} author={author} size="mini" />
@@ -280,23 +283,37 @@ export function ContinueCard({
   onListen?: () => void;
 }) {
   const compact = useWindowDimensions().width < 600;
+  const [coverFocused, setCoverFocused] = useState(false);
+  const [coverPressed, setCoverPressed] = useState(false);
+  const [titleFocused, setTitleFocused] = useState(false);
+  const [titlePressed, setTitlePressed] = useState(false);
+  const coverStateClass = resolvePressStateClass({ focused: coverFocused, pressed: coverPressed });
+  const titleStateClass = resolvePressStateClass({ focused: titleFocused, pressed: titlePressed });
 
   return (
-    <View className="w-[420px] max-w-full flex-row gap-4 rounded-card bg-paper p-4 shadow-sm">
+    <View className="w-[336px] max-w-full flex-row gap-3.5 rounded-card bg-paper p-3.5 shadow-sm">
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
+        onBlur={() => setCoverFocused(false)}
+        onFocus={() => setCoverFocused(true)}
+        onPressIn={() => setCoverPressed(true)}
+        onPressOut={() => setCoverPressed(false)}
         onPress={onOpen}
-        className="shrink-0 rounded focus:outline focus:outline-2 focus:outline-focus"
+        className={`shrink-0 rounded ${coverStateClass}`}
       >
         <BookCover title={title} author={author} size="continue" />
       </Pressable>
-      <View className="min-w-0 flex-1 justify-between gap-2">
+      <View className="min-w-0 flex-1 justify-between gap-2 py-0.5">
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={`Open ${title}`}
+          onBlur={() => setTitleFocused(false)}
+          onFocus={() => setTitleFocused(true)}
+          onPressIn={() => setTitlePressed(true)}
+          onPressOut={() => setTitlePressed(false)}
           onPress={onOpen}
-          className="rounded focus:outline focus:outline-2 focus:outline-focus"
+          className={`rounded ${titleStateClass}`}
         >
           <Text numberOfLines={2} className="font-editorial text-base font-bold leading-5 text-ink">
             {title}
@@ -312,19 +329,17 @@ export function ContinueCard({
         </Pressable>
         <View className="gap-2">
           <AvailabilityIcons value={availability} />
-          <View className="flex-row items-center gap-2">
-            <View className="flex-1">
-              <Button
-                label={
-                  compact
-                    ? 'Continue'
-                    : `Continue ${continueMode === 'read' ? 'reading' : 'listening'}`
-                }
-                icon={continueMode === 'read' ? 'read' : 'listen'}
-                kind="primary"
-                onPress={onContinue}
-              />
-            </View>
+          <View className="flex-row flex-wrap items-center gap-2">
+            <Button
+              label={
+                compact
+                  ? 'Continue'
+                  : `Continue ${continueMode === 'read' ? 'reading' : 'listening'}`
+              }
+              icon={continueMode === 'read' ? 'read' : 'listen'}
+              kind="primary"
+              onPress={onContinue}
+            />
             {availability.readable && continueMode !== 'read' && onRead ? (
               <IconButton icon="read" label="Read this work" kind="quiet" onPress={onRead} />
             ) : null}

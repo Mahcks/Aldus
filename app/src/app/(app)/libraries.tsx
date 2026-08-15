@@ -1,12 +1,15 @@
 import type { Library } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import Animated from 'react-native-reanimated';
 import { AppIcon } from '../../features/icons';
-import { Pressable, Text, View } from '../../features/tw';
+import { listItemEnter } from '../../features/motion';
+import { Text, View } from '../../features/tw';
 import {
   Button,
   colors,
   Dialog,
+  IconRow,
   Loading,
   Notice,
   Page,
@@ -14,36 +17,6 @@ import {
   TextField,
 } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
-
-/**
- * Duplicates the list-row markup in `home.tsx`. A future pass could extract
- * a shared `features/libraries.tsx` list-row component; not required for
- * this redesign.
- */
-function LibraryRow({ library, onPress }: { library: Library; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="link"
-      onPress={onPress}
-      className="flex-row items-center justify-between gap-4 rounded-card border border-line bg-paper px-4 py-3.5 shadow-xs"
-    >
-      <View className="min-w-0 flex-1 flex-row items-center gap-3">
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
-          <AppIcon name="libraries" size={18} color={colors.accent} />
-        </View>
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text numberOfLines={1} className="text-base font-bold text-ink">
-            {library.name}
-          </Text>
-          <Text numberOfLines={1} className="text-sm text-muted">
-            {library.role || 'Administrator access'}
-          </Text>
-        </View>
-      </View>
-      <AppIcon name="chevron" size={20} color={colors.subtle} />
-    </Pressable>
-  );
-}
 
 type CreateLibraryFormProps = {
   name: string;
@@ -157,7 +130,7 @@ export default function Libraries() {
     >
       {error ? <Notice danger>{error}</Notice> : null}
       {loading ? (
-        <Loading />
+        <Loading label="Loading libraries…" />
       ) : items.length === 0 ? (
         <FirstLibraryHero
           name={name}
@@ -170,8 +143,15 @@ export default function Libraries() {
         <View className="max-w-[760px] gap-3">
           <SectionHeader title="Your libraries" />
           <View className="gap-3">
-            {items.map((item) => (
-              <LibraryRow key={item.id} library={item} onPress={() => openLibrary(item)} />
+            {items.map((item, index) => (
+              <Animated.View key={item.id} entering={listItemEnter(index)}>
+                <IconRow
+                  icon="libraries"
+                  title={item.name}
+                  subtitle={item.role || 'Administrator access'}
+                  onPress={() => openLibrary(item)}
+                />
+              </Animated.View>
             ))}
           </View>
         </View>

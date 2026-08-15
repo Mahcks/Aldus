@@ -6,7 +6,9 @@ import {
   SafeAreaView,
   useWindowDimensions,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { AppIcon, type AppIconName } from './icons';
+import { fadeIn } from './motion';
 import { colors } from './theme';
 import { Pressable, ScrollView, Text, TextInput, View, type TextInputProps } from './tw';
 
@@ -18,7 +20,7 @@ export { colors } from './theme';
  * `className={shared.x}` when they're migrated to NativeWind in later phases.
  */
 export const shared = {
-  listItem: 'border-b border-line py-3.5 gap-1',
+  listItem: 'min-h-11 border-b border-line py-3.5 gap-1',
   itemTitle: 'text-base font-bold text-ink',
   itemMeta: 'text-sm text-muted',
   form: 'max-w-[560px] gap-3',
@@ -118,6 +120,23 @@ function resolveButtonShadowClass({
   return 'shadow-xs';
 }
 
+/**
+ * Generic press/focus feedback for plain `Pressable`-based controls that
+ * don't go through `Button`/`IconButton` (nav links, tab bar items, custom
+ * rows). Keeps every hand-rolled interactive element responding the same way.
+ */
+export function resolvePressStateClass({
+  focused,
+  pressed,
+}: {
+  focused: boolean;
+  pressed: boolean;
+}) {
+  if (focused) return 'outline outline-2 outline-focus';
+  if (pressed) return 'opacity-75';
+  return '';
+}
+
 export function Button({
   label,
   onPress,
@@ -141,20 +160,23 @@ export function Button({
   accessibilityRole?: 'button' | 'radio';
 }) {
   const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
 
   const isInactive = Boolean(disabled || loading);
   const backgroundClass = resolveButtonBackgroundClass({
     kind,
     selected,
-    pressed: false,
+    pressed,
     inactive: isInactive,
   });
   const borderClass = resolveButtonBorderClass({ kind, selected, focused, inactive: isInactive });
   const textClass = resolveButtonTextClass({ kind, selected, inactive: isInactive });
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive });
-  const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed: false });
+  const shadowClass = resolveButtonShadowClass({ kind, inactive: isInactive, pressed });
   const paddingClass = kind === 'quiet' ? 'px-2' : 'px-4';
   const inactiveClass = isInactive ? 'opacity-50' : '';
 
@@ -171,6 +193,8 @@ export function Button({
       disabled={isInactive}
       onBlur={handleBlur}
       onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onPress={onPress}
       className={`will-change-variable min-h-11 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass} ${inactiveClass}`}
     >
@@ -212,13 +236,16 @@ export function IconButton({
   size?: 'default' | 'large';
 }) {
   const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
 
   const backgroundClass = resolveButtonBackgroundClass({
     kind,
     selected,
-    pressed: false,
+    pressed,
     inactive: Boolean(disabled),
   });
   const borderClass = resolveButtonBorderClass({
@@ -228,6 +255,7 @@ export function IconButton({
     inactive: Boolean(disabled),
   });
   const iconColor = resolveButtonIconColor({ kind, selected, inactive: Boolean(disabled) });
+  const shadowClass = resolveButtonShadowClass({ kind, inactive: Boolean(disabled), pressed });
   const opacityClass = disabled ? 'opacity-50' : '';
 
   const sizeClass = size === 'large' ? 'h-16 w-16 rounded-pill' : 'h-11 w-11 rounded-control';
@@ -241,8 +269,10 @@ export function IconButton({
       disabled={disabled}
       onBlur={handleBlur}
       onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onPress={onPress}
-      className={`${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${opacityClass}`}
+      className={`${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${shadowClass} ${opacityClass}`}
     >
       <AppIcon name={icon} size={size === 'large' ? 30 : 20} color={iconColor} />
     </Pressable>
@@ -359,8 +389,8 @@ export function SearchField({
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
 
-  const borderClass = focused ? 'border-2 border-focus' : 'border border-line';
-  const backgroundClass = focused ? 'bg-control-focus' : 'bg-control';
+  const borderClass = resolveFieldBorderClass({ focused, error: false });
+  const backgroundClass = resolveFieldBackgroundClass({ focused });
 
   return (
     <View className="gap-1.5">
@@ -394,15 +424,27 @@ export function Checkbox({
   checked: boolean;
   onPress: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+
   const boxClass = checked ? 'border-accent bg-accent' : 'border-line bg-paper';
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="checkbox"
       accessibilityLabel={label}
       accessibilityState={{ checked }}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onPress={onPress}
-      className="min-h-11 flex-row items-center gap-2"
+      className={`min-h-11 flex-row items-center gap-2 rounded ${stateClass}`}
     >
       <View className={`h-6 w-6 items-center justify-center rounded border ${boxClass}`}>
         {checked ? <AppIcon name="check" size={16} color={colors.onAccent} /> : null}
@@ -422,15 +464,27 @@ export function Radio({
   selected: boolean;
   onPress: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+
   const ringClass = selected ? 'border-accent' : 'border-line';
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onPress={onPress}
-      className="min-h-11 flex-row items-center gap-2"
+      className={`min-h-11 flex-row items-center gap-2 rounded ${stateClass}`}
     >
       <View
         className={`h-6 w-6 items-center justify-center rounded-full border bg-paper ${ringClass}`}
@@ -508,26 +562,28 @@ export function Dialog({
           onPress={onClose}
           className="absolute inset-0 bg-ink/40"
         />
-        <Pressable
-          onPress={noop}
-          accessibilityViewIsModal
-          role="dialog"
-          className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
-        >
-          <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
-            <Text accessibilityRole="header" className="flex-shrink text-lg font-bold text-ink">
-              {title}
-            </Text>
-            <IconButton
-              icon="close"
-              label="Close dialog"
-              kind="quiet"
-              onPress={onClose}
-              nativeID={closeButtonId}
-            />
-          </View>
-          <ScrollView className="flex-shrink">{children}</ScrollView>
-        </Pressable>
+        <Animated.View entering={fadeIn} style={{ width: '100%', alignItems: 'center' }}>
+          <Pressable
+            onPress={noop}
+            accessibilityViewIsModal
+            role="dialog"
+            className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
+          >
+            <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
+              <Text accessibilityRole="header" className="flex-shrink text-lg font-bold text-ink">
+                {title}
+              </Text>
+              <IconButton
+                icon="close"
+                label="Close dialog"
+                kind="quiet"
+                onPress={onClose}
+                nativeID={closeButtonId}
+              />
+            </View>
+            <ScrollView className="flex-shrink">{children}</ScrollView>
+          </Pressable>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -603,6 +659,38 @@ export function Empty({ children }: PropsWithChildren) {
   return <Text className="py-4 text-muted">{children}</Text>;
 }
 
+/** Shared body for `EmptyState`/`ErrorState` — same layout, only icon/tone/default-title differ. */
+function StateBlock({
+  icon,
+  iconBackgroundClass,
+  iconColor,
+  title,
+  children,
+  action,
+}: PropsWithChildren<{
+  icon: AppIconName;
+  iconBackgroundClass: string;
+  iconColor: string;
+  title: string;
+  action?: ReactNode;
+}>) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      className="min-h-[180px] max-w-[560px] items-start justify-center gap-3"
+    >
+      <View className={`h-14 w-14 items-center justify-center rounded-full ${iconBackgroundClass}`}>
+        <AppIcon name={icon} size={28} color={iconColor} />
+      </View>
+      <Text accessibilityRole="header" className="text-lg font-bold text-ink">
+        {title}
+      </Text>
+      <Text className="text-base leading-6 text-muted">{children}</Text>
+      {action}
+    </View>
+  );
+}
+
 export function EmptyState({
   icon = 'read',
   title,
@@ -614,19 +702,15 @@ export function EmptyState({
   action?: ReactNode;
 }>) {
   return (
-    <View
-      accessibilityLiveRegion="polite"
-      className="min-h-[180px] max-w-[560px] items-start justify-center gap-3"
+    <StateBlock
+      icon={icon}
+      iconBackgroundClass="bg-accent-soft"
+      iconColor={colors.accent}
+      title={title}
+      action={action}
     >
-      <View className="h-14 w-14 items-center justify-center rounded-full bg-accent-soft">
-        <AppIcon name={icon} size={28} color={colors.accent} />
-      </View>
-      <Text accessibilityRole="header" className="text-lg font-bold text-ink">
-        {title}
-      </Text>
-      <Text className="text-base leading-6 text-muted">{children}</Text>
-      {action}
-    </View>
+      {children}
+    </StateBlock>
   );
 }
 
@@ -640,19 +724,15 @@ export function ErrorState({
   action?: ReactNode;
 }>) {
   return (
-    <View
-      accessibilityLiveRegion="polite"
-      className="min-h-[180px] max-w-[560px] items-start justify-center gap-3"
+    <StateBlock
+      icon="error"
+      iconBackgroundClass="bg-danger-soft"
+      iconColor={colors.danger}
+      title={title}
+      action={action}
     >
-      <View className="h-14 w-14 items-center justify-center rounded-full bg-danger-soft">
-        <AppIcon name="error" size={28} color={colors.danger} />
-      </View>
-      <Text accessibilityRole="header" className="text-lg font-bold text-ink">
-        {title}
-      </Text>
-      <Text className="text-base leading-6 text-muted">{children}</Text>
-      {action}
-    </View>
+      {children}
+    </StateBlock>
   );
 }
 
@@ -730,6 +810,60 @@ export function StatusBadge({
 
 export function Row({ children }: PropsWithChildren) {
   return <View className="flex-row flex-wrap items-center gap-2">{children}</View>;
+}
+
+/**
+ * Navigable list row for independently actionable objects (Libraries, and
+ * similar collections outside the Work/book presentation in `bookshelf.tsx`):
+ * an icon badge, title, optional subtitle, and a trailing chevron.
+ */
+export function IconRow({
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: AppIconName;
+  title: string;
+  subtitle?: string;
+  onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const handleFocus = () => setFocused(true);
+  const handleBlur = () => setFocused(false);
+  const handlePressIn = () => setPressed(true);
+  const handlePressOut = () => setPressed(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={onPress}
+      className={`min-h-11 flex-row items-center gap-4 rounded-card border border-line bg-paper px-4 py-3.5 shadow-xs ${stateClass}`}
+    >
+      <View className="min-w-0 flex-1 flex-row items-center gap-3">
+        <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
+          <AppIcon name={icon} size={18} color={colors.accent} />
+        </View>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Text numberOfLines={1} className="text-base font-bold text-ink">
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text numberOfLines={1} className="text-sm text-muted">
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      <AppIcon name="chevron" size={20} color={colors.subtle} />
+    </Pressable>
+  );
 }
 
 /**

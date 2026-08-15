@@ -1,43 +1,15 @@
 import { router, Slot, usePathname, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, Platform, useWindowDimensions } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import { Modal, Platform, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { AppIcon, type AppIconName } from '../icons';
-import { colors } from '../ui';
+import { sheetEnter, sheetExit } from '../motion';
+import { colors, IconButton, resolvePressStateClass } from '../ui';
 import { Pressable, Text, View } from '../tw';
 
 type NavItem = { label: string; href: string; icon: AppIconName };
-
-/**
- * Reflects the OS/browser "reduce motion" preference so the More sheet can
- * skip its slide-in animation. Checked once on mount and, on web, kept live
- * via the media query's change event.
- */
-function useReducedMotionPreference() {
-  const [reduced, setReduced] = useState(() =>
-    Platform.OS === 'web' ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false,
-  );
-
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-      const handleChange = () => setReduced(query.matches);
-      query.addEventListener('change', handleChange);
-      return () => query.removeEventListener('change', handleChange);
-    }
-    let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) setReduced(value);
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  return reduced;
-}
 
 function isActive(path: string, href: string) {
   return (
@@ -66,7 +38,6 @@ function AppShellChrome() {
   const path = usePathname();
   const insets = useSafeAreaInsets();
   const desktop = useWindowDimensions().width >= 820;
-  const reducedMotion = useReducedMotionPreference();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const consumerLinks: NavItem[] = [
@@ -149,7 +120,6 @@ function AppShellChrome() {
         adminLinks={adminLinks}
         userLabel={userLabel}
         onSignOut={handleSignOut}
-        reducedMotion={reducedMotion}
         bottomInset={insets.bottom}
       />
     </View>
@@ -229,13 +199,20 @@ function NavLink({
   const inactiveTextClass = tone === 'quiet' ? 'text-subtle' : 'text-muted';
   const iconColor = selected ? colors.accent : tone === 'quiet' ? colors.subtle : colors.muted;
   const backgroundClass = selected ? 'bg-accent-soft' : '';
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="link"
       accessibilityState={{ selected }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onPress={() => router.push(href as Href)}
-      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass}`}
+      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
       <AppIcon name={icon} size={iconSize} color={iconColor} />
       <Text
@@ -257,6 +234,13 @@ function MobileHeader({
   onBrandPress: () => void;
   onAccountPress: () => void;
 }) {
+  const [accountFocused, setAccountFocused] = useState(false);
+  const [accountPressed, setAccountPressed] = useState(false);
+  const accountStateClass = resolvePressStateClass({
+    focused: accountFocused,
+    pressed: accountPressed,
+  });
+
   return (
     <View
       className="w-full flex-row items-center border-b border-line bg-panel px-4 pb-2.5"
@@ -273,8 +257,12 @@ function MobileHeader({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open account"
+        onBlur={() => setAccountFocused(false)}
+        onFocus={() => setAccountFocused(true)}
+        onPressIn={() => setAccountPressed(true)}
+        onPressOut={() => setAccountPressed(false)}
         onPress={onAccountPress}
-        className="h-11 w-11 items-center justify-center rounded-control"
+        className={`h-11 w-11 items-center justify-center rounded-control ${accountStateClass}`}
       >
         <AppIcon name="account" size={22} color={colors.muted} />
       </Pressable>
@@ -336,13 +324,20 @@ function MobileTab({
   onPress: () => void;
 }) {
   const color = selected ? colors.accent : colors.muted;
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected, expanded }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className="min-h-11 min-w-11 flex-1 items-center justify-center gap-1 py-1"
+      className={`min-h-11 min-w-11 flex-1 items-center justify-center gap-1 py-1 ${stateClass}`}
     >
       <AppIcon name={icon} size={20} color={color} />
       <Text className={`text-[11px] font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
@@ -355,8 +350,9 @@ function MobileTab({
 /**
  * Slide-up sheet for everything the bottom tab bar doesn't have room for:
  * admin links (grouped and visually separated, same treatment as the
- * desktop rail) and the account section. Animates in with Reanimated unless
- * the user prefers reduced motion, in which case it appears instantly.
+ * desktop rail) and the account section. Uses the shared `sheetEnter`/
+ * `sheetExit` motion presets, which already resolve to an instant transition
+ * when the OS/browser reduced-motion setting is on.
  */
 function MoreSheet({
   visible,
@@ -365,7 +361,6 @@ function MoreSheet({
   adminLinks,
   userLabel,
   onSignOut,
-  reducedMotion,
   bottomInset,
 }: {
   visible: boolean;
@@ -374,7 +369,6 @@ function MoreSheet({
   adminLinks: NavItem[];
   userLabel: string;
   onSignOut: () => void;
-  reducedMotion: boolean;
   bottomInset: number;
 }) {
   if (!visible) return null;
@@ -392,10 +386,7 @@ function MoreSheet({
         onPress={onClose}
         className="flex-1 justify-end bg-ink/40"
       >
-        <Animated.View
-          entering={reducedMotion ? undefined : SlideInDown.springify().damping(22)}
-          exiting={reducedMotion ? undefined : SlideOutDown.duration(150)}
-        >
+        <Animated.View entering={sheetEnter} exiting={sheetExit}>
           <Pressable
             onPress={noop}
             accessibilityViewIsModal
@@ -407,14 +398,7 @@ function MoreSheet({
               <Text accessibilityRole="header" className="text-lg font-bold text-ink">
                 More
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close menu"
-                onPress={onClose}
-                className="h-11 w-11 items-center justify-center rounded-control"
-              >
-                <AppIcon name="close" size={20} color={colors.muted} />
-              </Pressable>
+              <IconButton icon="close" label="Close menu" kind="quiet" onPress={onClose} />
             </View>
             {adminLinks.length > 0 ? (
               <View className="gap-1 pb-2">
@@ -462,13 +446,20 @@ function SheetLink({
 }: NavItem & { selected: boolean; onPress: () => void }) {
   const iconColor = selected ? colors.accent : colors.subtle;
   const backgroundClass = selected ? 'bg-accent-soft' : '';
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="link"
       accessibilityState={{ selected }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass}`}
+      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
       <AppIcon name={icon} size={18} color={iconColor} />
       <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-subtle'}`}>

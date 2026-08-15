@@ -106,6 +106,29 @@ export function readiumSearchQuery(segment: AlignmentSegment, offset: number) {
     .join(' ');
 }
 
+export function readiumSearchQueries(
+  segment: AlignmentSegment,
+  offset: number,
+  segments: AlignmentSegment[],
+) {
+  const phrase = readiumSearchQuery(segment, offset);
+  const text = fold(segment.text);
+  const target = Math.round((Math.max(0, Math.min(1_000_000, offset)) * text.length) / 1_000_000);
+  const uniqueWords = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
+    .sort(
+      (left, right) => Math.abs((left.index ?? 0) - target) - Math.abs((right.index ?? 0) - target),
+    )
+    .map((match) => match[0])
+    .filter(
+      (word) =>
+        word.length >= 5 &&
+        segments.reduce((count, item) => count + wordOccurrences(item.text, word), 0) === 1,
+    )
+    .filter((word, index, words) => words.indexOf(word) === index)
+    .slice(0, 8);
+  return [phrase, ...uniqueWords];
+}
+
 export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSegment[]) {
   const locator = JSON.stringify(target.locator);
   const matches = segments.filter(
@@ -115,6 +138,13 @@ export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSe
       JSON.stringify(segment.epub_locator) === locator,
   );
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function readiumRestoreDisposition(target: EPUBLocator | undefined, href: string) {
+  if (!target) return 'publish' as const;
+  return normalizeHref(target.href) === normalizeHref(href)
+    ? ('restore' as const)
+    : ('suppress' as const);
 }
 
 const normalize = (value: string) =>
@@ -151,6 +181,15 @@ function occurrences(text: string, query: string) {
   for (let index = text.indexOf(query); index >= 0; index = text.indexOf(query, index + 1))
     indexes.push(index);
   return indexes;
+}
+function wordOccurrences(text: string, query: string) {
+  const words =
+    text
+      .normalize('NFKC')
+      .toLocaleLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+  const target = query.normalize('NFKC').toLocaleLowerCase();
+  return words.filter((word) => word === target).length;
 }
 const normalizeHref = (value: string) =>
   decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];
