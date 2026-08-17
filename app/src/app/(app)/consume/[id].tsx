@@ -59,7 +59,18 @@ import { APIError, api, errorMessage } from '../../../lib/api';
 import { productEPUBSource } from '../../../lib/epub-source';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
-import { reconcilePendingProgress, saveWorkProgress } from '../../../lib/progress-outbox';
+import { offlineWork, updateOfflineProgress } from '../../../lib/offline-library';
+import {
+  offlineAudioToCanonical,
+  offlineCanonicalToAudio,
+  offlineCanonicalToEPUB,
+  offlineEPUBToCanonical,
+} from '../../../features/offline-position';
+import {
+  pendingProgress,
+  reconcilePendingProgress,
+  saveWorkProgress,
+} from '../../../lib/progress-outbox';
 
 type Mode = 'read' | 'listen';
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
@@ -226,7 +237,30 @@ export default function ConsumeWorkScreen() {
         setEPUBID(nextEPUB?.id ?? '');
         setAudioID(nextAudioChoice?.id ?? '');
       } catch (error) {
-        if (!canceled) setNotice(errorMessage(error));
+        if (!canceled && error instanceof APIError && error.status === 0) {
+          const stored = await offlineWork(params.id);
+          if (stored) {
+            const pending = await pendingProgress(params.id);
+            const localProgress = pending
+              ? {
+                  ...stored.progress,
+                  alignment_id: pending.alignment_id,
+                  segment_id: pending.segment_id,
+                  offset: pending.offset,
+                }
+              : stored.progress;
+            progressRef.current = localProgress;
+            setWork(stored.work);
+            setEPUBs(stored.epubs);
+            setAudio(stored.audio);
+            setJobs(stored.jobs);
+            setProgress(localProgress);
+            setEPUBID(params.epub || stored.epub_id);
+            setAudioID(params.audio || stored.audio_id);
+            setSaveState(pending ? 'offline' : 'idle');
+            setNotice('Offline mode · changes will sync when Aldus is reachable.');
+          } else setNotice('This work is not downloaded for offline use.');
+        } else if (!canceled) setNotice(errorMessage(error));
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -298,7 +332,38 @@ export default function ConsumeWorkScreen() {
           setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
         }
       } catch (error) {
-        if (!canceled) setNotice(errorMessage(error));
+        if (!canceled && error instanceof APIError && error.status === 0 && params.id) {
+          const stored = await offlineWork(params.id);
+          if (!stored) return setNotice('This download is incomplete. Connect to Aldus and retry.');
+          const selectedEPUBChoice = stored.epubs.find((item) => item.id === epubID);
+          const selectedAudioChoice = stored.audio.find((item) => item.id === audioID);
+          const canonical = progress?.alignment_id === stored.alignment?.id ? progress : null;
+          setEPUBState(stored.epub_state);
+          setAudioState(stored.audio_state);
+          setAlignment(stored.alignment);
+          setEPUBSource(
+            selectedEPUBChoice
+              ? await productEPUBSource(selectedEPUBChoice.id, selectedEPUBChoice.size_bytes)
+              : undefined,
+          );
+          setSource(
+            selectedAudioChoice
+              ? await productAudioSource(selectedAudioChoice.id, selectedAudioChoice.size_bytes)
+              : null,
+          );
+          setReaderPreferences(preferencesFromState(stored.epub_state));
+          const epubTarget =
+            canonical && stored.alignment
+              ? offlineCanonicalToEPUB(stored.alignment, canonical)
+              : stored.epub_state?.epub_locator;
+          const audioTarget =
+            canonical && stored.alignment
+              ? offlineCanonicalToAudio(stored.alignment, canonical)?.timestamp_ms
+              : stored.audio_state?.audio_timestamp_ms;
+          setReaderTarget(epubTarget);
+          setInitialAudioMS(audioTarget);
+          setSyncAvailable(Boolean(canonical && stored.alignment));
+        } else if (!canceled) setNotice(errorMessage(error));
       }
     }
     if (work) void loadSelection();
@@ -373,7 +438,8 @@ export default function ConsumeWorkScreen() {
           ),
         );
       } catch (error) {
-        if (active) setNotice(errorMessage(error));
+        if (active && !(error instanceof APIError && error.status === 0))
+          setNotice(errorMessage(error));
       } finally {
         refreshing = false;
       }
@@ -494,7 +560,7 @@ export default function ConsumeWorkScreen() {
         const current = await api.representationState(selected.representation.id);
         if (kind === 'epub') setEPUBState(current);
         else setAudioState(current);
-      } else setNotice(errorMessage(error));
+      } else if (!(error instanceof APIError && error.status === 0)) setNotice(errorMessage(error));
     }
   }
 
@@ -528,6 +594,14 @@ export default function ConsumeWorkScreen() {
           try {
             const result = await saveWorkProgress(work.id, update);
             if (!result) {
+              const local = {
+                ...progressRef.current,
+                ...canonical,
+                alignment_id: alignmentID,
+              };
+              progressRef.current = local;
+              setProgress(local);
+              await updateOfflineProgress(work.id, local);
               if (attempt === saveAttempt.current) setSaveState('offline');
               return;
             }
@@ -543,6 +617,7 @@ export default function ConsumeWorkScreen() {
             return;
           }
           progressRef.current = next;
+          await updateOfflineProgress(work.id, next);
           setProgress(next);
           setSyncAvailable(true);
           setResumeMessage('');
@@ -631,7 +706,10 @@ export default function ConsumeWorkScreen() {
     try {
       await saveCanonical(await api.epubToCanonical(alignmentID, location.sync));
     } catch (error) {
-      if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
+      if (error instanceof APIError && error.status === 0) {
+        const canonical = offlineEPUBToCanonical(alignmentID, location.sync);
+        if (canonical) await saveCanonical(canonical);
+      } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
       else setNotice(errorMessage(error));
     }
   }
@@ -647,7 +725,10 @@ export default function ConsumeWorkScreen() {
       if (await saveCanonical(await api.audioToCanonical(alignmentID, locator)))
         setLastSavedAudioMS(timestampMS);
     } catch (error) {
-      if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
+      if (error instanceof APIError && error.status === 0 && alignment) {
+        const canonical = offlineAudioToCanonical(alignment, locator);
+        if (canonical && (await saveCanonical(canonical))) setLastSavedAudioMS(timestampMS);
+      } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
       else setNotice(errorMessage(error));
     }
   }
@@ -683,6 +764,19 @@ export default function ConsumeWorkScreen() {
       setNotice('');
     } catch (error) {
       playAfterRestore.current = false;
+      if (error instanceof APIError && error.status === 0 && alignment) {
+        const canonical = offlineEPUBToCanonical(alignmentID, readerLocation.sync);
+        const target = canonical && offlineCanonicalToAudio(alignment, canonical);
+        if (canonical && target) {
+          await saveCanonical(canonical);
+          setAudioReady(false);
+          restoredAudio.current = '';
+          setInitialAudioMS(target.timestamp_ms);
+          setMode('listen');
+          setNotice('Offline mode · changes will sync when Aldus is reachable.');
+          return;
+        }
+      }
       if (error instanceof APIError && error.status === 409) {
         const current = await api.workProgress(work.id);
         progressRef.current = current;
@@ -733,6 +827,22 @@ export default function ConsumeWorkScreen() {
       setNotice('');
       setSyncAvailable(true);
     } catch (error) {
+      if (error instanceof APIError && error.status === 0 && alignment) {
+        const canonical = offlineAudioToCanonical(alignment, {
+          resource: alignment.segments[0].audio_resource,
+          timestamp_ms: Math.round(player.currentTime * 1000),
+        });
+        const target = canonical && offlineCanonicalToEPUB(alignment, canonical);
+        if (canonical && target) {
+          await saveCanonical(canonical);
+          player.pause();
+          setReaderTarget(target);
+          setMode('read');
+          setNotice('Offline mode · changes will sync when Aldus is reachable.');
+          setSyncAvailable(true);
+          return;
+        }
+      }
       if (error instanceof APIError && error.status === 409) {
         const current = await api.workProgress(work.id);
         progressRef.current = current;

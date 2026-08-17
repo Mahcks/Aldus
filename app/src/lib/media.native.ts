@@ -11,9 +11,10 @@ export function productMediaURL(id: string) {
   return `${apiBaseURL}/api/media/${encodeURIComponent(id)}`;
 }
 
-export async function productAudioSource(id: string): Promise<AudioSource> {
+export async function productAudioSource(id: string, expectedSize?: number): Promise<AudioSource> {
   const destination = new File(Paths.document, `aldus-${id}.audio`);
-  if (destination.exists) return destination.uri;
+  if (destination.exists && (!expectedSize || destination.size === expectedSize))
+    return destination.uri;
   const token = await getToken();
   return (
     await File.downloadFileAsync(productMediaURL(id), destination, {

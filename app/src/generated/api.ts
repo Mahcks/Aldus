@@ -553,6 +553,7 @@ export interface AlignmentSegment {
   audio_end_ms: number /* int64 */;
   highlightable: boolean;
   alignment_status: string;
+  word_timings?: unknown;
 }
 export interface EPUBLocator {
   href: string;

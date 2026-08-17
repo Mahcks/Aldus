@@ -1,7 +1,7 @@
 import type { AlignmentJob, Representation, WorkDetail } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { AvailabilityIcons, BookCover, coverPresentation } from '../../../features/bookshelf';
 import {
@@ -29,6 +29,7 @@ import {
 } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
+import { downloadOfflineWork, offlineWork, removeOfflineWork } from '../../../lib/offline-library';
 
 export default function WorkScreen() {
   const compact = useWindowDimensions().width < 600;
@@ -46,6 +47,8 @@ export default function WorkScreen() {
   const [error, setError] = useState('');
   const [epubID, setEPUBID] = useState('');
   const [audioID, setAudioID] = useState('');
+  const [downloaded, setDownloaded] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   async function load() {
     if (!id || !libraryId) return;
@@ -74,6 +77,7 @@ export default function WorkScreen() {
       setAudioID((current) =>
         revisions.some((item) => item.id === current) ? current : (pair.audio?.id ?? ''),
       );
+      setDownloaded(Boolean(await offlineWork(id)));
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -133,6 +137,43 @@ export default function WorkScreen() {
 
   function openManage() {
     router.push(`/work/${id}/manage?libraryId=${libraryId}&role=${role}`);
+  }
+
+  async function toggleOfflineDownload() {
+    if (!id || !work || downloadBusy) return;
+    setDownloadBusy(true);
+    setError('');
+    try {
+      if (downloaded) {
+        await removeOfflineWork(id);
+        setDownloaded(false);
+        return;
+      }
+      const selectedJob = readyJob(jobs, epubID, audioID);
+      const [alignment, progress, epubState, audioState] = await Promise.all([
+        selectedJob?.alignment_id ? api.alignment(selectedJob.alignment_id) : undefined,
+        api.workProgress(id),
+        selectedEPUB ? api.representationState(selectedEPUB.representation.id) : null,
+        selectedAudio ? api.representationState(selectedAudio.representation.id) : null,
+      ]);
+      await downloadOfflineWork({
+        work,
+        epubs: selectedEPUB ? [selectedEPUB] : [],
+        audio: selectedAudio ? [selectedAudio] : [],
+        jobs: selectedJob ? [selectedJob] : [],
+        epub_id: selectedEPUB?.id ?? '',
+        audio_id: selectedAudio?.id ?? '',
+        alignment,
+        progress,
+        epub_state: epubState,
+        audio_state: audioState,
+      });
+      setDownloaded(true);
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setDownloadBusy(false);
+    }
   }
 
   return (
@@ -222,7 +263,20 @@ export default function WorkScreen() {
                 disabled={!selectedAudio}
                 onPress={() => consume('listen')}
               />
+              {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
+                <Button
+                  label={downloaded ? 'Remove download' : 'Download'}
+                  icon={downloaded ? 'delete' : 'acquire'}
+                  kind="secondary"
+                  loading={downloadBusy}
+                  disabled={downloadBusy}
+                  onPress={() => void toggleOfflineDownload()}
+                />
+              ) : null}
             </Row>
+            {Platform.OS !== 'web' && downloaded ? (
+              <Text className="text-sm text-positive">Available offline on this device</Text>
+            ) : null}
             {selectedEPUB || selectedAudio ? (
               <View className="mt-1 gap-0.5">
                 {selectedEPUB ? (

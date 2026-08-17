@@ -10,7 +10,7 @@ export function productMediaURL(id: string) {
   return `${apiBaseURL}/api/media/${encodeURIComponent(id)}`;
 }
 
-export async function productAudioSource(id: string): Promise<AudioSource> {
+export async function productAudioSource(id: string, _expectedSize?: number): Promise<AudioSource> {
   const token = await getToken();
   return {
     uri: productMediaURL(id),

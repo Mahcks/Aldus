@@ -1,5 +1,7 @@
 import type { User } from '../../generated/api';
 import { APIError, api, onUnauthorized } from '../../lib/api';
+import { lastUser, rememberUser } from '../../lib/last-user';
+import { reconcileAllPendingProgress } from '../../lib/progress-outbox';
 import {
   createContext,
   useCallback,
@@ -9,6 +11,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
+import { AppState, Platform } from 'react-native';
 
 type AuthState = {
   loading: boolean;
@@ -33,8 +36,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const refresh = useCallback(async () => {
     try {
       const user = await api.me();
+      await rememberUser(user);
       setState({ loading: false, setupAvailable: false, user, error: null });
     } catch (error) {
+      if (error instanceof APIError && error.status === 0) {
+        const user = await lastUser();
+        if (user) {
+          setState({ loading: false, setupAvailable: false, user, error: null });
+          return;
+        }
+      }
       if (!(error instanceof APIError) || error.status !== 401) {
         setState({
           loading: false,
@@ -62,18 +73,35 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void refresh();
   }, [refresh]);
   useEffect(() => {
-    onUnauthorized(() => setState((value) => ({ ...value, user: null })));
+    onUnauthorized(() => {
+      void rememberUser(null);
+      setState((value) => ({ ...value, user: null }));
+    });
     return () => onUnauthorized();
   }, []);
+  useEffect(() => {
+    if (!state.user || Platform.OS === 'web') return;
+    void reconcileAllPendingProgress();
+    const subscription = AppState.addEventListener('change', (value) => {
+      if (value === 'active') void reconcileAllPendingProgress();
+    });
+    return () => subscription.remove();
+  }, [state.user]);
   const value = useMemo(
     () => ({
       ...state,
       refresh,
-      signedIn: (user: User) =>
-        setState({ loading: false, setupAvailable: false, user, error: null }),
+      signedIn: (user: User) => {
+        void rememberUser(user);
+        setState({ loading: false, setupAvailable: false, user, error: null });
+      },
       signOut: async () => {
-        await api.logout();
-        setState({ loading: false, setupAvailable: false, user: null, error: null });
+        try {
+          await api.logout();
+        } finally {
+          await rememberUser(null);
+          setState({ loading: false, setupAvailable: false, user: null, error: null });
+        }
       },
     }),
     [state, refresh],

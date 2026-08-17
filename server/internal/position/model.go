@@ -84,6 +84,7 @@ type Segment struct {
 	AudioEndMS      int64           `json:"audio_end_ms"`
 	Highlightable   bool            `json:"highlightable"`
 	AlignmentStatus string          `json:"alignment_status"`
+	WordTimings     json.RawMessage `json:"word_timings,omitempty"`
 }
 
 type KOReaderLocator struct {

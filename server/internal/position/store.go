@@ -3,6 +3,7 @@ package position
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -42,7 +43,8 @@ func (s *Store) Alignment(ctx context.Context, alignmentID string) (Alignment, e
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, ordinal, text, epub_href, epub_locator, koreader_locator,
-			audio_resource, audio_start_ms, audio_end_ms, highlightable, alignment_status
+			audio_resource, audio_start_ms, audio_end_ms, highlightable, alignment_status,
+			COALESCE(word_timings, '')
 		FROM alignment_segments WHERE alignment_id = ? ORDER BY ordinal`, alignmentID)
 	if err != nil {
 		return Alignment{}, fmt.Errorf("get alignment segments: %w", err)
@@ -50,12 +52,15 @@ func (s *Store) Alignment(ctx context.Context, alignmentID string) (Alignment, e
 	defer rows.Close()
 	for rows.Next() {
 		var segment Segment
-		var epubLocator string
+		var epubLocator, wordTimings string
 		if err := rows.Scan(&segment.ID, &segment.Ordinal, &segment.Text, &segment.EPUBHref, &epubLocator,
-			&segment.KOReaderLocator, &segment.AudioResource, &segment.AudioStartMS, &segment.AudioEndMS, &segment.Highlightable, &segment.AlignmentStatus); err != nil {
+			&segment.KOReaderLocator, &segment.AudioResource, &segment.AudioStartMS, &segment.AudioEndMS, &segment.Highlightable, &segment.AlignmentStatus, &wordTimings); err != nil {
 			return Alignment{}, fmt.Errorf("scan alignment segment: %w", err)
 		}
 		segment.EPUBLocator = []byte(epubLocator)
+		if json.Valid([]byte(wordTimings)) {
+			segment.WordTimings = []byte(wordTimings)
+		}
 		alignment.Segments = append(alignment.Segments, segment)
 	}
 	if err := rows.Err(); err != nil {

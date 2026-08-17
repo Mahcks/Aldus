@@ -2,9 +2,10 @@ import { File, Paths } from 'expo-file-system';
 import { getToken } from './auth-token';
 import { productMediaURL } from './media';
 
-export async function productEPUBSource(id: string) {
+export async function productEPUBSource(id: string, expectedSize?: number) {
   const destination = new File(Paths.document, `aldus-${id}.epub`);
-  if (destination.exists) return destination.uri;
+  if (destination.exists && (!expectedSize || destination.size === expectedSize))
+    return destination.uri;
   const token = await getToken();
   return (
     await File.downloadFileAsync(productMediaURL(id), destination, {

@@ -11,3 +11,9 @@ export async function reconcilePendingProgress(_workID: string): Promise<{
 } | null> {
   return null;
 }
+
+export async function pendingProgress(_workID: string): Promise<WorkProgressUpdate | null> {
+  return null;
+}
+
+export async function reconcileAllPendingProgress() {}
