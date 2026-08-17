@@ -4,6 +4,7 @@ import type {
   AcquisitionSettings,
   AcquisitionConnectionStatus,
   AcquisitionCapabilities,
+  AcquisitionDiscovery,
   Alignment,
   ActivitySession,
   AcceptImportProposalRequest,
@@ -308,6 +309,20 @@ export const api = {
   acquisitionCapabilities: () => request<AcquisitionCapabilities>('/acquisition-capabilities'),
   acquisitionRequests: (libraryID: string) =>
     request<AcquisitionRequest[]>(`/libraries/${libraryID}/acquisition-requests`),
+  discoverAcquisitions: (libraryID: string, body: CreateAcquisitionRequest) =>
+    request<AcquisitionDiscovery>(`/libraries/${libraryID}/acquisition-discoveries`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  selectAcquisitionDiscovery: (
+    libraryID: string,
+    discoveryID: string,
+    body: SelectAcquisitionRequest,
+  ) =>
+    request<AcquisitionRequest>(
+      `/libraries/${libraryID}/acquisition-discoveries/${discoveryID}/select`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   createAcquisitionRequest: (libraryID: string, body: CreateAcquisitionRequest) =>
     request<AcquisitionRequest>(`/libraries/${libraryID}/acquisition-requests`, {
       method: 'POST',

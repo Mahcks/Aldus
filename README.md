@@ -148,6 +148,17 @@ make lint
 
 `make docker` builds `ghcr.io/mahcks/aldus`. Run it with `docker compose up --build`, then open <http://localhost:8080>; SQLite data is kept in the `aldus-data` Docker volume.
 
+`/api/health` is process liveness. `/api/ready` additionally verifies that SQLite responds and the data directory is writable; use readiness for container traffic and upgrade checks.
+
+Back up the complete data directory only while Aldus is stopped so the SQLite database, WAL, managed media, covers, and alignment artifacts stay together:
+
+```sh
+# Stop Aldus first.
+make backup BACKUP="$PWD/aldus-backup-$(date +%Y%m%d).tar.gz"
+```
+
+The target must not already exist, and the command verifies the archive before succeeding. Restore offline into an empty data directory with `tar -xzf /path/to/aldus-backup.tar.gz -C data`, then start the same Aldus version and confirm `/api/ready` before upgrading. Source files configured outside the Aldus data directory are not copied by this backup and must be backed up separately.
+
 Run `make generate` after changing named SQL queries or public Go API contracts. See [docs/code-generation.md](docs/code-generation.md) for the pinned sqlc and Tygo workflow.
 
 ## Exact-progress fixture

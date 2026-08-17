@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"io/fs"
 	"net/http"
 	"net/http/cookiejar"
@@ -19,6 +21,87 @@ import (
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 )
+
+func TestExactProgressCrossClientAcceptance(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	positions := position.New(db)
+	if err := positions.SeedFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogStore := catalog.New(db)
+	if err := catalogStore.SetMember(ctx, reader.User, "fixture-library", reader.User.ID, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	handler := Handler(Dependencies{Position: positions, Auth: accounts, Catalog: catalogStore, KOReader: koreader.Credentials{User: "reader", Key: "key"}})
+
+	apiRequest := func(method, target, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, target, strings.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+reader.Token)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+	koRequest := func(method, target, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, target, strings.NewReader(body))
+		request.Header.Set("Accept", "application/vnd.koreader.v1+json")
+		request.Header.Set("x-auth-user", "reader")
+		request.Header.Set("x-auth-key", "key")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+
+	web := apiRequest(http.MethodPut, "/api/works/fixture-work/progress", `{"alignment_id":"fixture-alignment","segment_id":"s0002","offset":350000,"expected_revision":0,"source_device":"web"}`)
+	if web.Code != http.StatusOK {
+		t.Fatalf("web save = %d %s", web.Code, web.Body.String())
+	}
+	pull := koRequest(http.MethodGet, "/syncs/progress/fixture-koreader-document", "")
+	if pull.Code != http.StatusOK || !strings.Contains(pull.Body.String(), `p[2]`) || !strings.Contains(pull.Body.String(), `"device":"web"`) {
+		t.Fatalf("KOReader pull = %d %s", pull.Code, pull.Body.String())
+	}
+	push := koRequest(http.MethodPut, "/syncs/progress", `{"document":"fixture-koreader-document","progress":"/body/DocFragment[1]/body/p[3].0","percentage":0.75,"device":"Kobo","device_id":"acceptance"}`)
+	if push.Code != http.StatusOK {
+		t.Fatalf("KOReader push = %d %s", push.Code, push.Body.String())
+	}
+	canonical := apiRequest(http.MethodGet, "/api/works/fixture-work/progress", "")
+	if canonical.Code != http.StatusOK {
+		t.Fatalf("canonical read = %d %s", canonical.Code, canonical.Body.String())
+	}
+	var progress struct {
+		SegmentID    string `json:"segment_id"`
+		Offset       int    `json:"offset"`
+		SourceDevice string `json:"source_device"`
+	}
+	if err := json.Unmarshal(canonical.Body.Bytes(), &progress); err != nil {
+		t.Fatal(err)
+	}
+	if progress.SegmentID != "s0003" || progress.SourceDevice != "koreader:Kobo acceptance" {
+		t.Fatalf("canonical progress = %#v", progress)
+	}
+	audio := apiRequest(http.MethodPost, "/api/alignments/fixture-alignment/locators/audio", `{"segment_id":"s0003","offset":0}`)
+	epub := apiRequest(http.MethodPost, "/api/alignments/fixture-alignment/locators/epub", `{"segment_id":"s0003","offset":0}`)
+	if audio.Code != http.StatusOK || !strings.Contains(audio.Body.String(), `"timestamp_ms":7800`) {
+		t.Fatalf("audio handoff = %d %s", audio.Code, audio.Body.String())
+	}
+	if epub.Code != http.StatusOK || !strings.Contains(epub.Body.String(), `"href":"text/chapter-1.xhtml"`) || !strings.Contains(epub.Body.String(), `epubcfi`) {
+		t.Fatalf("EPUB handoff = %d %s", epub.Code, epub.Body.String())
+	}
+}
 
 func TestHandler(t *testing.T) {
 	web := fstest.MapFS{
@@ -74,6 +157,19 @@ func TestHandler(t *testing.T) {
 	handler.ServeHTTP(rejected, request)
 	if rejected.Code != http.StatusForbidden || rejected.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("rejected preflight = %d %#v", rejected.Code, rejected.Header())
+	}
+}
+
+func TestReadinessReportsDependencyFailure(t *testing.T) {
+	ready := httptest.NewRecorder()
+	Handler(Dependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/api/ready", nil))
+	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"status":"ready"`) {
+		t.Fatalf("ready = %d %s", ready.Code, ready.Body.String())
+	}
+	unavailable := httptest.NewRecorder()
+	Handler(Dependencies{Ready: func(context.Context) error { return errors.New("storage unavailable") }}).ServeHTTP(unavailable, httptest.NewRequest(http.MethodGet, "/api/ready", nil))
+	if unavailable.Code != http.StatusServiceUnavailable || !strings.Contains(unavailable.Body.String(), `"status":"unavailable"`) {
+		t.Fatalf("unavailable = %d %s", unavailable.Code, unavailable.Body.String())
 	}
 }
 

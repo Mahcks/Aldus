@@ -58,6 +58,17 @@ type SearchResult struct {
 	Abridged                                                                                              bool
 }
 
+type Discovery struct {
+	ID      string
+	Results []SearchResult
+}
+
+type discoverySession struct {
+	LibraryID, SourceID, Query, UserID string
+	ExpiresAt                          time.Time
+	Results                            map[string]Result
+}
+
 type Store struct {
 	db            *sql.DB
 	client        *Client
@@ -65,10 +76,12 @@ type Store struct {
 	selectMu      sync.Mutex
 	metadataMu    sync.Mutex
 	metadataCache map[string]cachedMetadata
+	discoveryMu   sync.Mutex
+	discoveries   map[string]discoverySession
 }
 
 func NewStore(db *sql.DB, client *Client) *Store {
-	return &Store{db: db, client: client, metadataCache: make(map[string]cachedMetadata)}
+	return &Store{db: db, client: client, metadataCache: make(map[string]cachedMetadata), discoveries: make(map[string]discoverySession)}
 }
 
 func (s *Store) SetHandoff(handoff func(context.Context, string, string, string, string) (string, error)) {
@@ -507,6 +520,68 @@ func (s *Store) Search(ctx context.Context, actor auth.User, libraryID, id strin
 		return nil, fmt.Errorf("commit acquisition search: %w", err)
 	}
 	return stored, nil
+}
+
+func (s *Store) Discover(ctx context.Context, actor auth.User, libraryID, sourceID, query string) (Discovery, error) {
+	request, err := s.Create(ctx, actor, libraryID, sourceID, query)
+	if err != nil {
+		return Discovery{}, err
+	}
+	defer s.db.ExecContext(context.WithoutCancel(ctx), `DELETE FROM acquisition_requests WHERE id=?`, request.ID)
+	results, err := s.Search(ctx, actor, libraryID, request.ID)
+	if err != nil {
+		return Discovery{}, err
+	}
+	stored := make(map[string]Result, len(results))
+	for _, result := range results {
+		var value Result
+		var published string
+		if err := s.db.QueryRowContext(ctx, `SELECT title,download_url,source,size,COALESCE(published_at,'') FROM acquisition_results WHERE id=? AND request_id=?`, result.ID, request.ID).Scan(&value.Title, &value.DownloadURL, &value.Source, &value.Size, &published); err != nil {
+			return Discovery{}, fmt.Errorf("read discovery result: %w", err)
+		}
+		value.Published, _ = time.Parse(time.RFC3339Nano, published)
+		stored[result.ID] = value
+	}
+	id, err := randomID()
+	if err != nil {
+		return Discovery{}, err
+	}
+	now := time.Now()
+	s.discoveryMu.Lock()
+	for key, value := range s.discoveries {
+		if now.After(value.ExpiresAt) {
+			delete(s.discoveries, key)
+		}
+	}
+	s.discoveries[id] = discoverySession{LibraryID: libraryID, SourceID: sourceID, Query: strings.TrimSpace(query), UserID: actor.ID, ExpiresAt: now.Add(15 * time.Minute), Results: stored}
+	s.discoveryMu.Unlock()
+	return Discovery{ID: id, Results: results}, nil
+}
+
+func (s *Store) SelectDiscovery(ctx context.Context, actor auth.User, libraryID, discoveryID, resultID string) (Request, error) {
+	s.discoveryMu.Lock()
+	discovery, ok := s.discoveries[discoveryID]
+	result, resultOK := discovery.Results[resultID]
+	if ok && resultOK {
+		delete(discovery.Results, resultID)
+		s.discoveries[discoveryID] = discovery
+	}
+	s.discoveryMu.Unlock()
+	if !ok || !resultOK || time.Now().After(discovery.ExpiresAt) || discovery.LibraryID != libraryID || discovery.UserID != actor.ID {
+		return Request{}, ErrNotFound
+	}
+	request, err := s.Create(ctx, actor, libraryID, discovery.SourceID, discovery.Query)
+	if err != nil {
+		return Request{}, err
+	}
+	published := ""
+	if !result.Published.IsZero() {
+		published = result.Published.UTC().Format(time.RFC3339Nano)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,published_at,created_at) VALUES(?,?,?,?,?,?,NULLIF(?,''),?)`, resultID, request.ID, result.Title, result.DownloadURL, result.Source, max(0, result.Size), published, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return Request{}, fmt.Errorf("persist selected discovery result: %w", err)
+	}
+	return s.Select(ctx, actor, libraryID, request.ID, resultID)
 }
 
 func (s *Store) Select(ctx context.Context, actor auth.User, libraryID, requestID, resultID string) (Request, error) {

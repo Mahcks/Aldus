@@ -56,6 +56,11 @@ type SelectAcquisitionRequest struct {
 	ResultID string `json:"result_id"`
 }
 
+type AcquisitionDiscovery struct {
+	ID      string              `json:"id"`
+	Results []AcquisitionResult `json:"results"`
+}
+
 type AcquisitionSettings struct {
 	IndexerKind             string `json:"indexer_kind" tstype:"'prowlarr' | 'torznab'"`
 	IndexerURL              string `json:"indexer_url"`

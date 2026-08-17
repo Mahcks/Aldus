@@ -9,6 +9,7 @@ import (
 func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
 	router.Get("/health", health)
+	router.Get("/ready", ready(deps.Ready))
 	registerAuthRoutes(router, deps.Auth)
 	router.Group(func(router chi.Router) {
 		router.Use(deps.Auth.Middleware)

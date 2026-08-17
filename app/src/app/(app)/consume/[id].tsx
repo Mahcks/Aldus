@@ -34,6 +34,7 @@ import {
   playableAudioDuration,
   playbackRate,
   progressSaveLabel,
+  progressSourceLabel,
   resumedProgressLabel,
   readToListen,
   readyJob,
@@ -58,9 +59,11 @@ import { APIError, api, errorMessage } from '../../../lib/api';
 import { productEPUBSource } from '../../../lib/epub-source';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
+import { reconcilePendingProgress, saveWorkProgress } from '../../../lib/progress-outbox';
 
 type Mode = 'read' | 'listen';
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
+type ProgressConflict = { local: CanonicalPosition; remote: CanonicalPosition };
 
 export default function ConsumeWorkScreen() {
   const compact = useWindowDimensions().width < 600;
@@ -96,6 +99,7 @@ export default function ConsumeWorkScreen() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [lastSavedAudioMS, setLastSavedAudioMS] = useState<number>();
   const [resumeMessage, setResumeMessage] = useState('');
+  const [progressConflict, setProgressConflict] = useState<ProgressConflict>();
   const [loading, setLoading] = useState(true);
   const reader = useRef<EPUBReaderHandle>(null);
   const readerReady = useRef(false);
@@ -318,6 +322,19 @@ export default function ConsumeWorkScreen() {
       const pending = canonicalSaves.current;
       try {
         await pending;
+        const queued = await reconcilePendingProgress(workID);
+        if (queued) {
+          setProgressConflict({
+            local: {
+              alignment_id: queued.local.alignment_id,
+              segment_id: queued.local.segment_id,
+              offset: queued.local.offset,
+            },
+            remote: queued.remote,
+          });
+          setSaveState('error');
+          return;
+        }
         const next = await api.workProgress(workID);
         if (
           !active ||
@@ -503,14 +520,21 @@ export default function ConsumeWorkScreen() {
           };
           let next: CanonicalPosition;
           try {
-            next = await api.updateWorkProgress(work.id, update);
+            const result = await saveWorkProgress(work.id, update);
+            if (!result) {
+              if (attempt === saveAttempt.current) setSaveState('offline');
+              return;
+            }
+            next = result;
           } catch (error) {
             if (!(error instanceof APIError && error.status === 409)) throw error;
             const latest = await api.workProgress(work.id);
-            next = await api.updateWorkProgress(work.id, {
-              ...update,
-              expected_revision: latest?.revision ?? 0,
-            });
+            if (!latest) throw error;
+            progressRef.current = latest;
+            setProgress(latest);
+            setProgressConflict({ local: canonical, remote: latest });
+            if (attempt === saveAttempt.current) setSaveState('error');
+            return;
           }
           progressRef.current = next;
           setProgress(next);
@@ -534,6 +558,33 @@ export default function ConsumeWorkScreen() {
       });
     await canonicalSaves.current;
     return saved;
+  }
+
+  async function restoreCanonical(next: CanonicalPosition) {
+    if (!alignmentID || !next.resolvable || next.alignment_id !== alignmentID) return;
+    if (mode === 'read') setReaderTarget(await api.canonicalToEPUB(alignmentID, next));
+    else {
+      const target = await api.canonicalToAudio(alignmentID, next);
+      restoredAudio.current = '';
+      setAudioReady(false);
+      setInitialAudioMS(target.timestamp_ms);
+    }
+  }
+
+  async function acceptRemoteProgress() {
+    if (!progressConflict) return;
+    const remote = progressConflict.remote;
+    setProgressConflict(undefined);
+    setSaveState('saved');
+    await restoreCanonical(remote);
+    setResumeMessage(resumedProgressLabel(remote.source_device));
+  }
+
+  async function keepLocalProgress() {
+    if (!progressConflict) return;
+    const local = progressConflict.local;
+    setProgressConflict(undefined);
+    await saveCanonical(local);
   }
 
   async function updateReaderPreferences(next: ReaderPreferences) {
@@ -885,6 +936,22 @@ export default function ConsumeWorkScreen() {
       {notice ? (
         <View className="px-5 pt-3">
           <Notice danger>{notice}</Notice>
+        </View>
+      ) : null}
+      {progressConflict ? (
+        <View className="gap-3 border-b border-warning/30 bg-panel px-5 py-3">
+          <Notice tone="warning">
+            Your place changed on {progressSourceLabel(progressConflict.remote.source_device)}.
+            Choose which position Aldus should keep.
+          </Notice>
+          <View className="flex-row flex-wrap gap-2">
+            <Button label="Use newer saved place" onPress={() => void acceptRemoteProgress()} />
+            <Button
+              label="Keep this place"
+              kind="secondary"
+              onPress={() => void keepLocalProgress()}
+            />
+          </View>
         </View>
       ) : null}
       {mode === 'read' && settingsOpen && !compactNative ? (

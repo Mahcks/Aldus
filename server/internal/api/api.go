@@ -15,7 +15,7 @@ func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
 	router.Use(requestLogger)
 	apiRouter := router.With(cors(deps.AllowedOrigins))
-	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs, Acquisitions: deps.Acquisitions})
+	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs, Acquisitions: deps.Acquisitions, Ready: deps.Ready})
 	apiRouter.Mount("/api/v1", v1Handler)
 	apiRouter.Mount("/api", v1Handler)
 	router.Mount("/opds", opds.Handler(opds.Dependencies{Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest}))

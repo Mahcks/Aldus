@@ -1,4 +1,4 @@
-.PHONY: fixture seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint docker docker-alignment
+.PHONY: fixture seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup docker docker-alignment
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -56,6 +56,16 @@ test:
 	cd server && go test -race ./...
 	cd app && bun run test
 	cd app && bun run typecheck
+
+acceptance:
+	cd server && go test ./internal/api -run TestExactProgressCrossClientAcceptance -count=1
+
+backup:
+	@test -n "$(BACKUP)" || (echo "Set BACKUP to a new .tar.gz path (stop Aldus first)" >&2; exit 1)
+	@test ! -e "$(BACKUP)" || (echo "Backup already exists: $(BACKUP)" >&2; exit 1)
+	@tar -C data -czf "$(BACKUP)" .
+	@tar -tzf "$(BACKUP)" >/dev/null
+	@echo "Backup verified: $(BACKUP)"
 
 lint:
 	cd server && test -z "$$(gofmt -l .)"

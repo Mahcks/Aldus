@@ -128,6 +128,7 @@ export function AcquisitionGroupRow({
   allResults,
   disabled,
   onAdd,
+  onAddPair,
 }: {
   group: AcquisitionResultGroup;
   statuses: Record<string, AcquisitionRowState>;
@@ -135,6 +136,7 @@ export function AcquisitionGroupRow({
   allResults: AcquisitionResult[];
   disabled: boolean;
   onAdd: (result: AcquisitionResult) => void;
+  onAddPair: (first: AcquisitionResult, second: AcquisitionResult) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const formats = [...new Set(group.releases.map((release) => releaseLabel(release)))];
@@ -188,7 +190,7 @@ export function AcquisitionGroupRow({
             ) : null}
           </View>
         </View>
-        <View className="items-start pl-[72px] sm:items-end sm:pl-0">
+        <View className="items-start gap-1 pl-[72px] sm:items-end sm:pl-0">
           {single ? (
             statuses[single.id] === 'queued' ? (
               <StatusBadge tone="success" icon="check" label="Added" />
@@ -213,6 +215,15 @@ export function AcquisitionGroupRow({
               onPress={() => setExpanded((value) => !value)}
             />
           )}
+          {single && singleCounterparts[0] && statuses[single.id] !== 'queued' ? (
+            <Button
+              kind="secondary"
+              icon="synced"
+              label="Add read + listen"
+              disabled={disabled}
+              onPress={() => onAddPair(single, singleCounterparts[0])}
+            />
+          ) : null}
         </View>
       </View>
       {single && statuses[single.id] === 'error' && errors[single.id] ? (
@@ -232,6 +243,7 @@ export function AcquisitionGroupRow({
               {group.releases
                 .filter((release) => release.kind === kind)
                 .map((release) => {
+                  const counterpart = acquisitionCounterparts(release, allResults)[0];
                   const metadata = [
                     release.source,
                     acquisitionSize(release.size),
@@ -259,14 +271,25 @@ export function AcquisitionGroupRow({
                       {state === 'queued' ? (
                         <StatusBadge tone="success" icon="check" label="Added" />
                       ) : (
-                        <Button
-                          kind="quiet"
-                          icon="add"
-                          label={state === 'sending' ? 'Adding…' : 'Add'}
-                          loading={state === 'sending'}
-                          disabled={disabled}
-                          onPress={() => onAdd(release)}
-                        />
+                        <View className="flex-row flex-wrap gap-1">
+                          <Button
+                            kind="quiet"
+                            icon="add"
+                            label={state === 'sending' ? 'Adding…' : 'Add'}
+                            loading={state === 'sending'}
+                            disabled={disabled}
+                            onPress={() => onAdd(release)}
+                          />
+                          {counterpart ? (
+                            <Button
+                              kind="secondary"
+                              icon="synced"
+                              label="Add read + listen"
+                              disabled={disabled}
+                              onPress={() => onAddPair(release, counterpart)}
+                            />
+                          ) : null}
+                        </View>
                       )}
                     </View>
                   );

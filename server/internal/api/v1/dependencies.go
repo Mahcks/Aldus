@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"github.com/mahcks/aldus/server/internal/acquisition"
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -18,4 +19,5 @@ type Dependencies struct {
 	Sources       *source.Store
 	AlignmentJobs *alignment.Manager
 	Acquisitions  *acquisition.Store
+	Ready         func(context.Context) error
 }

@@ -184,14 +184,13 @@ export default function SearchScreen() {
     setSearchingElsewhere(true);
     setAcquisitionError('');
     try {
-      const request = await api.createAcquisitionRequest(selected.library.id, {
+      const discovery = await api.discoverAcquisitions(selected.library.id, {
         query: trimmedQuery,
         source_id: selected.source.id,
       });
-      const results = await api.searchAcquisitionRequest(selected.library.id, request.id);
       if (isStale()) return;
-      setActiveRequest({ id: request.id, libraryID: selected.library.id });
-      setAcquisitionResults(results);
+      setActiveRequest({ id: discovery.id, libraryID: selected.library.id });
+      setAcquisitionResults(discovery.results);
       setShowRelated(false);
       setResultStatus({});
       setResultErrors({});
@@ -206,22 +205,30 @@ export default function SearchScreen() {
   }
 
   async function acquire(result: AcquisitionResult) {
-    if (!activeRequest) return;
+    if (!activeRequest) return false;
     setResultStatus((current) => ({ ...current, [result.id]: 'sending' }));
     setResultErrors((current) => ({ ...current, [result.id]: '' }));
     try {
-      const request = await api.selectAcquisitionResult(activeRequest.libraryID, activeRequest.id, {
-        result_id: result.id,
-      });
+      const request = await api.selectAcquisitionDiscovery(
+        activeRequest.libraryID,
+        activeRequest.id,
+        { result_id: result.id },
+      );
       setFulfillments((current) => [
         request,
         ...current.filter((entry) => entry.id !== request.id),
       ]);
       setResultStatus((current) => ({ ...current, [result.id]: 'queued' }));
+      return true;
     } catch (value) {
       setResultStatus((current) => ({ ...current, [result.id]: 'error' }));
       setResultErrors((current) => ({ ...current, [result.id]: errorMessage(value) }));
+      return false;
     }
+  }
+
+  async function acquirePair(first: AcquisitionResult, second: AcquisitionResult) {
+    if (await acquire(first)) await acquire(second);
   }
 
   function changeQuery(value: string) {
@@ -441,6 +448,7 @@ export default function SearchScreen() {
                   errors={resultErrors}
                   disabled={anySending}
                   onAdd={(result) => void acquire(result)}
+                  onAddPair={(first, second) => void acquirePair(first, second)}
                 />
               ))}
             </View>
@@ -465,6 +473,7 @@ export default function SearchScreen() {
                     errors={resultErrors}
                     disabled={anySending}
                     onAdd={(result) => void acquire(result)}
+                    onAddPair={(first, second) => void acquirePair(first, second)}
                   />
                 ))}
               </View>

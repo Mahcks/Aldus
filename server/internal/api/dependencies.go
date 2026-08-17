@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"github.com/mahcks/aldus/server/internal/acquisition"
 	"io/fs"
 	"net/http"
@@ -26,4 +27,5 @@ type Dependencies struct {
 	Acquisitions   *acquisition.Store
 	KOReader       koreader.Credentials
 	AllowedOrigins []string
+	Ready          func(context.Context) error
 }

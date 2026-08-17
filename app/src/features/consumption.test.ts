@@ -97,6 +97,7 @@ it('only claims progress is saved after confirmation', () => {
   expect(progressSaveLabel('idle', 'read')).toBe('');
   expect(progressSaveLabel('saving', 'read')).toBe('Saving…');
   expect(progressSaveLabel('error', 'read')).toBe('Couldn’t save');
+  expect(progressSaveLabel('offline', 'read')).toBe('Saved on this device');
   expect(progressSaveLabel('saved', 'read')).toBe('Saved here');
   expect(progressSaveLabel('saved', 'listen', 3_522_000)).toBe('Saved at 58:42');
 });

@@ -126,6 +126,23 @@ func main() {
 			Catalog: catalogStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
 			Acquisitions: acquisitionStore,
 			KOReader:     koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
+			Ready: func(ctx context.Context) error {
+				if err := db.PingContext(ctx); err != nil {
+					return fmt.Errorf("database: %w", err)
+				}
+				probe, err := os.CreateTemp(cfg.DataDir, ".aldus-ready-*")
+				if err != nil {
+					return fmt.Errorf("data directory: %w", err)
+				}
+				name := probe.Name()
+				if err := probe.Close(); err != nil {
+					return fmt.Errorf("data directory: %w", err)
+				}
+				if err := os.Remove(name); err != nil {
+					return fmt.Errorf("data directory: %w", err)
+				}
+				return nil
+			},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

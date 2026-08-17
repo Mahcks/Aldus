@@ -54,6 +54,10 @@ export interface CreateAcquisitionRequest {
 export interface SelectAcquisitionRequest {
   result_id: string;
 }
+export interface AcquisitionDiscovery {
+  id: string;
+  results: AcquisitionResult[];
+}
 export interface AcquisitionSettings {
   indexer_kind: 'prowlarr' | 'torznab';
   indexer_url: string;

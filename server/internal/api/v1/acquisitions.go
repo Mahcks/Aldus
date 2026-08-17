@@ -16,9 +16,37 @@ func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Post("/acquisition-settings/test", testAcquisitionSettings(store))
 	router.Get("/acquisition-capabilities", acquisitionCapabilities(store))
 	router.Get("/libraries/{libraryID}/acquisition-requests", listAcquisitionRequests(store))
+	router.Post("/libraries/{libraryID}/acquisition-discoveries", createAcquisitionDiscovery(store))
+	router.Post("/libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", selectAcquisitionDiscovery(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests", createAcquisitionRequest(store))
 	router.Get("/libraries/{libraryID}/acquisition-requests/{requestID}/search", searchAcquisitionRequest(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/select", selectAcquisitionResult(store))
+}
+
+func createAcquisitionDiscovery(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.CreateAcquisitionRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		value, err := store.Discover(r.Context(), actor(r), chi.URLParam(r, "libraryID"), body.SourceID, body.Query)
+		results := make([]contracts.AcquisitionResult, len(value.Results))
+		for i, result := range value.Results {
+			results[i] = acquisitionResultDTO(result)
+		}
+		writeAcquisitionResult(w, contracts.AcquisitionDiscovery{ID: value.ID, Results: results}, err)
+	}
+}
+
+func selectAcquisitionDiscovery(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.SelectAcquisitionRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		value, err := store.SelectDiscovery(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "discoveryID"), body.ResultID)
+		writeAcquisitionResult(w, acquisitionRequestDTO(value), err)
+	}
 }
 
 func acquisitionCapabilities(store *acquisition.Store) http.HandlerFunc {

@@ -56,11 +56,12 @@ export function resumedProgressLabel(source?: string, audioSeconds?: number) {
 }
 
 export function progressSaveLabel(
-  state: 'idle' | 'saving' | 'saved' | 'error',
+  state: 'idle' | 'saving' | 'saved' | 'offline' | 'error',
   mode: 'read' | 'listen',
   audioMilliseconds?: number,
 ) {
   if (state === 'saving') return 'Saving…';
+  if (state === 'offline') return 'Saved on this device';
   if (state === 'error') return 'Couldn’t save';
   if (state !== 'saved') return '';
   return mode === 'listen' && audioMilliseconds != null

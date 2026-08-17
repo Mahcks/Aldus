@@ -147,25 +147,25 @@ func TestStoreAuthorizesEditorsAndBindsSelectionsToSearchResults(t *testing.T) {
 	client, _ := New(Options{IndexerURL: server.URL + "/indexer", QBitURL: server.URL})
 	store := NewStore(db, client)
 	editor := auth.User{ID: "editor"}
-	request, err := store.Create(ctx, editor, "library", "source", "Alice")
+	discovery, err := store.Discover(ctx, editor, "library", "source", "Alice")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.List(ctx, auth.User{ID: "reader"}, "library"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reader list error = %v", err)
 	}
-	results, err := store.Search(ctx, editor, "library", request.ID)
-	if err != nil || len(results) != 1 {
-		t.Fatalf("search = %#v, %v", results, err)
+	requests, err := store.List(ctx, editor, "library")
+	if err != nil || len(requests) != 0 || len(discovery.Results) != 1 {
+		t.Fatalf("ephemeral discovery = %#v, requests=%#v, %v", discovery, requests, err)
 	}
-	if _, err := store.Select(ctx, editor, "library", request.ID, "client-invented"); !errors.Is(err, ErrNotFound) {
+	if _, err := store.SelectDiscovery(ctx, editor, "library", discovery.ID, "client-invented"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("tampered selection error = %v", err)
 	}
-	selected, err := store.Select(ctx, editor, "library", request.ID, results[0].ID)
-	if err != nil || selected.Status != "queued" || added != "https://download.test/alice" || addedTag != request.ID {
+	selected, err := store.SelectDiscovery(ctx, editor, "library", discovery.ID, discovery.Results[0].ID)
+	if err != nil || selected.Status != "queued" || added != "https://download.test/alice" || addedTag != selected.ID {
 		t.Fatalf("selected = %#v, added=%q, tag=%q, err=%v", selected, added, addedTag, err)
 	}
-	if _, err := store.Select(ctx, editor, "library", request.ID, results[0].ID); !errors.Is(err, ErrNotFound) || addCount != 1 {
+	if _, err := store.SelectDiscovery(ctx, editor, "library", discovery.ID, discovery.Results[0].ID); !errors.Is(err, ErrNotFound) || addCount != 1 {
 		t.Fatalf("repeated selection err=%v add count=%d", err, addCount)
 	}
 }
