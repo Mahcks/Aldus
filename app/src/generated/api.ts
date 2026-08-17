@@ -27,8 +27,25 @@ export interface AcquisitionResult {
   id: string;
   title: string;
   source: string;
+  canonical_title: string;
+  author?: string;
+  language?: string;
+  format: string;
+  kind: 'ebook' | 'audiobook';
+  edition?: string;
+  narrator?: string;
+  year?: number /* int */;
+  isbn?: string;
+  cover_url?: string;
+  abridged?: boolean;
+  group_key: string;
+  match: 'exact' | 'related';
   size: number /* int64 */;
   published?: string;
+  relevance: number /* int */;
+  match_confidence?: '' | 'likely';
+  match_reasons?: string[];
+  likely_pair_ids?: string[];
 }
 export interface CreateAcquisitionRequest {
   query: string;

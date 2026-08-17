@@ -7,15 +7,16 @@ import type {
 } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
   acquisitionFulfillment,
+  groupAcquisitionResults,
   parseAcquisitionRelease,
-  scoreAcquisitionRelevance,
 } from '../../features/acquisition';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { coverPresentation, WorkRow } from '../../features/bookshelf';
-import { AcquisitionResultRow, BrowseControls, DestinationPicker } from '../../features/browse';
+import { AcquisitionGroupRow, BrowseControls, DestinationPicker } from '../../features/browse';
 import { listItemEnter } from '../../features/motion';
 import { Text, View } from '../../features/tw';
 import {
@@ -33,6 +34,8 @@ import { api, errorMessage } from '../../lib/api';
 type Destination = { library: Library; source: LibrarySource };
 type ActiveRequest = { id: string; libraryID: string };
 type ResultStatus = 'idle' | 'sending' | 'queued' | 'error';
+type SearchView = 'all' | 'library' | 'available';
+type AcquisitionKind = 'all' | 'ebook' | 'audiobook';
 
 const MIN_ACQUISITION_QUERY_LENGTH = 2;
 
@@ -40,28 +43,15 @@ function destinationKey(entry: Destination) {
   return `${entry.library.id}:${entry.source.id}`;
 }
 
-/**
- * Indexers rank by seeders/date, not relevance to the query, so a release
- * search for a well-known title routinely surfaces cookbooks, craft books,
- * and study guides above the actual work. Re-sort by best-effort relevance
- * before display — highest first, ties keep the indexer's original order.
- */
-function rankAcquisitionResults(results: AcquisitionResult[], query: string) {
-  return results
-    .map((result, index) => ({
-      result,
-      index,
-      score: scoreAcquisitionRelevance(query, parseAcquisitionRelease(result.title).title),
-    }))
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .map(({ result }) => result);
-}
-
 export default function SearchScreen() {
   const auth = useAuth();
+  const narrow = useWindowDimensions().width < 600;
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent');
   const [availability, setAvailability] = useState('all');
+  const [view, setView] = useState<SearchView>('all');
+  const [acquisitionKind, setAcquisitionKind] = useState<AcquisitionKind>('all');
+  const [showRelated, setShowRelated] = useState(false);
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -201,7 +191,8 @@ export default function SearchScreen() {
       const results = await api.searchAcquisitionRequest(selected.library.id, request.id);
       if (isStale()) return;
       setActiveRequest({ id: request.id, libraryID: selected.library.id });
-      setAcquisitionResults(rankAcquisitionResults(results, trimmedQuery));
+      setAcquisitionResults(results);
+      setShowRelated(false);
       setResultStatus({});
       setResultErrors({});
     } catch (value) {
@@ -259,6 +250,18 @@ export default function SearchScreen() {
       .filter((request) => acquisitionFulfillment(request)?.action === 'open')
       .slice(0, 3),
   ];
+  const acquisitionGroups = groupAcquisitionResults(
+    acquisitionResults.filter(
+      (result) => acquisitionKind === 'all' || result.kind === acquisitionKind,
+    ),
+  );
+  const exactGroups = acquisitionGroups.filter((group) => group.match === 'exact');
+  const relatedGroups = acquisitionGroups.filter((group) => group.match === 'related');
+  const relatedPreviewCount = exactGroups.length ? 3 : 6;
+  const visibleRelatedGroups = showRelated
+    ? relatedGroups
+    : relatedGroups.slice(0, relatedPreviewCount);
+  const hiddenRelatedCount = relatedGroups.length - visibleRelatedGroups.length;
 
   function openFulfillment(request: AcquisitionRequest) {
     const state = acquisitionFulfillment(request);
@@ -375,31 +378,112 @@ export default function SearchScreen() {
     <Section
       title="Available to add"
       action={
+        narrow ? undefined : (
+          <DestinationPicker
+            options={destinationOptions}
+            value={destination}
+            onChange={setDestination}
+          />
+        )
+      }
+    >
+      {narrow ? (
         <DestinationPicker
           options={destinationOptions}
           value={destination}
           onChange={setDestination}
         />
-      }
-    >
+      ) : null}
       {acquisitionError ? <Notice tone="danger">{acquisitionError}</Notice> : null}
       {searchingElsewhere ? (
         <LoadingState label="Searching book and audiobook sources…" />
-      ) : acquisitionResults.length ? (
-        <View className="max-w-[900px]">
-          {acquisitionResults.map((result) => (
-            <AcquisitionResultRow
-              key={result.id}
-              result={result}
-              state={resultStatus[result.id] ?? 'idle'}
-              errorMessage={resultErrors[result.id]}
-              disabled={anySending}
-              onAdd={() => void acquire(result)}
-            />
-          ))}
+      ) : acquisitionGroups.length ? (
+        <View className="max-w-[960px] gap-3">
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Available format"
+            className="flex-row flex-wrap gap-2"
+          >
+            {(
+              [
+                ['all', 'All formats'],
+                ['ebook', 'Ebooks'],
+                ['audiobook', 'Audiobooks'],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                kind="secondary"
+                label={label}
+                selected={acquisitionKind === value}
+                accessibilityRole="radio"
+                onPress={() => {
+                  setAcquisitionKind(value);
+                  setShowRelated(false);
+                }}
+              />
+            ))}
+          </View>
+          {exactGroups.length ? (
+            <View className="gap-1">
+              <View className="flex-row items-center justify-between border-b border-line pb-2">
+                <Text className="text-sm font-bold text-ink">Best matches</Text>
+                <Text className="text-xs text-subtle">
+                  {exactGroups.length} title{exactGroups.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+              {exactGroups.map((group) => (
+                <AcquisitionGroupRow
+                  key={group.key}
+                  group={group}
+                  allResults={acquisitionResults}
+                  statuses={resultStatus}
+                  errors={resultErrors}
+                  disabled={anySending}
+                  onAdd={(result) => void acquire(result)}
+                />
+              ))}
+            </View>
+          ) : null}
+          {relatedGroups.length ? (
+            <View className={exactGroups.length ? 'mt-1' : 'gap-1'}>
+              <View className="flex-row items-center justify-between border-b border-line pb-2">
+                <Text className="text-sm font-bold text-ink">
+                  {exactGroups.length ? 'Related books' : 'Results'}
+                </Text>
+                <Text className="text-xs text-subtle">
+                  {relatedGroups.length} title{relatedGroups.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+              <View>
+                {visibleRelatedGroups.map((group) => (
+                  <AcquisitionGroupRow
+                    key={group.key}
+                    group={group}
+                    allResults={acquisitionResults}
+                    statuses={resultStatus}
+                    errors={resultErrors}
+                    disabled={anySending}
+                    onAdd={(result) => void acquire(result)}
+                  />
+                ))}
+              </View>
+              {hiddenRelatedCount > 0 || showRelated ? (
+                <Button
+                  kind="quiet"
+                  label={showRelated ? 'Show fewer' : `Show ${hiddenRelatedCount} more`}
+                  onPress={() => setShowRelated((value) => !value)}
+                />
+              ) : null}
+            </View>
+          ) : null}
         </View>
       ) : !acquisitionError ? (
-        <Text className="py-2 text-sm text-muted">No sources found this title.</Text>
+        <Text className="py-2 text-sm text-muted">
+          {acquisitionResults.length
+            ? 'No results match this format.'
+            : 'No sources found this title.'}
+        </Text>
       ) : null}
     </Section>
   ) : null;
@@ -407,23 +491,49 @@ export default function SearchScreen() {
   return (
     <Page title="Search">
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      <View className="gap-4">
-        <View className="w-full max-w-[760px]">
+      <View className="max-w-[1000px] gap-4">
+        <View className="w-full">
           <SearchField
             label="Search title, author, or ISBN"
             value={query}
             onChangeText={changeQuery}
           />
         </View>
-        <BrowseControls
-          sort={sort}
-          availability={availability}
-          onSortChange={setSort}
-          onAvailabilityChange={setAvailability}
-        />
+        <View className="gap-3 border-b border-line pb-4">
+          <View accessibilityRole="tablist" className="flex-row flex-wrap gap-2">
+            {(
+              [
+                ['all', 'All'],
+                ['library', 'In your libraries'],
+                ['available', 'Available to add'],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                kind="secondary"
+                label={label}
+                selected={view === value}
+                accessibilityRole="tab"
+                onPress={() => setView(value)}
+              />
+            ))}
+          </View>
+          {view !== 'available' ? (
+            <BrowseControls
+              sort={sort}
+              availability={availability}
+              onSortChange={setSort}
+              onAvailabilityChange={setAvailability}
+            />
+          ) : null}
+        </View>
       </View>
       {fulfillmentSection}
-      {prioritizeAcquisition ? (
+      {view === 'library' ? (
+        localSection
+      ) : view === 'available' ? (
+        acquisitionSection
+      ) : prioritizeAcquisition ? (
         <>
           {acquisitionSection}
           {localSection}

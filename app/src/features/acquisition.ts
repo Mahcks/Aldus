@@ -1,4 +1,4 @@
-import type { AcquisitionRequest } from '../generated/api';
+import type { AcquisitionRequest, AcquisitionResult } from '../generated/api';
 
 export type AcquisitionFulfillment = {
   action?: 'review' | 'open';
@@ -6,6 +6,51 @@ export type AcquisitionFulfillment = {
   pending: boolean;
   tone: 'danger' | 'info' | 'success' | 'warning';
 };
+
+export type AcquisitionResultGroup = {
+  key: string;
+  title: string;
+  author?: string;
+  match: 'exact' | 'related';
+  releases: AcquisitionResult[];
+};
+
+/** Resolves only server-issued opposite-format pair IDs; it never infers sync eligibility. */
+export function acquisitionCounterparts(
+  result: AcquisitionResult,
+  results: AcquisitionResult[],
+): AcquisitionResult[] {
+  if (result.match_confidence !== 'likely' || !result.likely_pair_ids?.length) return [];
+  const ids = new Set(result.likely_pair_ids);
+  return results.filter((candidate) => ids.has(candidate.id) && candidate.kind !== result.kind);
+}
+
+/** Groups server-normalized releases without inventing catalog identity on the client. */
+export function groupAcquisitionResults(results: AcquisitionResult[]): AcquisitionResultGroup[] {
+  const groups = new Map<string, AcquisitionResultGroup>();
+  for (const result of results) {
+    const key = result.group_key || result.id;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.releases.push(result);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      title: result.canonical_title || result.title,
+      author: result.author,
+      match: result.match,
+      releases: [result],
+    });
+  }
+  for (const group of groups.values()) {
+    group.author ||= group.releases.find((release) => release.author)?.author;
+  }
+  return [...groups.values()].sort((a, b) => {
+    if (a.match !== b.match) return a.match === 'exact' ? -1 : 1;
+    return (b.releases[0]?.relevance ?? 0) - (a.releases[0]?.relevance ?? 0);
+  });
+}
 
 /** Turns the persisted server lifecycle into concise, truthful reader-facing state. */
 export function acquisitionFulfillment(request: AcquisitionRequest): AcquisitionFulfillment | null {

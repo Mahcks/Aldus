@@ -114,7 +114,7 @@ func acquisitionRequestDTOs(values []acquisition.Request) []contracts.Acquisitio
 }
 
 func acquisitionResultDTO(value acquisition.SearchResult) contracts.AcquisitionResult {
-	return contracts.AcquisitionResult{ID: value.ID, Title: value.Title, Source: value.Source, Size: value.Size, Published: value.Published}
+	return contracts.AcquisitionResult{ID: value.ID, Title: value.Title, Source: value.Source, CanonicalTitle: value.CanonicalTitle, Author: value.Author, Language: value.Language, Format: value.Format, Kind: value.Kind, Edition: value.Edition, Narrator: value.Narrator, GroupKey: value.GroupKey, Match: value.Match, Size: value.Size, Published: value.Published, Relevance: value.Relevance, Year: value.Year, ISBN: value.ISBN, CoverURL: value.CoverURL, Abridged: value.Abridged, MatchConfidence: value.MatchConfidence, MatchReasons: value.MatchReasons, LikelyPairIDs: value.LikelyPairIDs}
 }
 
 func writeAcquisitionResult(w http.ResponseWriter, value any, err error) {

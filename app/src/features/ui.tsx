@@ -168,8 +168,8 @@ export function Button({
   icon?: AppIconName;
   iconOnly?: boolean;
   loading?: boolean;
-  /** Override for use inside a radiogroup (see `Select`). */
-  accessibilityRole?: 'button' | 'radio';
+  /** Override for use inside a radiogroup or tablist. */
+  accessibilityRole?: 'button' | 'radio' | 'tab';
 }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -192,7 +192,7 @@ export function Button({
     kind,
     inactive: isInactive,
     pressed,
-    grouped: accessibilityRole === 'radio',
+    grouped: accessibilityRole === 'radio' || accessibilityRole === 'tab',
   });
   const paddingClass = kind === 'quiet' ? 'px-2' : 'px-4';
   const inactiveClass = isInactive ? 'opacity-50' : '';

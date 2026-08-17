@@ -24,11 +24,28 @@ type AcquisitionRequest struct {
 }
 
 type AcquisitionResult struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Source    string    `json:"source"`
-	Size      int64     `json:"size"`
-	Published time.Time `json:"published,omitempty"`
+	ID              string    `json:"id"`
+	Title           string    `json:"title"`
+	Source          string    `json:"source"`
+	CanonicalTitle  string    `json:"canonical_title"`
+	Author          string    `json:"author,omitempty"`
+	Language        string    `json:"language,omitempty"`
+	Format          string    `json:"format"`
+	Kind            string    `json:"kind" tstype:"'ebook' | 'audiobook'"`
+	Edition         string    `json:"edition,omitempty"`
+	Narrator        string    `json:"narrator,omitempty"`
+	Year            int       `json:"year,omitempty"`
+	ISBN            string    `json:"isbn,omitempty"`
+	CoverURL        string    `json:"cover_url,omitempty"`
+	Abridged        bool      `json:"abridged,omitempty"`
+	GroupKey        string    `json:"group_key"`
+	Match           string    `json:"match" tstype:"'exact' | 'related'"`
+	Size            int64     `json:"size"`
+	Published       time.Time `json:"published,omitempty"`
+	Relevance       int       `json:"relevance"`
+	MatchConfidence string    `json:"match_confidence,omitempty" tstype:"'' | 'likely'"`
+	MatchReasons    []string  `json:"match_reasons,omitempty"`
+	LikelyPairIDs   []string  `json:"likely_pair_ids,omitempty"`
 }
 
 type CreateAcquisitionRequest struct {

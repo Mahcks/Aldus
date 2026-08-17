@@ -49,20 +49,26 @@ type Request struct {
 }
 
 type SearchResult struct {
-	ID, Title, Source string
-	Size              int64
-	Published         time.Time
+	ID, Title, Source, CanonicalTitle, Author, Language, Format, Kind, Edition, Narrator, GroupKey, Match string
+	ISBN, CoverURL, MatchConfidence                                                                       string
+	MatchReasons, LikelyPairIDs                                                                           []string
+	Size                                                                                                  int64
+	Published                                                                                             time.Time
+	Relevance, Year                                                                                       int
+	Abridged                                                                                              bool
 }
 
 type Store struct {
-	db       *sql.DB
-	client   *Client
-	handoff  func(context.Context, string, string, string, string) (string, error)
-	selectMu sync.Mutex
+	db            *sql.DB
+	client        *Client
+	handoff       func(context.Context, string, string, string, string) (string, error)
+	selectMu      sync.Mutex
+	metadataMu    sync.Mutex
+	metadataCache map[string]cachedMetadata
 }
 
 func NewStore(db *sql.DB, client *Client) *Store {
-	return &Store{db: db, client: client}
+	return &Store{db: db, client: client, metadataCache: make(map[string]cachedMetadata)}
 }
 
 func (s *Store) SetHandoff(handoff func(context.Context, string, string, string, string) (string, error)) {
@@ -470,8 +476,11 @@ func (s *Store) Search(ctx context.Context, actor auth.User, libraryID, id strin
 		return nil, fmt.Errorf("replace acquisition results: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	stored := make([]SearchResult, 0, len(results))
-	for _, result := range results {
+	discovery := normalizeSearchResults(query, results)
+	metadata := s.searchMetadata(ctx, client, query)
+	stored := make([]SearchResult, 0, len(discovery))
+	for _, item := range discovery {
+		result := item.Result
 		resultID, err := randomID()
 		if err != nil {
 			return nil, err
@@ -483,8 +492,17 @@ func (s *Store) Search(ctx context.Context, actor auth.User, libraryID, id strin
 		if _, err := tx.ExecContext(ctx, `INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,published_at,created_at) VALUES(?,?,?,?,?,?,NULLIF(?,''),?)`, resultID, id, result.Title, result.DownloadURL, result.Source, max(0, result.Size), published, now); err != nil {
 			return nil, fmt.Errorf("store acquisition result: %w", err)
 		}
-		stored = append(stored, SearchResult{ID: resultID, Title: result.Title, Source: result.Source, Size: max(0, result.Size), Published: result.Published})
+		_, _, _, _, abridged := releaseMetadata(result.Title)
+		value := SearchResult{ID: resultID, Title: result.Title, Source: result.Source, Size: max(0, result.Size), Published: result.Published, CanonicalTitle: item.CanonicalTitle, Author: item.Author, Language: item.Language, Format: item.Format, Kind: item.Kind, Edition: item.Edition, Narrator: item.Narrator, GroupKey: item.GroupKey, Match: item.Match, Relevance: item.Relevance, Abridged: abridged}
+		if match := matchingMetadata(value.CanonicalTitle, value.Author, metadata); match.Title != "" {
+			value.CanonicalTitle, value.Year, value.ISBN, value.CoverURL = match.Title, match.Year, match.ISBN, match.CoverURL
+			if value.Author == "" {
+				value.Author = match.Author
+			}
+		}
+		stored = append(stored, value)
 	}
+	addLikelyPairs(stored)
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit acquisition search: %w", err)
 	}

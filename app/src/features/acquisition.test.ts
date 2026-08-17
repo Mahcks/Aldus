@@ -1,12 +1,14 @@
 import { expect, test } from 'bun:test';
 import {
   acquisitionDate,
+  acquisitionCounterparts,
   acquisitionFulfillment,
   acquisitionSize,
+  groupAcquisitionResults,
   parseAcquisitionRelease,
   scoreAcquisitionRelevance,
 } from './acquisition';
-import type { AcquisitionRequest } from '../generated/api';
+import type { AcquisitionRequest, AcquisitionResult } from '../generated/api';
 
 const request = {
   id: 'request',
@@ -116,4 +118,60 @@ test('scores an exact title match highest', () => {
     'The Unofficial Left Hand of Darkness Companion Guide',
   );
   expect(exact).toBeGreaterThan(derivative);
+});
+
+test('groups server-normalized releases and keeps exact matches ahead of related titles', () => {
+  const release = (id: string, overrides: Partial<AcquisitionResult>): AcquisitionResult => ({
+    id,
+    title: id,
+    source: 'Books',
+    canonical_title: 'The Lord of the Rings',
+    format: 'EPUB',
+    kind: 'ebook',
+    group_key: 'lord-of-the-rings',
+    match: 'exact',
+    size: 100,
+    relevance: 100,
+    ...overrides,
+  });
+  const groups = groupAcquisitionResults([
+    release('guide', {
+      canonical_title: 'A Guide to The Lord of the Rings',
+      group_key: 'guide',
+      match: 'related',
+      relevance: 20,
+    }),
+    release('ebook', {}),
+    release('audio', { format: 'M4B', kind: 'audiobook' }),
+  ]);
+
+  expect(groups.map((group) => group.key)).toEqual(['lord-of-the-rings', 'guide']);
+  expect(groups[0].releases.map((item) => item.id)).toEqual(['ebook', 'audio']);
+});
+
+test('resolves only explicit opposite-format counterpart IDs', () => {
+  const release = (id: string, kind: 'ebook' | 'audiobook'): AcquisitionResult => ({
+    id,
+    title: id,
+    source: 'Books',
+    canonical_title: 'Dune',
+    format: kind === 'ebook' ? 'EPUB' : 'M4B',
+    kind,
+    group_key: 'dune',
+    match: 'exact',
+    size: 100,
+    relevance: 100,
+  });
+  const ebook = {
+    ...release('ebook', 'ebook'),
+    match_confidence: 'likely' as const,
+    likely_pair_ids: ['audio', 'other-ebook', 'missing'],
+  };
+  const audio = release('audio', 'audiobook');
+  const otherEbook = release('other-ebook', 'ebook');
+
+  expect(acquisitionCounterparts(ebook, [ebook, audio, otherEbook]).map((item) => item.id)).toEqual(
+    ['audio'],
+  );
+  expect(acquisitionCounterparts({ ...ebook, match_confidence: '' }, [audio])).toEqual([]);
 });
