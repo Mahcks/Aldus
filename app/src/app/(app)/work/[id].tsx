@@ -7,6 +7,7 @@ import { AvailabilityIcons, BookCover, coverPresentation } from '../../../featur
 import {
   choices,
   defaultPair,
+  readyJob,
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
@@ -49,18 +50,19 @@ export default function WorkScreen() {
   async function load() {
     if (!id || !libraryId) return;
     try {
-      const [nextWork, nextRepresentations, nextJobs, progress] = await Promise.all([
+      const [nextWork, nextRepresentations, nextJobs, progress, preference] = await Promise.all([
         api.work(id),
         api.representations(id),
         api.alignmentJobs(id),
         api.workProgress(id),
+        api.workPreference(id),
       ]);
       const revisions = await loadRevisions(libraryId, nextRepresentations);
       const pair = defaultPair(
         nextJobs,
         choices(nextRepresentations, revisions, ['epub']),
         choices(nextRepresentations, revisions, ['audio', 'audiobook']),
-        progress?.alignment_id,
+        preference?.alignment_id ?? progress?.alignment_id,
       );
       setWork(nextWork);
       setMedia(revisions);
@@ -102,6 +104,31 @@ export default function WorkScreen() {
 
   function consume(mode: 'read' | 'listen') {
     router.push(`/consume/${id}?mode=${mode}&epub=${epubID}&audio=${audioID}`);
+  }
+
+  async function rememberPair(nextEPUBID: string, nextAudioID: string) {
+    if (!id) return;
+    const job = readyJob(jobs, nextEPUBID, nextAudioID);
+    if (!job?.alignment_id) return;
+    try {
+      await api.setWorkPreference(id, {
+        epub_media_id: nextEPUBID,
+        audio_media_id: nextAudioID,
+        alignment_id: job.alignment_id,
+      });
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
+
+  function selectEPUB(next: string) {
+    setEPUBID(next);
+    void rememberPair(next, audioID);
+  }
+
+  function selectAudio(next: string) {
+    setAudioID(next);
+    void rememberPair(epubID, next);
   }
 
   function openManage() {
@@ -227,13 +254,13 @@ export default function WorkScreen() {
               title="Reading edition"
               items={epubs}
               selected={epubID}
-              onSelect={setEPUBID}
+              onSelect={selectEPUB}
             />
             <EditionChoiceList
               title="Narration"
               items={audio}
               selected={audioID}
-              onSelect={setAudioID}
+              onSelect={selectAudio}
             />
           </View>
         </Section>

@@ -15,6 +15,7 @@ type AcquisitionRequest struct {
 	ScanID              string    `json:"scan_id,omitempty"`
 	ProposalID          string    `json:"proposal_id,omitempty"`
 	WorkID              string    `json:"work_id,omitempty"`
+	PairID              string    `json:"pair_id,omitempty"`
 	SelectedTitle       string    `json:"selected_title,omitempty"`
 	SelectedSource      string    `json:"selected_source,omitempty"`
 	SelectedSize        int64     `json:"selected_size,omitempty"`
@@ -54,6 +55,15 @@ type CreateAcquisitionRequest struct {
 }
 type SelectAcquisitionRequest struct {
 	ResultID string `json:"result_id"`
+}
+
+type SelectAcquisitionPairRequest struct {
+	ResultIDs []string `json:"result_ids"`
+}
+
+type AcquisitionPair struct {
+	ID       string               `json:"id"`
+	Requests []AcquisitionRequest `json:"requests"`
 }
 
 type AcquisitionDiscovery struct {

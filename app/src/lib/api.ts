@@ -5,6 +5,7 @@ import type {
   AcquisitionConnectionStatus,
   AcquisitionCapabilities,
   AcquisitionDiscovery,
+  AcquisitionPair,
   Alignment,
   ActivitySession,
   AcceptImportProposalRequest,
@@ -34,6 +35,8 @@ import type {
   RepresentationStateUpdate,
   Session,
   SelectAcquisitionRequest,
+  SelectAcquisitionPairRequest,
+  SetWorkPreferenceRequest,
   UpdateAcquisitionSettingsRequest,
   SourceEntry,
   SourceDirectoryListing,
@@ -55,6 +58,7 @@ import type {
   WorkDetail,
   WorkBrowsePage,
   WorkProgressUpdate,
+  WorkPreference,
 } from '../generated/api';
 import { clearToken, getToken, setToken } from './auth-token';
 import { apiBaseURL } from './api-base';
@@ -323,6 +327,15 @@ export const api = {
       `/libraries/${libraryID}/acquisition-discoveries/${discoveryID}/select`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+  selectAcquisitionPair: (
+    libraryID: string,
+    discoveryID: string,
+    body: SelectAcquisitionPairRequest,
+  ) =>
+    request<AcquisitionPair>(
+      `/libraries/${libraryID}/acquisition-discoveries/${discoveryID}/select-pair`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   createAcquisitionRequest: (libraryID: string, body: CreateAcquisitionRequest) =>
     request<AcquisitionRequest>(`/libraries/${libraryID}/acquisition-requests`, {
       method: 'POST',
@@ -354,6 +367,19 @@ export const api = {
       throw error;
     }
   },
+  workPreference: async (id: string) => {
+    try {
+      return await request<WorkPreference>(`/works/${id}/preference`);
+    } catch (error) {
+      if (error instanceof APIError && error.status === 404) return null;
+      throw error;
+    }
+  },
+  setWorkPreference: (id: string, body: SetWorkPreferenceRequest) =>
+    request<WorkPreference>(`/works/${id}/preference`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   epubToCanonical: (id: string, locator: EPUBLocator) =>
     request<CanonicalPosition>(`/alignments/${id}/resolve/epub`, {
       method: 'POST',

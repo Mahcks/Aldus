@@ -228,7 +228,23 @@ export default function SearchScreen() {
   }
 
   async function acquirePair(first: AcquisitionResult, second: AcquisitionResult) {
-    if (await acquire(first)) await acquire(second);
+    if (!activeRequest) return;
+    const ids = [first.id, second.id];
+    setResultStatus((current) => ({ ...current, [first.id]: 'sending', [second.id]: 'sending' }));
+    try {
+      const pair = await api.selectAcquisitionPair(activeRequest.libraryID, activeRequest.id, {
+        result_ids: ids,
+      });
+      setFulfillments((current) => [
+        ...pair.requests,
+        ...current.filter((entry) => !pair.requests.some((request) => request.id === entry.id)),
+      ]);
+      setResultStatus((current) => ({ ...current, [first.id]: 'queued', [second.id]: 'queued' }));
+    } catch (value) {
+      const message = errorMessage(value);
+      setResultStatus((current) => ({ ...current, [first.id]: 'error', [second.id]: 'error' }));
+      setResultErrors((current) => ({ ...current, [first.id]: message, [second.id]: message }));
+    }
   }
 
   function changeQuery(value: string) {

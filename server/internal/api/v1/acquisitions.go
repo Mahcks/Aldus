@@ -18,9 +18,21 @@ func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Get("/libraries/{libraryID}/acquisition-requests", listAcquisitionRequests(store))
 	router.Post("/libraries/{libraryID}/acquisition-discoveries", createAcquisitionDiscovery(store))
 	router.Post("/libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", selectAcquisitionDiscovery(store))
+	router.Post("/libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair", selectAcquisitionPair(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests", createAcquisitionRequest(store))
 	router.Get("/libraries/{libraryID}/acquisition-requests/{requestID}/search", searchAcquisitionRequest(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/select", selectAcquisitionResult(store))
+}
+
+func selectAcquisitionPair(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.SelectAcquisitionPairRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		value, err := store.SelectPairDiscovery(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "discoveryID"), body.ResultIDs)
+		writeAcquisitionResult(w, contracts.AcquisitionPair{ID: value.ID, Requests: acquisitionRequestDTOs(value.Requests)}, err)
+	}
 }
 
 func createAcquisitionDiscovery(store *acquisition.Store) http.HandlerFunc {
@@ -130,7 +142,7 @@ func selectAcquisitionResult(store *acquisition.Store) http.HandlerFunc {
 }
 
 func acquisitionRequestDTO(value acquisition.Request) contracts.AcquisitionRequest {
-	return contracts.AcquisitionRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, SourceID: value.SourceID, Query: value.Query, Status: value.Status, DownloadState: value.DownloadState, DownloadError: value.DownloadError, FulfillmentState: value.FulfillmentState, ScanID: value.ScanID, ProposalID: value.ProposalID, WorkID: value.WorkID, SelectedTitle: value.SelectedTitle, SelectedSource: value.SelectedSource, SelectedSize: value.SelectedSize, SelectedPublishedAt: value.SelectedPublished, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+	return contracts.AcquisitionRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, SourceID: value.SourceID, Query: value.Query, Status: value.Status, DownloadState: value.DownloadState, DownloadError: value.DownloadError, FulfillmentState: value.FulfillmentState, ScanID: value.ScanID, ProposalID: value.ProposalID, WorkID: value.WorkID, PairID: value.PairID, SelectedTitle: value.SelectedTitle, SelectedSource: value.SelectedSource, SelectedSize: value.SelectedSize, SelectedPublishedAt: value.SelectedPublished, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 }
 
 func acquisitionRequestDTOs(values []acquisition.Request) []contracts.AcquisitionRequest {

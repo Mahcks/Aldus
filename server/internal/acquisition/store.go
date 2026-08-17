@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -40,12 +41,12 @@ type ConnectionStatus struct {
 }
 
 type Request struct {
-	ID, LibraryID, RequestedBy, SourceID, Query, Status string
-	DownloadState, DownloadError                        string
-	FulfillmentState, ScanID, ProposalID, WorkID        string
-	SelectedTitle, SelectedSource                       string
-	SelectedSize                                        int64
-	SelectedPublished, CreatedAt, UpdatedAt             time.Time
+	ID, LibraryID, RequestedBy, SourceID, Query, Status, PairID string
+	DownloadState, DownloadError                                string
+	FulfillmentState, ScanID, ProposalID, WorkID                string
+	SelectedTitle, SelectedSource                               string
+	SelectedSize                                                int64
+	SelectedPublished, CreatedAt, UpdatedAt                     time.Time
 }
 
 type SearchResult struct {
@@ -63,16 +64,31 @@ type Discovery struct {
 	Results []SearchResult
 }
 
+type Pair struct {
+	ID       string
+	Requests []Request
+}
+
+type ReadyPair struct {
+	ID, RequestedBy, EPUBMediaID, EPUBSHA256, AudioMediaID, AudioSHA256 string
+}
+
+type selectedDiscoveryResult struct {
+	Download Result
+	Metadata SearchResult
+}
+
 type discoverySession struct {
 	LibraryID, SourceID, Query, UserID string
 	ExpiresAt                          time.Time
-	Results                            map[string]Result
+	Results                            map[string]selectedDiscoveryResult
 }
 
 type Store struct {
 	db            *sql.DB
 	client        *Client
 	handoff       func(context.Context, string, string, string, string) (string, error)
+	pairHandoff   func(context.Context, ReadyPair) error
 	selectMu      sync.Mutex
 	metadataMu    sync.Mutex
 	metadataCache map[string]cachedMetadata
@@ -86,6 +102,10 @@ func NewStore(db *sql.DB, client *Client) *Store {
 
 func (s *Store) SetHandoff(handoff func(context.Context, string, string, string, string) (string, error)) {
 	s.handoff = handoff
+}
+
+func (s *Store) SetPairHandoff(handoff func(context.Context, ReadyPair) error) {
+	s.pairHandoff = handoff
 }
 
 func (s *Store) Settings(ctx context.Context, actor auth.User) (Settings, error) {
@@ -379,6 +399,34 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET work_id=(SELECT accepted_work_id FROM import_groups WHERE id=proposal_id AND library_id=acquisition_requests.library_id),fulfillment_state='available',updated_at=? WHERE fulfillment_state='needs_review' AND proposal_id IS NOT NULL AND EXISTS(SELECT 1 FROM import_groups g JOIN works w ON w.id=g.accepted_work_id AND w.library_id=acquisition_requests.library_id WHERE g.id=proposal_id AND g.library_id=acquisition_requests.library_id AND g.decision='accepted')`, now); err != nil {
 		return fmt.Errorf("reconcile accepted acquisitions: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_pairs SET work_id=(SELECT work_id FROM acquisition_requests WHERE pair_id=acquisition_pairs.id AND work_id IS NOT NULL LIMIT 1),updated_at=? WHERE work_id IS NULL AND EXISTS(SELECT 1 FROM acquisition_requests WHERE pair_id=acquisition_pairs.id AND work_id IS NOT NULL)`, now); err != nil {
+		return fmt.Errorf("reconcile acquisition pair work: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE import_groups SET existing_work_id=(SELECT p.work_id FROM acquisition_requests r JOIN acquisition_pairs p ON p.id=r.pair_id WHERE r.proposal_id=import_groups.id AND p.work_id IS NOT NULL LIMIT 1),updated_at=? WHERE decision='' AND EXISTS(SELECT 1 FROM acquisition_requests r JOIN acquisition_pairs p ON p.id=r.pair_id WHERE r.proposal_id=import_groups.id AND p.work_id IS NOT NULL)`, now); err != nil {
+		return fmt.Errorf("reconcile paired import target: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO work_metadata(work_id,isbn,first_publish_year,cover_url,source,updated_at) SELECT work_id,advisory_isbn,advisory_year,advisory_cover_url,advisory_source,? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL AND (advisory_isbn!='' OR advisory_year>0 OR advisory_cover_url!='') ON CONFLICT(work_id) DO UPDATE SET isbn=CASE WHEN work_metadata.isbn='' THEN excluded.isbn ELSE work_metadata.isbn END,first_publish_year=CASE WHEN work_metadata.first_publish_year=0 THEN excluded.first_publish_year ELSE work_metadata.first_publish_year END,cover_url=CASE WHEN work_metadata.cover_url='' THEN excluded.cover_url ELSE work_metadata.cover_url END,source=CASE WHEN work_metadata.source='' THEN excluded.source ELSE work_metadata.source END,updated_at=excluded.updated_at`, now); err != nil {
+		return fmt.Errorf("reconcile acquisition metadata: %w", err)
+	}
+	if s.pairHandoff != nil {
+		rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.requested_by,em.id,em.sha256,am.id,am.sha256 FROM acquisition_pairs p JOIN acquisition_requests er ON er.pair_id=p.id AND er.fulfillment_state='available' JOIN import_items ei ON ei.group_id=er.proposal_id AND ei.representation_kind='epub' JOIN media_locations el ON el.source_entry_id=ei.source_entry_id JOIN media em ON em.id=el.media_id AND em.kind='epub' JOIN acquisition_requests ar ON ar.pair_id=p.id AND ar.fulfillment_state='available' JOIN import_items ai ON ai.group_id=ar.proposal_id AND ai.representation_kind='audiobook' JOIN media_locations al ON al.source_entry_id=ai.source_entry_id JOIN media am ON am.id=al.media_id AND am.kind IN ('audio','audiobook') WHERE er.work_id=ar.work_id`)
+		if err != nil {
+			return fmt.Errorf("find completed acquisition pairs: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var pair ReadyPair
+			if err := rows.Scan(&pair.ID, &pair.RequestedBy, &pair.EPUBMediaID, &pair.EPUBSHA256, &pair.AudioMediaID, &pair.AudioSHA256); err != nil {
+				return err
+			}
+			if err := s.pairHandoff(ctx, pair); err != nil {
+				slog.Warn("paired acquisition alignment unavailable", "pair_id", pair.ID, "error", err)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -436,7 +484,7 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, sourceID
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]Request, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.id,r.library_id,r.requested_by,COALESCE(r.source_id,''),r.query,r.status,r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),
+		SELECT r.id,r.library_id,r.requested_by,COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),
 			COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),
 			COALESCE(r.selected_published_at,''),r.created_at,r.updated_at
 		FROM acquisition_requests r
@@ -532,7 +580,7 @@ func (s *Store) Discover(ctx context.Context, actor auth.User, libraryID, source
 	if err != nil {
 		return Discovery{}, err
 	}
-	stored := make(map[string]Result, len(results))
+	stored := make(map[string]selectedDiscoveryResult, len(results))
 	for _, result := range results {
 		var value Result
 		var published string
@@ -540,7 +588,7 @@ func (s *Store) Discover(ctx context.Context, actor auth.User, libraryID, source
 			return Discovery{}, fmt.Errorf("read discovery result: %w", err)
 		}
 		value.Published, _ = time.Parse(time.RFC3339Nano, published)
-		stored[result.ID] = value
+		stored[result.ID] = selectedDiscoveryResult{Download: value, Metadata: result}
 	}
 	id, err := randomID()
 	if err != nil {
@@ -575,13 +623,100 @@ func (s *Store) SelectDiscovery(ctx context.Context, actor auth.User, libraryID,
 		return Request{}, err
 	}
 	published := ""
-	if !result.Published.IsZero() {
-		published = result.Published.UTC().Format(time.RFC3339Nano)
+	if !result.Download.Published.IsZero() {
+		published = result.Download.Published.UTC().Format(time.RFC3339Nano)
 	}
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,published_at,created_at) VALUES(?,?,?,?,?,?,NULLIF(?,''),?)`, resultID, request.ID, result.Title, result.DownloadURL, result.Source, max(0, result.Size), published, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,published_at,created_at) VALUES(?,?,?,?,?,?,NULLIF(?,''),?)`, resultID, request.ID, result.Download.Title, result.Download.DownloadURL, result.Download.Source, max(0, result.Download.Size), published, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return Request{}, fmt.Errorf("persist selected discovery result: %w", err)
 	}
+	if err := s.persistAdvisory(ctx, request.ID, "", result.Metadata); err != nil {
+		return Request{}, err
+	}
 	return s.Select(ctx, actor, libraryID, request.ID, resultID)
+}
+
+func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, libraryID, discoveryID string, resultIDs []string) (Pair, error) {
+	if len(resultIDs) != 2 || resultIDs[0] == resultIDs[1] {
+		return Pair{}, ErrInvalid
+	}
+	s.discoveryMu.Lock()
+	discovery, ok := s.discoveries[discoveryID]
+	first, firstOK := discovery.Results[resultIDs[0]]
+	second, secondOK := discovery.Results[resultIDs[1]]
+	valid := ok && firstOK && secondOK && discovery.LibraryID == libraryID && discovery.UserID == actor.ID && time.Now().Before(discovery.ExpiresAt) && first.Metadata.Kind != second.Metadata.Kind && slices.Contains(first.Metadata.LikelyPairIDs, resultIDs[1])
+	if valid {
+		delete(discovery.Results, resultIDs[0])
+		delete(discovery.Results, resultIDs[1])
+		s.discoveries[discoveryID] = discovery
+	}
+	s.discoveryMu.Unlock()
+	if !valid {
+		return Pair{}, ErrNotFound
+	}
+	pairID, err := randomID()
+	if err != nil {
+		return Pair{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Pair{}, fmt.Errorf("begin acquisition pair: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO acquisition_pairs(id,library_id,requested_by,query,created_at,updated_at) VALUES(?,?,?,?,?,?)`, pairID, libraryID, actor.ID, discovery.Query, now, now); err != nil {
+		return Pair{}, fmt.Errorf("create acquisition pair: %w", err)
+	}
+	requestIDs := make([]string, 2)
+	for index, selected := range []selectedDiscoveryResult{first, second} {
+		requestID, err := randomID()
+		if err != nil {
+			return Pair{}, err
+		}
+		requestIDs[index] = requestID
+		result, err := tx.ExecContext(ctx, `INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,pair_id,advisory_title,advisory_author,advisory_isbn,advisory_year,advisory_cover_url,advisory_source,created_at,updated_at) SELECT ?,l.id,?,ls.id,?,'requested',?,?,?,?,?,?,? ,?,? FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.id=? AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor'))`, requestID, actor.ID, discovery.Query, pairID, selected.Metadata.CanonicalTitle, selected.Metadata.Author, selected.Metadata.ISBN, max(0, selected.Metadata.Year), selected.Metadata.CoverURL, "open_library", now, now, discovery.SourceID, actor.ID, libraryID, actor.Admin)
+		if err != nil {
+			return Pair{}, fmt.Errorf("create paired acquisition request: %w", err)
+		}
+		if count, _ := result.RowsAffected(); count != 1 {
+			return Pair{}, ErrNotFound
+		}
+		published := ""
+		if !selected.Download.Published.IsZero() {
+			published = selected.Download.Published.UTC().Format(time.RFC3339Nano)
+		}
+		resultID := resultIDs[index]
+		if _, err := tx.ExecContext(ctx, `INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,published_at,created_at) VALUES(?,?,?,?,?,?,NULLIF(?,''),?)`, resultID, requestID, selected.Download.Title, selected.Download.DownloadURL, selected.Download.Source, max(0, selected.Download.Size), published, now); err != nil {
+			return Pair{}, fmt.Errorf("persist paired discovery result: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Pair{}, fmt.Errorf("commit acquisition pair: %w", err)
+	}
+	for index, requestID := range requestIDs {
+		_, _ = s.Select(ctx, actor, libraryID, requestID, resultIDs[index])
+	}
+	requests, err := s.List(ctx, actor, libraryID)
+	if err != nil {
+		return Pair{}, err
+	}
+	pair := Pair{ID: pairID}
+	for _, request := range requests {
+		if request.PairID == pairID {
+			pair.Requests = append(pair.Requests, request)
+		}
+	}
+	if len(pair.Requests) != 2 {
+		return Pair{}, fmt.Errorf("load acquisition pair: %w", ErrNotFound)
+	}
+	return pair, nil
+}
+
+func (s *Store) persistAdvisory(ctx context.Context, requestID, pairID string, result SearchResult) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET pair_id=NULLIF(?,''),advisory_title=?,advisory_author=?,advisory_isbn=?,advisory_year=?,advisory_cover_url=?,advisory_source=? WHERE id=?`, pairID, result.CanonicalTitle, result.Author, result.ISBN, max(0, result.Year), result.CoverURL, "open_library", requestID)
+	if err != nil {
+		return fmt.Errorf("persist acquisition metadata: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) Select(ctx context.Context, actor auth.User, libraryID, requestID, resultID string) (Request, error) {
@@ -678,7 +813,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanRequest(row rowScanner) (Request, error) {
 	var value Request
 	var published, created, updated string
-	if err := row.Scan(&value.ID, &value.LibraryID, &value.RequestedBy, &value.SourceID, &value.Query, &value.Status, &value.DownloadState, &value.DownloadError, &value.FulfillmentState, &value.ScanID, &value.ProposalID, &value.WorkID, &value.SelectedTitle, &value.SelectedSource, &value.SelectedSize, &published, &created, &updated); err != nil {
+	if err := row.Scan(&value.ID, &value.LibraryID, &value.RequestedBy, &value.SourceID, &value.Query, &value.Status, &value.PairID, &value.DownloadState, &value.DownloadError, &value.FulfillmentState, &value.ScanID, &value.ProposalID, &value.WorkID, &value.SelectedTitle, &value.SelectedSource, &value.SelectedSize, &published, &created, &updated); err != nil {
 		return Request{}, fmt.Errorf("scan acquisition request: %w", err)
 	}
 	value.SelectedPublished, _ = time.Parse(time.RFC3339Nano, published)

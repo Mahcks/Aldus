@@ -170,6 +170,46 @@ func TestStoreAuthorizesEditorsAndBindsSelectionsToSearchResults(t *testing.T) {
 	}
 }
 
+func TestPairedDiscoveryPersistsIntentBeforeSubmittingBothHalves(t *testing.T) {
+	ctx := context.Background()
+	var adds int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/add":
+			adds++
+			_, _ = w.Write([]byte("Ok."))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('editor','editor','editor','Editor','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('library','editor','editor','2026-01-01T00:00:00Z'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Downloads','/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	client, _ := New(Options{QBitURL: server.URL})
+	store := NewStore(db, client)
+	store.discoveries["discovery"] = discoverySession{LibraryID: "library", SourceID: "source", Query: "Alice", UserID: "editor", ExpiresAt: time.Now().Add(time.Minute), Results: map[string]selectedDiscoveryResult{
+		"ebook": {Download: Result{Title: "Alice EPUB", DownloadURL: "https://download.test/ebook"}, Metadata: SearchResult{ID: "ebook", Kind: "ebook", CanonicalTitle: "Alice's Adventures in Wonderland", Author: "Lewis Carroll", ISBN: "isbn", Year: 1865, CoverURL: "https://covers.test/alice.jpg", LikelyPairIDs: []string{"audio"}}},
+		"audio": {Download: Result{Title: "Alice M4B", DownloadURL: "https://download.test/audio"}, Metadata: SearchResult{ID: "audio", Kind: "audiobook", CanonicalTitle: "Alice's Adventures in Wonderland", Author: "Lewis Carroll", LikelyPairIDs: []string{"ebook"}}},
+	}}
+	pair, err := store.SelectPairDiscovery(ctx, auth.User{ID: "editor"}, "library", "discovery", []string{"ebook", "audio"})
+	if err != nil || len(pair.Requests) != 2 || adds != 2 || pair.Requests[0].PairID != pair.ID || pair.Requests[1].PairID != pair.ID {
+		t.Fatalf("pair = %#v, adds=%d, err=%v", pair, adds, err)
+	}
+	var title, isbn, source string
+	if err := db.QueryRow(`SELECT advisory_title,advisory_isbn,advisory_source FROM acquisition_requests WHERE pair_id=? AND advisory_isbn!=''`, pair.ID).Scan(&title, &isbn, &source); err != nil || title != "Alice's Adventures in Wonderland" || isbn != "isbn" || source != "open_library" {
+		t.Fatalf("advisory metadata = %q %q %q, %v", title, isbn, source, err)
+	}
+}
+
 func TestAcquisitionSettingsAreAdminOnlyAndPreserveBlankSecrets(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))

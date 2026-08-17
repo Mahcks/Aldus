@@ -108,6 +108,19 @@ func TestLibrariesRolesAndIsolation(t *testing.T) {
 	if ok, err := store.CanAccessAlignment(ctx, outsider, "alignment"); err != nil || ok {
 		t.Fatalf("outsider alignment access = %v, %v", ok, err)
 	}
+	preference, err := store.SetWorkPreference(ctx, reader, WorkPreference{WorkID: work.ID, EPUBMediaID: "epub-media", AudioMediaID: "audio-media", AlignmentID: "alignment"})
+	if err != nil || preference.AlignmentID != "alignment" {
+		t.Fatalf("set preference = %#v, %v", preference, err)
+	}
+	if stored, err := store.WorkPreference(ctx, reader, work.ID); err != nil || stored.EPUBMediaID != "epub-media" || stored.AudioMediaID != "audio-media" {
+		t.Fatalf("stored preference = %#v, %v", stored, err)
+	}
+	if _, err := store.SetWorkPreference(ctx, reader, WorkPreference{WorkID: work.ID, EPUBMediaID: "audio-media", AudioMediaID: "epub-media", AlignmentID: "alignment"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("mismatched preference = %v", err)
+	}
+	if _, err := store.WorkPreference(ctx, outsider, work.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("outsider preference = %v", err)
+	}
 	audioOnlyWork, err := store.CreateWork(ctx, editor, first.ID, "Audio only", "")
 	if err != nil {
 		t.Fatal(err)

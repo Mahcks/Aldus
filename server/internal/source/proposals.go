@@ -30,10 +30,13 @@ type ProposalItem struct {
 type proposalEntry struct {
 	ID, Path, Kind, Hash, Title, Author string
 	Metadata                            map[string]any
+	AdvisoryTitle, AdvisoryAuthor       string
+	AdvisoryISBN, AdvisoryCover         string
+	AdvisoryYear                        int
 }
 
 func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT e.id,e.relative_path,e.detected_kind,e.sha256,e.metadata_json FROM source_entries e JOIN library_sources ls ON ls.id=e.source_id WHERE ls.library_id=? AND ls.deleted_at IS NULL AND e.state='registered' ORDER BY e.id`, libraryID)
+	rows, err := s.db.QueryContext(ctx, `SELECT e.id,e.relative_path,e.detected_kind,e.sha256,e.metadata_json,COALESCE(ar.advisory_title,''),COALESCE(ar.advisory_author,''),COALESCE(ar.advisory_isbn,''),COALESCE(ar.advisory_year,0),COALESCE(ar.advisory_cover_url,'') FROM source_entries e JOIN library_sources ls ON ls.id=e.source_id LEFT JOIN source_scans sc ON sc.id=e.last_seen_scan_id LEFT JOIN acquisition_requests ar ON ar.id=sc.acquisition_request_id WHERE ls.library_id=? AND ls.deleted_at IS NULL AND e.state='registered' ORDER BY e.id`, libraryID)
 	if err != nil {
 		return err
 	}
@@ -42,11 +45,17 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 	for rows.Next() {
 		var e proposalEntry
 		var raw string
-		if err := rows.Scan(&e.ID, &e.Path, &e.Kind, &e.Hash, &raw); err != nil {
+		if err := rows.Scan(&e.ID, &e.Path, &e.Kind, &e.Hash, &raw, &e.AdvisoryTitle, &e.AdvisoryAuthor, &e.AdvisoryISBN, &e.AdvisoryYear, &e.AdvisoryCover); err != nil {
 			return err
 		}
 		_ = json.Unmarshal([]byte(raw), &e.Metadata)
 		e.Title, e.Author = identityMetadata(e)
+		if e.Title == "" {
+			e.Title = e.AdvisoryTitle
+		}
+		if e.Author == "" {
+			e.Author = e.AdvisoryAuthor
+		}
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
@@ -156,7 +165,7 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 			if duplicate == "" {
 				duplicates[item.Hash] = item.ID
 			}
-			evidence, _ := json.Marshal(map[string]any{"raw_title": item.Title, "raw_author": item.Author, "normalized_title": normalize(item.Title), "normalized_author": normalize(item.Author), "relative_path": item.Path, "sha256": item.Hash, "kind": kind})
+			evidence, _ := json.Marshal(map[string]any{"raw_title": item.Title, "raw_author": item.Author, "normalized_title": normalize(item.Title), "normalized_author": normalize(item.Author), "relative_path": item.Path, "sha256": item.Hash, "kind": kind, "advisory_title": item.AdvisoryTitle, "advisory_author": item.AdvisoryAuthor, "advisory_isbn": item.AdvisoryISBN, "advisory_year": item.AdvisoryYear, "advisory_cover_url": item.AdvisoryCover, "advisory_source": "open_library"})
 			if _, err = tx.ExecContext(ctx, `INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,duplicate_of_entry_id,evidence_json) VALUES(?,?,?,?,?,?)`, id, item.ID, kind, label, nullValue(duplicate), string(evidence)); err != nil {
 				return err
 			}

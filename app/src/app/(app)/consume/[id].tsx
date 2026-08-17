@@ -192,11 +192,12 @@ export default function ConsumeWorkScreen() {
     async function load() {
       if (!params.id) return;
       try {
-        const [nextWork, representations, nextJobs, nextProgress] = await Promise.all([
+        const [nextWork, representations, nextJobs, nextProgress, preference] = await Promise.all([
           api.work(params.id),
           api.representations(params.id),
           api.alignmentJobs(params.id),
           api.workProgress(params.id),
+          api.workPreference(params.id),
         ]);
         const revisions = (
           await Promise.all(
@@ -207,7 +208,12 @@ export default function ConsumeWorkScreen() {
         ).flat();
         const nextEPUBs = choices(representations, revisions, ['epub']);
         const nextAudio = choices(representations, revisions, ['audio', 'audiobook']);
-        const pair = defaultPair(nextJobs, nextEPUBs, nextAudio, nextProgress?.alignment_id);
+        const pair = defaultPair(
+          nextJobs,
+          nextEPUBs,
+          nextAudio,
+          preference?.alignment_id ?? nextProgress?.alignment_id,
+        );
         const nextEPUB = nextEPUBs.find((item) => item.id === params.epub) ?? pair.epub;
         const nextAudioChoice = nextAudio.find((item) => item.id === params.audio) ?? pair.audio;
         if (canceled) return;

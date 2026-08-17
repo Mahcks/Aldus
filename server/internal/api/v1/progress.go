@@ -12,10 +12,34 @@ import (
 func registerProgressRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
 	router.Get("/works/{workID}/progress", workProgress(store, catalogStore))
 	router.Put("/works/{workID}/progress", updateWorkProgress(store, catalogStore))
+	router.Get("/works/{workID}/preference", workPreference(catalogStore))
+	router.Put("/works/{workID}/preference", setWorkPreference(catalogStore))
 	router.Get("/representations/{representationID}/state", representationState(store, catalogStore))
 	router.Put("/representations/{representationID}/state", updateRepresentationState(store, catalogStore))
 	router.Post("/works/{workID}/activity", startActivity(store, catalogStore))
 	router.Put("/activity/{sessionID}", updateActivity(store))
+}
+
+func workPreference(store *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := store.WorkPreference(r.Context(), actor(r), chi.URLParam(r, "workID"))
+		writeCatalogResult(w, workPreferenceDTO(value), err)
+	}
+}
+
+func setWorkPreference(store *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.SetWorkPreferenceRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		value, err := store.SetWorkPreference(r.Context(), actor(r), catalog.WorkPreference{WorkID: chi.URLParam(r, "workID"), EPUBMediaID: body.EPUBMediaID, AudioMediaID: body.AudioMediaID, AlignmentID: body.AlignmentID})
+		writeCatalogResult(w, workPreferenceDTO(value), err)
+	}
+}
+
+func workPreferenceDTO(value catalog.WorkPreference) contracts.WorkPreference {
+	return contracts.WorkPreference{WorkID: value.WorkID, EPUBMediaID: value.EPUBMediaID, AudioMediaID: value.AudioMediaID, AlignmentID: value.AlignmentID, UpdatedAt: value.UpdatedAt}
 }
 
 func startActivity(store *position.Store, catalogStore *catalog.Store) http.HandlerFunc {

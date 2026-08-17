@@ -56,6 +56,20 @@ type WorkProgressUpdate struct {
 	ProgressUpdate `tstype:",extends,required"`
 }
 
+type WorkPreference struct {
+	WorkID       string    `json:"work_id"`
+	EPUBMediaID  string    `json:"epub_media_id"`
+	AudioMediaID string    `json:"audio_media_id"`
+	AlignmentID  string    `json:"alignment_id"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+}
+
+type SetWorkPreferenceRequest struct {
+	EPUBMediaID  string `json:"epub_media_id"`
+	AudioMediaID string `json:"audio_media_id"`
+	AlignmentID  string `json:"alignment_id"`
+}
+
 type ActivitySession struct {
 	ID            string     `json:"id"`
 	WorkID        string     `json:"work_id"`

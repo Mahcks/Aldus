@@ -16,6 +16,7 @@ export interface AcquisitionRequest {
   scan_id?: string;
   proposal_id?: string;
   work_id?: string;
+  pair_id?: string;
   selected_title?: string;
   selected_source?: string;
   selected_size?: number /* int64 */;
@@ -53,6 +54,13 @@ export interface CreateAcquisitionRequest {
 }
 export interface SelectAcquisitionRequest {
   result_id: string;
+}
+export interface SelectAcquisitionPairRequest {
+  result_ids: string[];
+}
+export interface AcquisitionPair {
+  id: string;
+  requests: AcquisitionRequest[];
 }
 export interface AcquisitionDiscovery {
   id: string;
@@ -478,6 +486,18 @@ export interface ProgressUpdate {
   source_device: string;
 }
 export interface WorkProgressUpdate extends ProgressUpdate {
+  alignment_id: string;
+}
+export interface WorkPreference {
+  work_id: string;
+  epub_media_id: string;
+  audio_media_id: string;
+  alignment_id: string;
+  updated_at?: string;
+}
+export interface SetWorkPreferenceRequest {
+  epub_media_id: string;
+  audio_media_id: string;
   alignment_id: string;
 }
 export interface ActivitySession {
