@@ -20,6 +20,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
+	"github.com/mahcks/aldus/server/internal/diagnostics"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -33,6 +34,18 @@ func TestResolveAudioAndUpdateProgress(t *testing.T) {
 	response = request(t, handler, token, http.MethodPut, "/alignments/fixture-alignment/progress", `{"segment_id":"s0002","offset":350000,"expected_revision":0,"source_device":"web"}`)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"revision":1`) {
 		t.Fatalf("update response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestSystemDiagnosticsAreAuthenticatedAndAdminOnly(t *testing.T) {
+	handler, token := testHandler(t)
+	response := request(t, handler, token, http.MethodGet, "/system/diagnostics", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"database_status":"ok"`) {
+		t.Fatalf("diagnostics = %d %s", response.Code, response.Body.String())
+	}
+	unauthorized := request(t, handler, "", http.MethodGet, "/system/diagnostics", "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized diagnostics = %d", unauthorized.Code)
 	}
 }
 
@@ -54,6 +67,7 @@ func TestRouteContract(t *testing.T) {
 	}
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
 	want = append(want, "GET /media/{mediaID}/chapters")
+	want = append(want, "GET /system/diagnostics")
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
 	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /me/acquisition-tracker", "POST /me/acquisition-tracker/seen", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/retry", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/cancel", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", "POST /libraries/{libraryID}/acquisition-discoveries", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair")
 	slices.Sort(got)
@@ -90,11 +104,11 @@ func TestWorkAlignmentJobListing(t *testing.T) {
 	if err := position.New(db).SeedFixture(ctx); err != nil {
 		t.Fatal(err)
 	}
-	accounts, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	accounts, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	admin, err := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "admin", Password: "a-secure-test-password"})
+	admin, err := accounts.Setup(ctx, auth.Credentials{Username: "admin", Password: "a-secure-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,11 +193,11 @@ func TestReadingStatePersistsAcrossSessionsAndRemainsPrivate(t *testing.T) {
 	if err := position.New(db).SeedFixture(ctx); err != nil {
 		t.Fatal(err)
 	}
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: "test-bootstrap-token"})
+	authStore, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := authStore.Bootstrap(ctx, "test-bootstrap-token", auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
+	first, err := authStore.Setup(ctx, auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +261,7 @@ func TestAuthenticationRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: "test-bootstrap-token", SecureCookies: true})
+	authStore, err := auth.New(db, auth.Options{SecureCookies: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +271,11 @@ func TestAuthenticationRoutes(t *testing.T) {
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated me = %d", unauthorized.Code)
 	}
-	setup := request(t, handler, "", http.MethodPost, "/setup", `{"bootstrap_token":"test-bootstrap-token","username":"alice","password":"a-secure-test-password"}`)
+	mismatch := request(t, handler, "", http.MethodPost, "/setup", `{"username":"alice","password":"a-secure-test-password","password_confirmation":"different-password"}`)
+	if mismatch.Code != http.StatusBadRequest {
+		t.Fatalf("mismatched setup = %d %s", mismatch.Code, mismatch.Body.String())
+	}
+	setup := request(t, handler, "", http.MethodPost, "/setup", `{"username":"alice","password":"a-secure-test-password","password_confirmation":"a-secure-test-password"}`)
 	if setup.Code != http.StatusCreated || !strings.Contains(setup.Body.String(), `"admin":true`) {
 		t.Fatalf("setup = %d %s", setup.Code, setup.Body.String())
 	}
@@ -265,7 +283,7 @@ func TestAuthenticationRoutes(t *testing.T) {
 	if len(cookies) != 1 || !cookies[0].HttpOnly || !cookies[0].Secure || cookies[0].SameSite != http.SameSiteLaxMode {
 		t.Fatalf("setup cookies = %#v", cookies)
 	}
-	second := request(t, handler, "", http.MethodPost, "/setup", `{"bootstrap_token":"test-bootstrap-token","username":"other","password":"a-secure-test-password"}`)
+	second := request(t, handler, "", http.MethodPost, "/setup", `{"username":"other","password":"a-secure-test-password","password_confirmation":"a-secure-test-password"}`)
 	if second.Code != http.StatusNotFound {
 		t.Fatalf("second setup = %d %s", second.Code, second.Body.String())
 	}
@@ -332,11 +350,11 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err := position.New(db).SeedFixture(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: "test-bootstrap-token"})
+	authStore, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := authStore.Bootstrap(context.Background(), "test-bootstrap-token", auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
+	session, err := authStore.Setup(context.Background(), auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +365,7 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Acquisitions: acquisition.NewStore(db, client)}), session.Token
+	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test")}), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {

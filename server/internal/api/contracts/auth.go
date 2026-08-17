@@ -21,11 +21,11 @@ type LoginRequest struct {
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name,omitempty"`
 }
-type BootstrapRequest struct {
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	DisplayName    string `json:"display_name,omitempty"`
-	BootstrapToken string `json:"bootstrap_token"`
+type SetupRequest struct {
+	Username             string `json:"username"`
+	Password             string `json:"password"`
+	PasswordConfirmation string `json:"password_confirmation"`
+	DisplayName          string `json:"display_name,omitempty"`
 }
 type SetupStatus struct {
 	Available bool `json:"available"`

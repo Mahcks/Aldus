@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	testBootstrapToken = "test-bootstrap-token"
-	testPassword       = "a-secure-test-password"
+	testPassword = "a-secure-test-password"
 )
 
 func openTestStore(t *testing.T, options Options) (*Store, string) {
@@ -32,29 +31,26 @@ func openTestStore(t *testing.T, options Options) (*Store, string) {
 	return store, path
 }
 
-func TestBootstrapAndSessionLifecycle(t *testing.T) {
+func TestSetupAndSessionLifecycle(t *testing.T) {
 	ctx := context.Background()
-	store, path := openTestStore(t, Options{BootstrapToken: testBootstrapToken, SessionTTL: time.Hour})
+	store, path := openTestStore(t, Options{SessionTTL: time.Hour})
 	available, err := store.SetupAvailable(ctx)
 	if err != nil || !available {
 		t.Fatalf("SetupAvailable() = %v, %v", available, err)
 	}
-	if _, err := store.Bootstrap(ctx, "wrong", Credentials{Username: "alice", Password: testPassword}); !errors.Is(err, ErrInvalidBootstrapToken) {
-		t.Fatalf("wrong token error = %v", err)
-	}
-	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "Alice", DisplayName: "Alice Admin", Password: testPassword})
+	session, err := store.Setup(ctx, Credentials{Username: "Alice", DisplayName: "Alice Admin", Password: testPassword})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !session.User.Admin || session.User.Username != "Alice" {
-		t.Fatalf("bootstrap user = %#v", session.User)
+		t.Fatalf("setup user = %#v", session.User)
 	}
 	available, err = store.SetupAvailable(ctx)
 	if err != nil || available {
 		t.Fatalf("SetupAvailable() after setup = %v, %v", available, err)
 	}
-	if _, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "other", Password: testPassword}); !errors.Is(err, ErrBootstrapClosed) {
-		t.Fatalf("second bootstrap error = %v", err)
+	if _, err := store.Setup(ctx, Credentials{Username: "other", Password: testPassword}); !errors.Is(err, ErrSetupClosed) {
+		t.Fatalf("second setup error = %v", err)
 	}
 
 	var passwordHash string
@@ -93,7 +89,7 @@ func TestBootstrapAndSessionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := New(db, Options{BootstrapToken: testBootstrapToken})
+	reopened, err := New(db, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,16 +111,8 @@ func TestBootstrapAndSessionLifecycle(t *testing.T) {
 	}
 }
 
-func TestBootstrapRequiresConfiguration(t *testing.T) {
+func TestConcurrentSetupCreatesOneAdmin(t *testing.T) {
 	store, _ := openTestStore(t, Options{})
-	_, err := store.Bootstrap(context.Background(), "anything", Credentials{Username: "alice", Password: testPassword})
-	if !errors.Is(err, ErrBootstrapNotConfigured) {
-		t.Fatalf("Bootstrap() error = %v", err)
-	}
-}
-
-func TestConcurrentBootstrapCreatesOneAdmin(t *testing.T) {
-	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
 	start := make(chan struct{})
 	errorsSeen := make(chan error, 2)
 	var wait sync.WaitGroup
@@ -133,7 +121,7 @@ func TestConcurrentBootstrapCreatesOneAdmin(t *testing.T) {
 		go func(username string) {
 			defer wait.Done()
 			<-start
-			_, err := store.Bootstrap(context.Background(), testBootstrapToken, Credentials{Username: username, Password: testPassword})
+			_, err := store.Setup(context.Background(), Credentials{Username: username, Password: testPassword})
 			errorsSeen <- err
 		}(username)
 	}
@@ -145,10 +133,10 @@ func TestConcurrentBootstrapCreatesOneAdmin(t *testing.T) {
 		switch {
 		case err == nil:
 			successes++
-		case errors.Is(err, ErrBootstrapClosed):
+		case errors.Is(err, ErrSetupClosed):
 			closed++
 		default:
-			t.Fatalf("bootstrap error = %v", err)
+			t.Fatalf("setup error = %v", err)
 		}
 	}
 	var admins int
@@ -162,8 +150,8 @@ func TestConcurrentBootstrapCreatesOneAdmin(t *testing.T) {
 
 func TestExpiredAndDisabledSessionsAreRejected(t *testing.T) {
 	ctx := context.Background()
-	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
-	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "alice", Password: testPassword})
+	store, _ := openTestStore(t, Options{})
+	session, err := store.Setup(ctx, Credentials{Username: "alice", Password: testPassword})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,8 +179,8 @@ func TestExpiredAndDisabledSessionsAreRejected(t *testing.T) {
 
 func TestAdminUserManagement(t *testing.T) {
 	ctx := context.Background()
-	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
-	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "admin", Password: testPassword})
+	store, _ := openTestStore(t, Options{})
+	session, err := store.Setup(ctx, Credentials{Username: "admin", Password: testPassword})
 	if err != nil {
 		t.Fatal(err)
 	}

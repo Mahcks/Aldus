@@ -8,8 +8,8 @@ import (
 )
 
 func TestMiddlewareCookieAndBearer(t *testing.T) {
-	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken, SecureCookies: true})
-	session, err := store.Bootstrap(context.Background(), testBootstrapToken, Credentials{Username: "alice", Password: testPassword})
+	store, _ := openTestStore(t, Options{SecureCookies: true})
+	session, err := store.Setup(context.Background(), Credentials{Username: "alice", Password: testPassword})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -83,8 +83,8 @@ func TestReaderCredentialsKeepProgressIsolated(t *testing.T) {
 	if err := positions.SeedFixture(ctx); err != nil {
 		t.Fatal(err)
 	}
-	accounts, _ := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
-	admin, _ := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
+	accounts, _ := auth.New(db, auth.Options{})
+	admin, _ := accounts.Setup(ctx, auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
 	alice, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "alice", Password: "a-secure-alice-password"}, false)
 	bob, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "bob", Password: "a-secure-bob-password"}, false)
 	for _, user := range []auth.User{alice, bob} {

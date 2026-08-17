@@ -38,20 +38,18 @@ func setupStatus(store *auth.Store) http.HandlerFunc {
 
 func setup(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var request contracts.BootstrapRequest
+		var request contracts.SetupRequest
 		if !decode(w, r, &request) {
 			return
 		}
-		session, err := store.Bootstrap(r.Context(), request.BootstrapToken, auth.Credentials{Username: request.Username, Password: request.Password, DisplayName: request.DisplayName})
+		if request.Password != request.PasswordConfirmation {
+			http.Error(w, "passwords do not match", http.StatusBadRequest)
+			return
+		}
+		session, err := store.Setup(r.Context(), auth.Credentials{Username: request.Username, Password: request.Password, DisplayName: request.DisplayName})
 		switch {
-		case errors.Is(err, auth.ErrBootstrapClosed):
+		case errors.Is(err, auth.ErrSetupClosed):
 			http.NotFound(w, r)
-			return
-		case errors.Is(err, auth.ErrBootstrapNotConfigured):
-			http.Error(w, "setup unavailable", http.StatusServiceUnavailable)
-			return
-		case errors.Is(err, auth.ErrInvalidBootstrapToken):
-			http.Error(w, "setup unavailable", http.StatusUnauthorized)
 			return
 		case errors.Is(err, auth.ErrInvalid):
 			http.Error(w, "invalid account", http.StatusBadRequest)

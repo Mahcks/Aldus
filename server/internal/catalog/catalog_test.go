@@ -18,11 +18,11 @@ func testCatalog(t *testing.T) (*Store, *auth.Store, auth.User) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	accounts, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap-token"})
+	accounts, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := accounts.Bootstrap(context.Background(), "bootstrap-token", auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
+	session, err := accounts.Setup(context.Background(), auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
 	if err != nil {
 		t.Fatal(err)
 	}

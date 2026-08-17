@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -18,9 +19,11 @@ import (
 	"github.com/mahcks/aldus/server/internal/api"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/backup"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/config"
 	"github.com/mahcks/aldus/server/internal/database"
+	"github.com/mahcks/aldus/server/internal/diagnostics"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
@@ -31,6 +34,31 @@ var version = "dev"
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) > 1 && (os.Args[1] == "backup" || os.Args[1] == "restore") {
+		command := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
+		dataDir := command.String("data-dir", "/data", "Aldus data directory")
+		archive := command.String("archive", "", "backup archive path")
+		_ = command.Parse(os.Args[2:])
+		if *archive == "" {
+			fmt.Fprintln(os.Stderr, "--archive is required")
+			os.Exit(2)
+		}
+		if os.Args[1] == "backup" {
+			err := backup.Create(ctx, *dataDir, *archive, version)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "backup failed:", err)
+				os.Exit(1)
+			}
+			fmt.Println("Backup verified:", *archive)
+			return
+		}
+		if err := backup.Restore(ctx, *archive, *dataDir); err != nil {
+			fmt.Fprintln(os.Stderr, "restore failed:", err)
+			os.Exit(1)
+		}
+		fmt.Println("Restore verified:", *dataDir)
+		return
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("invalid configuration", "error", err)
@@ -104,7 +132,7 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: cfg.BootstrapToken, SecureCookies: cfg.SecureCookies})
+	authStore, err := auth.New(db, auth.Options{SecureCookies: cfg.SecureCookies})
 	if err != nil {
 		slog.Error("open authentication database", "error", err)
 		db.Close()
@@ -117,6 +145,7 @@ func main() {
 		os.Exit(1)
 	}
 	acquisitionStore := acquisition.NewStore(db, acquisitionClient)
+	diagnosticStore := diagnostics.New(db, cfg.DataDir, cfg.SourceRoots, version, cfg.Environment)
 	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
 	acquisitionStore.SetScanRetry(sourceStore.RetryAcquisitionScan)
 	acquisitionStore.SetPairHandoff(func(ctx context.Context, pair acquisition.ReadyPair) error {
@@ -130,6 +159,7 @@ func main() {
 			Web: os.DirFS("public"), Media: http.Dir(cfg.FixtureDir), Position: store, Auth: authStore,
 			Catalog: catalogStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
 			Acquisitions: acquisitionStore,
+			Diagnostics:  diagnosticStore,
 			KOReader:     koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
 			Ready: func(ctx context.Context) error {
 				if err := db.PingContext(ctx); err != nil {

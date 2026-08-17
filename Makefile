@@ -1,4 +1,4 @@
-.PHONY: fixture seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup docker docker-alignment
+.PHONY: fixture seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -18,7 +18,7 @@ dev-app:
 
 dev-server:
 	@LAN_ORIGINS=$$(ip -4 -o addr show scope global | awk '{split($$4, address, "/"); printf ",http://%s:8081", address[1]}'); \
-	cd server && ALDUS_ENV=$${ALDUS_ENV:-development} ALDUS_LOG_LEVEL=$${ALDUS_LOG_LEVEL:-debug} ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081$$LAN_ORIGINS} ALDUS_BOOTSTRAP_TOKEN=$${ALDUS_BOOTSTRAP_TOKEN:-aldus-dev-bootstrap} go run ./cmd/app
+	cd server && ALDUS_ENV=$${ALDUS_ENV:-development} ALDUS_LOG_LEVEL=$${ALDUS_LOG_LEVEL:-debug} ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081$$LAN_ORIGINS} go run ./cmd/app
 
 web-dev: dev-app
 
@@ -59,11 +59,13 @@ acceptance:
 	cd server && go test ./internal/api -run TestExactProgressCrossClientAcceptance -count=1
 
 backup:
-	@test -n "$(BACKUP)" || (echo "Set BACKUP to a new .tar.gz path (stop Aldus first)" >&2; exit 1)
-	@test ! -e "$(BACKUP)" || (echo "Backup already exists: $(BACKUP)" >&2; exit 1)
-	@tar -C data -czf "$(BACKUP)" .
-	@tar -tzf "$(BACKUP)" >/dev/null
-	@echo "Backup verified: $(BACKUP)"
+	@test -n "$(BACKUP)" || (echo "Set BACKUP to a new .tar.gz path" >&2; exit 1)
+	cd server && go run ./cmd/app backup --data-dir ../data --archive "$(abspath $(BACKUP))"
+
+restore:
+	@test -n "$(BACKUP)" || (echo "Set BACKUP to an existing .tar.gz path" >&2; exit 1)
+	@test -n "$(RESTORE_DIR)" || (echo "Set RESTORE_DIR to a new or empty directory" >&2; exit 1)
+	cd server && go run ./cmd/app restore --archive "$(abspath $(BACKUP))" --data-dir "$(abspath $(RESTORE_DIR))"
 
 lint:
 	cd server && test -z "$$(gofmt -l .)"

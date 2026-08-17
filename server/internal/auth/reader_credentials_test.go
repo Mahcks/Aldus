@@ -10,8 +10,8 @@ import (
 
 func TestReaderCredentialIsHumanTypableAndAuthenticates(t *testing.T) {
 	ctx := context.Background()
-	store, _ := openTestStore(t, Options{BootstrapToken: testBootstrapToken})
-	session, err := store.Bootstrap(ctx, testBootstrapToken, Credentials{Username: "reader", Password: testPassword})
+	store, _ := openTestStore(t, Options{})
+	session, err := store.Setup(ctx, Credentials{Username: "reader", Password: testPassword})
 	if err != nil {
 		t.Fatal(err)
 	}

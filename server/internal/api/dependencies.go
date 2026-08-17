@@ -10,6 +10,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/diagnostics"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
@@ -25,6 +26,7 @@ type Dependencies struct {
 	Sources        *source.Store
 	AlignmentJobs  *alignment.Manager
 	Acquisitions   *acquisition.Store
+	Diagnostics    *diagnostics.Store
 	KOReader       koreader.Credentials
 	AllowedOrigins []string
 	Ready          func(context.Context) error

@@ -25,6 +25,9 @@ func Handler(deps Dependencies) http.Handler {
 		registerAlignmentRoutes(router, deps.Position, deps.Catalog)
 		registerProgressRoutes(router, deps.Position, deps.Catalog)
 		registerAcquisitionRoutes(router, deps.Acquisitions)
+		if deps.Diagnostics != nil {
+			registerDiagnosticRoutes(router, deps.Diagnostics)
+		}
 	})
 	return router
 }

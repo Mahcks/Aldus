@@ -12,7 +12,7 @@ export default function Setup() {
     username: '',
     display_name: '',
     password: '',
-    bootstrap_token: '',
+    password_confirmation: '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -27,14 +27,14 @@ export default function Setup() {
     setBusy(true);
     setError('');
     try {
-      const user = await api.bootstrap(form);
-      setForm((value) => ({ ...value, bootstrap_token: '' }));
+      const user = await api.setup(form);
+      setForm((value) => ({ ...value, password: '', password_confirmation: '' }));
       auth.signedIn(user);
-      router.replace('/libraries');
+      router.replace('/system');
     } catch (value) {
       setError(
-        value instanceof APIError && value.status === 503
-          ? 'Setup is disabled on this server. Configure ALDUS_BOOTSTRAP_TOKEN and restart it.'
+        value instanceof APIError && value.status === 404
+          ? 'Aldus is already set up.'
           : errorMessage(value),
       );
     } finally {
@@ -49,7 +49,8 @@ export default function Setup() {
           Create the first administrator
         </Text>
         <Text className="mb-1 leading-[21px] text-muted">
-          This one-time setup closes permanently after the account is created.
+          This one-time setup closes permanently after the account is created. The first account has
+          administrator access.
         </Text>
         {error ? <Notice danger>{error}</Notice> : null}
         <Field
@@ -70,15 +71,25 @@ export default function Setup() {
           onChangeText={change('password')}
         />
         <Field
-          label="Bootstrap token"
+          label="Confirm password"
           secureTextEntry
-          value={form.bootstrap_token}
-          onChangeText={change('bootstrap_token')}
+          value={form.password_confirmation}
+          onChangeText={change('password_confirmation')}
+          error={
+            form.password_confirmation && form.password_confirmation !== form.password
+              ? 'Passwords do not match.'
+              : undefined
+          }
         />
         <Button
           label={busy ? 'Creating administrator…' : 'Create administrator'}
           kind="primary"
-          disabled={busy || !form.username || form.password.length < 12 || !form.bootstrap_token}
+          disabled={
+            busy ||
+            !form.username ||
+            form.password.length < 12 ||
+            form.password !== form.password_confirmation
+          }
           onPress={submit}
         />
       </AuthCard>

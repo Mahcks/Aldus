@@ -24,8 +24,8 @@ func TestCatalogAndDownloadsAreIsolatedByUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	accounts, _ := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
-	admin, _ := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
+	accounts, _ := auth.New(db, auth.Options{})
+	admin, _ := accounts.Setup(ctx, auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
 	reader, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "reader", Password: "a-secure-reader-password"}, false)
 	outsider, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "outsider", Password: "a-secure-outsider-password"}, false)
 	store := catalog.New(db)

@@ -18,9 +18,9 @@ Install client dependencies once with `cd app && bun install`.
 
 ## Development
 
-Run both development servers with `make dev`, or separately with `make dev-server` and `make dev-app`. The standard web workflow allows Expo's `http://localhost:8081` origin automatically and uses `aldus-dev-bootstrap` as the local first-admin bootstrap token. Development defaults to `http://localhost:8080`; override `EXPO_PUBLIC_API_URL` and `ALDUS_ALLOWED_ORIGINS` together when using another web origin. Physical devices need your computer's LAN address, while Android emulators commonly use `http://10.0.2.2:8080`. Production web builds use the same-origin `/api` path.
+Run both development servers with `make dev`, or separately with `make dev-server` and `make dev-app`. The standard web workflow allows Expo's `http://localhost:8081` origin automatically. Development defaults to `http://localhost:8080`; override `EXPO_PUBLIC_API_URL` and `ALDUS_ALLOWED_ORIGINS` together when using another web origin. Physical devices need your computer's LAN address, while Android emulators commonly use `http://10.0.2.2:8080`. Production web builds use the same-origin `/api` path.
 
-The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_SOURCE_ROOTS` (comma-separated server-visible media roots), and `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB). Set a unique `ALDUS_BOOTSTRAP_TOKEN` before creating the first administrator; setup is disabled when it is empty and permanently closes after the first user. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY` remain a legacy single-user fallback; new installations should create per-user reader credentials from Account.
+The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_SOURCE_ROOTS` (comma-separated server-visible media roots), and `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB). On an empty database, the setup screen creates the first administrator and permanently closes as soon as that account exists. Complete this one-time setup on a trusted network before exposing Aldus publicly. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY` remain a legacy single-user fallback; new installations should create per-user reader credentials from Account.
 
 Set `ALDUS_ENV` to the deployment name and `ALDUS_LOG_LEVEL` to `debug`, `info`, `warn`, or `error` (`info` by default). Development targets use `development` and `debug` automatically.
 
@@ -114,7 +114,7 @@ Rebuild with `make ios-dev` after adding or removing a native dependency, changi
 - **Authentication:** setup/login, relaunch and session restore, logout.
 - **Consumer:** Home, Search, Library, Work, long-title layout, navigation and safe areas.
 - **Reader:** open EPUB, previous/next page, reading cursor, Listen from Here, lock/unlock, background/foreground.
-- **Audio:** play/pause, ±15 seconds, seek, 1×/1.5×/2× with preserved pitch, Bluetooth/AirPods when available, screen-lock and background playback, lock-screen metadata.
+- **Audio:** play/pause, ±15 seconds, seek, chapter navigation, sleep timer, playback speed with preserved pitch, Bluetooth/AirPods when available, screen-lock and background playback, lock-screen metadata.
 - **Synchronization:** Read → Listen, Listen → Read, non-anchor positions, partial and unavailable synchronization.
 - **Persistence:** force quit, reopen, verify session and exact progress restoration.
 - **Native UX:** keyboard/forms, touch targets, text scaling, portrait orientation, and the current automatic system appearance behavior.
@@ -146,18 +146,27 @@ make test
 make lint
 ```
 
-`make docker` builds `ghcr.io/mahcks/aldus`. Run it with `docker compose up --build`, then open <http://localhost:8080>; SQLite data is kept in the `aldus-data` Docker volume.
+`make docker` builds a local image. For a normal installation, copy `.env.example` to `.env`, pin `ALDUS_VERSION` to the release you intend to run, set `ALDUS_SOURCE_PATH` to your media folder, and run `docker compose up -d`. Open <http://localhost:8080> and create the first administrator. The production Compose file uses the published multi-architecture image, mounts Sources read-only, keeps application state in the `aldus-data` volume, and waits on `/api/ready`. The example permits cookies over plain HTTP for a trusted home network; set `ALDUS_SECURE_COOKIES=true` when serving Aldus through HTTPS.
 
 `/api/health` is process liveness. `/api/ready` additionally verifies that SQLite responds and the data directory is writable; use readiness for container traffic and upgrade checks.
 
-Back up the complete data directory only while Aldus is stopped so the SQLite database, WAL, managed media, covers, and alignment artifacts stay together:
+Create a verified online backup in the host folder configured by `ALDUS_BACKUP_PATH`:
 
 ```sh
-# Stop Aldus first.
-make backup BACKUP="$PWD/aldus-backup-$(date +%Y%m%d).tar.gz"
+docker compose run --rm aldus backup --archive /backups/aldus-backup-$(date +%Y%m%d).tar.gz
 ```
 
-The target must not already exist, and the command verifies the archive before succeeding. Restore offline into an empty data directory with `tar -xzf /path/to/aldus-backup.tar.gz -C data`, then start the same Aldus version and confirm `/api/ready` before upgrading. Source files configured outside the Aldus data directory are not copied by this backup and must be backed up separately.
+The target must not already exist. Aldus takes an online SQLite snapshot, includes managed media, covers, and alignment artifacts, records SHA-256 checksums, and checks database integrity before succeeding. Source files configured outside `/data` are not copied and must be backed up separately.
+
+Restore while Aldus is stopped and the destination data volume is empty. Start the same Aldus version first, confirm `/api/ready`, then upgrade:
+
+```sh
+docker compose stop aldus
+docker compose run --rm aldus restore --archive /backups/aldus-backup-20260817.tar.gz --data-dir /data
+docker compose up -d
+```
+
+The restore command refuses a non-empty destination and validates every checksum before publishing files. Local checkouts may use `make backup BACKUP=/path/to/new.tar.gz` and `make restore BACKUP=/path/to/archive.tar.gz RESTORE_DIR=/path/to/empty-directory`.
 
 Run `make generate` after changing named SQL queries or public Go API contracts. See [docs/code-generation.md](docs/code-generation.md) for the pinned sqlc and Tygo workflow.
 

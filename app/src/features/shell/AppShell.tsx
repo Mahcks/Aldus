@@ -17,6 +17,7 @@ function isActive(path: string, href: string) {
     path === href ||
     (href === '/sources' && path.startsWith('/sources')) ||
     (href === '/acquisitions' && path.startsWith('/acquisitions')) ||
+    (href === '/system' && path.startsWith('/system')) ||
     (href === '/libraries' &&
       ['/library/', '/work/', '/representation/'].some((prefix) => path.startsWith(prefix)))
   );
@@ -54,6 +55,7 @@ function AppShellChrome() {
         { label: 'Acquisitions', href: '/acquisitions', icon: 'acquire' },
         { label: 'Sources', href: '/sources', icon: 'folder' },
         { label: 'Users', href: '/users', icon: 'users' },
+        { label: 'System', href: '/system', icon: 'system' },
       ]
     : [];
   const userLabel = auth.user?.display_name || auth.user?.username || '';

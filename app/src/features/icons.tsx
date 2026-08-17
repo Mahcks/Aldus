@@ -26,6 +26,7 @@ const names = {
   chevron: 'chevron-right',
   add: 'plus',
   users: 'account-group-outline',
+  system: 'server-outline',
   settings: 'cog-outline',
   folder: 'folder-outline',
   scan: 'refresh',

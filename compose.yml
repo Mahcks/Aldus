@@ -1,19 +1,26 @@
 services:
   aldus:
-    build: .
-    image: ghcr.io/mahcks/aldus
+    image: ghcr.io/mahcks/aldus:${ALDUS_VERSION:-latest}
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${ALDUS_PORT:-8080}:8080"
     volumes:
       - aldus-data:/data
-      - ./test-fixtures/alice/media:/fixtures/alice:ro
-      - ${ALDUS_SOURCE_PATH:-./test-fixtures/alice/media}:/library/media:ro
+      - ${ALDUS_SOURCE_PATH:-./library-media}:/library/media:ro
+      - ${ALDUS_BACKUP_PATH:-./backups}:/backups
     environment:
-      ALDUS_FIXTURE_DIR: /fixtures/alice
+      ALDUS_ENV: production
       ALDUS_SOURCE_ROOTS: /library/media
-      ALDUS_BOOTSTRAP_TOKEN: ${ALDUS_BOOTSTRAP_TOKEN:-}
       ALDUS_SECURE_COOKIES: ${ALDUS_SECURE_COOKIES:-false}
       ALDUS_MAX_UPLOAD_BYTES: ${ALDUS_MAX_UPLOAD_BYTES:-2147483648}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    tmpfs:
+      - /tmp
 
 volumes:
   aldus-data:

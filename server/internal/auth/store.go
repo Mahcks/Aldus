@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -17,12 +16,10 @@ import (
 )
 
 var (
-	ErrBootstrapClosed        = errors.New("bootstrap closed")
-	ErrBootstrapNotConfigured = errors.New("bootstrap not configured")
-	ErrInvalidBootstrapToken  = errors.New("invalid bootstrap token")
-	ErrInvalidCredentials     = errors.New("invalid credentials")
-	ErrUnauthenticated        = errors.New("unauthenticated")
-	ErrInvalid                = errors.New("invalid authentication input")
+	ErrSetupClosed        = errors.New("setup closed")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUnauthenticated    = errors.New("unauthenticated")
+	ErrInvalid            = errors.New("invalid authentication input")
 )
 
 const CookieName = "aldus_session"
@@ -30,9 +27,8 @@ const CookieName = "aldus_session"
 var usernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,63}$`)
 
 type Options struct {
-	BootstrapToken string
-	SessionTTL     time.Duration
-	SecureCookies  bool
+	SessionTTL    time.Duration
+	SecureCookies bool
 }
 
 type User struct {
@@ -83,14 +79,7 @@ func (s *Store) SetupAvailable(ctx context.Context) (bool, error) {
 	return count == 0, nil
 }
 
-func (s *Store) Bootstrap(ctx context.Context, token string, credentials Credentials) (Session, error) {
-	if s.options.BootstrapToken == "" {
-		return Session{}, ErrBootstrapNotConfigured
-	}
-	want, got := sha256.Sum256([]byte(s.options.BootstrapToken)), sha256.Sum256([]byte(token))
-	if subtle.ConstantTimeCompare(want[:], got[:]) != 1 {
-		return Session{}, ErrInvalidBootstrapToken
-	}
+func (s *Store) Setup(ctx context.Context, credentials Credentials) (Session, error) {
 	username, displayName, err := validateCredentials(credentials)
 	if err != nil {
 		return Session{}, err
@@ -101,7 +90,7 @@ func (s *Store) Bootstrap(ctx context.Context, token string, credentials Credent
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Session{}, fmt.Errorf("begin bootstrap: %w", err)
+		return Session{}, fmt.Errorf("begin setup: %w", err)
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
@@ -115,23 +104,23 @@ func (s *Store) Bootstrap(ctx context.Context, token string, credentials Credent
 		user.ID, user.Username, username, user.DisplayName, passwordHash, formatTime(now), formatTime(now))
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			return Session{}, ErrBootstrapClosed
+			return Session{}, ErrSetupClosed
 		}
-		return Session{}, fmt.Errorf("create bootstrap user: %w", err)
+		return Session{}, fmt.Errorf("create setup user: %w", err)
 	}
 	created, err := result.RowsAffected()
 	if err != nil {
-		return Session{}, fmt.Errorf("check bootstrap user: %w", err)
+		return Session{}, fmt.Errorf("check setup user: %w", err)
 	}
 	if created != 1 {
-		return Session{}, ErrBootstrapClosed
+		return Session{}, ErrSetupClosed
 	}
 	session, err := createSession(ctx, tx, user, now, s.options.SessionTTL)
 	if err != nil {
 		return Session{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return Session{}, fmt.Errorf("commit bootstrap: %w", err)
+		return Session{}, fmt.Errorf("commit setup: %w", err)
 	}
 	return session, nil
 }

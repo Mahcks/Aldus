@@ -33,11 +33,11 @@ func TestExactProgressCrossClientAcceptance(t *testing.T) {
 	if err := positions.SeedFixture(ctx); err != nil {
 		t.Fatal(err)
 	}
-	accounts, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	accounts, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
+	reader, err := accounts.Setup(ctx, auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,11 +180,11 @@ func TestMediaSupportsCrossOriginRanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: "test-bootstrap-token"})
+	authStore, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := authStore.Bootstrap(context.Background(), "test-bootstrap-token", auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
+	session, err := authStore.Setup(context.Background(), auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,11 +206,11 @@ func TestAliasesShareLoginLimiter(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	authStore, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := authStore.Bootstrap(context.Background(), "bootstrap", auth.Credentials{Username: "admin", Password: "a-secure-test-password"})
+	session, err := authStore.Setup(context.Background(), auth.Credentials{Username: "admin", Password: "a-secure-test-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,11 +245,11 @@ func TestCookieAuthenticatedLibraryWorkCoverFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	authStore, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	authStore, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	admin, err := authStore.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "max", Password: "Password321!"})
+	admin, err := authStore.Setup(ctx, auth.Credentials{Username: "max", Password: "Password321!"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -158,11 +158,11 @@ export interface LoginRequest {
   password: string;
   display_name?: string;
 }
-export interface BootstrapRequest {
+export interface SetupRequest {
   username: string;
   password: string;
+  password_confirmation: string;
   display_name?: string;
-  bootstrap_token: string;
 }
 export interface SetupStatus {
   available: boolean;
@@ -315,6 +315,24 @@ export interface CreateRepresentationRequest {
 export interface UpdateRepresentationRequest {
   kind: string;
   label: string;
+}
+
+//////////
+// source: diagnostics.go
+
+export interface SystemDiagnostics {
+  version: string;
+  environment: string;
+  schema_version: number /* int */;
+  database_status: string;
+  storage_status: string;
+  source_roots_configured: number /* int */;
+  source_roots_reachable: number /* int */;
+  pending_source_scans: number /* int */;
+  failed_source_scans: number /* int */;
+  pending_alignment_jobs: number /* int */;
+  failed_alignment_jobs: number /* int */;
+  acquisition_configured: boolean;
 }
 
 //////////

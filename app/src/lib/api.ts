@@ -14,7 +14,6 @@ import type {
   AlignmentJob,
   AudioChapter,
   AudioLocator,
-  BootstrapRequest,
   CanonicalPosition,
   CoverCandidate,
   CoverAsset,
@@ -45,6 +44,8 @@ import type {
   SourceRoot,
   SourceScan,
   SetupStatus,
+  SetupRequest,
+  SystemDiagnostics,
   StartActivityRequest,
   UpdateLibraryRequest,
   UpdateActivityRequest,
@@ -142,13 +143,14 @@ async function acceptSession(session: Session) {
 
 export const api = {
   setupStatus: () => request<SetupStatus>('/setup/status'),
-  bootstrap: (body: BootstrapRequest) =>
+  setup: (body: SetupRequest) =>
     request<Session>('/setup', { method: 'POST', body: JSON.stringify(body) }).then(acceptSession),
   login: (body: LoginRequest) =>
     request<Session>('/auth/login', { method: 'POST', body: JSON.stringify(body) }).then(
       acceptSession,
     ),
   me: () => request<User>('/auth/me'),
+  systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),
   logout: async () => {
     try {
       await request<void>('/auth/logout', { method: 'POST' });

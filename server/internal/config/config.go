@@ -15,7 +15,6 @@ type Config struct {
 	FixtureDir              string
 	KOReaderUser            string
 	KOReaderKey             string
-	BootstrapToken          string
 	SecureCookies           bool
 	AllowedOrigins          []string
 	MediaDir                string
@@ -47,7 +46,6 @@ func Load() (Config, error) {
 		FixtureDir:              envOr("ALDUS_FIXTURE_DIR", "../test-fixtures/alice/media"),
 		KOReaderUser:            os.Getenv("ALDUS_KOREADER_USER"),
 		KOReaderKey:             os.Getenv("ALDUS_KOREADER_KEY"),
-		BootstrapToken:          os.Getenv("ALDUS_BOOTSTRAP_TOKEN"),
 		SecureCookies:           envBool("ALDUS_SECURE_COOKIES"),
 		AllowedOrigins:          envList("ALDUS_ALLOWED_ORIGINS"),
 		MediaDir:                envOr("ALDUS_MEDIA_DIR", ""),

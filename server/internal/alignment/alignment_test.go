@@ -49,11 +49,11 @@ func setupManager(t *testing.T, mode string, timeout time.Duration) *testState {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	accounts, err := auth.New(db, auth.Options{BootstrapToken: "bootstrap"})
+	accounts, err := auth.New(db, auth.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := accounts.Bootstrap(ctx, "bootstrap", auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
+	session, err := accounts.Setup(ctx, auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
 	if err != nil {
 		t.Fatal(err)
 	}
