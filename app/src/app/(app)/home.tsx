@@ -11,7 +11,12 @@ import { colors } from '../../features/theme';
 import { listItemEnter } from '../../features/motion';
 import { ScrollView, Text, View } from '../../features/tw';
 import { Button, EmptyState, Loading, Notice, Page, Section } from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+import { APIError, api, errorMessage } from '../../lib/api';
+import {
+  offlineLibraries,
+  offlineWorkSummaries,
+  rememberOfflineLibraries,
+} from '../../lib/offline-library';
 
 function StatChip({ icon, label }: { icon: AppIconName; label: string }) {
   return (
@@ -64,6 +69,7 @@ export default function HomeScreen() {
   const [recent, setRecent] = useState<WorkSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [offline, setOffline] = useState(false);
 
   const hasContinuing = continuing.length > 0;
   const hasAnyWorks = hasContinuing || recent.length > 0;
@@ -78,12 +84,27 @@ export default function HomeScreen() {
           api.browseWorks({ sort: 'recent', limit: 12 }),
         ]);
         if (!canceled) {
+          await rememberOfflineLibraries(nextLibraries).catch(() => {});
           setLibraries(nextLibraries);
           setContinuing(progressPage.items);
           setRecent(recentPage.items);
         }
       } catch (value) {
-        if (!canceled) setError(errorMessage(value));
+        if (!(value instanceof APIError && value.status === 0)) {
+          if (!canceled) setError(errorMessage(value));
+          return;
+        }
+        const [savedLibraries, savedWorks] = await Promise.all([
+          offlineLibraries(),
+          offlineWorkSummaries(),
+        ]);
+        if (!canceled) {
+          setLibraries(savedLibraries);
+          setContinuing(savedWorks.filter((work) => work.in_progress));
+          setRecent(savedWorks);
+          setOffline(true);
+          if (!savedWorks.length) setError(errorMessage(value));
+        }
       } finally {
         if (!canceled) setLoading(false);
       }
@@ -119,6 +140,7 @@ export default function HomeScreen() {
 
   return (
     <Page title="Home" hideHeader>
+      {offline ? <Notice>Offline · showing downloads on this device.</Notice> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       <View>
         <View className="gap-3 rounded-card bg-accent-soft p-5 shadow-sm">

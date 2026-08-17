@@ -16,7 +16,8 @@ import {
   SectionHeader,
   TextField,
 } from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+import { APIError, api, errorMessage } from '../../lib/api';
+import { offlineLibraries, rememberOfflineLibraries } from '../../lib/offline-library';
 
 type CreateLibraryFormProps = {
   name: string;
@@ -78,12 +79,22 @@ export default function Libraries() {
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
+  const [offline, setOffline] = useState(false);
 
   async function load() {
     try {
-      setItems(await api.libraries());
+      const libraries = await api.libraries();
+      setItems(libraries);
+      await rememberOfflineLibraries(libraries).catch(() => {});
     } catch (value) {
-      setError(errorMessage(value));
+      if (!(value instanceof APIError && value.status === 0)) {
+        setError(errorMessage(value));
+        return;
+      }
+      const saved = await offlineLibraries();
+      setItems(saved);
+      setOffline(saved.length > 0);
+      if (!saved.length) setError(errorMessage(value));
     } finally {
       setLoading(false);
     }
@@ -118,7 +129,7 @@ export default function Libraries() {
     <Page
       title="Libraries"
       actions={
-        items.length ? (
+        items.length && !offline ? (
           <Button
             label="Add library"
             icon="add"
@@ -128,6 +139,7 @@ export default function Libraries() {
         ) : null
       }
     >
+      {offline ? <Notice>Offline · showing libraries with downloads on this device.</Notice> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {loading ? (
         <Loading label="Loading libraries…" />

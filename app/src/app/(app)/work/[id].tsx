@@ -27,7 +27,7 @@ import {
   Section,
   shared,
 } from '../../../features/ui';
-import { api, errorMessage } from '../../../lib/api';
+import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 import { downloadOfflineWork, offlineWork, removeOfflineWork } from '../../../lib/offline-library';
 
@@ -49,10 +49,12 @@ export default function WorkScreen() {
   const [audioID, setAudioID] = useState('');
   const [downloaded, setDownloaded] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [offline, setOffline] = useState(false);
 
   async function load() {
-    if (!id || !libraryId) return;
+    if (!id) return;
     try {
+      if (!libraryId) throw new Error('Library unavailable.');
       const [nextWork, nextRepresentations, nextJobs, progress, preference] = await Promise.all([
         api.work(id),
         api.representations(id),
@@ -79,7 +81,17 @@ export default function WorkScreen() {
       );
       setDownloaded(Boolean(await offlineWork(id)));
     } catch (value) {
-      setError(errorMessage(value));
+      const saved = await offlineWork(id);
+      if (saved && (!libraryId || (value instanceof APIError && value.status === 0))) {
+        setWork(saved.work);
+        setMedia([...saved.epubs, ...saved.audio]);
+        setJobs(saved.jobs);
+        setHasProgress(Boolean(saved.progress));
+        setEPUBID(saved.epub_id);
+        setAudioID(saved.audio_id);
+        setDownloaded(true);
+        setOffline(true);
+      } else setError(errorMessage(value));
     } finally {
       setLoading(false);
     }
@@ -99,7 +111,7 @@ export default function WorkScreen() {
       </Page>
     );
 
-  const canEdit = Boolean(auth.user?.admin || role === 'owner' || role === 'editor');
+  const canEdit = !offline && Boolean(auth.user?.admin || role === 'owner' || role === 'editor');
   const epubs = media.filter((item) => item.kind === 'epub');
   const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
   const selectedEPUB = epubs.find((item) => item.id === epubID);
@@ -111,7 +123,7 @@ export default function WorkScreen() {
   }
 
   async function rememberPair(nextEPUBID: string, nextAudioID: string) {
-    if (!id) return;
+    if (!id || offline) return;
     const job = readyJob(jobs, nextEPUBID, nextAudioID);
     if (!job?.alignment_id) return;
     try {
@@ -202,6 +214,7 @@ export default function WorkScreen() {
         ) : null
       }
     >
+      {offline ? <Notice>Offline · using the download on this device.</Notice> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       <Animated.View entering={fadeIn}>
         <View className="flex-row flex-wrap items-center gap-8 border-b border-line py-5 pb-10">

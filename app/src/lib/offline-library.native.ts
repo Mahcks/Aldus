@@ -5,15 +5,18 @@ import type {
   AlignmentJob,
   CanonicalPosition,
   RepresentationState,
-  Work,
+  Library,
+  WorkDetail,
+  WorkSummary,
 } from '../generated/api';
 import type { MediaChoice } from '../features/consumption';
 import { productEPUBSource } from './epub-source';
 import { productAudioSource } from './media';
 import { pendingProgress } from './progress-outbox';
+import { parseStoredJSON } from './stored-json';
 
 export type OfflineWork = {
-  work: Work;
+  work: WorkDetail;
   epubs: MediaChoice[];
   audio: MediaChoice[];
   jobs: AlignmentJob[];
@@ -27,11 +30,76 @@ export type OfflineWork = {
 };
 
 const key = (workID: string) => `aldus:offline-work:${workID}`;
+const prefix = 'aldus:offline-work:';
+const librariesKey = 'aldus:offline-libraries';
+
+export async function offlineWorks(): Promise<OfflineWork[]> {
+  const keys = (await AsyncStorage.getAllKeys()).filter((item) => item.startsWith(prefix));
+  const values = await Promise.all(keys.map((item) => offlineWork(item.slice(prefix.length))));
+  return values.filter((item): item is OfflineWork => Boolean(item));
+}
+
+export async function rememberOfflineLibraries(libraries: Library[]) {
+  const raw = await AsyncStorage.getItem(librariesKey);
+  const saved = parseStoredJSON<Library[]>(raw) ?? [];
+  const merged = new Map(saved.map((item) => [item.id, item]));
+  for (const library of libraries) merged.set(library.id, library);
+  await AsyncStorage.setItem(librariesKey, JSON.stringify([...merged.values()]));
+}
+
+export async function offlineLibraries(): Promise<Library[]> {
+  const [raw, works] = await Promise.all([AsyncStorage.getItem(librariesKey), offlineWorks()]);
+  const saved = parseStoredJSON<Library[]>(raw) ?? [];
+  const ids = new Set(works.map((item) => item.work.library_id));
+  const libraries = new Map(
+    saved.filter((item) => ids.has(item.id)).map((item) => [item.id, item]),
+  );
+  for (const item of works) {
+    if (libraries.has(item.work.library_id)) continue;
+    libraries.set(item.work.library_id, {
+      id: item.work.library_id,
+      name: 'Offline downloads',
+      can_request_acquisitions: false,
+      created_at: item.work.created_at,
+      updated_at: item.work.updated_at,
+    });
+  }
+  return [...libraries.values()];
+}
+
+export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSummary[]> {
+  const [works, libraries] = await Promise.all([offlineWorks(), offlineLibraries()]);
+  const byID = new Map(libraries.map((item) => [item.id, item]));
+  return works
+    .filter((item) => !libraryID || item.work.library_id === libraryID)
+    .map((item) => {
+      const library = byID.get(item.work.library_id);
+      return {
+        ...item.work,
+        library_name: library?.name ?? 'Offline downloads',
+        library_role: library?.role,
+        readable: item.epubs.length > 0,
+        listenable: item.audio.length > 0,
+        synchronized: Boolean(item.alignment),
+        in_progress: Boolean(item.progress),
+        completion_percent: item.work.completion_percent ?? 0,
+        active_seconds: item.work.active_seconds ?? 0,
+        reading_seconds: item.work.reading_seconds ?? 0,
+        listening_seconds: item.work.listening_seconds ?? 0,
+        last_mode: item.work.last_mode,
+        progress_updated_at: item.work.progress_updated_at,
+      };
+    });
+}
 
 export async function offlineWork(workID: string): Promise<OfflineWork | null> {
   const raw = await AsyncStorage.getItem(key(workID));
   if (!raw) return null;
-  const value = JSON.parse(raw) as OfflineWork;
+  const value = parseStoredJSON<OfflineWork>(raw);
+  if (!value) {
+    await AsyncStorage.removeItem(key(workID));
+    return null;
+  }
   const media = [...value.epubs, ...value.audio];
   if (
     media.some((item) => {

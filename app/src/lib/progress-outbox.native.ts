@@ -1,13 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CanonicalPosition, WorkProgressUpdate } from '../generated/api';
 import { APIError, api } from './api';
+import { parseStoredJSON } from './stored-json';
 
 const key = (workID: string) => `aldus:progress-outbox:${workID}`;
 const indexKey = 'aldus:progress-outbox:index';
 
 async function pendingWorkIDs() {
   const raw = await AsyncStorage.getItem(indexKey);
-  return raw ? (JSON.parse(raw) as string[]) : [];
+  const ids = parseStoredJSON<unknown>(raw);
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+    if (raw) await AsyncStorage.removeItem(indexKey);
+    return [];
+  }
+  return ids;
 }
 
 async function track(workID: string, pending: boolean) {
@@ -18,7 +24,12 @@ async function track(workID: string, pending: boolean) {
 
 export async function pendingProgress(workID: string) {
   const raw = await AsyncStorage.getItem(key(workID));
-  return raw ? (JSON.parse(raw) as WorkProgressUpdate) : null;
+  const progress = parseStoredJSON<WorkProgressUpdate>(raw);
+  if (raw && !progress) {
+    await AsyncStorage.removeItem(key(workID));
+    await track(workID, false);
+  }
+  return progress;
 }
 
 export async function saveWorkProgress(

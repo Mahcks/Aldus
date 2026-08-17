@@ -88,10 +88,10 @@ If iOS asks you to trust the development certificate, open **Settings → Genera
 For TS, TSX, CSS, and ordinary application logic changes, start Metro on the development machine that contains the active checkout and dependencies:
 
 ```sh
-EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080 make expo-dev
+make expo-dev
 ```
 
-Open Aldus on the iPhone and select the detected development server, or scan Metro's development-client QR code. If discovery fails, use the development client's **Enter URL** action and paste the development-server URL printed by Metro. `make expo-dev` derives `REACT_NATIVE_PACKAGER_HOSTNAME` from `EXPO_PUBLIC_API_URL`, ensuring Metro advertises the LAN host instead of a WSL-internal address. Metro uses LAN mode on port 8081, so the iPhone must be able to reach that port on the development machine. The Mac only needs a checkout when rebuilding the native client; normal code and Metro can remain on another LAN-reachable development machine.
+Open Aldus on the iPhone and select the detected development server, or scan Metro's development-client QR code. If discovery fails, use the development client's **Enter URL** action and paste the development-server URL printed by Metro. In development, Aldus derives port 8080 on Metro's LAN host automatically; `EXPO_PUBLIC_API_URL` remains available when the backend is on another machine. Metro uses LAN mode on port 8081, so the iPhone must be able to reach that port on the development machine. The Mac only needs a checkout when rebuilding the native client; normal code and Metro can remain on another LAN-reachable development machine.
 
 Rebuild with `make ios-dev` after adding or removing a native dependency, changing `app.json` native configuration or plugins, changing entitlements/capabilities, or upgrading Expo/React Native. A rebuild is normally unnecessary after TS/TSX, styling, API-client, copy, or most application-logic changes.
 

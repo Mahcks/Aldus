@@ -28,7 +28,8 @@ import {
   Section,
   StatusBadge,
 } from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+import { APIError, api, errorMessage } from '../../lib/api';
+import { offlineWorkSummaries } from '../../lib/offline-library';
 
 type ActiveRequest = { id: string; libraryID: string };
 type ResultStatus = 'idle' | 'sending' | 'queued' | 'error';
@@ -53,6 +54,7 @@ export default function SearchScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [offline, setOffline] = useState(false);
 
   const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [destination, setDestination] = useState('');
@@ -77,8 +79,27 @@ export default function SearchScreen() {
       const page = await api.browseWorks({ q: query, sort, availability, limit: 24, offset });
       setWorks((current) => (offset ? [...current, ...page.items] : page.items));
       setHasMore(page.has_more);
+      setOffline(false);
     } catch (value) {
-      setError(errorMessage(value));
+      if (!(value instanceof APIError && value.status === 0)) {
+        setError(errorMessage(value));
+        return;
+      }
+      const normalizedQuery = query.trim().toLocaleLowerCase();
+      const saved = (await offlineWorkSummaries()).filter((work) => {
+        if (
+          normalizedQuery &&
+          !`${work.title} ${work.author ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)
+        )
+          return false;
+        if (availability === 'readable') return work.readable;
+        if (availability === 'listenable') return work.listenable;
+        if (availability === 'synchronized') return work.synchronized;
+        return true;
+      });
+      setWorks(saved);
+      setHasMore(false);
+      setOffline(true);
     } finally {
       setLoading(false);
     }
@@ -122,7 +143,8 @@ export default function SearchScreen() {
       );
       setFulfillmentError('');
     } catch (value) {
-      setFulfillmentError(errorMessage(value));
+      if (!(value instanceof APIError && value.status === 0))
+        setFulfillmentError(errorMessage(value));
     }
   }
 
@@ -553,6 +575,7 @@ export default function SearchScreen() {
 
   return (
     <Page title="Search">
+      {offline ? <Notice>Offline · searching downloads on this device.</Notice> : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
       <View className="max-w-[1000px] gap-4">
         <View className="w-full">

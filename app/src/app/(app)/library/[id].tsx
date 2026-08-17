@@ -24,8 +24,13 @@ import {
   SearchField,
   shared,
 } from '../../../features/ui';
-import { api, errorMessage } from '../../../lib/api';
+import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
+import {
+  offlineLibraries,
+  offlineWorkSummaries,
+  rememberOfflineLibraries,
+} from '../../../lib/offline-library';
 
 type Panel = 'work' | 'members' | 'settings' | null;
 type Role = 'owner' | 'editor' | 'reader';
@@ -98,6 +103,7 @@ export default function LibraryScreen() {
   const [removingMember, setRemovingMember] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingLibrary, setDeletingLibrary] = useState(false);
+  const [offline, setOffline] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -108,11 +114,21 @@ export default function LibraryScreen() {
         auth.user?.admin ? api.users() : Promise.resolve([]),
       ]);
       setLibrary(nextLibrary);
+      await rememberOfflineLibraries([nextLibrary]).catch(() => {});
       setName(nextLibrary.name);
       setMembers(nextMembers);
       setUsers(nextUsers);
     } catch (value) {
-      setError(errorMessage(value));
+      if (!(value instanceof APIError && value.status === 0)) {
+        setError(errorMessage(value));
+        return;
+      }
+      const saved = (await offlineLibraries()).find((item) => item.id === id);
+      if (saved) {
+        setLibrary(saved);
+        setName(saved.name);
+        setOffline(true);
+      } else setError(errorMessage(value));
     } finally {
       setLoading(false);
     }
@@ -139,7 +155,27 @@ export default function LibraryScreen() {
       setWorks((current) => (offset ? [...current, ...page.items] : page.items));
       setHasMore(page.has_more);
     } catch (value) {
-      setError(errorMessage(value));
+      if (!(value instanceof APIError && value.status === 0)) {
+        setError(errorMessage(value));
+        return;
+      }
+      const saved = await offlineWorkSummaries(id);
+      const normalizedQuery = query.trim().toLocaleLowerCase();
+      const filtered = saved.filter((work) => {
+        if (
+          normalizedQuery &&
+          !`${work.title} ${work.author ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)
+        )
+          return false;
+        if (availability === 'readable') return work.readable;
+        if (availability === 'listenable') return work.listenable;
+        if (availability === 'synchronized') return work.synchronized;
+        return true;
+      });
+      setWorks(filtered);
+      setHasMore(false);
+      setOffline(filtered.length > 0 || saved.length > 0);
+      if (!saved.length) setError(errorMessage(value));
     } finally {
       setLoadingWorks(false);
     }
@@ -159,10 +195,9 @@ export default function LibraryScreen() {
       </Page>
     );
 
-  const canEdit = Boolean(
-    auth.user?.admin || library.role === 'owner' || library.role === 'editor',
-  );
-  const canManage = Boolean(auth.user?.admin || library.role === 'owner');
+  const canEdit =
+    !offline && Boolean(auth.user?.admin || library.role === 'owner' || library.role === 'editor');
+  const canManage = !offline && Boolean(auth.user?.admin || library.role === 'owner');
   const hasManagementActions = canManage || canEdit;
   const filtersActive = Boolean(query || availability !== 'all');
   const availableUsers = users.filter(
@@ -298,6 +333,7 @@ export default function LibraryScreen() {
         )
       }
     >
+      {offline ? <Notice>Offline · showing downloads on this device.</Notice> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       <View>
         <View className="flex-row items-center justify-between gap-3">
