@@ -15,6 +15,7 @@ function isActive(path: string, href: string) {
   return (
     path === href ||
     (href === '/sources' && path.startsWith('/sources')) ||
+    (href === '/acquisitions' && path.startsWith('/acquisitions')) ||
     (href === '/libraries' &&
       ['/library/', '/work/', '/representation/'].some((prefix) => path.startsWith(prefix)))
   );
@@ -48,6 +49,7 @@ function AppShellChrome() {
   ];
   const adminLinks: NavItem[] = auth.user?.admin
     ? [
+        { label: 'Acquisitions', href: '/acquisitions', icon: 'acquire' },
         { label: 'Sources', href: '/sources', icon: 'folder' },
         { label: 'Users', href: '/users', icon: 'users' },
       ]
@@ -152,9 +154,11 @@ function DesktopNav({
         <Text className="font-editorial text-2xl font-bold text-accent">Aldus</Text>
       </Pressable>
       <View className="mt-7 gap-1">
-        {consumerLinks.map((link) => (
-          <NavLink key={link.href} {...link} selected={isActive(path, link.href)} />
-        ))}
+        {consumerLinks
+          .filter((link) => link.href !== '/account')
+          .map((link) => (
+            <NavLink key={link.href} {...link} selected={isActive(path, link.href)} />
+          ))}
       </View>
       {adminLinks.length > 0 ? (
         <View className="mt-7 gap-1 border-t border-line pt-5">
@@ -172,7 +176,6 @@ function DesktopNav({
           href="/account"
           icon="account"
           selected={isActive(path, '/account')}
-          tone="quiet"
         />
         <Pressable
           accessibilityRole="button"
@@ -186,7 +189,12 @@ function DesktopNav({
   );
 }
 
-/** Single desktop rail item. `quiet` tone renders the admin group a size down and less saturated. */
+/**
+ * Single desktop rail item. Every item — consumer, admin, or the account
+ * footer — renders at the same icon/text size so the rail reads as one
+ * consistent list; `quiet` tone only mutes the resting color, distinguishing
+ * the admin group without making it look like a visually broken mismatch.
+ */
 function NavLink({
   label,
   href,
@@ -194,8 +202,6 @@ function NavLink({
   selected,
   tone = 'primary',
 }: NavItem & { selected: boolean; tone?: 'primary' | 'quiet' }) {
-  const iconSize = tone === 'quiet' ? 18 : 20;
-  const textSizeClass = tone === 'quiet' ? 'text-sm' : 'text-[15px]';
   const inactiveTextClass = tone === 'quiet' ? 'text-subtle' : 'text-muted';
   const iconColor = selected ? colors.accent : tone === 'quiet' ? colors.subtle : colors.muted;
   const backgroundClass = selected ? 'bg-accent-soft' : '';
@@ -214,10 +220,8 @@ function NavLink({
       onPress={() => router.push(href as Href)}
       className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
-      <AppIcon name={icon} size={iconSize} color={iconColor} />
-      <Text
-        className={`font-bold ${textSizeClass} ${selected ? 'text-accent' : inactiveTextClass}`}
-      >
+      <AppIcon name={icon} size={20} color={iconColor} />
+      <Text className={`text-[15px] font-bold ${selected ? 'text-accent' : inactiveTextClass}`}>
         {label}
       </Text>
     </Pressable>

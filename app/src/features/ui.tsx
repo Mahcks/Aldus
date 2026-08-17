@@ -758,7 +758,7 @@ export function ErrorState({
   );
 }
 
-export function LoadingState({ label = 'Loading your library…' }: { label?: string }) {
+export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   const compact = useWindowDimensions().width < 600;
   const placeholders = compact ? [0, 1] : [0, 1, 2, 3];
 
@@ -784,18 +784,36 @@ export function LoadingState({ label = 'Loading your library…' }: { label?: st
   );
 }
 
+/**
+ * Page-agnostic boot state for the session check that runs before any route
+ * is known — `AuthGate` and the root redirect. Deliberately not
+ * `LoadingState`: that renders a shelf-of-book-cards skeleton shaped for a
+ * library grid, which is wrong for most destinations (Account, Users,
+ * Acquisitions, …) and, worse, back-to-back with the destination page's own
+ * `LoadingState` reads as two different skeletons flashing in succession.
+ * This is a brief brand moment, not a content placeholder.
+ */
+export function AppBootState() {
+  return (
+    <View className="min-h-full flex-1 items-center justify-center gap-3 bg-canvas">
+      <Text className="font-editorial text-2xl font-bold text-accent">Aldus</Text>
+      <ActivityIndicator color={colors.accent} />
+    </View>
+  );
+}
+
 /** `Loading` is kept as an alias of `LoadingState` for existing imports. */
 export const Loading = LoadingState;
 
 const STATUS_BADGE_TONE_CLASS: Record<
   StatusTone,
-  { background: string; text: string; border: string }
+  { background: string; text: string; spine: string }
 > = {
-  neutral: { background: 'bg-neutral-soft', text: 'text-neutral', border: 'border-neutral' },
-  info: { background: 'bg-info-soft', text: 'text-info', border: 'border-info' },
-  success: { background: 'bg-success-soft', text: 'text-success', border: 'border-success' },
-  warning: { background: 'bg-warning-soft', text: 'text-warning', border: 'border-warning' },
-  danger: { background: 'bg-danger-soft', text: 'text-danger', border: 'border-danger' },
+  neutral: { background: 'bg-neutral-soft', text: 'text-neutral', spine: 'bg-neutral' },
+  info: { background: 'bg-info-soft', text: 'text-info', spine: 'bg-info' },
+  success: { background: 'bg-success-soft', text: 'text-success', spine: 'bg-success' },
+  warning: { background: 'bg-warning-soft', text: 'text-warning', spine: 'bg-warning' },
+  danger: { background: 'bg-danger-soft', text: 'text-danger', spine: 'bg-danger' },
 };
 
 const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
@@ -806,7 +824,14 @@ const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
   danger: colors.danger,
 };
 
-/** General-purpose badge for compact operational state, never decorative metadata. */
+/**
+ * Aldus's signature status treatment — a "spine label," styled after the
+ * color-coded spine tag on a library book, not a generic rounded pill. A
+ * solid 3px tone spine sits flush against the left edge; the tag only
+ * rounds on the right, where it lifts off the page. Used for Read/Listen/
+ * Synced, source health, scan state, import proposals, and role/status —
+ * never for decorative metadata.
+ */
 export function StatusBadge({
   tone = 'neutral',
   label,
@@ -820,12 +845,15 @@ export function StatusBadge({
 
   return (
     <View
-      className={`flex-row items-center gap-1.5 self-start rounded-control border px-2 py-1 ${toneClass.background} ${toneClass.border}`}
+      className={`flex-row items-stretch self-start overflow-hidden rounded-r-control ${toneClass.background}`}
     >
-      {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
-      <Text className={`text-[11px] font-bold uppercase tracking-wide ${toneClass.text}`}>
-        {label}
-      </Text>
+      <View className={`w-[3px] ${toneClass.spine}`} />
+      <View className="flex-row items-center gap-1.5 py-1 pl-1.5 pr-2">
+        {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
+        <Text className={`text-[11px] font-bold uppercase tracking-wide ${toneClass.text}`}>
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -967,7 +995,7 @@ export function Page({
         )}
         <ScrollView
           className="flex-1"
-          contentContainerClassName={`w-full max-w-[1240px] self-center ${contentPaddingClass}`}
+          contentContainerClassName={`w-full max-w-[1240px] ${contentPaddingClass}`}
         >
           {children}
         </ScrollView>

@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
+import { LibraryCard } from '../../features/bookshelf';
 import { formatDuration } from '../../features/format';
 import { AppIcon } from '../../features/icons';
 import { listItemEnter } from '../../features/motion';
@@ -168,13 +169,12 @@ export default function AccountScreen() {
           {loading ? (
             <Loading label="Loading libraries…" />
           ) : libraries.length ? (
-            <View className="gap-3">
+            <View className="flex-row flex-wrap gap-3">
               {libraries.map((library, index) => (
                 <Animated.View key={library.id} entering={listItemEnter(index)}>
-                  <IconRow
-                    icon="libraries"
-                    title={library.name}
-                    subtitle={library.role || 'Administrator access'}
+                  <LibraryCard
+                    name={library.name}
+                    role={library.role}
                     onPress={() => router.push(`/library/${library.id}`)}
                   />
                 </Animated.View>

@@ -163,6 +163,53 @@ export function Badge({ children }: PropsWithChildren) {
   );
 }
 
+/**
+ * Compact card for a Library in a collection grid — Home, Libraries, and
+ * Account all list "the libraries I belong to". A fixed human-scaled card
+ * (matching `WorkCard`'s footprint) reads as one intentional grid unit even
+ * when there's only one library, unlike a full-width list row stretched
+ * across the page with nothing beside it.
+ */
+export function LibraryCard({
+  name,
+  role,
+  onPress,
+}: {
+  name: string;
+  role?: string;
+  onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={name}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`w-[228px] max-w-full flex-row items-center gap-3 rounded-card border border-line bg-paper p-4 shadow-card ${stateClass}`}
+    >
+      <View className="h-11 w-11 items-center justify-center rounded-full bg-accent-soft">
+        <AppIcon name="libraries" size={20} color={colors.accent} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+          {name}
+        </Text>
+        <Text numberOfLines={1} className="mt-0.5 text-xs font-semibold text-subtle">
+          {role || 'Administrator access'}
+        </Text>
+      </View>
+      <AppIcon name="chevron" size={16} color={colors.subtle} />
+    </Pressable>
+  );
+}
+
 type WorkPresentationProps = {
   title: string;
   author?: string;
@@ -382,7 +429,7 @@ export function ContinueCard({
   const titleStateClass = resolvePressStateClass({ focused: titleFocused, pressed: titlePressed });
 
   return (
-    <View className="w-[336px] max-w-full flex-row gap-3.5 rounded-card bg-paper p-3.5 shadow-sm">
+    <View className="w-[336px] max-w-full flex-row gap-3.5 rounded-card bg-paper p-3.5 shadow-card">
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
@@ -430,30 +477,38 @@ export function ContinueCard({
           ) : null}
         </Pressable>
         <View className="gap-2">
-          <AvailabilityIcons value={availability} />
-          <View className="flex-row flex-wrap items-center gap-2">
-            <Button
-              label={
-                compact
-                  ? 'Continue'
-                  : `Continue ${continueMode === 'read' ? 'reading' : 'listening'}`
-              }
-              icon={continueMode === 'read' ? 'read' : 'listen'}
-              kind="primary"
-              onPress={onContinue}
-            />
-            {availability.readable && continueMode !== 'read' && onRead ? (
-              <IconButton icon="read" label="Read this work" kind="quiet" onPress={onRead} />
-            ) : null}
-            {availability.listenable && continueMode !== 'listen' && onListen ? (
-              <IconButton
-                icon="listen"
-                label="Listen to this work"
-                kind="quiet"
-                onPress={onListen}
-              />
-            ) : null}
+          {/*
+           * The mode-switch icon buttons sit beside the availability chip,
+           * not next to the primary button below — this card's text column
+           * is too narrow for "Continue reading/listening" plus a 44px icon
+           * button to ever share a row, so they always wrapped onto their
+           * own orphaned-looking line. Grouping the switch with the
+           * availability info instead gives it a stable, legible home.
+           */}
+          <View className="flex-row flex-wrap items-center justify-between gap-2">
+            <AvailabilityIcons value={availability} />
+            <View className="flex-row items-center gap-1">
+              {availability.readable && continueMode !== 'read' && onRead ? (
+                <IconButton icon="read" label="Read this work" kind="quiet" onPress={onRead} />
+              ) : null}
+              {availability.listenable && continueMode !== 'listen' && onListen ? (
+                <IconButton
+                  icon="listen"
+                  label="Listen to this work"
+                  kind="quiet"
+                  onPress={onListen}
+                />
+              ) : null}
+            </View>
           </View>
+          <Button
+            label={
+              compact ? 'Continue' : `Continue ${continueMode === 'read' ? 'reading' : 'listening'}`
+            }
+            icon={continueMode === 'read' ? 'read' : 'listen'}
+            kind="primary"
+            onPress={onContinue}
+          />
         </View>
       </View>
     </View>

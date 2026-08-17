@@ -76,6 +76,16 @@ func TestSourcesAndReferencedMediaStayInsideAllowedRoots(t *testing.T) {
 	if err := os.WriteFile(path, bytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.EnqueueDownloadScan(ctx, "library", source.ID, path); err != nil {
+		t.Fatalf("safe download handoff = %v", err)
+	}
+	outsideDownload := filepath.Join(allowed+"-sibling", "outside.mp3")
+	if err := os.WriteFile(outsideDownload, bytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnqueueDownloadScan(ctx, "library", source.ID, outsideDownload); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("outside download handoff = %v", err)
+	}
 	info, _ := os.Stat(path)
 	sum := sha256.Sum256(bytes)
 	hash := hex.EncodeToString(sum[:])

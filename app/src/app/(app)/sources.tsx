@@ -6,7 +6,7 @@ import type {
   Work,
 } from '../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../features/auth/AuthProvider';
 import {
   canManageSources,
@@ -32,7 +32,10 @@ import { Pressable, Text, View } from '../../features/tw';
 import { APIError, api, errorMessage } from '../../lib/api';
 
 export default function SourcesAdministration() {
-  const { libraryId } = useLocalSearchParams<{ libraryId?: string }>();
+  const { libraryId, proposalId } = useLocalSearchParams<{
+    libraryId?: string;
+    proposalId?: string;
+  }>();
   const auth = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [selectedLibraryID, setSelectedLibraryID] = useState(libraryId ?? '');
@@ -51,6 +54,7 @@ export default function SourcesAdministration() {
   const [conflict, setConflict] = useState('');
   const [removeSourceTarget, setRemoveSourceTarget] = useState<LibrarySource | null>(null);
   const [ignoreProposalTarget, setIgnoreProposalTarget] = useState<ImportProposal | null>(null);
+  const openedProposalID = useRef('');
 
   const selectedLibrary = libraries.find((library) => library.id === selectedLibraryID);
   const canAdminister = canManageSources(Boolean(auth.user?.admin), selectedLibrary);
@@ -118,6 +122,14 @@ export default function SourcesAdministration() {
     void loadAdministration(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLibraryID, canAdminister]);
+
+  useEffect(() => {
+    if (!proposalId || proposalId === openedProposalID.current) return;
+    const proposal = proposals.find((entry) => entry.id === proposalId);
+    if (!proposal) return;
+    openedProposalID.current = proposalId;
+    void openReview(proposal);
+  }, [proposalId, proposals]);
 
   useEffect(() => {
     if (!activeScan) return;
@@ -347,13 +359,13 @@ export default function SourcesAdministration() {
 
       {libraries.length === 0 ? (
         <Notice>You do not manage any libraries.</Notice>
-      ) : (
+      ) : libraries.length > 1 ? (
         <LibraryTabs
           libraries={libraries}
           selectedLibraryID={selectedLibraryID}
           onSelect={setSelectedLibraryID}
         />
-      )}
+      ) : null}
 
       {selectedLibrary && canAdminister ? (
         <>

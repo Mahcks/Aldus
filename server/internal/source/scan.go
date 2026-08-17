@@ -66,12 +66,27 @@ func (s *Store) EnqueueScan(ctx context.Context, actor auth.User, libraryID, sou
 		}
 		return Scan{}, ErrNotFound
 	}
+	return s.enqueueScan(ctx, libraryID, sourceID)
+}
+
+func (s *Store) enqueueScan(ctx context.Context, libraryID, sourceID string) (Scan, error) {
+	return s.enqueueLinkedScan(ctx, libraryID, sourceID, "")
+}
+
+func (s *Store) enqueueLinkedScan(ctx context.Context, libraryID, sourceID, requestID string) (Scan, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_sources WHERE id=? AND library_id=? AND enabled=1 AND deleted_at IS NULL`, sourceID, libraryID).Scan(&exists); err != nil {
+		return Scan{}, err
+	}
+	if exists != 1 {
+		return Scan{}, ErrNotFound
+	}
 	id, err := randomID()
 	if err != nil {
 		return Scan{}, err
 	}
 	now := time.Now().UTC()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO source_scans(id,source_id,state,created_at) VALUES(?,?,'pending',?)`, id, sourceID, now.Format(time.RFC3339Nano))
+	_, err = s.db.ExecContext(ctx, `INSERT INTO source_scans(id,source_id,state,created_at,acquisition_request_id) VALUES(?,?,'pending',?,NULLIF(?,''))`, id, sourceID, now.Format(time.RFC3339Nano), requestID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			return Scan{}, ErrActiveScan

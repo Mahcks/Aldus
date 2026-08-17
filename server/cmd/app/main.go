@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mahcks/aldus/server/internal/acquisition"
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
@@ -109,12 +110,22 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	acquisitionClient, err := acquisition.New(acquisition.Options{IndexerKind: cfg.IndexerKind, IndexerURL: cfg.IndexerURL, IndexerAPIKey: cfg.IndexerAPIKey, QBitURL: cfg.QBitTorrentURL, QBitUsername: cfg.QBitTorrentUser, QBitPassword: cfg.QBitTorrentPass, Category: cfg.QBitTorrentCategory, DownloadRoot: cfg.QBitTorrentDownloadRoot})
+	if err != nil {
+		slog.Error("configure acquisition", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
+	acquisitionStore := acquisition.NewStore(db, acquisitionClient)
+	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
+	acquisitionStore.Start(ctx)
 	server := &http.Server{
 		Addr: cfg.Addr,
 		Handler: api.Handler(api.Dependencies{
 			Web: os.DirFS("public"), Media: http.Dir(cfg.FixtureDir), Position: store, Auth: authStore,
 			Catalog: catalogStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
-			KOReader: koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
+			Acquisitions: acquisitionStore,
+			KOReader:     koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

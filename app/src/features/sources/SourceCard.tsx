@@ -35,7 +35,7 @@ export function SourceCard({
   const status = sourceStatus(source, latest);
 
   return (
-    <View className="w-full max-w-[760px] gap-3.5 rounded-card border border-line bg-paper p-[18px]">
+    <View className="w-[580px] max-w-full gap-3.5 rounded-card border border-line bg-paper p-[18px]">
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-lg font-extrabold leading-[23px] text-ink">{source.name}</Text>
@@ -99,15 +99,21 @@ export function SourceCard({
   );
 }
 
+/**
+ * The current scan's numbers, grouped under a plain top border rather than a
+ * filled panel — a shaded box here would nest a second card inside the
+ * source card. The scan's own state already reads from the header badge
+ * above, so this doesn't repeat it with a second status badge.
+ */
 function ScanSummary({ scan }: { scan: SourceScan }) {
   const date = scan.finished_at ?? scan.started_at ?? scan.created_at;
+  const active = scan.state === 'scanning' || scan.state === 'pending';
 
   return (
-    <View className="gap-2.5 rounded-control bg-canvas p-3">
-      <View className="flex-row flex-wrap items-center justify-between gap-2">
-        <StatusBadge {...scanStatus(scan.state)} />
-        <Text className="text-sm text-muted">{formatDate(date)}</Text>
-      </View>
+    <View className="gap-2.5 border-t border-line pt-3">
+      <Text className="text-xs font-bold text-subtle">
+        {active ? scanStatus(scan.state).label : `Last scan · ${formatDate(date)}`}
+      </Text>
       <View className="flex-row flex-wrap gap-3.5">
         <Count label="Discovered" value={scan.supported} />
         <Count label="New" value={scan.new} />

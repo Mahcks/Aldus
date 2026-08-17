@@ -29,6 +29,8 @@ const names = {
   folder: 'folder-outline',
   scan: 'refresh',
   import: 'tray-arrow-down',
+  acquire: 'download-box-outline',
+  send: 'send-outline',
   upload: 'tray-arrow-up',
   edit: 'pencil-outline',
   delete: 'trash-can-outline',

@@ -20,6 +20,7 @@ import {
   Radio,
   resolvePressStateClass,
   Row,
+  SearchField,
   shared,
 } from '../../../features/ui';
 import { api, errorMessage } from '../../../lib/api';
@@ -148,7 +149,7 @@ export default function LibraryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, query, sort, availability]);
 
-  if (loading) return <Loading />;
+  if (loading) return <Loading label="Loading your library…" />;
   if (!library)
     return (
       <Page title="Library">
@@ -301,12 +302,13 @@ export default function LibraryScreen() {
             />
           ) : null}
         </View>
-        <View className="mt-4">
+        <View className="mt-4 gap-3">
+          <View className="w-full max-w-[760px]">
+            <SearchField label="Search title or author" value={query} onChangeText={setQuery} />
+          </View>
           <BrowseControls
-            query={query}
             sort={sort}
             availability={availability}
-            onQueryChange={setQuery}
             onSortChange={setSort}
             onAvailabilityChange={setAvailability}
           />

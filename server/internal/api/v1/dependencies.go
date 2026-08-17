@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/mahcks/aldus/server/internal/acquisition"
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
@@ -16,4 +17,5 @@ type Dependencies struct {
 	Ingest        *ingest.Store
 	Sources       *source.Store
 	AlignmentJobs *alignment.Manager
+	Acquisitions  *acquisition.Store
 }

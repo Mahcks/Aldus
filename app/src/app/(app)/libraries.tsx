@@ -2,6 +2,7 @@ import type { Library } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
+import { LibraryCard } from '../../features/bookshelf';
 import { AppIcon } from '../../features/icons';
 import { listItemEnter } from '../../features/motion';
 import { Text, View } from '../../features/tw';
@@ -9,7 +10,6 @@ import {
   Button,
   colors,
   Dialog,
-  IconRow,
   Loading,
   Notice,
   Page,
@@ -140,17 +140,12 @@ export default function Libraries() {
           error={createError}
         />
       ) : (
-        <View className="max-w-[760px] gap-3">
+        <View className="gap-3">
           <SectionHeader title="Your libraries" />
-          <View className="gap-3">
+          <View className="flex-row flex-wrap gap-3">
             {items.map((item, index) => (
               <Animated.View key={item.id} entering={listItemEnter(index)}>
-                <IconRow
-                  icon="libraries"
-                  title={item.name}
-                  subtitle={item.role || 'Administrator access'}
-                  onPress={() => openLibrary(item)}
-                />
+                <LibraryCard name={item.name} role={item.role} onPress={() => openLibrary(item)} />
               </Animated.View>
             ))}
           </View>

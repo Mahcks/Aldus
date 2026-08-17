@@ -17,6 +17,7 @@ export function sourceStatus(
   if (latestScan.state === 'scanning') return { tone: 'info', label: 'Scanning…' };
   if (latestScan.state === 'pending') return { tone: 'info', label: 'Scan pending' };
   if (latestScan.state === 'failed') return { tone: 'danger', label: 'Scan failed' };
+  if (latestScan.problems > 0) return { tone: 'warning', label: 'Ready, with issues' };
   return { tone: 'success', label: 'Ready' };
 }
 

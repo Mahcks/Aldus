@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/mahcks/aldus/server/internal/acquisition"
 	"io/fs"
 	"net/http"
 
@@ -22,6 +23,7 @@ type Dependencies struct {
 	Ingest         *ingest.Store
 	Sources        *source.Store
 	AlignmentJobs  *alignment.Manager
+	Acquisitions   *acquisition.Store
 	KOReader       koreader.Credentials
 	AllowedOrigins []string
 }

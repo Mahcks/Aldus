@@ -218,6 +218,45 @@ func (s *Store) Get(ctx context.Context, actor auth.User, libraryID, id string) 
 	return v, err
 }
 
+// EnqueueDownloadScan accepts only completed paths physically contained by the
+// selected source. The normal scanner remains the sole importer of those bytes.
+func (s *Store) EnqueueDownloadScan(ctx context.Context, libraryID, sourceID, completedPath string) error {
+	_, err := s.EnqueueAcquisitionScan(ctx, libraryID, sourceID, "", completedPath)
+	return err
+}
+
+// EnqueueAcquisitionScan durably binds a completed download to the exact scan
+// that will discover it. Callers must retry ErrActiveScan rather than treating
+// an unrelated in-flight scan as ownership of the download.
+func (s *Store) EnqueueAcquisitionScan(ctx context.Context, libraryID, sourceID, requestID, completedPath string) (string, error) {
+	v, err := s.get(ctx, libraryID, sourceID)
+	if err != nil || !v.Enabled {
+		return "", ErrNotFound
+	}
+	resolved, err := filepath.EvalSymlinks(completedPath)
+	if err != nil {
+		return "", validation("download_path_unavailable", "The completed download is not visible to Aldus.")
+	}
+	if !within(v.RootPath, resolved) {
+		return "", validation("download_path_outside_source", "The completed download is outside the selected Aldus Source.")
+	}
+	if requestID != "" {
+		var existing string
+		err := s.db.QueryRowContext(ctx, `SELECT id FROM source_scans WHERE acquisition_request_id=? AND source_id=?`, requestID, sourceID).Scan(&existing)
+		if err == nil {
+			return existing, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+	}
+	scan, err := s.enqueueLinkedScan(ctx, libraryID, sourceID, requestID)
+	if err != nil {
+		return "", err
+	}
+	return scan.ID, nil
+}
+
 func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name, root string, enabled bool) error {
 	if !actor.Admin {
 		return ErrNotFound

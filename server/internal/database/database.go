@@ -59,7 +59,19 @@ var coverStudioSchema string
 //go:embed migrations/016_reader_credentials.sql
 var readerCredentialsSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema}
+//go:embed migrations/017_acquisition_requests.sql
+var acquisitionRequestsSchema string
+
+//go:embed migrations/018_acquisition_settings.sql
+var acquisitionSettingsSchema string
+
+//go:embed migrations/019_acquisition_completion.sql
+var acquisitionCompletionSchema string
+
+//go:embed migrations/020_acquisition_fulfillment.sql
+var acquisitionFulfillmentSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema}
 
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	path, err := filepath.Abs(path)

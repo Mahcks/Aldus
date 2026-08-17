@@ -2,57 +2,16 @@ import type { AppIconName } from '../../features/icons';
 import type { Library, WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, useWindowDimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
-import { ContinueCard, coverPresentation, WorkCard } from '../../features/bookshelf';
+import { ContinueCard, coverPresentation, LibraryCard, WorkCard } from '../../features/bookshelf';
 import { AppIcon } from '../../features/icons';
 import { colors } from '../../features/theme';
 import { listItemEnter } from '../../features/motion';
 import { ScrollView, Text, View } from '../../features/tw';
-import {
-  Button,
-  EmptyState,
-  Loading,
-  Notice,
-  Page,
-  resolvePressStateClass,
-  Section,
-} from '../../features/ui';
+import { Button, EmptyState, Loading, Notice, Page, Section } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
-
-/** Compact card tile for the Libraries grid — richer than a flat list row, scales to fill wide viewports. */
-function LibraryTile({ library, onPress }: { library: Library; onPress: () => void }) {
-  const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const stateClass = resolvePressStateClass({ focused, pressed });
-
-  return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={library.name}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`w-[228px] max-w-full flex-row items-center gap-3 rounded-card bg-paper p-4 shadow-sm ${stateClass}`}
-    >
-      <View className="h-11 w-11 items-center justify-center rounded-full bg-canvas">
-        <AppIcon name="libraries" size={20} color={colors.accent} />
-      </View>
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
-          {library.name}
-        </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-xs font-semibold text-subtle">
-          {library.role || 'Administrator access'}
-        </Text>
-      </View>
-      <AppIcon name="chevron" size={16} color={colors.subtle} />
-    </Pressable>
-  );
-}
 
 function StatChip({ icon, label }: { icon: AppIconName; label: string }) {
   return (
@@ -156,7 +115,7 @@ export default function HomeScreen() {
     router.push('/libraries');
   }
 
-  if (loading) return <Loading />;
+  if (loading) return <Loading label="Loading your home…" />;
 
   return (
     <Page title="Home" hideHeader>
@@ -240,7 +199,11 @@ export default function HomeScreen() {
             <View className="flex-row flex-wrap gap-3">
               {libraries.map((library, index) => (
                 <Animated.View key={library.id} entering={listItemEnter(index)}>
-                  <LibraryTile library={library} onPress={() => openLibrary(library)} />
+                  <LibraryCard
+                    name={library.name}
+                    role={library.role}
+                    onPress={() => openLibrary(library)}
+                  />
                 </Animated.View>
               ))}
             </View>

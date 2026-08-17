@@ -1,4 +1,9 @@
 import type {
+  AcquisitionRequest,
+  AcquisitionResult,
+  AcquisitionSettings,
+  AcquisitionConnectionStatus,
+  AcquisitionCapabilities,
   Alignment,
   ActivitySession,
   AcceptImportProposalRequest,
@@ -10,6 +15,7 @@ import type {
   CoverCandidate,
   CoverAsset,
   CreateAlignmentJobRequest,
+  CreateAcquisitionRequest,
   CreateLibraryRequest,
   CreateLibrarySourceRequest,
   CreateRepresentationRequest,
@@ -26,6 +32,8 @@ import type {
   RepresentationState,
   RepresentationStateUpdate,
   Session,
+  SelectAcquisitionRequest,
+  UpdateAcquisitionSettingsRequest,
   SourceEntry,
   SourceDirectoryListing,
   SourceRoot,
@@ -288,6 +296,32 @@ export const api = {
     });
   },
   mediaBlob: (id: string) => download(`/media/${id}`),
+
+  acquisitionSettings: () => request<AcquisitionSettings>('/acquisition-settings'),
+  updateAcquisitionSettings: (body: UpdateAcquisitionSettingsRequest) =>
+    request<AcquisitionSettings>('/acquisition-settings', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  testAcquisitionSettings: () =>
+    request<AcquisitionConnectionStatus>('/acquisition-settings/test', { method: 'POST' }),
+  acquisitionCapabilities: () => request<AcquisitionCapabilities>('/acquisition-capabilities'),
+  acquisitionRequests: (libraryID: string) =>
+    request<AcquisitionRequest[]>(`/libraries/${libraryID}/acquisition-requests`),
+  createAcquisitionRequest: (libraryID: string, body: CreateAcquisitionRequest) =>
+    request<AcquisitionRequest>(`/libraries/${libraryID}/acquisition-requests`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  searchAcquisitionRequest: (libraryID: string, requestID: string) =>
+    request<AcquisitionResult[]>(
+      `/libraries/${libraryID}/acquisition-requests/${requestID}/search`,
+    ),
+  selectAcquisitionResult: (libraryID: string, requestID: string, body: SelectAcquisitionRequest) =>
+    request<AcquisitionRequest>(
+      `/libraries/${libraryID}/acquisition-requests/${requestID}/select`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 
   enqueueAlignment: (body: CreateAlignmentJobRequest) =>
     request<AlignmentJob>('/alignment-jobs', { method: 'POST', body: JSON.stringify(body) }),

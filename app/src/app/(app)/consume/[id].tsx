@@ -770,7 +770,7 @@ export default function ConsumeWorkScreen() {
 
   if (loading || !work)
     return loading ? (
-      <Loading />
+      <Loading label="Opening your book…" />
     ) : (
       <View className="min-h-full flex-1 items-center justify-center bg-canvas p-6">
         <Notice danger>{notice || 'Work unavailable.'}</Notice>

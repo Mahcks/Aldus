@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/mahcks/aldus/server/internal/acquisition"
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -53,6 +54,7 @@ func TestRouteContract(t *testing.T) {
 	}
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
+	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select")
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
@@ -298,6 +300,26 @@ func TestAlignmentJobDatabaseErrorResponse(t *testing.T) {
 	}
 }
 
+func TestAcquisitionRequestHTTPContract(t *testing.T) {
+	handler, token := testHandler(t)
+	created := request(t, handler, token, http.MethodPost, "/libraries/fixture-library/acquisition-requests", `{"query":"Alice Carroll","source_id":"fixture-source"}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create acquisition request = %d %s", created.Code, created.Body.String())
+	}
+	var value contracts.AcquisitionRequest
+	if err := json.Unmarshal(created.Body.Bytes(), &value); err != nil || value.Query != "Alice Carroll" || value.Status != "requested" {
+		t.Fatalf("created acquisition request = %#v, %v", value, err)
+	}
+	listed := request(t, handler, token, http.MethodGet, "/libraries/fixture-library/acquisition-requests", "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), value.ID) {
+		t.Fatalf("list acquisition requests = %d %s", listed.Code, listed.Body.String())
+	}
+	search := request(t, handler, token, http.MethodGet, "/libraries/fixture-library/acquisition-requests/"+value.ID+"/search", "")
+	if search.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured acquisition search = %d %s", search.Code, search.Body.String())
+	}
+}
+
 func testHandler(t *testing.T) (http.Handler, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "aldus.db")
@@ -317,7 +339,14 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db)}), session.Token
+	if _, err := db.Exec(`INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('fixture-source','fixture-library','local','Downloads','/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	client, err := acquisition.New(acquisition.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Acquisitions: acquisition.NewStore(db, client)}), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {
