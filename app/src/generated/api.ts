@@ -95,6 +95,17 @@ export interface AcquisitionConnectionStatus {
 }
 export interface AcquisitionCapabilities {
   enabled: boolean;
+  destinations: AcquisitionDestination[];
+}
+export interface AcquisitionDestination {
+  library_id: string;
+  library_name: string;
+  source_id: string;
+  source_name: string;
+}
+export interface AcquisitionTracker {
+  requests: AcquisitionRequest[];
+  unread_count: number /* int */;
 }
 
 //////////
@@ -170,6 +181,7 @@ export interface Library {
   id: string;
   name: string;
   role?: string;
+  can_request_acquisitions: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -178,6 +190,7 @@ export interface Membership {
   username: string;
   display_name: string;
   role: string;
+  can_request_acquisitions: boolean;
 }
 export interface Work {
   id: string;
@@ -251,6 +264,7 @@ export interface UpdateLibraryRequest {
 }
 export interface SetMembershipRequest {
   role: string;
+  can_request_acquisitions: boolean;
 }
 export interface CreateWorkRequest {
   title: string;

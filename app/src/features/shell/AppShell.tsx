@@ -8,8 +8,9 @@ import { AppIcon, type AppIconName } from '../icons';
 import { sheetEnter, sheetExit } from '../motion';
 import { colors, IconButton, resolvePressStateClass } from '../ui';
 import { Pressable, Text, View } from '../tw';
+import { api } from '../../lib/api';
 
-type NavItem = { label: string; href: string; icon: AppIconName };
+type NavItem = { label: string; href: string; icon: AppIconName; badge?: number };
 
 function isActive(path: string, href: string) {
   return (
@@ -40,11 +41,12 @@ function AppShellChrome() {
   const insets = useSafeAreaInsets();
   const desktop = useWindowDimensions().width >= 820;
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [requestUpdates, setRequestUpdates] = useState(0);
 
   const consumerLinks: NavItem[] = [
     { label: 'Home', href: '/home', icon: 'home' },
     { label: 'Libraries', href: '/libraries', icon: 'libraries' },
-    { label: 'Search', href: '/search', icon: 'search' },
+    { label: 'Search', href: '/search', icon: 'search', badge: requestUpdates },
     { label: 'Account', href: '/account', icon: 'account' },
   ];
   const adminLinks: NavItem[] = auth.user?.admin
@@ -64,6 +66,30 @@ function AppShellChrome() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sheetOpen]);
+
+  useEffect(() => {
+    let active = true;
+    async function refresh() {
+      try {
+        const tracker = await api.acquisitionTracker();
+        if (!active) return;
+        if (path.startsWith('/search')) {
+          if (tracker.unread_count) await api.markAcquisitionTrackerSeen();
+          if (active) setRequestUpdates(0);
+        } else {
+          setRequestUpdates(tracker.unread_count);
+        }
+      } catch {
+        if (active) setRequestUpdates(0);
+      }
+    }
+    void refresh();
+    const interval = setInterval(() => void refresh(), 15000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [path]);
 
   async function handleSignOut() {
     setSheetOpen(false);
@@ -199,6 +225,7 @@ function NavLink({
   label,
   href,
   icon,
+  badge,
   selected,
   tone = 'primary',
 }: NavItem & { selected: boolean; tone?: 'primary' | 'quiet' }) {
@@ -212,6 +239,7 @@ function NavLink({
   return (
     <Pressable
       accessibilityRole="link"
+      accessibilityLabel={badge ? `${label}, ${badge} request updates` : label}
       accessibilityState={{ selected }}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
@@ -220,7 +248,14 @@ function NavLink({
       onPress={() => router.push(href as Href)}
       className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
-      <AppIcon name={icon} size={20} color={iconColor} />
+      <View>
+        <AppIcon name={icon} size={20} color={iconColor} />
+        {badge ? (
+          <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
+            <Text className="text-[10px] font-bold text-on-accent">{Math.min(badge, 9)}</Text>
+          </View>
+        ) : null}
+      </View>
       <Text className={`text-[15px] font-bold ${selected ? 'text-accent' : inactiveTextClass}`}>
         {label}
       </Text>
@@ -299,6 +334,7 @@ function MobileTabBar({
           key={link.href}
           label={link.label}
           icon={link.icon}
+          badge={link.badge}
           selected={isActive(path, link.href)}
           onPress={() => router.push(link.href as Href)}
         />
@@ -317,12 +353,14 @@ function MobileTabBar({
 function MobileTab({
   label,
   icon,
+  badge,
   selected,
   expanded,
   onPress,
 }: {
   label: string;
   icon: AppIconName;
+  badge?: number;
   selected: boolean;
   expanded?: boolean;
   onPress: () => void;
@@ -335,6 +373,7 @@ function MobileTab({
   return (
     <Pressable
       accessibilityRole="tab"
+      accessibilityLabel={badge ? `${label}, ${badge} request updates` : label}
       accessibilityState={{ selected, expanded }}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
@@ -343,7 +382,14 @@ function MobileTab({
       onPress={onPress}
       className={`min-h-11 min-w-11 flex-1 items-center justify-center gap-1 py-1 ${stateClass}`}
     >
-      <AppIcon name={icon} size={20} color={color} />
+      <View>
+        <AppIcon name={icon} size={20} color={color} />
+        {badge ? (
+          <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
+            <Text className="text-[10px] font-bold text-on-accent">{Math.min(badge, 9)}</Text>
+          </View>
+        ) : null}
+      </View>
       <Text className={`text-[11px] font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>

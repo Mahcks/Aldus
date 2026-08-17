@@ -12,6 +12,7 @@ const library = (role: string): Library => ({
   id: 'library',
   name: 'Library',
   role,
+  can_request_acquisitions: role === 'owner' || role === 'editor',
   created_at: '',
   updated_at: '',
 });

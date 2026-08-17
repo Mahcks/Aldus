@@ -168,6 +168,25 @@ func TestStoreAuthorizesEditorsAndBindsSelectionsToSearchResults(t *testing.T) {
 	if _, err := store.SelectDiscovery(ctx, editor, "library", discovery.ID, discovery.Results[0].ID); !errors.Is(err, ErrNotFound) || addCount != 1 {
 		t.Fatalf("repeated selection err=%v add count=%d", err, addCount)
 	}
+	if _, err := db.Exec(`UPDATE library_members SET can_request_acquisitions=1 WHERE library_id='library' AND user_id='reader'`); err != nil {
+		t.Fatal(err)
+	}
+	reader := auth.User{ID: "reader"}
+	requested, err := store.Create(ctx, reader, "library", "source", "A Wizard of Earthsea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tracker, err := store.Tracker(ctx, reader)
+	if err != nil || tracker.UnreadCount != 1 || len(tracker.Requests) != 1 || tracker.Requests[0].ID != requested.ID {
+		t.Fatalf("reader tracker = %#v, %v", tracker, err)
+	}
+	if err := store.MarkTrackerSeen(ctx, reader); err != nil {
+		t.Fatal(err)
+	}
+	tracker, _ = store.Tracker(ctx, reader)
+	if tracker.UnreadCount != 0 {
+		t.Fatalf("seen tracker = %#v", tracker)
+	}
 }
 
 func TestPairedDiscoveryPersistsIntentBeforeSubmittingBothHalves(t *testing.T) {

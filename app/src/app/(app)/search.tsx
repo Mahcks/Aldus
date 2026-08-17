@@ -1,8 +1,7 @@
 import type {
   AcquisitionRequest,
   AcquisitionResult,
-  Library,
-  LibrarySource,
+  AcquisitionDestination,
   WorkSummary,
 } from '../../generated/api';
 import { router } from 'expo-router';
@@ -14,7 +13,6 @@ import {
   groupAcquisitionResults,
   parseAcquisitionRelease,
 } from '../../features/acquisition';
-import { useAuth } from '../../features/auth/AuthProvider';
 import { coverPresentation, WorkRow } from '../../features/bookshelf';
 import { AcquisitionGroupRow, BrowseControls, DestinationPicker } from '../../features/browse';
 import { listItemEnter } from '../../features/motion';
@@ -31,7 +29,6 @@ import {
 } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
 
-type Destination = { library: Library; source: LibrarySource };
 type ActiveRequest = { id: string; libraryID: string };
 type ResultStatus = 'idle' | 'sending' | 'queued' | 'error';
 type SearchView = 'all' | 'library' | 'available';
@@ -39,12 +36,11 @@ type AcquisitionKind = 'all' | 'ebook' | 'audiobook';
 
 const MIN_ACQUISITION_QUERY_LENGTH = 2;
 
-function destinationKey(entry: Destination) {
-  return `${entry.library.id}:${entry.source.id}`;
+function destinationKey(entry: AcquisitionDestination) {
+  return `${entry.library_id}:${entry.source_id}`;
 }
 
 export default function SearchScreen() {
-  const auth = useAuth();
   const narrow = useWindowDimensions().width < 600;
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('recent');
@@ -57,8 +53,7 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [fulfillmentLibraryIDs, setFulfillmentLibraryIDs] = useState<string[]>([]);
+  const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [destination, setDestination] = useState('');
   const [acquisitionResults, setAcquisitionResults] = useState<AcquisitionResult[]>([]);
   const [activeRequest, setActiveRequest] = useState<ActiveRequest | null>(null);
@@ -95,51 +90,33 @@ export default function SearchScreen() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.libraries(), api.acquisitionCapabilities()])
-      .then(async ([libraries, capabilities]) => {
-        if (!capabilities.enabled) return;
-        const editable = libraries.filter(
-          (library) => auth.user?.admin || library.role === 'owner' || library.role === 'editor',
+    void api
+      .acquisitionCapabilities()
+      .then((capabilities) => {
+        if (!active || !capabilities.enabled) return;
+        setDestinations(capabilities.destinations);
+        setDestination(
+          capabilities.destinations[0] ? destinationKey(capabilities.destinations[0]) : '',
         );
-        setFulfillmentLibraryIDs(editable.map((library) => library.id));
-        const sourceLists = await Promise.all(
-          editable.map(async (library) => ({ library, sources: await api.sources(library.id) })),
-        );
-        if (!active) return;
-        const available = sourceLists.flatMap(({ library, sources }) =>
-          sources.filter((source) => source.enabled).map((source) => ({ library, source })),
-        );
-        setDestinations(available);
-        setDestination(available[0] ? destinationKey(available[0]) : '');
       })
       .catch(() => {
         if (active) {
           setDestinations([]);
-          setFulfillmentLibraryIDs([]);
         }
       });
     return () => {
       active = false;
     };
-  }, [auth.user?.admin]);
-
-  const fulfillmentLibraryKey = fulfillmentLibraryIDs.join(':');
+  }, []);
 
   useEffect(() => {
-    if (!fulfillmentLibraryKey) {
-      setFulfillments([]);
-      return;
-    }
     let active = true;
     async function refresh() {
       try {
-        const lists = await Promise.all(
-          fulfillmentLibraryIDs.map((libraryID) => api.acquisitionRequests(libraryID)),
-        );
+        const tracker = await api.acquisitionTracker();
         if (!active) return;
         setFulfillments(
-          lists
-            .flat()
+          tracker.requests
             .filter((request) => acquisitionFulfillment(request))
             .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
         );
@@ -154,9 +131,7 @@ export default function SearchScreen() {
       active = false;
       clearInterval(interval);
     };
-    // The key is the stable identity of the editable libraries loaded above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fulfillmentLibraryKey]);
+  }, []);
 
   useEffect(() => {
     if (!destination || trimmedQuery.length < MIN_ACQUISITION_QUERY_LENGTH) {
@@ -178,18 +153,18 @@ export default function SearchScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimmedQuery, destination]);
 
-  async function searchElsewhere(selected: Destination) {
+  async function searchElsewhere(selected: AcquisitionDestination) {
     const sequence = ++acquisitionSearchSequence.current;
     const isStale = () => sequence !== acquisitionSearchSequence.current;
     setSearchingElsewhere(true);
     setAcquisitionError('');
     try {
-      const discovery = await api.discoverAcquisitions(selected.library.id, {
+      const discovery = await api.discoverAcquisitions(selected.library_id, {
         query: trimmedQuery,
-        source_id: selected.source.id,
+        source_id: selected.source_id,
       });
       if (isStale()) return;
-      setActiveRequest({ id: discovery.id, libraryID: selected.library.id });
+      setActiveRequest({ id: discovery.id, libraryID: selected.library_id });
       setAcquisitionResults(discovery.results);
       setShowRelated(false);
       setResultStatus({});
@@ -252,15 +227,15 @@ export default function SearchScreen() {
   }
 
   const librarySourceCounts = destinations.reduce<Record<string, number>>((counts, entry) => {
-    counts[entry.library.id] = (counts[entry.library.id] ?? 0) + 1;
+    counts[entry.library_id] = (counts[entry.library_id] ?? 0) + 1;
     return counts;
   }, {});
   const destinationOptions = destinations.map((entry) => ({
     value: destinationKey(entry),
     label:
-      librarySourceCounts[entry.library.id] > 1
-        ? `${entry.library.name} · ${entry.source.name}`
-        : entry.library.name,
+      librarySourceCounts[entry.library_id] > 1
+        ? `${entry.library_name} · ${entry.source_name}`
+        : entry.library_name,
   }));
 
   const showAcquisitionSection =
@@ -300,7 +275,7 @@ export default function SearchScreen() {
 
   const fulfillmentSection =
     visibleFulfillments.length || fulfillmentError ? (
-      <Section title="Library additions">
+      <Section title="Your requests">
         {fulfillmentError ? <Notice tone="danger">{fulfillmentError}</Notice> : null}
         <View className="max-w-[900px]">
           {visibleFulfillments.map((request) => {

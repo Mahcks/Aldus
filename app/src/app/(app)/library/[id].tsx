@@ -8,6 +8,7 @@ import { AppIcon, type AppIconName } from '../../../features/icons';
 import { Pressable, Text, View } from '../../../features/tw';
 import {
   Button,
+  Checkbox,
   colors,
   ConfirmDialog,
   Dialog,
@@ -92,6 +93,7 @@ export default function LibraryScreen() {
   const [author, setAuthor] = useState('');
   const [memberID, setMemberID] = useState('');
   const [role, setRole] = useState<Role>('reader');
+  const [canRequestAcquisitions, setCanRequestAcquisitions] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Membership | null>(null);
   const [removingMember, setRemovingMember] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -210,8 +212,9 @@ export default function LibraryScreen() {
 
   async function saveMember() {
     try {
-      await api.setMember(id, memberID, role);
+      await api.setMember(id, memberID, role, canRequestAcquisitions);
       setMemberID('');
+      setCanRequestAcquisitions(false);
       await load();
     } catch (value) {
       setError(errorMessage(value));
@@ -220,7 +223,16 @@ export default function LibraryScreen() {
 
   async function changeMemberRole(member: Membership, next: Role) {
     try {
-      await api.setMember(id, member.user_id, next);
+      await api.setMember(id, member.user_id, next, member.can_request_acquisitions);
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
+
+  async function toggleAcquisitionPermission(member: Membership) {
+    try {
+      await api.setMember(id, member.user_id, member.role, !member.can_request_acquisitions);
       await load();
     } catch (value) {
       setError(errorMessage(value));
@@ -417,6 +429,15 @@ export default function LibraryScreen() {
                 value={member.role as Role}
                 onChange={(next) => void changeMemberRole(member, next)}
               />
+              {member.role === 'reader' ? (
+                <Checkbox
+                  label="Can request books"
+                  checked={member.can_request_acquisitions}
+                  onPress={() => void toggleAcquisitionPermission(member)}
+                />
+              ) : (
+                <Text className="text-xs text-muted">Can request books</Text>
+              )}
               <Button label="Remove" kind="danger" onPress={() => setRemoveTarget(member)} />
             </View>
           ))}
@@ -434,6 +455,13 @@ export default function LibraryScreen() {
                 ))}
               </View>
               <RoleControl value={role} onChange={setRole} />
+              {role === 'reader' ? (
+                <Checkbox
+                  label="Can request books"
+                  checked={canRequestAcquisitions}
+                  onPress={() => setCanRequestAcquisitions((current) => !current)}
+                />
+              ) : null}
               <Button label="Add member" kind="primary" disabled={!memberID} onPress={saveMember} />
             </View>
           ) : (

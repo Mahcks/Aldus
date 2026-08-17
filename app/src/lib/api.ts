@@ -6,6 +6,7 @@ import type {
   AcquisitionCapabilities,
   AcquisitionDiscovery,
   AcquisitionPair,
+  AcquisitionTracker,
   Alignment,
   ActivitySession,
   AcceptImportProposalRequest,
@@ -177,10 +178,10 @@ export const api = {
     request<void>(`/libraries/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteLibrary: (id: string) => request<void>(`/libraries/${id}`, { method: 'DELETE' }),
   members: (id: string) => request<Membership[]>(`/libraries/${id}/members`),
-  setMember: (libraryID: string, userID: string, role: string) =>
+  setMember: (libraryID: string, userID: string, role: string, canRequestAcquisitions = false) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, {
       method: 'PUT',
-      body: JSON.stringify({ role }),
+      body: JSON.stringify({ role, can_request_acquisitions: canRequestAcquisitions }),
     }),
   removeMember: (libraryID: string, userID: string) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, { method: 'DELETE' }),
@@ -311,6 +312,9 @@ export const api = {
   testAcquisitionSettings: () =>
     request<AcquisitionConnectionStatus>('/acquisition-settings/test', { method: 'POST' }),
   acquisitionCapabilities: () => request<AcquisitionCapabilities>('/acquisition-capabilities'),
+  acquisitionTracker: () => request<AcquisitionTracker>('/me/acquisition-tracker'),
+  markAcquisitionTrackerSeen: () =>
+    request<void>('/me/acquisition-tracker/seen', { method: 'POST' }),
   acquisitionRequests: (libraryID: string) =>
     request<AcquisitionRequest[]>(`/libraries/${libraryID}/acquisition-requests`),
   discoverAcquisitions: (libraryID: string, body: CreateAcquisitionRequest) =>

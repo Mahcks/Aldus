@@ -15,6 +15,8 @@ func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Put("/acquisition-settings", updateAcquisitionSettings(store))
 	router.Post("/acquisition-settings/test", testAcquisitionSettings(store))
 	router.Get("/acquisition-capabilities", acquisitionCapabilities(store))
+	router.Get("/me/acquisition-tracker", acquisitionTracker(store))
+	router.Post("/me/acquisition-tracker/seen", markAcquisitionTrackerSeen(store))
 	router.Get("/libraries/{libraryID}/acquisition-requests", listAcquisitionRequests(store))
 	router.Post("/libraries/{libraryID}/acquisition-discoveries", createAcquisitionDiscovery(store))
 	router.Post("/libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", selectAcquisitionDiscovery(store))
@@ -64,7 +66,32 @@ func selectAcquisitionDiscovery(store *acquisition.Store) http.HandlerFunc {
 func acquisitionCapabilities(store *acquisition.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		enabled, err := store.Available(r.Context())
-		writeAcquisitionResult(w, contracts.AcquisitionCapabilities{Enabled: enabled}, err)
+		var destinations []acquisition.Destination
+		if err == nil && enabled {
+			destinations, err = store.Destinations(r.Context(), actor(r))
+		}
+		values := make([]contracts.AcquisitionDestination, len(destinations))
+		for index, value := range destinations {
+			values[index] = contracts.AcquisitionDestination{LibraryID: value.LibraryID, LibraryName: value.LibraryName, SourceID: value.SourceID, SourceName: value.SourceName}
+		}
+		writeAcquisitionResult(w, contracts.AcquisitionCapabilities{Enabled: enabled, Destinations: values}, err)
+	}
+}
+
+func acquisitionTracker(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := store.Tracker(r.Context(), actor(r))
+		writeAcquisitionResult(w, contracts.AcquisitionTracker{Requests: acquisitionRequestDTOs(value.Requests), UnreadCount: value.UnreadCount}, err)
+	}
+}
+
+func markAcquisitionTrackerSeen(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := store.MarkTrackerSeen(r.Context(), actor(r)); err != nil {
+			writeAcquisitionResult(w, nil, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

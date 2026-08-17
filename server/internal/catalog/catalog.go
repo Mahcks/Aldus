@@ -25,11 +25,12 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 type Library struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Role      string    `json:"role,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Role       string    `json:"role,omitempty"`
+	CanRequest bool      `json:"can_request_acquisitions"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type Membership struct {
@@ -37,6 +38,7 @@ type Membership struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	Role        string `json:"role"`
+	CanRequest  bool   `json:"can_request_acquisitions"`
 }
 
 type Work struct {
@@ -113,7 +115,7 @@ func (s *Store) CreateLibrary(ctx context.Context, actor auth.User, name string)
 
 func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset int) ([]Library, error) {
 	limit, offset = page(limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE ? OR m.user_id IS NOT NULL ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`, actor.ID, actor.Admin, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE ? OR m.user_id IS NOT NULL ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`, actor.ID, actor.Admin, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list libraries: %w", err)
 	}
@@ -122,7 +124,7 @@ func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset in
 	for rows.Next() {
 		var v Library
 		var c, u string
-		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &c, &u); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &v.CanRequest, &c, &u); err != nil {
 			return nil, err
 		}
 		v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
@@ -135,7 +137,7 @@ func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset in
 func (s *Store) Library(ctx context.Context, actor auth.User, id string) (Library, error) {
 	var v Library
 	var c, u string
-	err := s.db.QueryRowContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.Name, &v.Role, &c, &u)
+	err := s.db.QueryRowContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.Name, &v.Role, &v.CanRequest, &c, &u)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Library{}, ErrNotFound
 	}
@@ -147,7 +149,7 @@ func (s *Store) Library(ctx context.Context, actor auth.User, id string) (Librar
 	return v, nil
 }
 
-func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userID, role string) error {
+func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userID, role string, requested ...bool) error {
 	if role != "owner" && role != "editor" && role != "reader" {
 		return ErrInvalid
 	}
@@ -180,7 +182,9 @@ func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userI
 			return ErrLastOwner
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,created_at) VALUES(?,?,?,?) ON CONFLICT(library_id,user_id) DO UPDATE SET role=excluded.role`, libraryID, userID, role, time.Now().UTC().Format(time.RFC3339Nano))
+	canRequest := len(requested) > 0 && requested[0]
+	canRequest = canRequest || role == "owner" || role == "editor"
+	_, err = tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES(?,?,?,?,?) ON CONFLICT(library_id,user_id) DO UPDATE SET role=excluded.role,can_request_acquisitions=excluded.can_request_acquisitions`, libraryID, userID, role, canRequest, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("save membership: %w", err)
 	}
@@ -225,7 +229,7 @@ func (s *Store) Members(ctx context.Context, actor auth.User, libraryID string) 
 	} else if !ok {
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT u.id,u.username,u.display_name,m.role FROM library_members m JOIN users u ON u.id=m.user_id WHERE m.library_id=? ORDER BY u.username_normalized`, libraryID)
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id,u.username,u.display_name,m.role,m.can_request_acquisitions FROM library_members m JOIN users u ON u.id=m.user_id WHERE m.library_id=? ORDER BY u.username_normalized`, libraryID)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +237,7 @@ func (s *Store) Members(ctx context.Context, actor auth.User, libraryID string) 
 	var out []Membership
 	for rows.Next() {
 		var m Membership
-		if err := rows.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.Role); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.Role, &m.CanRequest); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

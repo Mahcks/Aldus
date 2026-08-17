@@ -3,17 +3,19 @@ package contracts
 import "time"
 
 type Library struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Role      string    `json:"role,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID                     string    `json:"id"`
+	Name                   string    `json:"name"`
+	Role                   string    `json:"role,omitempty"`
+	CanRequestAcquisitions bool      `json:"can_request_acquisitions"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 type Membership struct {
-	UserID      string `json:"user_id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
+	UserID                 string `json:"user_id"`
+	Username               string `json:"username"`
+	DisplayName            string `json:"display_name"`
+	Role                   string `json:"role"`
+	CanRequestAcquisitions bool   `json:"can_request_acquisitions"`
 }
 type Work struct {
 	ID                   string    `json:"id"`
@@ -87,7 +89,8 @@ type UpdateLibraryRequest struct {
 	Name string `json:"name"`
 }
 type SetMembershipRequest struct {
-	Role string `json:"role"`
+	Role                   string `json:"role"`
+	CanRequestAcquisitions bool   `json:"can_request_acquisitions"`
 }
 type CreateWorkRequest struct {
 	Title  string `json:"title"`

@@ -102,5 +102,18 @@ type AcquisitionConnectionStatus struct {
 }
 
 type AcquisitionCapabilities struct {
-	Enabled bool `json:"enabled"`
+	Enabled      bool                     `json:"enabled"`
+	Destinations []AcquisitionDestination `json:"destinations"`
+}
+
+type AcquisitionDestination struct {
+	LibraryID   string `json:"library_id"`
+	LibraryName string `json:"library_name"`
+	SourceID    string `json:"source_id"`
+	SourceName  string `json:"source_name"`
+}
+
+type AcquisitionTracker struct {
+	Requests    []AcquisitionRequest `json:"requests"`
+	UnreadCount int                  `json:"unread_count"`
 }
