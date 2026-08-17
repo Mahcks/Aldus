@@ -23,6 +23,9 @@ export interface AcquisitionRequest {
   selected_published_at?: string;
   created_at: string;
   updated_at: string;
+  can_retry?: boolean;
+  can_cancel?: boolean;
+  can_dismiss?: boolean;
 }
 export interface AcquisitionResult {
   id: string;

@@ -22,6 +22,9 @@ type AcquisitionRequest struct {
 	SelectedPublishedAt time.Time `json:"selected_published_at,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
+	CanRetry            bool      `json:"can_retry,omitempty"`
+	CanCancel           bool      `json:"can_cancel,omitempty"`
+	CanDismiss          bool      `json:"can_dismiss,omitempty"`
 }
 
 type AcquisitionResult struct {

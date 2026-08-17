@@ -97,6 +97,18 @@ func (s *Store) enqueueLinkedScan(ctx context.Context, libraryID, sourceID, requ
 	return Scan{ID: id, SourceID: sourceID, State: "pending", CreatedAt: now}, nil
 }
 
+func (s *Store) RetryAcquisitionScan(ctx context.Context, scanID, requestID string) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE source_scans SET state='pending',files_visited=0,supported_count=0,epub_count=0,audio_count=0,new_count=0,changed_count=0,unchanged_count=0,missing_count=0,problem_count=0,error_summary='',started_at=NULL,finished_at=NULL WHERE id=? AND acquisition_request_id=? AND state IN ('failed','completed')`, scanID, requestID)
+	if err != nil {
+		return err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return ErrNotFound
+	}
+	s.signalScan()
+	return nil
+}
+
 func (s *Store) Scans(ctx context.Context, actor auth.User, libraryID, sourceID string) ([]Scan, error) {
 	if ok, err := s.canScan(ctx, actor, libraryID, sourceID); err != nil || !ok {
 		if err != nil {

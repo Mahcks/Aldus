@@ -24,6 +24,35 @@ func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Post("/libraries/{libraryID}/acquisition-requests", createAcquisitionRequest(store))
 	router.Get("/libraries/{libraryID}/acquisition-requests/{requestID}/search", searchAcquisitionRequest(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/select", selectAcquisitionResult(store))
+	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/retry", retryAcquisitionRequest(store))
+	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/cancel", cancelAcquisitionRequest(store))
+	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", dismissAcquisitionRequest(store))
+}
+
+func retryAcquisitionRequest(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeAcquisitionAction(w, store.Retry(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "requestID")))
+	}
+}
+
+func cancelAcquisitionRequest(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeAcquisitionAction(w, store.Cancel(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "requestID")))
+	}
+}
+
+func dismissAcquisitionRequest(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeAcquisitionAction(w, store.Dismiss(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "requestID")))
+	}
+}
+
+func writeAcquisitionAction(w http.ResponseWriter, err error) {
+	if err == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeAcquisitionResult(w, nil, err)
 }
 
 func selectAcquisitionPair(store *acquisition.Store) http.HandlerFunc {
@@ -169,7 +198,7 @@ func selectAcquisitionResult(store *acquisition.Store) http.HandlerFunc {
 }
 
 func acquisitionRequestDTO(value acquisition.Request) contracts.AcquisitionRequest {
-	return contracts.AcquisitionRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, SourceID: value.SourceID, Query: value.Query, Status: value.Status, DownloadState: value.DownloadState, DownloadError: value.DownloadError, FulfillmentState: value.FulfillmentState, ScanID: value.ScanID, ProposalID: value.ProposalID, WorkID: value.WorkID, PairID: value.PairID, SelectedTitle: value.SelectedTitle, SelectedSource: value.SelectedSource, SelectedSize: value.SelectedSize, SelectedPublishedAt: value.SelectedPublished, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+	return contracts.AcquisitionRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, SourceID: value.SourceID, Query: value.Query, Status: value.Status, DownloadState: value.DownloadState, DownloadError: value.DownloadError, FulfillmentState: value.FulfillmentState, ScanID: value.ScanID, ProposalID: value.ProposalID, WorkID: value.WorkID, PairID: value.PairID, SelectedTitle: value.SelectedTitle, SelectedSource: value.SelectedSource, SelectedSize: value.SelectedSize, SelectedPublishedAt: value.SelectedPublished, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, CanRetry: value.FulfillmentState == "failed", CanCancel: value.FulfillmentState == "submitting" || value.FulfillmentState == "downloading", CanDismiss: value.FulfillmentState == "failed" || value.FulfillmentState == "available"}
 }
 
 func acquisitionRequestDTOs(values []acquisition.Request) []contracts.AcquisitionRequest {

@@ -98,6 +98,7 @@ type Store struct {
 	client        *Client
 	handoff       func(context.Context, string, string, string, string) (string, error)
 	pairHandoff   func(context.Context, ReadyPair) error
+	retryScan     func(context.Context, string, string) error
 	selectMu      sync.Mutex
 	metadataMu    sync.Mutex
 	metadataCache map[string]cachedMetadata
@@ -115,6 +116,10 @@ func (s *Store) SetHandoff(handoff func(context.Context, string, string, string,
 
 func (s *Store) SetPairHandoff(handoff func(context.Context, ReadyPair) error) {
 	s.pairHandoff = handoff
+}
+
+func (s *Store) SetScanRetry(retry func(context.Context, string, string) error) {
+	s.retryScan = retry
 }
 
 func (s *Store) Settings(ctx context.Context, actor auth.User) (Settings, error) {
@@ -248,7 +253,7 @@ func (s *Store) Tracker(ctx context.Context, actor auth.User) (Tracker, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT acquisition_seen_at FROM users WHERE id=? AND disabled=0`, actor.ID).Scan(&seen); err != nil {
 		return Tracker{}, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT r.id,r.library_id,r.requested_by,COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),COALESCE(r.selected_published_at,''),r.created_at,r.updated_at FROM acquisition_requests r WHERE r.requested_by=? ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID)
+	rows, err := s.db.QueryContext(ctx, `SELECT r.id,r.library_id,r.requested_by,COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),COALESCE(r.selected_published_at,''),r.created_at,r.updated_at FROM acquisition_requests r WHERE r.requested_by=? AND r.dismissed_at='' ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID)
 	if err != nil {
 		return Tracker{}, fmt.Errorf("list acquisition tracker: %w", err)
 	}
@@ -274,6 +279,90 @@ func (s *Store) MarkTrackerSeen(ctx context.Context, actor auth.User) error {
 	}
 	if changed, _ := result.RowsAffected(); changed != 1 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID string) error {
+	var selectedURL, scanID, state string
+	err := s.db.QueryRowContext(ctx, `SELECT r.selected_url,COALESCE(r.scan_id,''),r.fulfillment_state FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, actor.ID, requestID, libraryID, actor.Admin, actor.ID).Scan(&selectedURL, &scanID, &state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if state != "failed" {
+		return ErrInvalid
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if scanID != "" {
+		if s.retryScan == nil {
+			return ErrUnavailable
+		}
+		if err := s.retryScan(ctx, scanID, requestID); err != nil {
+			return err
+		}
+		_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='scanning',download_error='',dismissed_at='',updated_at=? WHERE id=? AND fulfillment_state='failed'`, now, requestID)
+		return err
+	}
+	if selectedURL == "" {
+		return ErrInvalid
+	}
+	client, err := s.configuredClient(ctx)
+	if err != nil {
+		return err
+	}
+	downloads, err := client.Downloads(ctx)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, download := range downloads {
+		if download.HasTag(requestID) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		if err := client.AddTracked(ctx, selectedURL, requestID); err != nil {
+			return err
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',dismissed_at='',updated_at=? WHERE id=? AND fulfillment_state='failed'`, now, requestID)
+	return err
+}
+
+func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestID string) error {
+	var state string
+	err := s.db.QueryRowContext(ctx, `SELECT r.fulfillment_state FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, actor.ID, requestID, libraryID, actor.Admin, actor.ID).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if state != "submitting" && state != "downloading" {
+		return ErrInvalid
+	}
+	client, err := s.configuredClient(ctx)
+	if err != nil {
+		return err
+	}
+	if err := client.CancelTagged(ctx, requestID); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_error='Canceled by user.',updated_at=? WHERE id=? AND fulfillment_state IN ('submitting','downloading')`, time.Now().UTC().Format(time.RFC3339Nano), requestID)
+	return err
+}
+
+func (s *Store) Dismiss(ctx context.Context, actor auth.User, libraryID, requestID string) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET dismissed_at=?,updated_at=? WHERE id=? AND library_id=? AND fulfillment_state IN ('failed','available') AND EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=acquisition_requests.library_id AND (? OR m.role IN ('owner','editor') OR acquisition_requests.requested_by=?))`, time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano), requestID, libraryID, actor.ID, actor.Admin, actor.ID)
+	if err != nil {
+		return err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return ErrInvalid
 	}
 	return nil
 }

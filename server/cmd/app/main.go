@@ -118,6 +118,7 @@ func main() {
 	}
 	acquisitionStore := acquisition.NewStore(db, acquisitionClient)
 	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
+	acquisitionStore.SetScanRetry(sourceStore.RetryAcquisitionScan)
 	acquisitionStore.SetPairHandoff(func(ctx context.Context, pair acquisition.ReadyPair) error {
 		_, err := alignmentManager.Enqueue(ctx, auth.User{ID: pair.RequestedBy}, alignment.Request{EPUBMediaID: pair.EPUBMediaID, EPUBSHA256: pair.EPUBSHA256, AudioMediaID: pair.AudioMediaID, AudioSHA256: pair.AudioSHA256})
 		return err

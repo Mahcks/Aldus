@@ -417,6 +417,47 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 	return downloads, nil
 }
 
+func (c *Client) CancelTagged(ctx context.Context, tag string) error {
+	if !validTag(tag) {
+		return errors.New("invalid download tag")
+	}
+	downloads, err := c.Downloads(ctx)
+	if err != nil {
+		return err
+	}
+	var hashes []string
+	for _, download := range downloads {
+		if download.HasTag(tag) && download.Hash != "" {
+			hashes = append(hashes, download.Hash)
+		}
+	}
+	if len(hashes) == 0 {
+		return nil
+	}
+	cookies, err := c.login(ctx)
+	if err != nil {
+		return err
+	}
+	values := url.Values{"hashes": {strings.Join(hashes, "|")}, "deleteFiles": {"true"}}
+	req, err := c.qbitRequest(ctx, http.MethodPost, "/api/v2/torrents/delete", strings.NewReader(values.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	response, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("cancel qBittorrent download: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("cancel qBittorrent download: status %d", response.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) login(ctx context.Context) ([]*http.Cookie, error) {
 	form := url.Values{"username": {c.options.QBitUsername}, "password": {c.options.QBitPassword}}
 	req, err := c.qbitRequest(ctx, http.MethodPost, "/api/v2/auth/login", strings.NewReader(form.Encode()))

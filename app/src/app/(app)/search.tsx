@@ -19,6 +19,7 @@ import { listItemEnter } from '../../features/motion';
 import { Text, View } from '../../features/tw';
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   LoadingState,
   Notice,
@@ -63,6 +64,8 @@ export default function SearchScreen() {
   const [resultErrors, setResultErrors] = useState<Record<string, string>>({});
   const [fulfillments, setFulfillments] = useState<AcquisitionRequest[]>([]);
   const [fulfillmentError, setFulfillmentError] = useState('');
+  const [requestAction, setRequestAction] = useState('');
+  const [cancelTarget, setCancelTarget] = useState<AcquisitionRequest | null>(null);
   const acquisitionSearchSequence = useRef(0);
 
   const trimmedQuery = query.trim();
@@ -109,26 +112,24 @@ export default function SearchScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    async function refresh() {
-      try {
-        const tracker = await api.acquisitionTracker();
-        if (!active) return;
-        setFulfillments(
-          tracker.requests
-            .filter((request) => acquisitionFulfillment(request))
-            .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-        );
-        setFulfillmentError('');
-      } catch (value) {
-        if (active) setFulfillmentError(errorMessage(value));
-      }
+  async function refreshFulfillments() {
+    try {
+      const tracker = await api.acquisitionTracker();
+      setFulfillments(
+        tracker.requests
+          .filter((request) => acquisitionFulfillment(request))
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+      );
+      setFulfillmentError('');
+    } catch (value) {
+      setFulfillmentError(errorMessage(value));
     }
-    void refresh();
-    const interval = setInterval(() => void refresh(), 5000);
+  }
+
+  useEffect(() => {
+    void refreshFulfillments();
+    const interval = setInterval(() => void refreshFulfillments(), 5000);
     return () => {
-      active = false;
       clearInterval(interval);
     };
   }, []);
@@ -273,6 +274,44 @@ export default function SearchScreen() {
     }
   }
 
+  async function retryFulfillment(request: AcquisitionRequest) {
+    setRequestAction(request.id);
+    try {
+      await api.retryAcquisition(request.library_id, request.id);
+      await refreshFulfillments();
+    } catch (value) {
+      setFulfillmentError(errorMessage(value));
+    } finally {
+      setRequestAction('');
+    }
+  }
+
+  async function dismissFulfillment(request: AcquisitionRequest) {
+    setRequestAction(request.id);
+    try {
+      await api.dismissAcquisition(request.library_id, request.id);
+      setFulfillments((current) => current.filter((entry) => entry.id !== request.id));
+    } catch (value) {
+      setFulfillmentError(errorMessage(value));
+    } finally {
+      setRequestAction('');
+    }
+  }
+
+  async function confirmCancel() {
+    if (!cancelTarget) return;
+    setRequestAction(cancelTarget.id);
+    try {
+      await api.cancelAcquisition(cancelTarget.library_id, cancelTarget.id);
+      setCancelTarget(null);
+      await refreshFulfillments();
+    } catch (value) {
+      setFulfillmentError(errorMessage(value));
+    } finally {
+      setRequestAction('');
+    }
+  }
+
   const fulfillmentSection =
     visibleFulfillments.length || fulfillmentError ? (
       <Section title="Your requests">
@@ -301,13 +340,37 @@ export default function SearchScreen() {
                     </Text>
                   )}
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row flex-wrap items-center gap-2">
                   <StatusBadge tone={state.tone} label={state.label} />
                   {actionable ? (
                     <Button
                       kind="quiet"
                       label={state.action === 'open' ? 'Open book' : 'Review'}
                       onPress={() => openFulfillment(request)}
+                    />
+                  ) : null}
+                  {request.can_retry ? (
+                    <Button
+                      kind="secondary"
+                      label="Retry"
+                      disabled={requestAction === request.id}
+                      onPress={() => void retryFulfillment(request)}
+                    />
+                  ) : null}
+                  {request.can_cancel ? (
+                    <Button
+                      kind="danger"
+                      label="Cancel"
+                      disabled={requestAction === request.id}
+                      onPress={() => setCancelTarget(request)}
+                    />
+                  ) : null}
+                  {request.can_dismiss ? (
+                    <Button
+                      kind="quiet"
+                      label="Dismiss"
+                      disabled={requestAction === request.id}
+                      onPress={() => void dismissFulfillment(request)}
                     />
                   ) : null}
                 </View>
@@ -544,6 +607,16 @@ export default function SearchScreen() {
           {acquisitionSection}
         </>
       )}
+      <ConfirmDialog
+        visible={Boolean(cancelTarget)}
+        title="Cancel this download?"
+        description="Aldus will remove this download and its partial files from qBittorrent. You can retry the request later."
+        confirmLabel="Cancel download"
+        danger
+        busy={Boolean(cancelTarget && requestAction === cancelTarget.id)}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={() => void confirmCancel()}
+      />
     </Page>
   );
 }

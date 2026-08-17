@@ -229,6 +229,69 @@ func TestPairedDiscoveryPersistsIntentBeforeSubmittingBothHalves(t *testing.T) {
 	}
 }
 
+func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *testing.T) {
+	ctx := context.Background()
+	active, adds, deletes := false, 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/info":
+			if active {
+				_, _ = w.Write([]byte(`[{"hash":"hash","tags":"request","state":"downloading","progress":0.5}]`))
+			} else {
+				_, _ = w.Write([]byte(`[]`))
+			}
+		case "/api/v2/torrents/add":
+			adds++
+			active = true
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/delete":
+			deletes++
+			active = false
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),('other','other','other','Other','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES('library','reader','reader',1,'2026-01-01T00:00:00Z'),('library','other','reader',1,'2026-01-01T00:00:00Z'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Downloads','/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,selected_title,selected_url,download_state,download_error,fulfillment_state,created_at,updated_at) VALUES('request','library','reader','source','Alice','queued','Alice','https://download.test/alice','ready','failed','failed','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, _ := New(Options{QBitURL: server.URL})
+	store := NewStore(db, client)
+	reader := auth.User{ID: "reader"}
+	if err := store.Retry(ctx, auth.User{ID: "other"}, "library", "request"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user retry = %v", err)
+	}
+	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 1 {
+		t.Fatalf("retry adds=%d err=%v", adds, err)
+	}
+	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 1 {
+		t.Fatalf("cancel deletes=%d err=%v", deletes, err)
+	}
+	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 2 {
+		t.Fatalf("retry after cancel adds=%d err=%v", adds, err)
+	}
+	if err := store.Cancel(ctx, reader, "library", "request"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Dismiss(ctx, reader, "library", "request"); err != nil {
+		t.Fatal(err)
+	}
+	tracker, err := store.Tracker(ctx, reader)
+	if err != nil || len(tracker.Requests) != 0 {
+		t.Fatalf("dismissed tracker = %#v, %v", tracker, err)
+	}
+}
+
 func TestAcquisitionSettingsAreAdminOnlyAndPreserveBlankSecrets(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))

@@ -317,6 +317,18 @@ export const api = {
     request<void>('/me/acquisition-tracker/seen', { method: 'POST' }),
   acquisitionRequests: (libraryID: string) =>
     request<AcquisitionRequest[]>(`/libraries/${libraryID}/acquisition-requests`),
+  retryAcquisition: (libraryID: string, requestID: string) =>
+    request<void>(`/libraries/${libraryID}/acquisition-requests/${requestID}/retry`, {
+      method: 'POST',
+    }),
+  cancelAcquisition: (libraryID: string, requestID: string) =>
+    request<void>(`/libraries/${libraryID}/acquisition-requests/${requestID}/cancel`, {
+      method: 'POST',
+    }),
+  dismissAcquisition: (libraryID: string, requestID: string) =>
+    request<void>(`/libraries/${libraryID}/acquisition-requests/${requestID}/dismiss`, {
+      method: 'POST',
+    }),
   discoverAcquisitions: (libraryID: string, body: CreateAcquisitionRequest) =>
     request<AcquisitionDiscovery>(`/libraries/${libraryID}/acquisition-discoveries`, {
       method: 'POST',
