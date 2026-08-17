@@ -17,7 +17,19 @@ func registerMediaRoutes(router chi.Router, store *ingest.Store) {
 	router.Get("/libraries/{libraryID}/representations/{representationID}/media", listMedia(store))
 	router.Post("/libraries/{libraryID}/representations/{representationID}/media", uploadMedia(store))
 	router.Get("/media/{mediaID}", downloadMedia(store))
+	router.Get("/media/{mediaID}/chapters", audioChapters(store))
 	router.Get("/media/{mediaID}/cover", downloadCover(store))
+}
+
+func audioChapters(store *ingest.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		chapters, err := store.AudioChapters(r.Context(), actor(r), chi.URLParam(r, "mediaID"))
+		if err != nil {
+			writeMediaError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, audioChapterDTOs(chapters))
+	}
 }
 
 func downloadCover(store *ingest.Store) http.HandlerFunc {

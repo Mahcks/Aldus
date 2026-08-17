@@ -12,6 +12,7 @@ import type {
   AcceptImportProposalRequest,
   AcceptImportProposalResponse,
   AlignmentJob,
+  AudioChapter,
   AudioLocator,
   BootstrapRequest,
   CanonicalPosition,
@@ -293,6 +294,7 @@ export const api = {
     request<void>(`/representations/${id}`, { method: 'DELETE' }),
   media: (libraryID: string, representationID: string) =>
     request<Media[]>(`/libraries/${libraryID}/representations/${representationID}/media`),
+  audioChapters: (mediaID: string) => request<AudioChapter[]>(`/media/${mediaID}/chapters`),
   uploadMedia: (libraryID: string, representationID: string, file: Blob, filename: string) => {
     const body = new FormData();
     body.append('file', file, filename);

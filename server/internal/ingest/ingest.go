@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -46,6 +47,7 @@ type Store struct {
 	probe    func(context.Context, string) error
 	resolver *source.Store
 	mu       sync.Mutex
+	probes   chan struct{}
 }
 
 type Media struct {
@@ -56,6 +58,12 @@ type Media struct {
 	OriginalFilename string    `json:"original_filename,omitempty"`
 	SizeBytes        int64     `json:"size_bytes"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+type AudioChapter struct {
+	Title   string `json:"title"`
+	StartMS int64  `json:"start_ms"`
+	EndMS   int64  `json:"end_ms"`
 }
 
 func (s *Store) MaxBytes() int64 { return s.maxBytes }
@@ -98,7 +106,7 @@ func New(db *sql.DB, options Options) (*Store, error) {
 			return nil, err
 		}
 	}
-	return &Store{db: db, root: root, maxBytes: options.MaxBytes, probe: probe, resolver: resolver}, nil
+	return &Store{db: db, root: root, maxBytes: options.MaxBytes, probe: probe, resolver: resolver, probes: make(chan struct{}, 2)}, nil
 }
 
 func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, representationID, filename string, source io.Reader) (Media, error) {
@@ -288,6 +296,112 @@ func (s *Store) Open(ctx context.Context, actor auth.User, id string) (*os.File,
 		return nil, Media{}, ErrNotFound
 	}
 	return file, m, err
+}
+
+func (s *Store) AudioChapters(ctx context.Context, actor auth.User, id string) ([]AudioChapter, error) {
+	file, media, err := s.Open(ctx, actor, id)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if media.Kind != "audio" && media.Kind != "audiobook" {
+		return nil, ErrInvalid
+	}
+	select {
+	case s.probes <- struct{}{}:
+		defer func() { <-s.probes }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var output boundedBuffer
+	output.remaining = 1 << 20
+	command := exec.CommandContext(probeCtx, "ffprobe", "-v", "error", "-show_entries", "chapter=start_time,end_time:chapter_tags=title:format=duration", "-of", "json", file.Name())
+	command.Stdout = &output
+	err = command.Run()
+	if err != nil {
+		return nil, fmt.Errorf("probe audio chapters: %w", err)
+	}
+	if output.truncated {
+		return nil, fmt.Errorf("%w: chapter metadata too large", ErrInvalid)
+	}
+	chapters, err := parseAudioChapters(output.Bytes(), media.OriginalFilename)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return chapters, nil
+}
+
+type boundedBuffer struct {
+	bytes.Buffer
+	remaining int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(value []byte) (int, error) {
+	length := len(value)
+	if length > b.remaining {
+		value = value[:b.remaining]
+		b.truncated = true
+	}
+	_, _ = b.Buffer.Write(value)
+	b.remaining -= len(value)
+	return length, nil
+}
+
+func parseAudioChapters(data []byte, filename string) ([]AudioChapter, error) {
+	var result struct {
+		Chapters []struct {
+			Start string `json:"start_time"`
+			End   string `json:"end_time"`
+			Tags  struct {
+				Title string `json:"title"`
+			} `json:"tags"`
+		} `json:"chapters"`
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, errors.New("invalid ffprobe output")
+	}
+	duration, err := secondsToMilliseconds(result.Format.Duration)
+	if err != nil {
+		return nil, errors.New("invalid audio duration")
+	}
+	if len(result.Chapters) == 0 {
+		title := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+		if strings.TrimSpace(title) == "" {
+			title = "Audiobook"
+		}
+		return []AudioChapter{{Title: title, EndMS: duration}}, nil
+	}
+	chapters := make([]AudioChapter, 0, len(result.Chapters))
+	for i, value := range result.Chapters {
+		start, startErr := secondsToMilliseconds(value.Start)
+		end, endErr := secondsToMilliseconds(value.End)
+		if startErr != nil || endErr != nil || start < 0 || end <= start || end > duration {
+			return nil, errors.New("invalid audio chapter boundary")
+		}
+		if i > 0 && start < chapters[i-1].EndMS {
+			return nil, errors.New("overlapping audio chapters")
+		}
+		title := strings.TrimSpace(value.Tags.Title)
+		if title == "" {
+			title = fmt.Sprintf("Chapter %d", i+1)
+		}
+		chapters = append(chapters, AudioChapter{Title: title, StartMS: start, EndMS: end})
+	}
+	return chapters, nil
+}
+
+func secondsToMilliseconds(value string) (int64, error) {
+	seconds, err := strconv.ParseFloat(value, 64)
+	if err != nil || seconds < 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+		return 0, errors.New("invalid duration")
+	}
+	return int64(math.Round(seconds * 1000)), nil
 }
 
 func (s *Store) editableRepresentation(ctx context.Context, actor auth.User, libraryID, id string) (string, bool, error) {

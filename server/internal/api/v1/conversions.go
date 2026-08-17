@@ -33,6 +33,13 @@ func membershipDTO(v catalog.Membership) contracts.Membership {
 func mediaDTO(v ingest.Media) contracts.Media {
 	return contracts.Media{ID: v.ID, RepresentationID: v.RepresentationID, Kind: v.Kind, SHA256: v.SHA256, OriginalFilename: v.OriginalFilename, SizeBytes: v.SizeBytes, CreatedAt: v.CreatedAt}
 }
+func audioChapterDTOs(values []ingest.AudioChapter) []contracts.AudioChapter {
+	out := make([]contracts.AudioChapter, len(values))
+	for i, value := range values {
+		out[i] = contracts.AudioChapter{Title: value.Title, StartMS: value.StartMS, EndMS: value.EndMS}
+	}
+	return out
+}
 func jobDTO(v alignment.Job) contracts.AlignmentJob {
 	return contracts.AlignmentJob{ID: v.ID, AlignmentID: v.AlignmentID, EPUBMediaID: v.EPUBMediaID, AudioMediaID: v.AudioMediaID, State: v.State, Attempts: v.Attempts, WorkerVersion: v.WorkerVersion, Model: v.Model, ArtifactID: v.ArtifactID, Error: v.Error, CreatedAt: v.CreatedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt}
 }

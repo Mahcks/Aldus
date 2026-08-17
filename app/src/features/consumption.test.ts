@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { AlignmentJob, Media, Representation } from '../generated/api';
 import {
   audioPassage,
+  audioChapterAt,
   applyPlaybackRate,
   choices,
   clampAudioPosition,
@@ -17,6 +18,8 @@ import {
   readyJob,
   resumedProgressLabel,
   scrubberPosition,
+  sleepTimerDeadline,
+  sleepTimerRemainingSeconds,
   synchronizationLabel,
 } from './consumption';
 
@@ -83,6 +86,30 @@ it('uses exact segment boundaries for read-along and skips unresolved text', () 
 it('formats audiobook durations with hours when needed', () => {
   expect(formatAudioTime(3522)).toBe('58:42');
   expect(formatAudioTime(12932)).toBe('3:35:32');
+});
+
+it('selects audio chapters with inclusive starts and exclusive ends', () => {
+  const chapters = [
+    { title: 'One', start_ms: 0, end_ms: 10_000 },
+    { title: 'Two', start_ms: 10_000, end_ms: 20_000 },
+  ];
+  expect(audioChapterAt(chapters, 9_999)?.current.title).toBe('One');
+  expect(audioChapterAt(chapters, 10_000)).toMatchObject({
+    index: 1,
+    current: { title: 'Two' },
+    previous: { title: 'One' },
+  });
+  expect(audioChapterAt(chapters, 20_000)).toBeUndefined();
+});
+
+it('counts sleep timers from an absolute deadline', () => {
+  expect(sleepTimerDeadline(15, 1_000_000)).toBe(1_900_000);
+  expect(sleepTimerDeadline(30, 1_000_000)).toBe(2_800_000);
+  expect(sleepTimerDeadline(15, 2_000_000)).toBe(2_900_000);
+  expect(sleepTimerDeadline(undefined, 1_000_000)).toBeUndefined();
+  expect(sleepTimerRemainingSeconds(1_060_001, 1_000_000)).toBe(61);
+  expect(sleepTimerRemainingSeconds(999_999, 1_000_000)).toBe(0);
+  expect(sleepTimerRemainingSeconds(undefined, 1_000_000)).toBeUndefined();
 });
 
 it('labels saved progress without exposing raw device identifiers', () => {

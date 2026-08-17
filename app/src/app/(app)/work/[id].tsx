@@ -162,11 +162,12 @@ export default function WorkScreen() {
         return;
       }
       const selectedJob = readyJob(jobs, epubID, audioID);
-      const [alignment, progress, epubState, audioState] = await Promise.all([
+      const [alignment, progress, epubState, audioState, audioChapters] = await Promise.all([
         selectedJob?.alignment_id ? api.alignment(selectedJob.alignment_id) : undefined,
         api.workProgress(id),
         selectedEPUB ? api.representationState(selectedEPUB.representation.id) : null,
         selectedAudio ? api.representationState(selectedAudio.representation.id) : null,
+        selectedAudio ? api.audioChapters(selectedAudio.id).catch(() => []) : [],
       ]);
       await downloadOfflineWork({
         work,
@@ -179,6 +180,7 @@ export default function WorkScreen() {
         progress,
         epub_state: epubState,
         audio_state: audioState,
+        audio_chapters: selectedAudio ? { [selectedAudio.id]: audioChapters } : {},
       });
       setDownloaded(true);
     } catch (value) {

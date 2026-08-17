@@ -1,5 +1,6 @@
 import type {
   Alignment,
+  AudioChapter,
   AudioLocator,
   CanonicalPosition,
   RepresentationState,
@@ -25,6 +26,7 @@ import { BookCover, coverPresentation } from '../../../features/bookshelf';
 import { ReaderSettings } from '../../../features/reader-settings';
 import {
   applyPlaybackRate,
+  audioChapterAt,
   audioPassage,
   choices,
   clampAudioPosition,
@@ -39,6 +41,9 @@ import {
   readToListen,
   readyJob,
   scrubberPosition,
+  sleepTimerDeadline as deadlineForSleepTimer,
+  sleepTimerRemainingSeconds,
+  SLEEP_TIMER_MINUTES,
   PLAYBACK_RATES,
   synchronizationLabel,
   type MediaChoice,
@@ -85,6 +90,7 @@ export default function ConsumeWorkScreen() {
   const [mode, setMode] = useState<Mode>(params.mode === 'listen' ? 'listen' : 'read');
   const [epubs, setEPUBs] = useState<MediaChoice[]>([]);
   const [audio, setAudio] = useState<MediaChoice[]>([]);
+  const [audioChapters, setAudioChapters] = useState<AudioChapter[]>([]);
   const [epubID, setEPUBID] = useState(params.epub ?? '');
   const [audioID, setAudioID] = useState(params.audio ?? '');
   const [jobs, setJobs] = useState<Awaited<ReturnType<typeof api.alignmentJobs>>>([]);
@@ -102,6 +108,10 @@ export default function ConsumeWorkScreen() {
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
+  const [sleepTimerDeadline, setSleepTimerDeadline] = useState<number>();
+  const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number>();
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number>();
   const [initialAudioMS, setInitialAudioMS] = useState<number>();
   const [trackWidth, setTrackWidth] = useState(1);
   const [syncAvailable, setSyncAvailable] = useState(false);
@@ -121,6 +131,7 @@ export default function ConsumeWorkScreen() {
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
   const switching = useRef(false);
   const saveAttempt = useRef(0);
+  const sleepTimerExpired = useRef(false);
   const player = useAudioPlayer(source, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
   const selectedEPUB = epubs.find((item) => item.id === epubID);
@@ -138,9 +149,46 @@ export default function ConsumeWorkScreen() {
   const audioThumbLeft = Math.max(8, Math.min(trackWidth - 8, audioProgress * trackWidth));
   const canListenFromReader = Boolean(readerLocation?.sync);
   const passage = audioPassage(alignment?.segments, status.currentTime * 1000);
+  const chapter = audioChapterAt(audioChapters, status.currentTime * 1000);
+  const currentChapterTitle = chapter?.current.title;
   const currentPlaybackRate = playbackRate(status.playbackRate);
   const playbackRateIndex = PLAYBACK_RATES.indexOf(currentPlaybackRate);
   const canAdjustPlaybackRate = Boolean(source) && !status.error;
+  const finishSleepTimer = useCallback(() => {
+    if (sleepTimerExpired.current) return;
+    sleepTimerExpired.current = true;
+    player.pause();
+    setSleepTimerDeadline(undefined);
+    setSleepTimerRemaining(undefined);
+    setSleepTimerMinutes(undefined);
+    setSleepTimerOpen(false);
+    setNotice('Sleep timer ended.');
+  }, [player]);
+
+  useEffect(() => {
+    if (sleepTimerDeadline == null) return;
+
+    function updateSleepTimer() {
+      const remaining = sleepTimerRemainingSeconds(sleepTimerDeadline);
+      setSleepTimerRemaining(remaining);
+      if (remaining === 0) finishSleepTimer();
+    }
+
+    const timer = setInterval(updateSleepTimer, 1_000);
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') updateSleepTimer();
+    });
+    return () => {
+      clearInterval(timer);
+      appStateSubscription.remove();
+    };
+  }, [finishSleepTimer, sleepTimerDeadline]);
+
+  useEffect(() => {
+    if (sleepTimerDeadline == null || sleepTimerRemainingSeconds(sleepTimerDeadline) !== 0) return;
+    const timer = setTimeout(finishSleepTimer, 0);
+    return () => clearTimeout(timer);
+  }, [finishSleepTimer, sleepTimerDeadline, status.currentTime]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -184,7 +232,7 @@ export default function ConsumeWorkScreen() {
       player.setActiveForLockScreen(true, {
         title: work.title,
         artist: work.author || 'Unknown author',
-        albumTitle: selectedAudio.representation.label,
+        albumTitle: currentChapterTitle ?? selectedAudio.representation.label,
       });
     } catch {
       return;
@@ -196,7 +244,7 @@ export default function ConsumeWorkScreen() {
         // The native player may already have been released while changing media.
       }
     };
-  }, [player, status.isLoaded, selectedAudio, work]);
+  }, [currentChapterTitle, player, status.isLoaded, selectedAudio, work]);
 
   useEffect(() => {
     let canceled = false;
@@ -299,6 +347,7 @@ export default function ConsumeWorkScreen() {
       playAfterRestore.current = false;
       setSyncAvailable(false);
       setAudioReady(false);
+      setAudioChapters([]);
       readerReady.current = false;
       const stored = Platform.OS === 'web' || !params.id ? null : await offlineWork(params.id);
       if (stored && !canceled) {
@@ -307,6 +356,7 @@ export default function ConsumeWorkScreen() {
         const canonical = progress?.alignment_id === stored.alignment?.id ? progress : null;
         setEPUBState(stored.epub_state);
         setAudioState(stored.audio_state);
+        setAudioChapters(stored.audio_chapters[audioID] ?? []);
         setAlignment(stored.alignment);
         setEPUBSource(
           selectedEPUBChoice
@@ -333,18 +383,19 @@ export default function ConsumeWorkScreen() {
       }
       try {
         const selectedJob = readyJob(jobs, epubID, audioID);
-        const [nextEPUBState, nextAudioState, nextAlignment, blob, audioSource] = await Promise.all(
-          [
+        const [nextEPUBState, nextAudioState, nextAlignment, blob, audioSource, nextAudioChapters] =
+          await Promise.all([
             selectedEPUB ? api.representationState(selectedEPUB.representation.id) : null,
             selectedAudio ? api.representationState(selectedAudio.representation.id) : null,
             selectedJob?.alignment_id ? api.alignment(selectedJob.alignment_id) : undefined,
             selectedEPUB ? productEPUBSource(selectedEPUB.id) : undefined,
             selectedAudio ? productAudioSource(selectedAudio.id) : null,
-          ],
-        );
+            selectedAudio ? api.audioChapters(selectedAudio.id).catch(() => []) : [],
+          ]);
         if (canceled) return;
         setEPUBState(nextEPUBState);
         setAudioState(nextAudioState);
+        setAudioChapters(nextAudioChapters);
         setAlignment(nextAlignment);
         setEPUBSource(blob);
         setSource(audioSource);
@@ -900,6 +951,19 @@ export default function ConsumeWorkScreen() {
   function handleSkipForward() {
     seekToSeconds(status.currentTime + 15);
   }
+  function handlePreviousChapter() {
+    if (chapter?.previous) seekToSeconds(chapter.previous.start_ms / 1000);
+  }
+  function handleNextChapter() {
+    if (chapter?.next) seekToSeconds(chapter.next.start_ms / 1000);
+  }
+  function setSleepTimer(minutes?: number) {
+    sleepTimerExpired.current = false;
+    setSleepTimerDeadline(deadlineForSleepTimer(minutes));
+    setSleepTimerRemaining(minutes == null ? undefined : minutes * 60);
+    setSleepTimerMinutes(minutes);
+    setSleepTimerOpen(false);
+  }
   function handleScrubberPress(event: GestureResponderEvent) {
     const nativeEvent = event.nativeEvent as GestureResponderEvent['nativeEvent'] & {
       offsetX?: number;
@@ -1112,6 +1176,29 @@ export default function ConsumeWorkScreen() {
           onChange={(next) => void updateReaderPreferences(next)}
         />
       </Dialog>
+      <Dialog
+        visible={mode === 'listen' && sleepTimerOpen}
+        onClose={() => setSleepTimerOpen(false)}
+        title="Sleep timer"
+      >
+        <View accessibilityRole="radiogroup" className="gap-2">
+          <Button
+            label="Off"
+            selected={sleepTimerDeadline == null}
+            accessibilityRole="radio"
+            onPress={() => setSleepTimer()}
+          />
+          {SLEEP_TIMER_MINUTES.map((minutes) => (
+            <Button
+              key={minutes}
+              label={`${minutes} minutes`}
+              selected={sleepTimerMinutes === minutes}
+              accessibilityRole="radio"
+              onPress={() => setSleepTimer(minutes)}
+            />
+          ))}
+        </View>
+      </Dialog>
       {/* Foliate has queued iframe work during handoff, so hide the reader instead of unmounting it. */}
       <View className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}>
         {selectedEPUB && epubSource ? (
@@ -1274,6 +1361,32 @@ export default function ConsumeWorkScreen() {
                   </Text>
                 </View>
               </View>
+              {chapter ? (
+                <View className="mt-5 w-full flex-row items-center gap-3 border-y border-line-subtle py-2">
+                  <IconButton
+                    icon="previousPage"
+                    label="Previous chapter"
+                    kind="quiet"
+                    disabled={!chapter.previous}
+                    onPress={handlePreviousChapter}
+                  />
+                  <View className="min-w-0 flex-1 items-center gap-0.5">
+                    <Text numberOfLines={1} className="text-center text-sm font-bold text-ink">
+                      {chapter.current.title}
+                    </Text>
+                    <Text className="text-center text-[11px] font-semibold uppercase tracking-[1px] text-subtle">
+                      Chapter {chapter.index + 1} of {audioChapters.length}
+                    </Text>
+                  </View>
+                  <IconButton
+                    icon="nextPage"
+                    label="Next chapter"
+                    kind="quiet"
+                    disabled={!chapter.next}
+                    onPress={handleNextChapter}
+                  />
+                </View>
+              ) : null}
               <View className="mt-8 w-full flex-row items-center justify-between">
                 <View className="w-16 items-start">
                   <Pressable
@@ -1322,8 +1435,29 @@ export default function ConsumeWorkScreen() {
                     />
                   </View>
                 </View>
-                <View className="w-16" />
+                <View className="w-16 items-end">
+                  <IconButton
+                    icon="sleepTimer"
+                    label={
+                      sleepTimerRemaining == null
+                        ? 'Set sleep timer'
+                        : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
+                    }
+                    kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
+                    disabled={!status.isLoaded}
+                    onPress={() => setSleepTimerOpen(true)}
+                  />
+                </View>
               </View>
+              {sleepTimerRemaining != null ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  className="mt-3 text-center text-xs font-semibold text-muted"
+                  style={{ fontVariant: ['tabular-nums'] }}
+                >
+                  Sleep timer · {formatAudioTime(sleepTimerRemaining)} remaining
+                </Text>
+              ) : null}
               <View className="mt-9 w-full gap-3 border-t border-line-subtle pt-6">
                 <View className="flex-row items-center justify-between gap-3">
                   <Text className="text-[11px] font-bold uppercase tracking-[1.5px] text-subtle">

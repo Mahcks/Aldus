@@ -3,6 +3,7 @@ import { File, Paths } from 'expo-file-system';
 import type {
   Alignment,
   AlignmentJob,
+  AudioChapter,
   CanonicalPosition,
   RepresentationState,
   Library,
@@ -10,6 +11,7 @@ import type {
   WorkSummary,
 } from '../generated/api';
 import type { MediaChoice } from '../features/consumption';
+import { offlineAudioChapters } from '../features/offline-chapters';
 import { productEPUBSource } from './epub-source';
 import { productAudioSource } from './media';
 import { pendingProgress } from './progress-outbox';
@@ -26,6 +28,7 @@ export type OfflineWork = {
   progress: CanonicalPosition | null;
   epub_state: RepresentationState | null;
   audio_state: RepresentationState | null;
+  audio_chapters: Record<string, AudioChapter[]>;
   downloaded_at: string;
 };
 
@@ -100,6 +103,7 @@ export async function offlineWork(workID: string): Promise<OfflineWork | null> {
     await AsyncStorage.removeItem(key(workID));
     return null;
   }
+  value.audio_chapters = offlineAudioChapters(value.audio_chapters);
   const media = [...value.epubs, ...value.audio];
   if (
     media.some((item) => {

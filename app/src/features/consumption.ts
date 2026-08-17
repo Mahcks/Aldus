@@ -1,6 +1,7 @@
 import type {
   AlignmentJob,
   AlignmentSegment,
+  AudioChapter,
   AudioLocator,
   CanonicalPosition,
   EPUBLocator,
@@ -12,6 +13,19 @@ import type {
 export type MediaChoice = Media & { representation: Representation };
 
 export const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+export const SLEEP_TIMER_MINUTES = [15, 30, 45, 60] as const;
+
+export function sleepTimerDeadline(minutes?: number, nowMS = Date.now()) {
+  if (minutes == null) return undefined;
+  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(nowMS)) return undefined;
+  return nowMS + minutes * 60_000;
+}
+
+export function sleepTimerRemainingSeconds(deadlineMS?: number, nowMS = Date.now()) {
+  if (deadlineMS == null || !Number.isFinite(deadlineMS) || !Number.isFinite(nowMS))
+    return undefined;
+  return Math.max(0, Math.ceil((deadlineMS - nowMS) / 1000));
+}
 
 export function audioPassage(segments: AlignmentSegment[] | undefined, timestampMS: number) {
   if (!segments || !Number.isFinite(timestampMS)) return undefined;
@@ -28,6 +42,20 @@ export function audioPassage(segments: AlignmentSegment[] | undefined, timestamp
     current: readable[index],
     next: readable[index + 1],
     following: readable[index + 2],
+  };
+}
+
+export function audioChapterAt(chapters: AudioChapter[], timestampMS: number) {
+  if (!Number.isFinite(timestampMS)) return undefined;
+  const index = chapters.findIndex(
+    (chapter) => chapter.start_ms <= timestampMS && timestampMS < chapter.end_ms,
+  );
+  if (index < 0) return undefined;
+  return {
+    index,
+    current: chapters[index],
+    previous: chapters[index - 1],
+    next: chapters[index + 1],
   };
 }
 

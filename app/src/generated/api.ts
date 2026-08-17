@@ -329,6 +329,11 @@ export interface Media {
   size_bytes: number /* int64 */;
   created_at: string;
 }
+export interface AudioChapter {
+  title: string;
+  start_ms: number /* int64 */;
+  end_ms: number /* int64 */;
+}
 
 //////////
 // source: reader_credentials.go

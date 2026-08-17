@@ -17,6 +17,7 @@ const names = {
   disabled: 'cancel',
   play: 'play',
   pause: 'pause',
+  sleepTimer: 'timer-sand',
   skipBack: 'rewind-15',
   skipForward: 'fast-forward-15',
   back: 'arrow-left',

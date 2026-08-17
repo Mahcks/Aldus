@@ -11,3 +11,9 @@ type Media struct {
 	SizeBytes        int64     `json:"size_bytes"`
 	CreatedAt        time.Time `json:"created_at"`
 }
+
+type AudioChapter struct {
+	Title   string `json:"title"`
+	StartMS int64  `json:"start_ms"`
+	EndMS   int64  `json:"end_ms"`
+}
