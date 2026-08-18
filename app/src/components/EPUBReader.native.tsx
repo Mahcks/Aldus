@@ -14,7 +14,9 @@ import {
   mapReadiumLocator,
   mapReadiumSelection,
   parseReadiumLocator,
+  readiumLocationReason,
   readiumRestoreDisposition,
+  readiumRestoreMatches,
   readiumSearchQueries,
   segmentForEPUBLocator,
 } from '../features/reader-spike/readium-locator';
@@ -84,6 +86,10 @@ export const EPUBReader = forwardRef<
 
   useEffect(() => {
     let active = true;
+    locationRequest.current += 1;
+    pendingRestore.current = undefined;
+    direction.current = undefined;
+    lastProgression.current = undefined;
     async function prepare() {
       try {
         if (!source) return;
@@ -171,11 +177,16 @@ export const EPUBReader = forwardRef<
               return false;
             }
             matches = [];
-            while (true) {
-              matches.push(...page.results);
+            for (let pageCount = 0; pageCount < 100; pageCount += 1) {
+              matches.push(
+                ...page.results.filter(
+                  (result) => readiumRestoreDisposition(target, result.locator.href) === 'restore',
+                ),
+              );
               if (!page.hasMore || matches.length > 1) break;
               page = await view.loadMoreSearchResults();
             }
+            if (page.hasMore && matches.length <= 1) matches = [];
             if (matches.length === 1) {
               matchedQuery = query;
               break;
@@ -222,19 +233,7 @@ export const EPUBReader = forwardRef<
     const currentSegments = segmentsRef.current as AlignmentSegment[];
     const restored = pendingRestore.current;
     const restoreDisposition = readiumRestoreDisposition(restored, locator.href);
-    if (restoreDisposition !== 'publish') {
-      if (restoreDisposition === 'restore' && restored) {
-        pendingRestore.current = undefined;
-        onLocation?.({
-          href: locator.href,
-          cfi: JSON.stringify(locator),
-          sync: restored,
-          syncState: 'full',
-          reason: 'restore',
-        });
-      }
-      return;
-    }
+    if (restoreDisposition === 'suppress') return;
     let visible: Locator | undefined;
     try {
       visible = await reader.current?.currentVisibleLocation();
@@ -243,28 +242,42 @@ export const EPUBReader = forwardRef<
     }
     if (request !== locationRequest.current) return;
     const sync = mapReadiumLocator(visible ?? locator, currentSegments);
+    if (restoreDisposition === 'restore' && restored) {
+      if (!readiumRestoreMatches(restored, sync)) return;
+      pendingRestore.current = undefined;
+      onLocation?.({
+        href: locator.href,
+        cfi: JSON.stringify(visible ?? locator),
+        sync: restored,
+        syncState: 'full',
+        reason: 'restore',
+      });
+      return;
+    }
     if (__DEV__)
       console.debug('Aldus native EPUB location', {
         locator: visible ?? locator,
         segmentCount: currentSegments.length,
         sync,
       });
-    const progression = locator.locations?.totalProgression;
-    const reason =
-      direction.current === 'forward' ||
-      (progression != null &&
-        lastProgression.current != null &&
-        progression > lastProgression.current)
-        ? 'forward'
-        : 'relocate';
-    direction.current = undefined;
-    lastProgression.current = progression;
+    const progression =
+      locator.locations?.totalProgression ??
+      locator.locations?.position ??
+      locator.locations?.progression;
+    const disposition = readiumLocationReason(
+      direction.current,
+      progression,
+      lastProgression.current,
+      Boolean(sync),
+    );
+    direction.current = disposition.pendingDirection;
+    if (sync) lastProgression.current = progression;
     onLocation?.({
       href: locator.href,
       cfi: JSON.stringify(locator),
       sync,
       syncState: sync ? 'full' : 'none',
-      reason,
+      reason: disposition.reason,
     });
   }
 
@@ -299,6 +312,7 @@ export const EPUBReader = forwardRef<
     <View className="min-h-0 flex-1 bg-paper">
       <View className="min-h-0 flex-1">
         <ReadiumView
+          key={fileURL}
           ref={reader}
           file={{ url: fileURL }}
           preferences={{
@@ -327,6 +341,7 @@ export const EPUBReader = forwardRef<
               label="Previous page"
               kind="quiet"
               onPress={() => {
+                pendingRestore.current = undefined;
                 direction.current = 'backward';
                 reader.current?.goBackward();
               }}
@@ -350,6 +365,7 @@ export const EPUBReader = forwardRef<
               label="Next page"
               kind="quiet"
               onPress={() => {
+                pendingRestore.current = undefined;
                 direction.current = 'forward';
                 reader.current?.goForward();
               }}

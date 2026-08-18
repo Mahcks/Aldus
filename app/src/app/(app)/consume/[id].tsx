@@ -575,10 +575,27 @@ export default function ConsumeWorkScreen() {
 
   useEffect(() => {
     if (mode !== 'read' || !readerLocation || !selectedEPUB) return;
-    const timer = setTimeout(() => {
-      void saveRepresentation('epub', { href: readerLocation.href, cfi: readerLocation.cfi });
-    }, 900);
-    return () => clearTimeout(timer);
+    const location = readerLocation;
+    let saved = false;
+    function save() {
+      if (saved) return;
+      saved = true;
+      void saveRepresentation('epub', { href: location.href, cfi: location.cfi });
+    }
+    const timer = setTimeout(save, 900);
+    const subscription =
+      Platform.OS === 'web'
+        ? undefined
+        : AppState.addEventListener('change', (state) => {
+            if (state !== 'active') {
+              clearTimeout(timer);
+              save();
+            }
+          });
+    return () => {
+      clearTimeout(timer);
+      subscription?.remove();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, readerLocation, selectedEPUB?.id, alignmentID]);
 
@@ -1199,9 +1216,9 @@ export default function ConsumeWorkScreen() {
           ))}
         </View>
       </Dialog>
-      {/* Foliate has queued iframe work during handoff, so hide the reader instead of unmounting it. */}
+      {/* Foliate has queued iframe work during handoff, so keep only the web reader mounted. */}
       <View className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}>
-        {selectedEPUB && epubSource ? (
+        {(Platform.OS === 'web' || mode === 'read') && selectedEPUB && epubSource ? (
           <View
             className={
               compactNative

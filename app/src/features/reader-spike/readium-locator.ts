@@ -39,6 +39,8 @@ export function mapReadiumLocator(
   locator: Locator,
   segments: AlignmentSegment[],
 ): EPUBLocator | undefined {
+  const precise = mapReadiumSelection(locator, locator.text?.highlight ?? '', segments);
+  if (precise) return precise;
   const href = normalizeHref(locator.href);
   const evidence = [locator.text?.highlight, locator.text?.after, locator.text?.before]
     .map((value) => normalize(value ?? ''))
@@ -59,6 +61,23 @@ export function mapReadiumLocator(
   );
   if (matches.length !== 1) return undefined;
   return { href: matches[0].epub_href, locator: matches[0].epub_locator, offset: 0 };
+}
+
+export function readiumLocationReason(
+  direction: 'forward' | 'backward' | undefined,
+  progression: number | undefined,
+  previousProgression: number | undefined,
+  hasCanonicalLocation: boolean,
+) {
+  if (!hasCanonicalLocation) return { reason: 'relocate' as const, pendingDirection: direction };
+  if (direction === 'forward') return { reason: 'forward' as const, pendingDirection: undefined };
+  if (direction === 'backward') return { reason: 'explicit' as const, pendingDirection: undefined };
+  if (progression != null && previousProgression != null && progression !== previousProgression)
+    return {
+      reason: progression > previousProgression ? ('forward' as const) : ('explicit' as const),
+      pendingDirection: undefined,
+    };
+  return { reason: 'relocate' as const, pendingDirection: undefined };
 }
 
 export function mapReadiumSelection(
@@ -147,6 +166,14 @@ export function readiumRestoreDisposition(target: EPUBLocator | undefined, href:
     : ('suppress' as const);
 }
 
+export function readiumRestoreMatches(target: EPUBLocator, current: EPUBLocator | undefined) {
+  return Boolean(
+    current &&
+    normalizeHref(target.href) === normalizeHref(current.href) &&
+    JSON.stringify(target.locator) === JSON.stringify(current.locator),
+  );
+}
+
 const normalize = (value: string) =>
   value
     .normalize('NFKC')
@@ -191,5 +218,10 @@ function wordOccurrences(text: string, query: string) {
   const target = query.normalize('NFKC').toLocaleLowerCase();
   return words.filter((word) => word === target).length;
 }
-const normalizeHref = (value: string) =>
-  decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];
+const normalizeHref = (value: string) => {
+  try {
+    return decodeURIComponent(value).replace(/^\/+/, '').split('#')[0];
+  } catch {
+    return value.replace(/^\/+/, '').split('#')[0];
+  }
+};

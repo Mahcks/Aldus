@@ -4,7 +4,7 @@ Date: 2026-08-13
 
 ## Scope and current state
 
-This is Plan 020B only. It does not replace the production native placeholder, alter the web Foliate reader, change canonical synchronization, or begin Plan 019.
+The Readium adapter is now the production native reader. This document records the adoption evidence and the physical-device checks that still cannot run in Linux/WSL. The web Foliate reader and canonical synchronization model remain unchanged.
 
 The native `EPUBReader.tsx` currently renders a placeholder and returns `null`, an empty string, or `false` from every reader method. `EPUBReader.web.tsx` owns the working Foliate implementation, DOM Range/CFI capture, exact alignment-segment matching, and trusted ReadingCursor behavior. The product consumption route owns Read ↔ Listen orchestration through the existing `/resolve/epub`, `/resolve/audio`, `/locators/epub`, and `/locators/audio` APIs.
 
@@ -38,7 +38,7 @@ Sources: [Readium Swift Toolkit](https://github.com/readium/swift-toolkit), [Rea
 
 The first spike uses `react-native-readium` 5.0.0-rc.17. It is the only maintained cross-platform React Native candidate already exposing a native Readium view, serializable Locator, current-location callback, selection text/locator, preferences, and imperative navigation. It supports both React Native architectures and keeps an Android path.
 
-RC 18 adds full-text search, which is directly relevant to canonical → native translation, but it was published only hours before this spike. Bun's configured three-day minimum release age correctly blocked it, and the safeguard was not bypassed. RC 17 is pinned for the first physical proof.
+RC 18 is pinned and supplies the full-text search used for canonical → native translation. Aldus adds a bounded visible-location bridge so native page positions can map back to exact alignment segments.
 
 The epub.js wrapper is not spiked now because its last release is two years old and it duplicates a substantial reader/context/WebView layer. A custom Foliate WebView would preserve the most web logic but first requires a new secure asset/archive packaging system. A direct Readium bridge remains the fallback if the maintained wrapper loses information Aldus needs.
 
@@ -104,12 +104,11 @@ Record initial open time, page-turn feel, repeat-open stability, restore accurac
 - TypeScript, lint, tests, Expo Doctor, iOS Hermes export, web export, and generated Podfile shape pass.
 - No physical-device renderer result exists yet.
 - The wrapper's JavaScript Locator omits Readium HTML `fragments`/range fields and exposes progression plus optional text. Physical evidence must show whether selection and current-location text are sufficient.
-- RC 17 lacks full-text search, so exact canonical → native lookup is not yet proved. RC 18 appears to add the required search locator path but must pass the repository's release-age policy before use.
-- Exact within-segment offset and trusted page-trailing ReadingCursor behavior remain unimplemented by design.
+- Automated coverage verifies exact within-segment mapping, fail-closed canonical restoration, forward and backward commits, and transitional-location handling. Physical confirmation on the installed iPhone remains required.
 - Performance and repeated lifecycle behavior remain physical-device checks.
 
 ## Conclusion
 
-`Run one additional bounded renderer spike`
+`Run the physical production-reader acceptance checklist`
 
-That bounded step is the physical RC 17 test above followed, once policy-eligible, by an RC 18 search-locator proof for canonical → native navigation. If Readium text/search locators retain sufficient passage evidence, adopt the wrapper. If its bridge discards required fragment/range information, stop and spike a minimal Aldus-owned Readium bridge rather than weakening canonical semantics.
+Rebuild the native development client, then exercise the production Work reader rather than the old isolated spike: page both directions, switch editions, read → listen → read, background and force-quit, reopen offline, and confirm the saved location. Any mismatch must fail visibly rather than falling back to percentage-based synchronization.

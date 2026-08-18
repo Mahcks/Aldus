@@ -4,7 +4,9 @@ import {
   deserializeReadiumLocator,
   mapReadiumLocator,
   mapReadiumSelection,
+  readiumLocationReason,
   readiumRestoreDisposition,
+  readiumRestoreMatches,
   readiumSearchQuery,
   readiumSearchQueries,
   segmentForEPUBLocator,
@@ -42,6 +44,13 @@ describe('Readium spike locator', () => {
     expect(readiumRestoreDisposition(target, 'OEBPS/title.xhtml')).toBe('suppress');
     expect(readiumRestoreDisposition(target, `/${segment.epub_href}#page`)).toBe('restore');
     expect(readiumRestoreDisposition(undefined, 'OEBPS/title.xhtml')).toBe('publish');
+    expect(readiumRestoreMatches(target, { ...target, offset: 0 })).toBe(true);
+    expect(
+      readiumRestoreMatches(target, {
+        ...target,
+        locator: { type: 'dom-element', dom_path: 'html[1]/body[1]/p[2]' },
+      }),
+    ).toBe(false);
   });
 
   test('maps unique text context to the existing canonical EPUB locator and fails closed', () => {
@@ -67,6 +76,32 @@ describe('Readium spike locator', () => {
         segment,
       ]),
     ).toEqual(segment);
+  });
+
+  test('preserves exact within-segment position from a native text locator', () => {
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.2 },
+      text: { before: 'Alice was beginning', highlight: 'to get', after: 'very tired' },
+    };
+    expect(mapReadiumLocator(locator, [segment])?.offset).toBeGreaterThan(0);
+  });
+
+  test('keeps page intent through transitional locations and commits backward movement', () => {
+    expect(readiumLocationReason('forward', 0.2, 0.1, false)).toEqual({
+      reason: 'relocate',
+      pendingDirection: 'forward',
+    });
+    expect(readiumLocationReason('forward', 0.2, 0.1, true)).toEqual({
+      reason: 'forward',
+      pendingDirection: undefined,
+    });
+    expect(readiumLocationReason('backward', 0.1, 0.2, true)).toEqual({
+      reason: 'explicit',
+      pendingDirection: undefined,
+    });
+    expect(readiumLocationReason(undefined, 0.1, 0.2, true).reason).toBe('explicit');
   });
 
   test('maps a short selection from boundary-centered context without matching adjacent text', () => {
