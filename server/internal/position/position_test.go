@@ -166,6 +166,32 @@ func TestProgressRejectsStaleUpdate(t *testing.T) {
 	}
 }
 
+func TestProgressPromotesWantToReadButPreservesFinished(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	userID := addFixtureUser(t, store)
+	if _, err := store.db.Exec(`INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) VALUES(?,?,'want_to_read','now')`, userID, "fixture-work"); err != nil {
+		t.Fatal(err)
+	}
+	written, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{SegmentID: "s0001", ExpectedRevision: 0, SourceDevice: "web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := store.db.QueryRow(`SELECT status FROM user_work_statuses WHERE user_id=? AND work_id=?`, userID, "fixture-work").Scan(&status); err != nil || status != "reading" {
+		t.Fatalf("promoted status = %q, %v", status, err)
+	}
+	if _, err := store.db.Exec(`UPDATE user_work_statuses SET status='finished' WHERE user_id=? AND work_id=?`, userID, "fixture-work"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateProgress(ctx, userID, "fixture-work", FixtureAlignmentID, Update{SegmentID: "s0002", ExpectedRevision: written.Revision, SourceDevice: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.QueryRow(`SELECT status FROM user_work_statuses WHERE user_id=? AND work_id=?`, userID, "fixture-work").Scan(&status); err != nil || status != "finished" {
+		t.Fatalf("preserved status = %q, %v", status, err)
+	}
+}
+
 func TestReadingStateIsPerUserAndPreservesStaleCanonicalPosition(t *testing.T) {
 	ctx := context.Background()
 	store := testStore(t)

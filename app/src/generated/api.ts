@@ -218,6 +218,7 @@ export interface WorkDetail extends Work {
   reading_seconds: number /* int */;
   listening_seconds: number /* int */;
   last_mode?: 'read' | 'listen' | '';
+  reading_status: 'want_to_read' | 'reading' | 'finished' | '';
 }
 export interface WorkSummary {
   id: string;
@@ -243,6 +244,7 @@ export interface WorkSummary {
   reading_seconds: number /* int */;
   listening_seconds: number /* int */;
   last_mode?: 'read' | 'listen' | '';
+  reading_status: 'want_to_read' | 'reading' | 'finished' | '';
   created_at: string;
   updated_at: string;
 }
@@ -276,6 +278,9 @@ export interface CreateWorkRequest {
 export interface UpdateWorkRequest {
   title: string;
   author: string;
+}
+export interface SetWorkStatusRequest {
+  status: 'want_to_read' | 'reading' | 'finished' | '';
 }
 export interface CoverCandidate {
   source: 'open_library' | 'embedded';

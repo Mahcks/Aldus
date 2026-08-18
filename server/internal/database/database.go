@@ -80,7 +80,10 @@ var acquisitionTrackingSchema string
 //go:embed migrations/023_acquisition_recovery.sql
 var acquisitionRecoverySchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema}
+//go:embed migrations/024_user_work_statuses.sql
+var userWorkStatusesSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema}
 
 func SupportedSchemaVersion() int { return len(migrations) }
 

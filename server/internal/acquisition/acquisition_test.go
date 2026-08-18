@@ -406,6 +406,10 @@ func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 	if err := db.QueryRow(`SELECT fulfillment_state,COALESCE(work_id,'') FROM acquisition_requests WHERE id='request'`).Scan(&state, &workID); err != nil || state != "available" || workID != "work" {
 		t.Fatalf("after acceptance state=%q work=%q err=%v", state, workID, err)
 	}
+	var readingStatus string
+	if err := db.QueryRow(`SELECT status FROM user_work_statuses WHERE user_id='admin' AND work_id='work'`).Scan(&readingStatus); err != nil || readingStatus != "want_to_read" {
+		t.Fatalf("acquired work status=%q err=%v", readingStatus, err)
+	}
 }
 
 func TestFulfillmentRejectsAmbiguousAndIgnoredImportProposals(t *testing.T) {

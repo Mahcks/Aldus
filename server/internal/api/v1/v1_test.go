@@ -63,7 +63,7 @@ func TestRouteContract(t *testing.T) {
 		"DELETE /libraries/{libraryID}", "DELETE /libraries/{libraryID}/members/{userID}", "DELETE /representations/{representationID}", "DELETE /works/{workID}", "DELETE /works/{workID}/cover",
 		"PATCH /libraries/{libraryID}", "PATCH /representations/{representationID}", "PATCH /users/{userID}", "PATCH /works/{workID}",
 		"POST /alignment-jobs", "POST /alignment-jobs/{jobID}/cancel", "POST /alignments/{alignmentID}/locators/audio", "POST /alignments/{alignmentID}/locators/epub", "POST /alignments/{alignmentID}/resolve/audio", "POST /alignments/{alignmentID}/resolve/epub", "POST /auth/login", "POST /auth/logout", "POST /libraries", "POST /libraries/{libraryID}/representations/{representationID}/media", "POST /libraries/{libraryID}/works", "POST /setup", "POST /users", "POST /works/{workID}/activity", "POST /works/{workID}/representations",
-		"PUT /activity/{sessionID}", "PUT /alignments/{alignmentID}/progress", "PUT /libraries/{libraryID}/members/{userID}", "PUT /representations/{representationID}/state", "PUT /works/{workID}/cover", "PUT /works/{workID}/preference", "PUT /works/{workID}/progress",
+		"PUT /activity/{sessionID}", "PUT /alignments/{alignmentID}/progress", "PUT /libraries/{libraryID}/members/{userID}", "PUT /representations/{representationID}/state", "PUT /works/{workID}/cover", "PUT /works/{workID}/preference", "PUT /works/{workID}/progress", "PUT /works/{workID}/status",
 	}
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
 	want = append(want, "GET /media/{mediaID}/chapters")

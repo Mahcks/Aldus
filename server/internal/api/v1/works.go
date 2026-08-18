@@ -14,6 +14,7 @@ func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.S
 	router.Get("/libraries/{libraryID}/works", listWorks(store))
 	router.Post("/libraries/{libraryID}/works", createWork(store))
 	router.Get("/works/{workID}", getWork(store))
+	router.Put("/works/{workID}/status", setWorkStatus(store))
 	router.Get("/works/{workID}/covers/search", searchCovers(store, media))
 	router.Get("/works/{workID}/covers", listCovers(store, media))
 	router.Put("/works/{workID}/cover", selectCover(store))
@@ -102,7 +103,7 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		limit, offset := pageParams(r)
 		values, hasMore, err := s.BrowseWorks(r.Context(), actor(r), catalog.BrowseOptions{
 			LibraryID: r.URL.Query().Get("library_id"), Query: r.URL.Query().Get("q"),
-			Sort: r.URL.Query().Get("sort"), Availability: r.URL.Query().Get("availability"),
+			Sort: r.URL.Query().Get("sort"), Availability: r.URL.Query().Get("availability"), Status: r.URL.Query().Get("status"),
 			Limit: limit, Offset: offset,
 		})
 		if err != nil {
@@ -111,9 +112,19 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		}
 		items := make([]contracts.WorkSummary, len(values))
 		for i, value := range values {
-			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, LibraryRole: value.LibraryRole, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, CoverFit: value.CoverFit, CoverFocalX: value.CoverFocalX, CoverFocalY: value.CoverFocalY, GeneratedCoverStyle: value.GeneratedCoverStyle, GeneratedCoverTone: value.GeneratedCoverTone, GeneratedCoverLayout: value.GeneratedCoverLayout, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, LibraryRole: value.LibraryRole, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, CoverFit: value.CoverFit, CoverFocalX: value.CoverFocalX, CoverFocalY: value.CoverFocalY, GeneratedCoverStyle: value.GeneratedCoverStyle, GeneratedCoverTone: value.GeneratedCoverTone, GeneratedCoverLayout: value.GeneratedCoverLayout, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, ReadingStatus: value.ReadingStatus, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 		}
 		writeJSON(w, http.StatusOK, contracts.WorkBrowsePage{Items: items, Offset: offset, HasMore: hasMore})
+	}
+}
+
+func setWorkStatus(s *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.SetWorkStatusRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		writeNoContent(w, s.SetWorkStatus(r.Context(), actor(r), chi.URLParam(r, "workID"), body.Status))
 	}
 }
 

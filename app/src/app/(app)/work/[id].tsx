@@ -14,6 +14,11 @@ import {
 import { useAuth } from '../../../features/auth/AuthProvider';
 import { formatDuration } from '../../../features/format';
 import { fadeIn, listItemEnter } from '../../../features/motion';
+import {
+  ReadingStatusDialog,
+  readingStatusLabel,
+  type ReadingStatus,
+} from '../../../features/reading-status';
 import { Text, View } from '../../../features/tw';
 import {
   Button,
@@ -50,6 +55,8 @@ export default function WorkScreen() {
   const [downloaded, setDownloaded] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -149,6 +156,21 @@ export default function WorkScreen() {
 
   function openManage() {
     router.push(`/work/${id}/manage?libraryId=${libraryId}&role=${role}`);
+  }
+
+  async function changeReadingStatus(status: ReadingStatus) {
+    if (!id || !work || statusBusy || offline) return;
+    setStatusBusy(true);
+    setError('');
+    try {
+      await api.setWorkStatus(id, { status });
+      setWork({ ...work, reading_status: status });
+      setStatusOpen(false);
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setStatusBusy(false);
+    }
   }
 
   async function toggleOfflineDownload() {
@@ -273,6 +295,13 @@ export default function WorkScreen() {
                 onPress={() => consume('read')}
               />
               <Button
+                label={readingStatusLabel(work.reading_status)}
+                kind="secondary"
+                selected={Boolean(work.reading_status)}
+                disabled={offline}
+                onPress={() => setStatusOpen(true)}
+              />
+              <Button
                 label={hasProgress ? 'Continue listening' : 'Listen'}
                 icon="listen"
                 disabled={!selectedAudio}
@@ -289,6 +318,9 @@ export default function WorkScreen() {
                 />
               ) : null}
             </Row>
+            {offline ? (
+              <Text className="text-sm text-muted">Reading status can be changed when online.</Text>
+            ) : null}
             {Platform.OS !== 'web' && downloaded ? (
               <Text className="text-sm text-positive">Available offline on this device</Text>
             ) : null}
@@ -334,6 +366,13 @@ export default function WorkScreen() {
           </View>
         </Section>
       ) : null}
+      <ReadingStatusDialog
+        work={work}
+        visible={statusOpen}
+        busy={statusBusy}
+        onChange={(status) => void changeReadingStatus(status)}
+        onClose={() => setStatusOpen(false)}
+      />
     </Page>
   );
 }

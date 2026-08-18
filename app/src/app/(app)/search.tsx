@@ -16,6 +16,11 @@ import {
 import { coverPresentation, WorkRow } from '../../features/bookshelf';
 import { AcquisitionGroupRow, BrowseControls, DestinationPicker } from '../../features/browse';
 import { listItemEnter } from '../../features/motion';
+import {
+  ReadingStatusDialog,
+  readingStatusLabel,
+  type ReadingStatus,
+} from '../../features/reading-status';
 import { Text, View } from '../../features/tw';
 import {
   Button,
@@ -55,6 +60,8 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<WorkSummary>();
+  const [statusBusy, setStatusBusy] = useState(false);
 
   const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [destination, setDestination] = useState('');
@@ -249,6 +256,24 @@ export default function SearchScreen() {
     setQuery(value);
   }
 
+  async function changeReadingStatus(status: ReadingStatus) {
+    if (!statusTarget || statusBusy) return;
+    setStatusBusy(true);
+    try {
+      await api.setWorkStatus(statusTarget.id, { status });
+      setWorks((current) =>
+        current.map((work) =>
+          work.id === statusTarget.id ? { ...work, reading_status: status } : work,
+        ),
+      );
+      setStatusTarget(undefined);
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
   const librarySourceCounts = destinations.reduce<Record<string, number>>((counts, entry) => {
     counts[entry.library_id] = (counts[entry.library_id] ?? 0) + 1;
     return counts;
@@ -429,6 +454,15 @@ export default function SearchScreen() {
                 context={work.library_name}
                 availability={work}
                 progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
+                action={
+                  <Button
+                    label={readingStatusLabel(work.reading_status)}
+                    kind="quiet"
+                    selected={Boolean(work.reading_status)}
+                    disabled={offline}
+                    onPress={() => setStatusTarget(work)}
+                  />
+                }
                 onPress={() =>
                   router.push(
                     `/work/${work.id}?libraryId=${work.library_id}&role=${work.library_role ?? ''}`,
@@ -639,6 +673,13 @@ export default function SearchScreen() {
         busy={Boolean(cancelTarget && requestAction === cancelTarget.id)}
         onClose={() => setCancelTarget(null)}
         onConfirm={() => void confirmCancel()}
+      />
+      <ReadingStatusDialog
+        work={statusTarget}
+        visible={Boolean(statusTarget)}
+        busy={statusBusy}
+        onChange={(status) => void changeReadingStatus(status)}
+        onClose={() => setStatusTarget(undefined)}
       />
     </Page>
   );

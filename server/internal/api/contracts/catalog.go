@@ -41,6 +41,7 @@ type WorkDetail struct {
 	ReadingSeconds    int       `json:"reading_seconds"`
 	ListeningSeconds  int       `json:"listening_seconds"`
 	LastMode          string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
+	ReadingStatus     string    `json:"reading_status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`
 }
 type WorkSummary struct {
 	ID                   string    `json:"id"`
@@ -66,6 +67,7 @@ type WorkSummary struct {
 	ReadingSeconds       int       `json:"reading_seconds"`
 	ListeningSeconds     int       `json:"listening_seconds"`
 	LastMode             string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
+	ReadingStatus        string    `json:"reading_status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
@@ -99,6 +101,9 @@ type CreateWorkRequest struct {
 type UpdateWorkRequest struct {
 	Title  string `json:"title"`
 	Author string `json:"author"`
+}
+type SetWorkStatusRequest struct {
+	Status string `json:"status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`
 }
 type CoverCandidate struct {
 	Source           string `json:"source" tstype:"'open_library' | 'embedded'"`

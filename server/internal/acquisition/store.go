@@ -549,6 +549,9 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET work_id=(SELECT accepted_work_id FROM import_groups WHERE id=proposal_id AND library_id=acquisition_requests.library_id),fulfillment_state='available',updated_at=? WHERE fulfillment_state='needs_review' AND proposal_id IS NOT NULL AND EXISTS(SELECT 1 FROM import_groups g JOIN works w ON w.id=g.accepted_work_id AND w.library_id=acquisition_requests.library_id WHERE g.id=proposal_id AND g.library_id=acquisition_requests.library_id AND g.decision='accepted')`, now); err != nil {
 		return fmt.Errorf("reconcile accepted acquisitions: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) SELECT requested_by,work_id,'want_to_read',? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL ON CONFLICT(user_id,work_id) DO NOTHING`, now); err != nil {
+		return fmt.Errorf("save acquired work status: %w", err)
+	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_pairs SET work_id=(SELECT work_id FROM acquisition_requests WHERE pair_id=acquisition_pairs.id AND work_id IS NOT NULL LIMIT 1),updated_at=? WHERE work_id IS NULL AND EXISTS(SELECT 1 FROM acquisition_requests WHERE pair_id=acquisition_pairs.id AND work_id IS NOT NULL)`, now); err != nil {
 		return fmt.Errorf("reconcile acquisition pair work: %w", err)
 	}

@@ -1,4 +1,4 @@
-import { useState, type PropsWithChildren } from 'react';
+import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { apiBaseURL } from '../lib/api-base';
 import { AppIcon, type AppIconName } from './icons';
@@ -304,7 +304,8 @@ export function WorkRow({
   progress,
   context,
   onPress,
-}: WorkPresentationProps) {
+  action,
+}: WorkPresentationProps & { action?: ReactNode }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
 
@@ -317,41 +318,44 @@ export function WorkRow({
   const progressBorderClass = progress ? 'border-l-2 border-l-accent pl-3' : 'pl-3.5';
 
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
-      onBlur={handleBlur}
-      onFocus={handleFocus}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      onPress={onPress}
-      className={`flex-row items-center gap-4 rounded-control border-b border-line py-3 ${progressBorderClass} ${stateClass}`}
-    >
-      <View className="w-14">
-        <BookCover
-          title={title}
-          author={author}
-          coverURL={coverURL}
-          size="mini"
-          {...coverPresentation}
-        />
-      </View>
-      <View className="min-w-0 flex-1 gap-1">
-        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
-          {title}
-        </Text>
-        <Text numberOfLines={1} className="text-sm text-muted">
-          {author || 'Unknown author'}
-        </Text>
-        {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
-        {progress ? (
-          <Text numberOfLines={1} className="text-xs font-bold text-accent">
-            {progress}
+    <View className="flex-row items-center gap-2 border-b border-line">
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
+        onBlur={handleBlur}
+        onFocus={handleFocus}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={onPress}
+        className={`min-w-0 flex-1 flex-row items-center gap-4 rounded-control py-3 ${progressBorderClass} ${stateClass}`}
+      >
+        <View className="w-14">
+          <BookCover
+            title={title}
+            author={author}
+            coverURL={coverURL}
+            size="mini"
+            {...coverPresentation}
+          />
+        </View>
+        <View className="min-w-0 flex-1 gap-1">
+          <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+            {title}
           </Text>
-        ) : null}
-        {availability ? <AvailabilityIcons value={availability} /> : null}
-      </View>
-    </Pressable>
+          <Text numberOfLines={1} className="text-sm text-muted">
+            {author || 'Unknown author'}
+          </Text>
+          {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
+          {progress ? (
+            <Text numberOfLines={1} className="text-xs font-bold text-accent">
+              {progress}
+            </Text>
+          ) : null}
+          {availability ? <AvailabilityIcons value={availability} /> : null}
+        </View>
+      </Pressable>
+      {action}
+    </View>
   );
 }
 

@@ -1068,9 +1068,11 @@ export default function ConsumeWorkScreen() {
   return (
     <View className="flex-1 bg-canvas">
       <View
-        className={`min-h-[62px] flex-row items-center gap-2 border-b border-line bg-paper pb-2 ${compactNative ? '' : 'px-3'}`}
+        className={`flex-row items-center gap-2 border-b border-line bg-paper ${
+          compactNative ? 'min-h-11' : 'min-h-[62px] px-3 pb-2'
+        }`}
         style={{
-          paddingTop: insets.top + 8,
+          paddingTop: compactNative ? insets.top : insets.top + 8,
           paddingLeft: compactNative ? insets.left + 12 : undefined,
           paddingRight: compactNative ? insets.right + 12 : undefined,
         }}

@@ -67,27 +67,35 @@ export default function HomeScreen() {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [continuing, setContinuing] = useState<WorkSummary[]>([]);
   const [recent, setRecent] = useState<WorkSummary[]>([]);
+  const [wantToRead, setWantToRead] = useState<WorkSummary[]>([]);
+  const [finished, setFinished] = useState<WorkSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
 
   const hasContinuing = continuing.length > 0;
-  const hasAnyWorks = hasContinuing || recent.length > 0;
+  const hasAnyWorks = hasContinuing || recent.length > 0 || wantToRead.length > 0;
 
   useEffect(() => {
     let canceled = false;
     async function load() {
       try {
-        const [nextLibraries, progressPage, recentPage] = await Promise.all([
-          api.libraries(),
-          api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 6 }),
-          api.browseWorks({ sort: 'recent', limit: 12 }),
-        ]);
+        const [nextLibraries, progressPage, recentPage, wantPage, finishedPage] = await Promise.all(
+          [
+            api.libraries(),
+            api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 6 }),
+            api.browseWorks({ sort: 'recent', limit: 12 }),
+            api.browseWorks({ status: 'want_to_read', sort: 'updated', limit: 12 }),
+            api.browseWorks({ status: 'finished', sort: 'updated', limit: 12 }),
+          ],
+        );
         if (!canceled) {
           await rememberOfflineLibraries(nextLibraries).catch(() => {});
           setLibraries(nextLibraries);
           setContinuing(progressPage.items);
           setRecent(recentPage.items);
+          setWantToRead(wantPage.items);
+          setFinished(finishedPage.items);
         }
       } catch (value) {
         if (!(value instanceof APIError && value.status === 0)) {
@@ -102,6 +110,8 @@ export default function HomeScreen() {
           setLibraries(savedLibraries);
           setContinuing(savedWorks.filter((work) => work.in_progress));
           setRecent(savedWorks);
+          setWantToRead(savedWorks.filter((work) => work.reading_status === 'want_to_read'));
+          setFinished(savedWorks.filter((work) => work.reading_status === 'finished'));
           setOffline(true);
           if (!savedWorks.length) setError(errorMessage(value));
         }
@@ -187,6 +197,13 @@ export default function HomeScreen() {
             </Section>
           </View>
         ) : null}
+        {wantToRead.length ? (
+          <View className="mt-9">
+            <Section title="Want to read">
+              <RecentShelf works={wantToRead} onOpen={openWork} />
+            </Section>
+          </View>
+        ) : null}
         <View className={hasContinuing ? 'mt-9' : 'mt-5'}>
           <Section
             title={hasContinuing ? 'Recently added' : 'Start reading'}
@@ -216,6 +233,13 @@ export default function HomeScreen() {
             )}
           </Section>
         </View>
+        {finished.length ? (
+          <View className="mt-9">
+            <Section title="Finished">
+              <RecentShelf works={finished} onOpen={openWork} />
+            </Section>
+          </View>
+        ) : null}
         <View className="mt-9">
           <Section title="Libraries">
             <View className="flex-row flex-wrap gap-3">

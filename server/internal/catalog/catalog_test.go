@@ -38,6 +38,49 @@ func createUser(t *testing.T, accounts *auth.Store, admin auth.User, name string
 	return user
 }
 
+func TestWorkStatusesArePrivateAndFilterable(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	reader := createUser(t, accounts, admin, "status-reader")
+	outsider := createUser(t, accounts, admin, "status-outsider")
+	library, err := store.CreateLibrary(ctx, admin, "Status library")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	work, err := store.CreateWork(ctx, admin, library.ID, "Status book", "Author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetWorkStatus(ctx, reader, work.ID, "want_to_read"); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := store.WorkDetail(ctx, reader, work.ID)
+	if err != nil || detail.ReadingStatus != "want_to_read" {
+		t.Fatalf("reader status = %q, %v", detail.ReadingStatus, err)
+	}
+	adminDetail, err := store.WorkDetail(ctx, admin, work.ID)
+	if err != nil || adminDetail.ReadingStatus != "" {
+		t.Fatalf("admin status leaked = %q, %v", adminDetail.ReadingStatus, err)
+	}
+	items, _, err := store.BrowseWorks(ctx, reader, BrowseOptions{Status: "want_to_read"})
+	if err != nil || len(items) != 1 || items[0].ID != work.ID {
+		t.Fatalf("filtered works = %#v, %v", items, err)
+	}
+	if err := store.SetWorkStatus(ctx, outsider, work.ID, "reading"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("outsider status error = %v", err)
+	}
+	if err := store.SetWorkStatus(ctx, reader, work.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Status: "want_to_read"})
+	if err != nil || len(items) != 0 {
+		t.Fatalf("removed status works = %#v, %v", items, err)
+	}
+}
+
 func TestLibrariesRolesAndIsolation(t *testing.T) {
 	ctx := context.Background()
 	store, accounts, admin := testCatalog(t)

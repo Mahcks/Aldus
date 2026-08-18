@@ -37,6 +37,7 @@ import type {
   Session,
   SelectAcquisitionRequest,
   SelectAcquisitionPairRequest,
+  SetWorkStatusRequest,
   SetWorkPreferenceRequest,
   UpdateAcquisitionSettingsRequest,
   SourceEntry,
@@ -240,6 +241,7 @@ export const api = {
       q?: string;
       sort?: string;
       availability?: string;
+      status?: string;
       limit?: number;
       offset?: number;
     } = {},
@@ -249,11 +251,14 @@ export const api = {
     if (options.q) query.set('q', options.q);
     if (options.sort) query.set('sort', options.sort);
     if (options.availability) query.set('availability', options.availability);
+    if (options.status) query.set('status', options.status);
     if (options.limit) query.set('limit', String(options.limit));
     if (options.offset) query.set('offset', String(options.offset));
     return request<WorkBrowsePage>(`/works?${query}`);
   },
   work: (id: string) => request<WorkDetail>(`/works/${id}`),
+  setWorkStatus: (id: string, body: SetWorkStatusRequest) =>
+    request<void>(`/works/${id}/status`, { method: 'PUT', body: JSON.stringify(body) }),
   createWork: (libraryID: string, body: CreateWorkRequest) =>
     request<Work>(`/libraries/${libraryID}/works`, { method: 'POST', body: JSON.stringify(body) }),
   updateWork: (id: string, body: UpdateWorkRequest) =>

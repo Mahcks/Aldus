@@ -159,6 +159,9 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 	if err != nil {
 		return Canonical{}, fmt.Errorf("save progress: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) VALUES(?,?,'reading',?) ON CONFLICT(user_id,work_id) DO UPDATE SET status='reading',updated_at=excluded.updated_at WHERE user_work_statuses.status='want_to_read'`, userID, workID, p.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
+		return Canonical{}, fmt.Errorf("update reading status: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return Canonical{}, fmt.Errorf("commit progress update: %w", err)
 	}

@@ -90,6 +90,7 @@ export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSumm
         reading_seconds: item.work.reading_seconds ?? 0,
         listening_seconds: item.work.listening_seconds ?? 0,
         last_mode: item.work.last_mode,
+        reading_status: item.work.reading_status ?? '',
         progress_updated_at: item.work.progress_updated_at,
       };
     });

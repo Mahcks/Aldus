@@ -22,7 +22,7 @@ func workDTO(v catalog.Work) contracts.Work {
 	return contracts.Work{ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CoverURL: v.CoverURL, CoverFit: v.CoverFit, CoverFocalX: v.CoverFocalX, CoverFocalY: v.CoverFocalY, GeneratedCoverStyle: v.GeneratedCoverStyle, GeneratedCoverTone: v.GeneratedCoverTone, GeneratedCoverLayout: v.GeneratedCoverLayout, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func workDetailDTO(v catalog.WorkDetail) contracts.WorkDetail {
-	return contracts.WorkDetail{Work: workDTO(v.Work), InProgress: v.InProgress, ProgressUpdatedAt: v.ProgressUpdatedAt, CompletionPercent: v.CompletionPercent, ActiveSeconds: v.ActiveSeconds, ReadingSeconds: v.ReadingSeconds, ListeningSeconds: v.ListeningSeconds, LastMode: v.LastMode}
+	return contracts.WorkDetail{Work: workDTO(v.Work), InProgress: v.InProgress, ProgressUpdatedAt: v.ProgressUpdatedAt, CompletionPercent: v.CompletionPercent, ActiveSeconds: v.ActiveSeconds, ReadingSeconds: v.ReadingSeconds, ListeningSeconds: v.ListeningSeconds, LastMode: v.LastMode, ReadingStatus: v.ReadingStatus}
 }
 func representationDTO(v catalog.Representation) contracts.Representation {
 	return contracts.Representation{ID: v.ID, WorkID: v.WorkID, Kind: v.Kind, Label: v.Label, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
