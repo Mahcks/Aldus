@@ -27,10 +27,10 @@ import (
 var ErrActiveScan = errors.New("source scan already active")
 
 type Scan struct {
-	ID, SourceID, State, Error                                                       string
-	FilesVisited, Supported, EPUB, Audio, New, Changed, Unchanged, Missing, Problems int
-	CreatedAt                                                                        time.Time
-	StartedAt, FinishedAt                                                            *time.Time
+	ID, SourceID, State, Error                                                                     string
+	FilesVisited, Supported, EPUB, Audio, New, Changed, Unchanged, Missing, Problems, AutoImported int
+	CreatedAt                                                                                      time.Time
+	StartedAt, FinishedAt                                                                          *time.Time
 }
 
 type Entry struct {
@@ -116,7 +116,7 @@ func (s *Store) Scans(ctx context.Context, actor auth.User, libraryID, sourceID 
 		}
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,source_id,state,files_visited,supported_count,epub_count,audio_count,new_count,changed_count,unchanged_count,missing_count,problem_count,error_summary,created_at,started_at,finished_at FROM source_scans WHERE source_id=? ORDER BY created_at DESC LIMIT 20`, sourceID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,source_id,state,files_visited,supported_count,epub_count,audio_count,new_count,changed_count,unchanged_count,missing_count,problem_count,auto_imported_count,error_summary,created_at,started_at,finished_at FROM source_scans WHERE source_id=? ORDER BY created_at DESC LIMIT 20`, sourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func (s *Store) claimScan(ctx context.Context) (Scan, bool, error) {
 	return Scan{ID: id, SourceID: sourceID, State: "scanning", StartedAt: &now}, true, nil
 }
 
-type summary struct{ files, supported, epub, audio, new, changed, unchanged, missing, problems int }
+type summary struct{ files, supported, epub, audio, new, changed, unchanged, missing, problems, autoImported int }
 
 func (s *Store) runScan(ctx context.Context, job Scan) error {
 	var root string
@@ -316,12 +316,16 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 	if err := s.GenerateProposals(ctx, libraryID); err != nil {
 		return err
 	}
+	sum.autoImported, err = s.autoImportProposals(ctx, libraryID, job.SourceID, job.ID)
+	if err != nil {
+		return err
+	}
 	return s.finishScan(ctx, job.ID, "completed", sum, "")
 }
 
 func (s *Store) finishScan(ctx context.Context, id, state string, v summary, message string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.ExecContext(ctx, `UPDATE source_scans SET state=?,files_visited=?,supported_count=?,epub_count=?,audio_count=?,new_count=?,changed_count=?,unchanged_count=?,missing_count=?,problem_count=?,error_summary=?,finished_at=? WHERE id=?`, state, v.files, v.supported, v.epub, v.audio, v.new, v.changed, v.unchanged, v.missing, v.problems, message, now, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE source_scans SET state=?,files_visited=?,supported_count=?,epub_count=?,audio_count=?,new_count=?,changed_count=?,unchanged_count=?,missing_count=?,problem_count=?,auto_imported_count=?,error_summary=?,finished_at=? WHERE id=?`, state, v.files, v.supported, v.epub, v.audio, v.new, v.changed, v.unchanged, v.missing, v.problems, v.autoImported, message, now, id)
 	return err
 }
 func (s *Store) canScan(ctx context.Context, actor auth.User, libraryID, sourceID string) (bool, error) {
@@ -460,7 +464,10 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 		Publisher   string   `xml:"metadata>publisher"`
 		Date        string   `xml:"metadata>date"`
 		Items       []struct {
-			ID string `xml:"id,attr"`
+			ID         string `xml:"id,attr"`
+			Href       string `xml:"href,attr"`
+			Type       string `xml:"media-type,attr"`
+			Properties string `xml:"properties,attr"`
 		} `xml:"manifest>item"`
 		Refs []struct {
 			ID string `xml:"idref,attr"`
@@ -477,6 +484,7 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 		return nil, errors.New("invalid EPUB package or spine")
 	}
 	out := map[string]any{"title": strings.TrimSpace(pkg.Title), "creators": pkg.Creators, "language": strings.TrimSpace(pkg.Language), "identifiers": pkg.Identifiers, "publisher": strings.TrimSpace(pkg.Publisher), "date": strings.TrimSpace(pkg.Date)}
+	coverID := ""
 	for _, m := range pkg.Meta {
 		key := m.Name
 		if key == "" {
@@ -487,6 +495,19 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 		}
 		if key == "calibre:series_index" || key == "group-position" {
 			out["series_index"] = strings.TrimSpace(first(m.Content, m.Value))
+		}
+		if m.Name == "cover" {
+			coverID = m.Content
+		}
+	}
+	for _, item := range pkg.Items {
+		if item.ID != coverID && !strings.Contains(" "+item.Properties+" ", " cover-image ") {
+			continue
+		}
+		name := filepath.ToSlash(filepath.Clean(filepath.Join(filepath.Dir(container.Rootfiles[0].Path), item.Href)))
+		if files[name] != nil && (item.Type == "image/jpeg" || item.Type == "image/png") {
+			out["has_cover"] = true
+			break
 		}
 	}
 	return out, nil
@@ -545,7 +566,7 @@ func scanScan(row rowScanner) (Scan, error) {
 	var v Scan
 	var created string
 	var started, finished sql.NullString
-	err := row.Scan(&v.ID, &v.SourceID, &v.State, &v.FilesVisited, &v.Supported, &v.EPUB, &v.Audio, &v.New, &v.Changed, &v.Unchanged, &v.Missing, &v.Problems, &v.Error, &created, &started, &finished)
+	err := row.Scan(&v.ID, &v.SourceID, &v.State, &v.FilesVisited, &v.Supported, &v.EPUB, &v.Audio, &v.New, &v.Changed, &v.Unchanged, &v.Missing, &v.Problems, &v.AutoImported, &v.Error, &created, &started, &finished)
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	if started.Valid {
 		t, _ := time.Parse(time.RFC3339Nano, started.String)

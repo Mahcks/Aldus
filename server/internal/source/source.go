@@ -62,7 +62,7 @@ type Store struct {
 
 type LibrarySource struct {
 	ID, LibraryID, Kind, Name, RootPath string
-	Enabled                             bool
+	Enabled, AutoImport                 bool
 	CreatedAt, UpdatedAt                time.Time
 }
 
@@ -99,7 +99,7 @@ func New(db *sql.DB, options Options) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, root string) (LibrarySource, error) {
+func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, root string, autoImport bool) (LibrarySource, error) {
 	if !actor.Admin {
 		return LibrarySource{}, ErrNotFound
 	}
@@ -123,11 +123,11 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 		return LibrarySource{}, err
 	}
 	now := time.Now().UTC()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES(?,?,'local',?,?,1,?,?)`, id, libraryID, name, resolved, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	_, err = s.db.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at) VALUES(?,?,'local',?,?,1,?,?,?)`, id, libraryID, name, resolved, autoImport, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
 	if err != nil {
 		return LibrarySource{}, fmt.Errorf("create source: %w", err)
 	}
-	return LibrarySource{ID: id, LibraryID: libraryID, Kind: "local", Name: name, RootPath: resolved, Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+	return LibrarySource{ID: id, LibraryID: libraryID, Kind: "local", Name: name, RootPath: resolved, Enabled: true, AutoImport: autoImport, CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (s *Store) Roots(actor auth.User) ([]SourceRoot, error) {
@@ -188,7 +188,7 @@ func (s *Store) Directories(actor auth.User, rootID, relative string) (Directory
 }
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]LibrarySource, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.created_at,ls.updated_at FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor')) ORDER BY ls.created_at,ls.id`, actor.Admin, actor.ID, libraryID, actor.Admin)
+	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.auto_import,ls.created_at,ls.updated_at FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor')) ORDER BY ls.created_at,ls.id`, actor.Admin, actor.ID, libraryID, actor.Admin)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +257,7 @@ func (s *Store) EnqueueAcquisitionScan(ctx context.Context, libraryID, sourceID,
 	return scan.ID, nil
 }
 
-func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name, root string, enabled bool) error {
+func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name, root string, enabled, autoImport bool) error {
 	if !actor.Admin {
 		return ErrNotFound
 	}
@@ -269,7 +269,7 @@ func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name
 	if name == "" || len(name) > 200 {
 		return ErrInvalid
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE library_sources SET name=?,root_path=?,enabled=?,updated_at=? WHERE id=? AND library_id=? AND deleted_at IS NULL`, name, resolved, enabled, time.Now().UTC().Format(time.RFC3339Nano), id, libraryID)
+	result, err := s.db.ExecContext(ctx, `UPDATE library_sources SET name=?,root_path=?,enabled=?,auto_import=?,updated_at=? WHERE id=? AND library_id=? AND deleted_at IS NULL`, name, resolved, enabled, autoImport, time.Now().UTC().Format(time.RFC3339Nano), id, libraryID)
 	if err != nil {
 		return err
 	}
@@ -432,7 +432,7 @@ func within(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 func (s *Store) get(ctx context.Context, libraryID, id string) (LibrarySource, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,library_id,kind,name,root_path,enabled,created_at,updated_at FROM library_sources WHERE id=? AND library_id=? AND deleted_at IS NULL`, id, libraryID)
+	row := s.db.QueryRowContext(ctx, `SELECT id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at FROM library_sources WHERE id=? AND library_id=? AND deleted_at IS NULL`, id, libraryID)
 	v, err := scan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LibrarySource{}, ErrNotFound
@@ -444,10 +444,11 @@ type scanner interface{ Scan(...any) error }
 
 func scan(row scanner) (LibrarySource, error) {
 	var v LibrarySource
-	var enabled int
+	var enabled, autoImport int
 	var c, u string
-	err := row.Scan(&v.ID, &v.LibraryID, &v.Kind, &v.Name, &v.RootPath, &enabled, &c, &u)
+	err := row.Scan(&v.ID, &v.LibraryID, &v.Kind, &v.Name, &v.RootPath, &enabled, &autoImport, &c, &u)
 	v.Enabled = enabled == 1
+	v.AutoImport = autoImport == 1
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 	return v, err

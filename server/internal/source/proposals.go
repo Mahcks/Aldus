@@ -231,6 +231,42 @@ func (s *Store) Proposal(ctx context.Context, actor auth.User, libraryID, id str
 	}
 	return Proposal{}, ErrNotFound
 }
+
+func (s *Store) autoImportProposals(ctx context.Context, libraryID, sourceID, scanID string) (int, error) {
+	var enabled bool
+	if err := s.db.QueryRowContext(ctx, `SELECT auto_import FROM library_sources WHERE id=? AND library_id=? AND enabled=1 AND deleted_at IS NULL`, sourceID, libraryID).Scan(&enabled); err != nil || !enabled {
+		if errors.Is(err, sql.ErrNoRows) || err == nil {
+			return 0, nil
+		}
+		return 0, err
+	}
+	proposals, err := s.Proposals(ctx, auth.User{Admin: true}, libraryID)
+	if err != nil {
+		return 0, err
+	}
+	imported := 0
+	for _, proposal := range proposals {
+		if proposal.Confidence != "high" || proposal.State != "proposed" || proposal.ExistingWorkID != "" {
+			continue
+		}
+		var mismatches int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? AND (e.source_id!=? OR e.last_seen_scan_id!=?)`, proposal.ID, sourceID, scanID).Scan(&mismatches); err != nil {
+			return imported, err
+		}
+		if mismatches != 0 {
+			continue
+		}
+		items := make([]AcceptItem, len(proposal.Items))
+		for i, item := range proposal.Items {
+			items[i] = AcceptItem{SourceEntryID: item.EntryID, Kind: item.Kind, Label: item.Label}
+		}
+		if _, err := s.AcceptProposal(ctx, auth.User{Admin: true}, libraryID, proposal.ID, AcceptRequest{ExpectedRevision: proposal.Revision, Title: proposal.Title, Author: proposal.Author, Items: items}); err != nil {
+			return imported, err
+		}
+		imported++
+	}
+	return imported, nil
+}
 func (s *Store) proposalItems(ctx context.Context, id string) ([]ProposalItem, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT i.source_entry_id,e.relative_path,i.representation_kind,i.proposed_label,e.sha256,COALESCE(i.duplicate_of_entry_id,''),i.evidence_json FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? ORDER BY i.representation_kind,e.relative_path,e.id`, id)
 	if err != nil {

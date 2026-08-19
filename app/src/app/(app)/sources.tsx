@@ -146,7 +146,7 @@ export default function SourcesAdministration() {
     setEditingSource(source);
   }
 
-  async function submitSource(payload: { name: string; rootPath: string }) {
+  async function submitSource(payload: { name: string; rootPath: string; autoImport: boolean }) {
     if (!selectedLibraryID) return;
     setBusy(true);
     try {
@@ -154,6 +154,7 @@ export default function SourcesAdministration() {
         const created = await api.createSource(selectedLibraryID, {
           name: payload.name,
           root_path: payload.rootPath,
+          auto_import: payload.autoImport,
         });
         setEditingSource(null);
         await loadAdministration();
@@ -171,6 +172,7 @@ export default function SourcesAdministration() {
           name: payload.name,
           root_path: payload.rootPath,
           enabled: editingSource.enabled,
+          auto_import: payload.autoImport,
         });
         setEditingSource(null);
         await loadAdministration();
@@ -187,6 +189,7 @@ export default function SourcesAdministration() {
         name: source.name,
         root_path: source.root_path,
         enabled: !source.enabled,
+        auto_import: source.auto_import,
       });
       await loadAdministration();
     } catch (value) {

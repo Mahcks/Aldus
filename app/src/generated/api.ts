@@ -395,17 +395,20 @@ export interface LibrarySource {
   name: string;
   root_path: string;
   enabled: boolean;
+  auto_import: boolean;
   created_at: string;
   updated_at: string;
 }
 export interface CreateLibrarySourceRequest {
   name: string;
   root_path: string;
+  auto_import: boolean;
 }
 export interface UpdateLibrarySourceRequest {
   name: string;
   root_path: string;
   enabled: boolean;
+  auto_import: boolean;
 }
 export interface SourceScan {
   id: string;
@@ -421,6 +424,7 @@ export interface SourceScan {
   unchanged: number /* int */;
   missing: number /* int */;
   problems: number /* int */;
+  auto_imported: number /* int */;
   created_at: string;
   started_at?: string;
   finished_at?: string;

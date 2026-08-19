@@ -97,7 +97,7 @@ func TestReferencedMediaDownloadSupportsRangesAndFailsWhenChanged(t *testing.T) 
 	sum := sha256.Sum256(bytes)
 	hash := hex.EncodeToString(sum[:])
 	resolver, _ := source.New(db, source.Options{AllowedRoots: []string{allowed}, ManagedRoot: managed})
-	saved, err := resolver.Create(ctx, session.User, library.ID, "Books", root)
+	saved, err := resolver.Create(ctx, session.User, library.ID, "Books", root, false)
 	if err != nil {
 		t.Fatal(err)
 	}

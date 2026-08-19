@@ -17,23 +17,26 @@ type SourceDirectoryListing struct {
 }
 
 type LibrarySource struct {
-	ID        string    `json:"id"`
-	LibraryID string    `json:"library_id"`
-	Kind      string    `json:"kind"`
-	Name      string    `json:"name"`
-	RootPath  string    `json:"root_path"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+	LibraryID  string    `json:"library_id"`
+	Kind       string    `json:"kind"`
+	Name       string    `json:"name"`
+	RootPath   string    `json:"root_path"`
+	Enabled    bool      `json:"enabled"`
+	AutoImport bool      `json:"auto_import"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 type CreateLibrarySourceRequest struct {
-	Name     string `json:"name"`
-	RootPath string `json:"root_path"`
+	Name       string `json:"name"`
+	RootPath   string `json:"root_path"`
+	AutoImport bool   `json:"auto_import"`
 }
 type UpdateLibrarySourceRequest struct {
-	Name     string `json:"name"`
-	RootPath string `json:"root_path"`
-	Enabled  bool   `json:"enabled"`
+	Name       string `json:"name"`
+	RootPath   string `json:"root_path"`
+	Enabled    bool   `json:"enabled"`
+	AutoImport bool   `json:"auto_import"`
 }
 type SourceScan struct {
 	ID           string     `json:"id"`
@@ -49,6 +52,7 @@ type SourceScan struct {
 	Unchanged    int        `json:"unchanged"`
 	Missing      int        `json:"missing"`
 	Problems     int        `json:"problems"`
+	AutoImported int        `json:"auto_imported"`
 	CreatedAt    time.Time  `json:"created_at"`
 	StartedAt    *time.Time `json:"started_at,omitempty"`
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`

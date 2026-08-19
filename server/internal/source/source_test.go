@@ -46,28 +46,28 @@ func TestSourcesAndReferencedMediaStayInsideAllowedRoots(t *testing.T) {
 	}
 	admin := auth.User{ID: "admin", Admin: true}
 	reader := auth.User{ID: "reader"}
-	if _, err := store.Create(ctx, reader, "library", "Books", root); err != ErrNotFound {
+	if _, err := store.Create(ctx, reader, "library", "Books", root, false); err != ErrNotFound {
 		t.Fatalf("reader create = %v", err)
 	}
 	for _, unsafe := range []string{allowed + "-sibling", filepath.Join(root, "..", ".."), managed} {
-		if _, err := store.Create(ctx, admin, "library", "Unsafe", unsafe); !errors.Is(err, ErrInvalid) {
+		if _, err := store.Create(ctx, admin, "library", "Unsafe", unsafe, false); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("create %q = %v", unsafe, err)
 		}
 	}
-	if _, err := store.Create(ctx, admin, "library", "Outside", allowed+"-sibling"); validationCode(err) != "outside_allowed_roots" {
+	if _, err := store.Create(ctx, admin, "library", "Outside", allowed+"-sibling", false); validationCode(err) != "outside_allowed_roots" {
 		t.Fatalf("outside root code = %q, %v", validationCode(err), err)
 	}
-	if _, err := store.Create(ctx, admin, "library", "Managed", managed); validationCode(err) != "overlaps_aldus_storage" {
+	if _, err := store.Create(ctx, admin, "library", "Managed", managed, false); validationCode(err) != "overlaps_aldus_storage" {
 		t.Fatalf("managed overlap code = %q, %v", validationCode(err), err)
 	}
 	symlink := filepath.Join(allowed, "linked")
 	if err := os.Symlink(root, symlink); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(ctx, admin, "library", "Linked", symlink); !errors.Is(err, ErrInvalid) {
+	if _, err := store.Create(ctx, admin, "library", "Linked", symlink, false); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("symlink root = %v", err)
 	}
-	source, err := store.Create(ctx, admin, "library", "Books", root)
+	source, err := store.Create(ctx, admin, "library", "Books", root, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestSourcesAndReferencedMediaStayInsideAllowedRoots(t *testing.T) {
 	if _, err := store.OpenMedia(ctx, "media", true); err != ErrUnavailable {
 		t.Fatalf("changed media = %v", err)
 	}
-	if err := store.Update(ctx, admin, "library", source.ID, source.Name, source.RootPath, false); err != nil {
+	if err := store.Update(ctx, admin, "library", source.ID, source.Name, source.RootPath, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.OpenMedia(ctx, "media", false); err != ErrUnavailable {

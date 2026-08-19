@@ -50,6 +50,10 @@ export function SourceCard({
         <Text className="text-sm text-muted">Not yet scanned</Text>
       )}
 
+      {source.auto_import ? (
+        <Text className="text-sm text-muted">Clear matches import automatically.</Text>
+      ) : null}
+
       {admin && source.root_path ? (
         <TechnicalDetails rows={[{ label: 'Server path', value: source.root_path }]} />
       ) : null}
@@ -121,6 +125,7 @@ function ScanSummary({ scan }: { scan: SourceScan }) {
         <Count label="Unchanged" value={scan.unchanged} />
         <Count label="Missing" value={scan.missing} />
         <Count label="Problems" value={scan.problems} danger={scan.problems > 0} />
+        {scan.auto_imported > 0 ? <Count label="Auto-imported" value={scan.auto_imported} /> : null}
       </View>
       {scan.error ? <Notice danger>{scan.error}</Notice> : null}
     </View>

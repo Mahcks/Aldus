@@ -156,7 +156,7 @@ func listSourceEntries(s *source.Store) http.HandlerFunc {
 	}
 }
 func scanDTO(v source.Scan) contracts.SourceScan {
-	return contracts.SourceScan{ID: v.ID, SourceID: v.SourceID, State: v.State, Error: v.Error, FilesVisited: v.FilesVisited, Supported: v.Supported, EPUB: v.EPUB, Audio: v.Audio, New: v.New, Changed: v.Changed, Unchanged: v.Unchanged, Missing: v.Missing, Problems: v.Problems, CreatedAt: v.CreatedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt}
+	return contracts.SourceScan{ID: v.ID, SourceID: v.SourceID, State: v.State, Error: v.Error, FilesVisited: v.FilesVisited, Supported: v.Supported, EPUB: v.EPUB, Audio: v.Audio, New: v.New, Changed: v.Changed, Unchanged: v.Unchanged, Missing: v.Missing, Problems: v.Problems, AutoImported: v.AutoImported, CreatedAt: v.CreatedAt, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt}
 }
 func entryDTO(v source.Entry) contracts.SourceEntry {
 	var metadata, pathHints map[string]any
@@ -184,7 +184,7 @@ func createSource(s *source.Store) http.HandlerFunc {
 		if !decode(w, r, &b) {
 			return
 		}
-		v, err := s.Create(r.Context(), actor(r), chi.URLParam(r, "libraryID"), b.Name, b.RootPath)
+		v, err := s.Create(r.Context(), actor(r), chi.URLParam(r, "libraryID"), b.Name, b.RootPath, b.AutoImport)
 		if err != nil {
 			writeSourceError(w, err)
 			return
@@ -208,7 +208,7 @@ func updateSource(s *source.Store) http.HandlerFunc {
 		if !decode(w, r, &b) {
 			return
 		}
-		err := s.Update(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "sourceID"), b.Name, b.RootPath, b.Enabled)
+		err := s.Update(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "sourceID"), b.Name, b.RootPath, b.Enabled, b.AutoImport)
 		if err != nil {
 			writeSourceError(w, err)
 			return
@@ -227,7 +227,7 @@ func deleteSource(s *source.Store) http.HandlerFunc {
 	}
 }
 func sourceDTO(v source.LibrarySource) contracts.LibrarySource {
-	return contracts.LibrarySource{ID: v.ID, LibraryID: v.LibraryID, Kind: v.Kind, Name: v.Name, RootPath: v.RootPath, Enabled: v.Enabled, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.LibrarySource{ID: v.ID, LibraryID: v.LibraryID, Kind: v.Kind, Name: v.Name, RootPath: v.RootPath, Enabled: v.Enabled, AutoImport: v.AutoImport, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func writeSourceError(w http.ResponseWriter, err error) {
 	var validation *source.ValidationError

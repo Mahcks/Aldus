@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -72,6 +73,7 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		}
 	}
 	seen := map[string]string{}
+	coverMediaID := ""
 	for _, item := range request.Items {
 		kind := item.Kind
 		if kind == "audiobook" {
@@ -80,9 +82,9 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		if kind != "epub" && kind != "audio" {
 			return "", ErrInvalid
 		}
-		var sourceID, path, hash, entryKind, state string
+		var sourceID, path, hash, entryKind, state, metadataJSON string
 		var size int64
-		err := tx.QueryRowContext(ctx, `SELECT e.id,e.relative_path,COALESCE(e.sha256,''),e.detected_kind,e.state,e.size_bytes FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? AND e.id=?`, proposalID, item.SourceEntryID).Scan(&sourceID, &path, &hash, &entryKind, &state, &size)
+		err := tx.QueryRowContext(ctx, `SELECT e.id,e.relative_path,COALESCE(e.sha256,''),e.detected_kind,e.state,e.size_bytes,e.metadata_json FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? AND e.id=?`, proposalID, item.SourceEntryID).Scan(&sourceID, &path, &hash, &entryKind, &state, &size, &metadataJSON)
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrInvalid
 		}
@@ -141,6 +143,21 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 			return "", err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO media_locations(media_id,source_entry_id,created_at) VALUES(?,?,?)`, mediaID, sourceID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return "", err
+		}
+		var metadata map[string]any
+		_ = json.Unmarshal([]byte(metadataJSON), &metadata)
+		if coverMediaID == "" && metadata["has_cover"] == true {
+			coverMediaID = mediaID
+		}
+	}
+	if coverMediaID != "" {
+		coverID, _ := randomID()
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) VALUES(?,?,'embedded',?,?,?) ON CONFLICT(work_id,source,source_id) DO NOTHING`, coverID, workID, coverMediaID, "/api/media/"+coverMediaID+"/cover", now); err != nil {
+			return "", err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE works SET selected_cover_id=(SELECT id FROM work_covers WHERE work_id=? AND source='embedded' AND source_id=?),updated_at=? WHERE id=? AND selected_cover_id IS NULL`, workID, coverMediaID, now, workID); err != nil {
 			return "", err
 		}
 	}

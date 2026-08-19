@@ -3,7 +3,7 @@ import type { LibrarySource, SourceDirectoryListing, SourceRoot } from '../../ge
 import { childDirectory, deriveSourceName, parentDirectory } from '../source-administration';
 import { findRootForPath } from './helpers';
 import { AppIcon } from '../icons';
-import { Button, Dialog, Field, Notice, Row, colors } from '../ui';
+import { Button, Checkbox, Dialog, Field, Notice, Row, colors } from '../ui';
 import { Pressable, ScrollView, Text, View } from '../tw';
 import { api, errorMessage } from '../../lib/api';
 
@@ -13,7 +13,7 @@ type Props = {
   source?: LibrarySource;
   busy: boolean;
   onClose: () => void;
-  onSubmit: (payload: { name: string; rootPath: string }) => Promise<void>;
+  onSubmit: (payload: { name: string; rootPath: string; autoImport: boolean }) => Promise<void>;
 };
 
 /**
@@ -31,6 +31,7 @@ export function AddSourceDialog({ visible, mode, source, busy, onClose, onSubmit
   const [directoryError, setDirectoryError] = useState('');
   const [name, setName] = useState('');
   const [nameEdited, setNameEdited] = useState(false);
+  const [autoImport, setAutoImport] = useState(false);
   const [showSetupDetails, setShowSetupDetails] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const autoSelectedRef = useRef(false);
@@ -79,7 +80,7 @@ export function AddSourceDialog({ visible, mode, source, busy, onClose, onSubmit
     if (!directory || !name.trim()) return;
     setSubmitError('');
     try {
-      await onSubmit({ name: name.trim(), rootPath: directory.selected_path });
+      await onSubmit({ name: name.trim(), rootPath: directory.selected_path, autoImport });
     } catch (value) {
       setSubmitError(errorMessage(value));
     }
@@ -100,6 +101,7 @@ export function AddSourceDialog({ visible, mode, source, busy, onClose, onSubmit
     setShowSetupDetails(false);
     setName(mode === 'edit' ? (source?.name ?? '') : '');
     setNameEdited(mode === 'edit');
+    setAutoImport(mode === 'edit' ? Boolean(source?.auto_import) : false);
     void loadRoots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -160,7 +162,20 @@ export function AddSourceDialog({ visible, mode, source, busy, onClose, onSubmit
         )}
 
         {directory ? (
-          <Field label="Source name" value={name} onChangeText={handleNameChange} />
+          <View className="gap-4">
+            <Field label="Source name" value={name} onChangeText={handleNameChange} />
+            <View className="gap-1">
+              <Checkbox
+                checked={autoImport}
+                onPress={() => setAutoImport((current) => !current)}
+                label="Import clear matches automatically"
+              />
+              <Text className="pl-8 text-sm text-muted">
+                Books and audiobooks with clear metadata skip Review. Anything uncertain still waits
+                for you.
+              </Text>
+            </View>
+          </View>
         ) : null}
 
         {submitError ? <Notice danger>{submitError}</Notice> : null}

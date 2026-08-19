@@ -43,7 +43,7 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := store.Create(ctx, auth.User{ID: "admin", Admin: true}, "library", "Alice", root)
+	saved, err := store.Create(ctx, auth.User{ID: "admin", Admin: true}, "library", "Alice", root, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +72,9 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 		hashes[entry.RelativePath] = entry.SHA256
 		if entry.Kind == "epub" && !strings.Contains(string(entry.Metadata), "Alice's Adventures in Wonderland") {
 			t.Fatalf("EPUB metadata=%s", entry.Metadata)
+		}
+		if entry.Kind == "epub" && !strings.Contains(string(entry.Metadata), `"has_cover":true`) {
+			t.Fatalf("EPUB cover metadata=%s", entry.Metadata)
 		}
 		if entry.Kind == "audio" && !strings.Contains(string(entry.Metadata), "864253") {
 			t.Fatalf("audio metadata=%s", entry.Metadata)
@@ -113,6 +116,10 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	db.QueryRow(`SELECT COUNT(*) FROM media m JOIN representations r ON r.id=m.representation_id WHERE r.work_id=? AND m.storage_kind='referenced'`, workID).Scan(&media)
 	if works != 1 || reps != 2 || media != 2 {
 		t.Fatalf("accepted counts=%d %d %d", works, reps, media)
+	}
+	var coverURL string
+	if err := db.QueryRow(`SELECT c.image_url FROM works w JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.id=?`, workID).Scan(&coverURL); err != nil || !strings.HasSuffix(coverURL, "/cover") {
+		t.Fatalf("selected embedded cover=%q, %v", coverURL, err)
 	}
 	var locations int
 	db.QueryRow(`SELECT COUNT(*) FROM media_locations ml JOIN media m ON m.id=ml.media_id JOIN representations r ON r.id=m.representation_id WHERE r.work_id=?`, workID).Scan(&locations)
@@ -173,6 +180,50 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	var recovered string
 	if err := db.QueryRow(`SELECT state FROM source_scans WHERE id='interrupted'`).Scan(&recovered); err != nil || recovered != "pending" {
 		t.Fatalf("recovered=%q, %v", recovered, err)
+	}
+}
+
+func TestSourceAutomaticallyImportsClearMatch(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','x',1,0,?,?); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library',?,?)`, now, now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	allowed := t.TempDir()
+	root := filepath.Join(allowed, "books")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	copyFile(t, filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice.epub"), filepath.Join(root, "alice.epub"))
+	store, err := New(db, Options{AllowedRoots: []string{allowed}, ManagedRoot: t.TempDir(), MaxBytes: 16 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Create(ctx, auth.User{ID: "admin", Admin: true}, "library", "Alice", root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan := runTestScan(t, store, saved.ID, "auto-scan")
+	if scan.AutoImported != 1 {
+		t.Fatalf("auto imported=%d", scan.AutoImported)
+	}
+	if proposals, err := store.Proposals(ctx, auth.User{ID: "admin", Admin: true}, "library"); err != nil || len(proposals) != 0 {
+		t.Fatalf("remaining proposals=%+v, %v", proposals, err)
+	}
+	var works, selectedCovers int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM works WHERE library_id='library'`).Scan(&works); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM works WHERE library_id='library' AND selected_cover_id IS NOT NULL`).Scan(&selectedCovers); err != nil {
+		t.Fatal(err)
+	}
+	if works != 1 || selectedCovers != 1 {
+		t.Fatalf("works=%d selected covers=%d", works, selectedCovers)
 	}
 }
 
