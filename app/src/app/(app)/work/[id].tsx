@@ -1,8 +1,9 @@
-import type { AlignmentJob, Representation, WorkDetail } from '../../../generated/api';
+import type { AlignmentJob, Media, Representation, WorkDetail } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { useAuth } from '../../../features/auth/AuthProvider';
 import { AvailabilityIcons, BookCover, coverPresentation } from '../../../features/bookshelf';
 import {
   choices,
@@ -11,33 +12,46 @@ import {
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
-import { useAuth } from '../../../features/auth/AuthProvider';
 import { formatDuration } from '../../../features/format';
+import { AppIcon } from '../../../features/icons';
 import { fadeIn, listItemEnter } from '../../../features/motion';
 import {
   ReadingStatusDialog,
   readingStatusLabel,
   type ReadingStatus,
 } from '../../../features/reading-status';
-import { Text, View } from '../../../features/tw';
+import { Pressable, Text, View } from '../../../features/tw';
 import {
   Button,
-  Empty,
-  Loading,
+  colors,
+  ErrorState,
+  IconButton,
+  LoadingState,
   Notice,
   Page,
-  Radio,
-  IconButton,
-  Row,
-  Section,
-  shared,
+  resolvePressStateClass,
+  StatusBadge,
 } from '../../../features/ui';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 import { downloadOfflineWork, offlineWork, removeOfflineWork } from '../../../lib/offline-library';
 
+/** Translates the exact job-matching result from `consumption.ts` into warm, jargon-free copy. Returns nothing when there's no meaningful sync state to explain (a single-format work, or a pairing that was never attempted). */
+function syncNote(label: ReturnType<typeof synchronizationLabel>): string | undefined {
+  switch (label) {
+    case 'Read + Listen available':
+      return 'Read and listen — your place is kept in sync between the two.';
+    case 'Synchronization processing':
+      return 'Preparing synchronized reading and listening for this pair — ready shortly.';
+    case 'Read and Listen available separately':
+      return 'Reading and listening progress are tracked separately for this pairing.';
+    default:
+      return undefined;
+  }
+}
+
 export default function WorkScreen() {
-  const compact = useWindowDimensions().width < 600;
+  const narrow = useWindowDimensions().width < 600;
   const {
     id,
     libraryId,
@@ -50,6 +64,7 @@ export default function WorkScreen() {
   const [hasProgress, setHasProgress] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [offlineUnreachable, setOfflineUnreachable] = useState(false);
   const [epubID, setEPUBID] = useState('');
   const [audioID, setAudioID] = useState('');
   const [downloaded, setDownloaded] = useState(false);
@@ -98,7 +113,12 @@ export default function WorkScreen() {
         setAudioID(saved.audio_id);
         setDownloaded(true);
         setOffline(true);
-      } else setError(errorMessage(value));
+      } else {
+        setOfflineUnreachable(
+          Platform.OS !== 'web' && value instanceof APIError && value.status === 0,
+        );
+        setError(errorMessage(value));
+      }
     } finally {
       setLoading(false);
     }
@@ -110,11 +130,24 @@ export default function WorkScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, libraryId]);
 
-  if (loading) return <Loading label="Loading work…" />;
+  if (loading)
+    return (
+      <Page title="Work" hideHeader>
+        <LoadingState label="Loading this book…" />
+      </Page>
+    );
+
   if (!work)
     return (
-      <Page title="Work">
-        <Notice danger>{error || 'Work unavailable.'}</Notice>
+      <Page title="Work" hideHeader>
+        <ErrorState
+          title={offlineUnreachable ? 'Not downloaded yet' : "Couldn't load this book"}
+          action={<Button label="Go back" kind="secondary" onPress={() => goBackOr('/home')} />}
+        >
+          {offlineUnreachable
+            ? "This book hasn't been downloaded to this device, so it isn't available while you're offline."
+            : error || 'Please try again.'}
+        </ErrorState>
       </Page>
     );
 
@@ -123,7 +156,20 @@ export default function WorkScreen() {
   const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
   const selectedEPUB = epubs.find((item) => item.id === epubID);
   const selectedAudio = audio.find((item) => item.id === audioID);
-  const syncLabel = synchronizationLabel(jobs, epubID, audioID);
+  const note = syncNote(synchronizationLabel(jobs, epubID, audioID));
+
+  const primaryMode: 'read' | 'listen' =
+    work.last_mode === 'listen' && selectedAudio
+      ? 'listen'
+      : work.last_mode === 'read' && selectedEPUB
+        ? 'read'
+        : selectedEPUB
+          ? 'read'
+          : 'listen';
+  const primaryAvailable = primaryMode === 'read' ? Boolean(selectedEPUB) : Boolean(selectedAudio);
+  const secondaryMode: 'read' | 'listen' = primaryMode === 'read' ? 'listen' : 'read';
+  const secondaryAvailable =
+    secondaryMode === 'read' ? Boolean(selectedEPUB) : Boolean(selectedAudio);
 
   function consume(mode: 'read' | 'listen') {
     router.push(`/consume/${id}?mode=${mode}&epub=${epubID}&audio=${audioID}`);
@@ -213,61 +259,72 @@ export default function WorkScreen() {
   }
 
   return (
-    <Page
-      title="Work"
-      back={
+    <Page title="Work" hideHeader>
+      <View className="flex-row items-center justify-between">
         <Button
           label="Library"
           icon="back"
           kind="quiet"
           onPress={() => goBackOr(`/library/${libraryId}`)}
         />
-      }
-      actions={
-        canEdit ? (
-          compact ? (
-            <IconButton icon="settings" label="Manage this work" onPress={openManage} />
-          ) : (
-            <Button
-              label="Manage this work"
+        {canEdit ? (
+          narrow ? (
+            <IconButton
               icon="settings"
-              kind="secondary"
+              label="Manage this work"
+              kind="quiet"
               onPress={openManage}
             />
+          ) : (
+            <Button label="Manage this work" icon="settings" kind="quiet" onPress={openManage} />
           )
-        ) : null
-      }
-    >
-      {offline ? <Notice>Offline · using the download on this device.</Notice> : null}
-      {error ? <Notice danger>{error}</Notice> : null}
+        ) : null}
+      </View>
+
+      {offline ? (
+        <Notice tone="info">
+          You&apos;re offline — showing what&apos;s downloaded on this device.
+        </Notice>
+      ) : null}
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+
       <Animated.View entering={fadeIn}>
-        <View className="flex-row flex-wrap items-center gap-8 border-b border-line py-5 pb-10">
+        <View className="flex-row items-start gap-4 sm:gap-8">
           <BookCover
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
-            compact
+            size={narrow ? 'small' : 'hero'}
             {...coverPresentation(work)}
           />
-          <View className="min-w-[250px] flex-1 items-start gap-3">
+          <View className="min-w-0 flex-1 items-start gap-3">
             <Text
               numberOfLines={3}
-              className={`${compact ? 'text-3xl leading-9' : 'text-4xl leading-[44px]'} max-w-[720px] font-editorial font-extrabold text-ink`}
+              className={`${narrow ? 'text-2xl leading-7' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
             >
               {work.title}
             </Text>
-            <Text numberOfLines={2} className="text-lg text-muted">
+            <Text numberOfLines={2} className="text-base text-muted sm:text-lg">
               {work.author || 'Unknown author'}
             </Text>
-            <AvailabilityIcons
-              value={{
-                readable: Boolean(selectedEPUB),
-                listenable: Boolean(selectedAudio),
-                synchronized: syncLabel === 'Read + Listen available',
-              }}
-            />
+
+            <View className="flex-row flex-wrap items-center gap-3">
+              <AvailabilityIcons
+                value={{
+                  readable: Boolean(selectedEPUB),
+                  listenable: Boolean(selectedAudio),
+                  synchronized: Boolean(readyJob(jobs, epubID, audioID)),
+                }}
+              />
+              <ReadingStatusTrigger
+                status={work.reading_status}
+                disabled={offline}
+                onPress={() => setStatusOpen(true)}
+              />
+            </View>
+
             {work.in_progress ? (
-              <View className="w-full max-w-md gap-1.5 py-1">
+              <View className="w-full max-w-md gap-1.5 py-0.5">
                 <View
                   className="h-1.5 overflow-hidden rounded-full bg-line"
                   accessibilityRole="progressbar"
@@ -286,86 +343,66 @@ export default function WorkScreen() {
                 </Text>
               </View>
             ) : null}
-            <Row>
-              <Button
-                label={hasProgress ? 'Continue reading' : 'Read'}
-                icon="read"
-                kind="primary"
-                disabled={!selectedEPUB}
-                onPress={() => consume('read')}
-              />
-              <Button
-                label={readingStatusLabel(work.reading_status)}
-                kind="secondary"
-                selected={Boolean(work.reading_status)}
-                disabled={offline}
-                onPress={() => setStatusOpen(true)}
-              />
-              <Button
-                label={hasProgress ? 'Continue listening' : 'Listen'}
-                icon="listen"
-                disabled={!selectedAudio}
-                onPress={() => consume('listen')}
-              />
-              {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
+
+            {primaryAvailable ? (
+              <View className="flex-row flex-wrap items-center gap-2 pt-1">
                 <Button
-                  label={downloaded ? 'Remove download' : 'Download'}
-                  icon={downloaded ? 'delete' : 'acquire'}
-                  kind="secondary"
-                  loading={downloadBusy}
-                  disabled={downloadBusy}
-                  onPress={() => void toggleOfflineDownload()}
+                  label={
+                    narrow
+                      ? hasProgress
+                        ? 'Continue'
+                        : primaryMode === 'read'
+                          ? 'Read'
+                          : 'Listen'
+                      : `${hasProgress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`
+                  }
+                  icon={primaryMode === 'read' ? 'read' : 'listen'}
+                  kind="primary"
+                  onPress={() => consume(primaryMode)}
                 />
-              ) : null}
-            </Row>
-            {offline ? (
-              <Text className="text-sm text-muted">Reading status can be changed when online.</Text>
-            ) : null}
-            {Platform.OS !== 'web' && downloaded ? (
-              <Text className="text-sm text-positive">Available offline on this device</Text>
-            ) : null}
-            {selectedEPUB || selectedAudio ? (
-              <View className="mt-1 gap-0.5">
-                {selectedEPUB ? (
-                  <Text numberOfLines={1} className="text-sm text-muted">
-                    Reading: {selectedEPUB.representation.label}
-                  </Text>
-                ) : null}
-                {selectedAudio ? (
-                  <Text numberOfLines={1} className="text-sm text-muted">
-                    Listening: {selectedAudio.representation.label}
-                  </Text>
+                {secondaryAvailable ? (
+                  <IconButton
+                    icon={secondaryMode === 'read' ? 'read' : 'listen'}
+                    label={secondaryMode === 'read' ? 'Read this book' : 'Listen to this book'}
+                    kind="quiet"
+                    onPress={() => consume(secondaryMode)}
+                  />
                 ) : null}
               </View>
-            ) : null}
-            {!selectedEPUB && !selectedAudio ? (
-              <Notice>This work isn&apos;t available to read or listen to yet.</Notice>
-            ) : !selectedEPUB ? (
-              <Notice>This edition isn&apos;t available to read yet.</Notice>
-            ) : !selectedAudio ? (
-              <Notice>This edition isn&apos;t available as an audiobook yet.</Notice>
+            ) : (
+              <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
+            )}
+
+            {note ? <Text className="max-w-md text-sm text-muted">{note}</Text> : null}
+
+            {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
+              <View className="flex-row flex-wrap items-center gap-2 pt-1">
+                <Button
+                  label={downloaded ? 'Remove download' : 'Download for offline'}
+                  icon={downloaded ? 'delete' : 'acquire'}
+                  kind="quiet"
+                  loading={downloadBusy}
+                  disabled={downloadBusy || offline}
+                  onPress={() => void toggleOfflineDownload()}
+                />
+                {downloaded ? (
+                  <StatusBadge tone="success" icon="check" label="On this device" />
+                ) : null}
+              </View>
             ) : null}
           </View>
         </View>
       </Animated.View>
-      {epubs.length > 1 || audio.length > 1 ? (
-        <Section title="Choose your edition">
-          <View className={shared.split}>
-            <EditionChoiceList
-              title="Reading edition"
-              items={epubs}
-              selected={epubID}
-              onSelect={selectEPUB}
-            />
-            <EditionChoiceList
-              title="Narration"
-              items={audio}
-              selected={audioID}
-              onSelect={selectAudio}
-            />
-          </View>
-        </Section>
-      ) : null}
+
+      <EditionSection
+        epubs={epubs}
+        audio={audio}
+        epubID={epubID}
+        audioID={audioID}
+        onSelectEPUB={selectEPUB}
+        onSelectAudio={selectAudio}
+      />
+
       <ReadingStatusDialog
         work={work}
         visible={statusOpen}
@@ -377,50 +414,173 @@ export default function WorkScreen() {
   );
 }
 
+/** Compact reading-status trigger — kept out of the primary action row so "Continue" never has to compete with it for attention. */
+function ReadingStatusTrigger({
+  status,
+  disabled,
+  onPress,
+}: {
+  status: ReadingStatus;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+  const icon = status === 'finished' ? 'check' : status === 'reading' ? 'read' : 'add';
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Reading status: ${readingStatusLabel(status)}`}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-11 flex-row items-center gap-1.5 rounded-control border border-line px-3 ${disabled ? 'opacity-50' : ''} ${stateClass}`}
+    >
+      <AppIcon name={icon} size={15} color={colors.muted} />
+      <Text className="text-xs font-bold uppercase tracking-wide text-muted">
+        {readingStatusLabel(status)}
+      </Text>
+      <AppIcon name="chevron" size={15} color={colors.subtle} />
+    </Pressable>
+  );
+}
+
+/** Edition/narration picker — renders nothing unless a group genuinely has more than one option, per "only when choices actually exist." */
+function EditionSection({
+  epubs,
+  audio,
+  epubID,
+  audioID,
+  onSelectEPUB,
+  onSelectAudio,
+}: {
+  epubs: MediaChoice[];
+  audio: MediaChoice[];
+  epubID: string;
+  audioID: string;
+  onSelectEPUB: (id: string) => void;
+  onSelectAudio: (id: string) => void;
+}) {
+  if (epubs.length <= 1 && audio.length <= 1) return null;
+
+  return (
+    <View className="gap-6 border-t border-line pt-6 sm:flex-row sm:gap-12">
+      {epubs.length > 1 ? (
+        <EditionGroup
+          label="Reading edition"
+          icon="read"
+          items={epubs}
+          selected={epubID}
+          onSelect={onSelectEPUB}
+        />
+      ) : null}
+      {audio.length > 1 ? (
+        <EditionGroup
+          label="Narration"
+          icon="listen"
+          items={audio}
+          selected={audioID}
+          onSelect={onSelectAudio}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function EditionGroup({
+  label,
+  icon,
+  items,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  icon: 'read' | 'listen';
+  items: MediaChoice[];
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <View className="min-w-[240px] flex-1 gap-1">
+      <View className="flex-row items-center gap-1.5 pb-1">
+        <AppIcon name={icon} size={15} color={colors.subtle} />
+        <Text className="text-xs font-bold uppercase tracking-wide text-subtle">{label}</Text>
+      </View>
+      <View accessibilityRole="radiogroup" accessibilityLabel={label}>
+        {items.map((item, index) => (
+          <Animated.View key={item.id} entering={listItemEnter(index)}>
+            <EditionOption
+              label={item.representation.label}
+              detail={formatBytes(item.size_bytes)}
+              selected={selected === item.id}
+              onPress={() => onSelect(item.id)}
+            />
+          </Animated.View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function EditionOption({
+  label,
+  detail,
+  selected,
+  onPress,
+}: {
+  label: string;
+  detail: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+  const ringClass = selected ? 'border-accent' : 'border-line';
+
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: selected }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-11 flex-row items-center gap-3 rounded-control py-2 ${stateClass}`}
+    >
+      <View
+        className={`h-5 w-5 shrink-0 items-center justify-center rounded-full border bg-paper ${ringClass}`}
+      >
+        {selected ? <View className="h-2.5 w-2.5 rounded-full bg-accent" /> : null}
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text numberOfLines={1} className="text-sm font-semibold text-ink">
+          {label}
+        </Text>
+        <Text className="text-xs text-subtle">{detail}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 async function loadRevisions(libraryId: string, representations: Representation[]) {
   const grouped = await Promise.all(
     representations.map(async (representation) =>
-      (await api.media(libraryId, representation.id)).map((item) => ({
+      (await api.media(libraryId, representation.id)).map((item: Media) => ({
         ...item,
         representation,
       })),
     ),
   );
   return grouped.flat();
-}
-
-function EditionChoiceList({
-  title,
-  items,
-  selected,
-  onSelect,
-}: {
-  title: string;
-  items: MediaChoice[];
-  selected: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <View className={shared.grow}>
-      <Text className={shared.itemTitle}>{title}</Text>
-      {items.length === 0 ? (
-        <Empty>None available.</Empty>
-      ) : (
-        items.map((item, index) => (
-          <Animated.View key={item.id} entering={listItemEnter(index)}>
-            <View className={shared.listItem}>
-              <Radio
-                label={item.representation.label}
-                selected={selected === item.id}
-                onPress={() => onSelect(item.id)}
-              />
-              <Text className="pl-8 text-xs text-muted">{formatBytes(item.size_bytes)}</Text>
-            </View>
-          </Animated.View>
-        ))
-      )}
-    </View>
-  );
 }
 
 function formatBytes(bytes: number) {

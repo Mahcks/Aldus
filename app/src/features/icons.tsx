@@ -32,6 +32,8 @@ const names = {
   scan: 'refresh',
   import: 'tray-arrow-down',
   acquire: 'download-box-outline',
+  bookmark: 'bookmark-outline',
+  filter: 'filter-variant',
   send: 'send-outline',
   upload: 'tray-arrow-up',
   edit: 'pencil-outline',
@@ -41,6 +43,8 @@ const names = {
   warning: 'alert-outline',
   error: 'alert-circle-outline',
   close: 'close',
+  shelfLayout: 'view-day-outline',
+  gridLayout: 'view-grid-outline',
 } satisfies Record<string, MaterialName>;
 
 export type AppIconName = keyof typeof names;

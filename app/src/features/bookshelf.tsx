@@ -1,11 +1,18 @@
+import { Image as ExpoImage } from 'expo-image';
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
-import { useWindowDimensions } from 'react-native';
 import { apiBaseURL } from '../lib/api-base';
 import { AppIcon, type AppIconName } from './icons';
-import { Button, colors, IconButton, resolvePressStateClass } from './ui';
-import { Image, Pressable, Text, View } from './tw';
+import { colors, resolvePressStateClass } from './ui';
+import { Pressable, Text, View } from './tw';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
+/**
+ * Hex twin of `coverTones`, same order — the cover image itself is rendered
+ * by `expo-image` (see below), which takes a real color for its background
+ * rather than a className, so the letterboxed strips around a `contain`-fit
+ * cover still pick up the generated tone instead of falling back to white.
+ */
+const coverToneHex = [colors.ink, '#4a4038', colors.accentStrong, colors.info, colors.success];
 
 export type CoverPresentation = {
   coverFit?: 'cover' | 'contain';
@@ -77,10 +84,9 @@ export function BookCover({
         : resolvedSize === 'continue'
           ? 'text-base leading-5'
           : 'text-xl leading-6';
-  const coverTone =
-    coverTones[
-      generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length
-    ];
+  const coverToneIndex =
+    generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length;
+  const coverTone = coverTones[coverToneIndex];
   const outerPaddingClass = resolvedSize === 'mini' ? 'p-1' : 'p-3';
   const innerPaddingClass = resolvedSize === 'mini' ? 'px-1 py-2' : 'px-3 py-5';
   const coverTitle =
@@ -106,12 +112,19 @@ export function BookCover({
       className={`relative shrink-0 overflow-hidden rounded-control shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
     >
       {showImage ? (
-        <Image
+        <ExpoImage
           source={{ uri: coverURL?.startsWith('/') ? `${apiBaseURL}${coverURL}` : coverURL }}
-          resizeMode={coverFit}
-          style={{ objectPosition: `${coverFocalX}% ${coverFocalY}%` } as never}
+          contentFit={coverFit}
+          contentPosition={{ left: `${coverFocalX}%`, top: `${coverFocalY}%` }}
           accessibilityIgnoresInvertColors
-          className="absolute inset-0 h-full w-full bg-panel"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: coverFit === 'contain' ? coverToneHex[coverToneIndex] : colors.panel,
+          }}
           onError={() => setFailedURL(coverURL || '')}
         />
       ) : null}
@@ -397,19 +410,23 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
   );
 }
 
+/**
+ * A shelf tile, not a detail card: covers line up side by side like books
+ * standing on a shelf, so the primary "pick up where I left off" action is
+ * a single tap on the cover itself (the ribbon names it) rather than a
+ * full-width button competing with title/author/context text underneath.
+ * Switching read/listen mid-book is a detail-page action now — this tile
+ * only shows what's needed to recognize the book and resume it.
+ */
 export function ContinueCard({
   title,
   author,
   coverURL,
   coverPresentation,
-  context,
-  availability,
   progress,
   continueMode,
   onOpen,
   onContinue,
-  onRead,
-  onListen,
 }: {
   title: string;
   author?: string;
@@ -424,7 +441,6 @@ export function ContinueCard({
   onRead?: () => void;
   onListen?: () => void;
 }) {
-  const compact = useWindowDimensions().width < 600;
   const [coverFocused, setCoverFocused] = useState(false);
   const [coverPressed, setCoverPressed] = useState(false);
   const [titleFocused, setTitleFocused] = useState(false);
@@ -433,16 +449,16 @@ export function ContinueCard({
   const titleStateClass = resolvePressStateClass({ focused: titleFocused, pressed: titlePressed });
 
   return (
-    <View className="w-[336px] max-w-full flex-row gap-3.5 rounded-card bg-paper p-3.5 shadow-card">
+    <View className="w-[106px] gap-1.5">
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={`${title}${author ? ` by ${author}` : ''}`}
+        accessibilityLabel={`Continue ${continueMode === 'read' ? 'reading' : 'listening to'} ${title}`}
         onBlur={() => setCoverFocused(false)}
         onFocus={() => setCoverFocused(true)}
         onPressIn={() => setCoverPressed(true)}
         onPressOut={() => setCoverPressed(false)}
-        onPress={onOpen}
-        className={`shrink-0 rounded-control ${coverStateClass}`}
+        onPress={onContinue}
+        className={`relative rounded-control ${coverStateClass}`}
       >
         <BookCover
           title={title}
@@ -451,70 +467,44 @@ export function ContinueCard({
           size="continue"
           {...coverPresentation}
         />
-      </Pressable>
-      <View className="min-w-0 flex-1 justify-between gap-2 py-0.5">
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={`Open ${title}`}
-          onBlur={() => setTitleFocused(false)}
-          onFocus={() => setTitleFocused(true)}
-          onPressIn={() => setTitlePressed(true)}
-          onPressOut={() => setTitlePressed(false)}
-          onPress={onOpen}
-          className={`rounded-control ${titleStateClass}`}
-        >
-          <Text numberOfLines={2} className="font-editorial text-base font-bold leading-5 text-ink">
-            {title}
-          </Text>
-          <Text numberOfLines={1} className="mt-0.5 text-sm text-muted">
-            {author || 'Unknown author'}
-          </Text>
-          {context ? (
-            <Text numberOfLines={1} className="mt-1 text-[11px] font-semibold text-subtle">
-              {context}
-            </Text>
-          ) : null}
-          {progress ? (
-            <Text numberOfLines={1} className="mt-1 text-xs font-bold text-accent">
+        {progress ? (
+          <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">
+            <Text numberOfLines={1} className="text-[10px] font-bold text-paper">
               {progress}
             </Text>
-          ) : null}
-        </Pressable>
-        <View className="gap-2">
-          {/*
-           * The mode-switch icon buttons sit beside the availability chip,
-           * not next to the primary button below — this card's text column
-           * is too narrow for "Continue reading/listening" plus a 44px icon
-           * button to ever share a row, so they always wrapped onto their
-           * own orphaned-looking line. Grouping the switch with the
-           * availability info instead gives it a stable, legible home.
-           */}
-          <View className="flex-row flex-wrap items-center justify-between gap-2">
-            <AvailabilityIcons value={availability} />
-            <View className="flex-row items-center gap-1">
-              {availability.readable && continueMode !== 'read' && onRead ? (
-                <IconButton icon="read" label="Read this work" kind="quiet" onPress={onRead} />
-              ) : null}
-              {availability.listenable && continueMode !== 'listen' && onListen ? (
-                <IconButton
-                  icon="listen"
-                  label="Listen to this work"
-                  kind="quiet"
-                  onPress={onListen}
-                />
-              ) : null}
-            </View>
           </View>
-          <Button
-            label={
-              compact ? 'Continue' : `Continue ${continueMode === 'read' ? 'reading' : 'listening'}`
-            }
-            icon={continueMode === 'read' ? 'read' : 'listen'}
-            kind="primary"
-            onPress={onContinue}
+        ) : null}
+        <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-1 rounded-b-control bg-accent/95 py-1.5">
+          <AppIcon
+            name={continueMode === 'read' ? 'read' : 'listen'}
+            size={12}
+            color={colors.onAccent}
           />
+          <Text className="text-[10px] font-bold uppercase tracking-wide text-on-accent">
+            Continue
+          </Text>
         </View>
-      </View>
+      </Pressable>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`Open ${title}`}
+        onBlur={() => setTitleFocused(false)}
+        onFocus={() => setTitleFocused(true)}
+        onPressIn={() => setTitlePressed(true)}
+        onPressOut={() => setTitlePressed(false)}
+        onPress={onOpen}
+        className={`gap-0.5 rounded-control px-0.5 ${titleStateClass}`}
+      >
+        <Text
+          numberOfLines={2}
+          className="min-h-[32px] font-editorial text-sm font-bold leading-4 text-ink"
+        >
+          {title}
+        </Text>
+        <Text numberOfLines={1} className="text-[11px] text-muted">
+          {author || 'Unknown author'}
+        </Text>
+      </Pressable>
     </View>
   );
 }

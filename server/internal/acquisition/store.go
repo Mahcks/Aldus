@@ -605,7 +605,7 @@ func (s *Store) markDownloadProblem(ctx context.Context, id, diagnosis string) {
 	if len(diagnosis) > 500 {
 		diagnosis = diagnosis[:500]
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET download_error=?,updated_at=? WHERE id=?`, diagnosis, time.Now().UTC().Format(time.RFC3339Nano), id)
+	_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_error=?,updated_at=? WHERE id=?`, diagnosis, time.Now().UTC().Format(time.RFC3339Nano), id)
 }
 
 func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, sourceID, query string) (Request, error) {

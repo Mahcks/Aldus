@@ -9,29 +9,40 @@ import { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
+  acquisitionFailureMessage,
   acquisitionFulfillment,
   groupAcquisitionResults,
   parseAcquisitionRelease,
 } from '../../features/acquisition';
 import { coverPresentation, WorkRow } from '../../features/bookshelf';
-import { AcquisitionGroupRow, BrowseControls, DestinationPicker } from '../../features/browse';
+import {
+  AcquisitionGroupRow,
+  browseFilters,
+  browseSorts,
+  DestinationPicker,
+} from '../../features/browse';
+import { AppIcon } from '../../features/icons';
 import { listItemEnter } from '../../features/motion';
 import {
   ReadingStatusDialog,
   readingStatusLabel,
   type ReadingStatus,
 } from '../../features/reading-status';
-import { Text, View } from '../../features/tw';
+import { Pressable, Text, View } from '../../features/tw';
 import {
   Button,
   ConfirmDialog,
   EmptyState,
+  IconButton,
   LoadingState,
   Notice,
   Page,
   SearchField,
+  Select,
   Section,
   StatusBadge,
+  colors,
+  resolvePressStateClass,
 } from '../../features/ui';
 import { APIError, api, errorMessage } from '../../lib/api';
 import { offlineWorkSummaries } from '../../lib/offline-library';
@@ -47,6 +58,46 @@ function destinationKey(entry: AcquisitionDestination) {
   return `${entry.library_id}:${entry.source_id}`;
 }
 
+function ScopeTab({
+  label,
+  accessibilityLabel,
+  selected,
+  position,
+  onPress,
+}: {
+  label: string;
+  accessibilityLabel: string;
+  selected: boolean;
+  position: 'first' | 'middle' | 'last';
+  onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+  const edgeClass =
+    position === 'first'
+      ? 'rounded-l-control'
+      : position === 'last'
+        ? 'rounded-r-control border-l-0'
+        : 'border-l-0';
+
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-11 flex-1 items-center justify-center border px-2 ${edgeClass} ${selected ? 'border-accent bg-accent-soft' : 'border-line bg-paper'} ${stateClass}`}
+    >
+      <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-ink'}`}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export default function SearchScreen() {
   const narrow = useWindowDimensions().width < 600;
   const [query, setQuery] = useState('');
@@ -55,6 +106,7 @@ export default function SearchScreen() {
   const [view, setView] = useState<SearchView>('all');
   const [acquisitionKind, setAcquisitionKind] = useState<AcquisitionKind>('all');
   const [showRelated, setShowRelated] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -290,12 +342,18 @@ export default function SearchScreen() {
     destinations.length > 0 && trimmedQuery.length >= MIN_ACQUISITION_QUERY_LENGTH;
   const prioritizeAcquisition = showAcquisitionSection && !loading && works.length === 0;
   const anySending = Object.values(resultStatus).some((status) => status === 'sending');
+  const presentedFulfillments = fulfillments.filter((request) => acquisitionFulfillment(request));
   const visibleFulfillments = [
-    ...fulfillments.filter((request) => acquisitionFulfillment(request)?.action !== 'open'),
-    ...fulfillments
+    ...presentedFulfillments.filter(
+      (request) => acquisitionFulfillment(request)?.action !== 'open',
+    ),
+    ...presentedFulfillments
       .filter((request) => acquisitionFulfillment(request)?.action === 'open')
       .slice(0, 3),
   ];
+  const failedFulfillmentCount = visibleFulfillments.filter(
+    (request) => acquisitionFulfillment(request)?.tone === 'danger',
+  ).length;
   const acquisitionGroups = groupAcquisitionResults(
     acquisitionResults.filter(
       (result) => acquisitionKind === 'all' || result.kind === acquisitionKind,
@@ -308,6 +366,8 @@ export default function SearchScreen() {
     ? relatedGroups
     : relatedGroups.slice(0, relatedPreviewCount);
   const hiddenRelatedCount = relatedGroups.length - visibleRelatedGroups.length;
+  const sortLabel = browseSorts.find(([value]) => value === sort)?.[1] ?? 'Recently added';
+  const availabilityLabel = browseFilters.find(([value]) => value === availability)?.[1] ?? 'All';
 
   function openFulfillment(request: AcquisitionRequest) {
     const state = acquisitionFulfillment(request);
@@ -361,13 +421,26 @@ export default function SearchScreen() {
 
   const fulfillmentSection =
     visibleFulfillments.length || fulfillmentError ? (
-      <Section title="Your requests">
+      <Section
+        title="Downloads"
+        action={
+          visibleFulfillments.length ? (
+            <Text className="text-xs font-semibold text-subtle">
+              {failedFulfillmentCount === visibleFulfillments.length
+                ? `${failedFulfillmentCount} issue${failedFulfillmentCount === 1 ? '' : 's'}`
+                : `${visibleFulfillments.length} request${visibleFulfillments.length === 1 ? '' : 's'}`}
+            </Text>
+          ) : undefined
+        }
+      >
         {fulfillmentError ? <Notice tone="danger">{fulfillmentError}</Notice> : null}
         <View className="max-w-[900px]">
           {visibleFulfillments.map((request) => {
             const state = acquisitionFulfillment(request);
             if (!state) return null;
             const parsed = parseAcquisitionRelease(request.selected_title ?? request.query);
+            const title = parsed.title || request.query || 'Book request';
+            const failed = state.tone === 'danger';
             const actionable =
               (state.action === 'open' && Boolean(request.work_id)) || state.action === 'review';
             return (
@@ -375,20 +448,43 @@ export default function SearchScreen() {
                 key={request.id}
                 className="gap-3 border-b border-line py-4 sm:flex-row sm:items-center sm:justify-between"
               >
-                <View className="min-w-0 flex-1 gap-1">
-                  <Text numberOfLines={2} className="font-editorial font-bold text-ink">
-                    {parsed.title}
-                  </Text>
-                  {request.download_error ? (
-                    <Text className="text-sm text-danger">{request.download_error}</Text>
-                  ) : (
-                    <Text className="text-xs text-subtle">
-                      {state.pending ? 'This updates automatically.' : request.selected_source}
+                <View className="min-w-0 flex-1 flex-row items-start gap-3">
+                  <View
+                    className={`h-10 w-10 shrink-0 items-center justify-center rounded-full ${failed ? 'bg-danger-soft' : 'bg-panel'}`}
+                  >
+                    <AppIcon
+                      name={failed ? 'error' : 'acquire'}
+                      size={20}
+                      color={failed ? colors.danger : colors.muted}
+                    />
+                  </View>
+                  <View className="min-w-0 flex-1 gap-1.5">
+                    <View className="flex-row flex-wrap items-center gap-2">
+                      <Text
+                        numberOfLines={2}
+                        className="font-editorial text-base font-bold text-ink"
+                      >
+                        {title}
+                      </Text>
+                      <StatusBadge
+                        tone={state.tone}
+                        label={state.label}
+                        icon={failed ? 'error' : undefined}
+                      />
+                    </View>
+                    <Text
+                      accessibilityRole={failed ? 'alert' : undefined}
+                      className={`text-sm leading-5 ${failed ? 'text-danger' : 'text-muted'}`}
+                    >
+                      {failed
+                        ? acquisitionFailureMessage(request)
+                        : [request.selected_source, state.pending ? 'Updates automatically' : '']
+                            .filter(Boolean)
+                            .join(' · ')}
                     </Text>
-                  )}
+                  </View>
                 </View>
                 <View className="flex-row flex-wrap items-center gap-2">
-                  <StatusBadge tone={state.tone} label={state.label} />
                   {actionable ? (
                     <Button
                       kind="quiet"
@@ -398,8 +494,8 @@ export default function SearchScreen() {
                   ) : null}
                   {request.can_retry ? (
                     <Button
-                      kind="secondary"
-                      label="Retry"
+                      kind="primary"
+                      label="Try again"
                       disabled={requestAction === request.id}
                       onPress={() => void retryFulfillment(request)}
                     />
@@ -455,8 +551,9 @@ export default function SearchScreen() {
                 availability={work}
                 progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
                 action={
-                  <Button
-                    label={readingStatusLabel(work.reading_status)}
+                  <IconButton
+                    icon="bookmark"
+                    label={`Reading status: ${readingStatusLabel(work.reading_status)}`}
                     kind="quiet"
                     selected={Boolean(work.reading_status)}
                     disabled={offline}
@@ -605,13 +702,19 @@ export default function SearchScreen() {
         </Text>
       ) : null}
     </Section>
+  ) : view === 'available' ? (
+    <Section title="Available to add">
+      <EmptyState icon="search" title="Search for a book">
+        Enter at least two characters to search available ebook and audiobook sources.
+      </EmptyState>
+    </Section>
   ) : null;
 
   return (
     <Page title="Search">
       {offline ? <Notice>Offline · searching downloads on this device.</Notice> : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      <View className="max-w-[1000px] gap-4">
+      <View className="max-w-[1000px] gap-3">
         <View className="w-full">
           <SearchField
             label="Search title, author, or ISBN"
@@ -619,32 +722,85 @@ export default function SearchScreen() {
             onChangeText={changeQuery}
           />
         </View>
-        <View className="gap-3 border-b border-line pb-4">
-          <View accessibilityRole="tablist" className="flex-row flex-wrap gap-2">
-            {(
-              [
-                ['all', 'All'],
-                ['library', 'In your libraries'],
-                ['available', 'Available to add'],
-              ] as const
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                kind="secondary"
-                label={label}
-                selected={view === value}
-                accessibilityRole="tab"
-                onPress={() => setView(value)}
-              />
-            ))}
+        <View className="gap-2 border-b border-line pb-3">
+          <View accessibilityRole="tablist" className="flex-row">
+            <ScopeTab
+              label="All"
+              accessibilityLabel="All results"
+              selected={view === 'all'}
+              position="first"
+              onPress={() => {
+                setView('all');
+                setFiltersOpen(false);
+              }}
+            />
+            <ScopeTab
+              label="Library"
+              accessibilityLabel="In your libraries"
+              selected={view === 'library'}
+              position="middle"
+              onPress={() => {
+                setView('library');
+                setFiltersOpen(false);
+              }}
+            />
+            <ScopeTab
+              label="Add"
+              accessibilityLabel="Available to add"
+              selected={view === 'available'}
+              position="last"
+              onPress={() => {
+                setView('available');
+                setFiltersOpen(false);
+              }}
+            />
           </View>
           {view !== 'available' ? (
-            <BrowseControls
-              sort={sort}
-              availability={availability}
-              onSortChange={setSort}
-              onAvailabilityChange={setAvailability}
-            />
+            <View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Filters. ${sortLabel}. ${availabilityLabel} availability.`}
+                accessibilityState={{ expanded: filtersOpen }}
+                onPress={() => setFiltersOpen((current) => !current)}
+                className="min-h-11 flex-row items-center gap-2 rounded-control px-1"
+              >
+                <AppIcon name="filter" size={18} color={colors.accent} />
+                <Text className="font-bold text-accent">Filters</Text>
+                <Text numberOfLines={1} className="min-w-0 flex-1 text-sm text-muted">
+                  {sortLabel} · {availabilityLabel} availability
+                </Text>
+                <AppIcon name={filtersOpen ? 'close' : 'chevron'} size={18} color={colors.subtle} />
+              </Pressable>
+              {filtersOpen ? (
+                <View className="gap-4 border-t border-line py-4">
+                  <Select
+                    label="Sort by"
+                    options={browseSorts.map(([value, label]) => ({ value, label }))}
+                    value={sort}
+                    onChange={setSort}
+                  />
+                  <Select
+                    label="Availability"
+                    options={browseFilters.map(([value, label]) => ({ value, label }))}
+                    value={availability}
+                    onChange={setAvailability}
+                  />
+                  <View className="flex-row flex-wrap justify-end gap-2">
+                    {sort !== 'recent' || availability !== 'all' ? (
+                      <Button
+                        label="Reset"
+                        kind="quiet"
+                        onPress={() => {
+                          setSort('recent');
+                          setAvailability('all');
+                        }}
+                      />
+                    ) : null}
+                    <Button label="Done" kind="secondary" onPress={() => setFiltersOpen(false)} />
+                  </View>
+                </View>
+              ) : null}
+            </View>
           ) : null}
         </View>
       </View>

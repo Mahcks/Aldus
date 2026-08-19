@@ -261,12 +261,17 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 		t.Fatal(err)
 	}
 	defer db.Close()
-	_, err = db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),('other','other','other','Other','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES('library','reader','reader',1,'2026-01-01T00:00:00Z'),('library','other','reader',1,'2026-01-01T00:00:00Z'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Downloads','/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,selected_title,selected_url,download_state,download_error,fulfillment_state,created_at,updated_at) VALUES('request','library','reader','source','Alice','queued','Alice','https://download.test/alice','ready','failed','failed','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)
+	_, err = db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),('other','other','other','Other','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES('library','reader','reader',1,'2026-01-01T00:00:00Z'),('library','other','reader',1,'2026-01-01T00:00:00Z'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Downloads','/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,selected_title,selected_url,download_state,download_error,fulfillment_state,created_at,updated_at) VALUES('request','library','reader','source','Alice','requested','Alice','https://download.test/alice','','','submitting','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	client, _ := New(Options{QBitURL: server.URL})
 	store := NewStore(db, client)
+	store.markDownloadProblem(ctx, "request", "download client unavailable")
+	var failedState, diagnosis string
+	if err := db.QueryRow(`SELECT fulfillment_state,download_error FROM acquisition_requests WHERE id='request'`).Scan(&failedState, &diagnosis); err != nil || failedState != "failed" || diagnosis != "download client unavailable" {
+		t.Fatalf("failed state=%q diagnosis=%q err=%v", failedState, diagnosis, err)
+	}
 	reader := auth.User{ID: "reader"}
 	if err := store.Retry(ctx, auth.User{ID: "other"}, "library", "request"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other user retry = %v", err)
@@ -548,6 +553,25 @@ func TestQBitTorrentRejectsProtocolLevelFailures(t *testing.T) {
 				t.Fatal("accepted qBittorrent failure response")
 			}
 		})
+	}
+}
+
+func TestQBitTorrentAcceptsAcceptedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/add":
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, _ := New(Options{QBitURL: server.URL})
+	if err := client.Add(context.Background(), "magnet:?xt=urn:btih:abcdef"); err != nil {
+		t.Fatal(err)
 	}
 }
 

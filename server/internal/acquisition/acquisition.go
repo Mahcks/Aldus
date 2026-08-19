@@ -322,8 +322,9 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 	if readErr != nil {
 		return fmt.Errorf("read qBittorrent response: %w", readErr)
 	}
-	if response.StatusCode != http.StatusOK || strings.TrimSpace(string(responseBody)) != "Ok." {
-		return fmt.Errorf("send download to qBittorrent: status %d", response.StatusCode)
+	responseText := strings.TrimSpace(string(responseBody))
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || responseText != "" && responseText != "Ok." {
+		return fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
 	}
 	return nil
 }

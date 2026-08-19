@@ -7,6 +7,15 @@ export type AcquisitionFulfillment = {
   tone: 'danger' | 'info' | 'success' | 'warning';
 };
 
+export function acquisitionFailureMessage(request: AcquisitionRequest) {
+  const error = request.download_error?.trim();
+  if (!error) return 'Aldus could not complete this request.';
+  if (/qBittorrent|download client/i.test(error)) {
+    return 'The download client did not accept this request. Check its connection and try again.';
+  }
+  return error;
+}
+
 export type AcquisitionResultGroup = {
   key: string;
   title: string;
@@ -56,7 +65,11 @@ export function groupAcquisitionResults(results: AcquisitionResult[]): Acquisiti
 export function acquisitionFulfillment(request: AcquisitionRequest): AcquisitionFulfillment | null {
   if (!request.selected_title) return null;
   if (request.download_error || request.fulfillment_state === 'failed') {
-    return { label: 'Needs attention', tone: 'danger', pending: false };
+    return {
+      label: request.download_state === 'ready' ? 'Import failed' : 'Download failed',
+      tone: 'danger',
+      pending: false,
+    };
   }
   switch (request.fulfillment_state) {
     case 'scanning':
