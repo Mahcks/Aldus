@@ -86,7 +86,31 @@ var userWorkStatusesSchema string
 //go:embed migrations/025_source_auto_import.sql
 var sourceAutoImportSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema}
+//go:embed migrations/026_acquisition_permissions.sql
+var acquisitionPermissionsSchema string
+
+//go:embed migrations/027_acquisition_policy.sql
+var acquisitionPolicySchema string
+
+//go:embed migrations/028_title_requests.sql
+var titleRequestsSchema string
+
+//go:embed migrations/029_notifications.sql
+var notificationsSchema string
+
+//go:embed migrations/030_collections.sql
+var collectionsSchema string
+
+//go:embed migrations/031_acquisition_download_monitoring.sql
+var acquisitionDownloadMonitoringSchema string
+
+//go:embed migrations/032_acquisition_import_outcomes.sql
+var acquisitionImportOutcomesSchema string
+
+//go:embed migrations/033_managed_media.sql
+var managedMediaSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema}
 
 func SupportedSchemaVersion() int { return len(migrations) }
 

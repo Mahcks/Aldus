@@ -227,7 +227,7 @@ func deleteSource(s *source.Store) http.HandlerFunc {
 	}
 }
 func sourceDTO(v source.LibrarySource) contracts.LibrarySource {
-	return contracts.LibrarySource{ID: v.ID, LibraryID: v.LibraryID, Kind: v.Kind, Name: v.Name, RootPath: v.RootPath, Enabled: v.Enabled, AutoImport: v.AutoImport, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.LibrarySource{ID: v.ID, LibraryID: v.LibraryID, Kind: v.Kind, Name: v.Name, RootPath: v.RootPath, StorageKind: v.StorageKind, Enabled: v.Enabled, AutoImport: v.AutoImport, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func writeSourceError(w http.ResponseWriter, err error) {
 	var validation *source.ValidationError

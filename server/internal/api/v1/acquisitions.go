@@ -11,6 +11,7 @@ import (
 )
 
 func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
+	router.Get("/search/titles", searchTitles(store))
 	router.Get("/acquisition-settings", getAcquisitionSettings(store))
 	router.Put("/acquisition-settings", updateAcquisitionSettings(store))
 	router.Post("/acquisition-settings/test", testAcquisitionSettings(store))

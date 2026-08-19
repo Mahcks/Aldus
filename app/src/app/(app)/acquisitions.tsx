@@ -3,6 +3,8 @@ import type {
   AcquisitionSettings,
   Library,
   AcquisitionConnectionStatus,
+  TitleRequest,
+  User,
 } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -15,6 +17,8 @@ import {
 } from '../../features/acquisition';
 import {
   Button,
+  ConfirmDialog,
+  EmptyState,
   ErrorState,
   Field,
   LoadingState,
@@ -33,6 +37,15 @@ export default function AcquisitionsAdministration() {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryID, setLibraryID] = useState('');
   const [requests, setRequests] = useState<AcquisitionRequest[]>([]);
+  const [titleRequests, setTitleRequests] = useState<TitleRequest[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [approvalLoading, setApprovalLoading] = useState(true);
+  const [approvalError, setApprovalError] = useState('');
+  const [approvalSuccess, setApprovalSuccess] = useState('');
+  const [approvalBusy, setApprovalBusy] = useState('');
+  const [denyTarget, setDenyTarget] = useState<{ request: TitleRequest; format: string } | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -55,10 +68,15 @@ export default function AcquisitionsAdministration() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.libraries(), api.acquisitionSettings()])
-      .then(([available, configured]) => {
+    void Promise.all([api.libraries(), api.acquisitionSettings(), api.users()])
+      .then(async ([available, configured, availableUsers]) => {
+        const pending = await Promise.all(
+          available.map((library) => api.titleRequests(library.id)),
+        );
         if (!active) return;
         setLibraries(available);
+        setUsers(availableUsers);
+        setTitleRequests(pending.flat());
         setLibraryID(available[0]?.id ?? '');
         setSettings(configured);
         setIndexerKind(configured.indexer_kind || 'prowlarr');
@@ -69,7 +87,12 @@ export default function AcquisitionsAdministration() {
         setQBitTorrentDownloadRoot(configured.qbittorrent_download_root);
       })
       .catch((value) => active && setError(errorMessage(value)))
-      .finally(() => active && setLoading(false));
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+          setApprovalLoading(false);
+        }
+      });
     return () => {
       active = false;
     };
@@ -139,6 +162,63 @@ export default function AcquisitionsAdministration() {
     }
   }
 
+  async function reloadApprovals() {
+    const values = await Promise.all(libraries.map((library) => api.titleRequests(library.id)));
+    setTitleRequests(values.flat());
+  }
+
+  async function approve(request: TitleRequest, format: string) {
+    const key = `${request.id}:${format}`;
+    setApprovalBusy(key);
+    setApprovalError('');
+    setApprovalSuccess('');
+    try {
+      await api.approveTitleRequest(request.library_id, request.id, format);
+      await reloadApprovals();
+      setApprovalSuccess(`${formatLabel(format)} request for ${request.title} approved.`);
+    } catch (value) {
+      setApprovalError(errorMessage(value));
+    } finally {
+      setApprovalBusy('');
+    }
+  }
+
+  async function deny() {
+    if (!denyTarget) return;
+    const key = `${denyTarget.request.id}:${denyTarget.format}`;
+    setApprovalBusy(key);
+    setApprovalError('');
+    setApprovalSuccess('');
+    try {
+      await api.denyTitleRequest(
+        denyTarget.request.library_id,
+        denyTarget.request.id,
+        denyTarget.format,
+      );
+      const title = denyTarget.request.title;
+      const format = denyTarget.format;
+      setDenyTarget(null);
+      await reloadApprovals();
+      setApprovalSuccess(`${formatLabel(format)} request for ${title} declined.`);
+    } catch (value) {
+      setApprovalError(errorMessage(value));
+    } finally {
+      setApprovalBusy('');
+    }
+  }
+
+  const pendingRequests = titleRequests
+    .map((request) => ({
+      request,
+      formats: request.formats.filter((format) => format.state === 'pending_approval'),
+    }))
+    .filter((entry) => entry.formats.length > 0);
+
+  function requesterName(id: string) {
+    const user = users.find((candidate) => candidate.id === id);
+    return user?.display_name || user?.username || 'Reader';
+  }
+
   if (!auth.user?.admin)
     return (
       <Page title="Acquisitions" editorial={false}>
@@ -164,6 +244,61 @@ export default function AcquisitionsAdministration() {
         Readers find and add books from Search. This page is for configuring connections and
         monitoring acquisition activity.
       </Notice>
+
+      <Section title="Requests awaiting approval">
+        {approvalError ? <Notice tone="danger">{approvalError}</Notice> : null}
+        {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
+        {approvalLoading ? (
+          <LoadingState label="Loading requests…" />
+        ) : pendingRequests.length === 0 ? (
+          <EmptyState icon="check" title="No requests need approval">
+            New guided requests will appear here when a reader needs your review.
+          </EmptyState>
+        ) : (
+          <View accessibilityRole="list" className="border-t border-line">
+            {pendingRequests.map(({ request, formats }) => (
+              <View key={request.id} className="gap-3 border-b border-line py-4">
+                <View className="gap-1">
+                  <Text className="font-editorial text-lg font-bold text-ink">{request.title}</Text>
+                  <Text className="text-sm text-muted">
+                    {[request.author, `Requested by ${requesterName(request.requested_by)}`]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                </View>
+                {formats.map((format) => {
+                  const key = `${request.id}:${format.format}`;
+                  return (
+                    <View
+                      key={format.format}
+                      className="min-h-11 gap-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <Text className="text-sm font-bold text-ink">
+                        {formatLabel(format.format)}
+                      </Text>
+                      <View className="flex-row gap-2">
+                        <Button
+                          label="Approve"
+                          kind="primary"
+                          loading={approvalBusy === key}
+                          disabled={Boolean(approvalBusy)}
+                          onPress={() => void approve(request, format.format)}
+                        />
+                        <Button
+                          label="Deny"
+                          kind="quiet"
+                          disabled={Boolean(approvalBusy)}
+                          onPress={() => setDenyTarget({ request, format: format.format })}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        )}
+      </Section>
 
       <View className={wide ? 'flex-row items-start gap-8' : 'gap-8'}>
         <View className={wide ? 'w-[640px]' : undefined}>
@@ -383,6 +518,20 @@ export default function AcquisitionsAdministration() {
           </Notice>
         </View>
       </View>
+      <ConfirmDialog
+        visible={Boolean(denyTarget)}
+        title={`Deny ${denyTarget ? formatLabel(denyTarget.format).toLowerCase() : ''} request?`}
+        description="The reader will be notified. They can request this format again later."
+        confirmLabel="Deny request"
+        busy={Boolean(denyTarget && approvalBusy)}
+        danger
+        onConfirm={() => void deny()}
+        onClose={() => setDenyTarget(null)}
+      />
     </Page>
   );
+}
+
+function formatLabel(format: string) {
+  return format === 'audiobook' ? 'Audiobook' : 'Ebook';
 }

@@ -16,7 +16,7 @@ func sessionDTO(v auth.Session) contracts.Session {
 	return contracts.Session{Token: v.Token, ExpiresAt: v.ExpiresAt, User: userDTO(v.User)}
 }
 func libraryDTO(v catalog.Library) contracts.Library {
-	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, CanRequestAcquisitions: v.CanRequest, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func workDTO(v catalog.Work) contracts.Work {
 	return contracts.Work{ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CoverURL: v.CoverURL, CoverFit: v.CoverFit, CoverFocalX: v.CoverFocalX, CoverFocalY: v.CoverFocalY, GeneratedCoverStyle: v.GeneratedCoverStyle, GeneratedCoverTone: v.GeneratedCoverTone, GeneratedCoverLayout: v.GeneratedCoverLayout, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
@@ -28,7 +28,7 @@ func representationDTO(v catalog.Representation) contracts.Representation {
 	return contracts.Representation{ID: v.ID, WorkID: v.WorkID, Kind: v.Kind, Label: v.Label, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func membershipDTO(v catalog.Membership) contracts.Membership {
-	return contracts.Membership{UserID: v.UserID, Username: v.Username, DisplayName: v.DisplayName, Role: v.Role, CanRequestAcquisitions: v.CanRequest}
+	return contracts.Membership{UserID: v.UserID, Username: v.Username, DisplayName: v.DisplayName, Role: v.Role, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest}
 }
 func mediaDTO(v ingest.Media) contracts.Media {
 	return contracts.Media{ID: v.ID, RepresentationID: v.RepresentationID, Kind: v.Kind, SHA256: v.SHA256, OriginalFilename: v.OriginalFilename, SizeBytes: v.SizeBytes, CreatedAt: v.CreatedAt}

@@ -98,15 +98,15 @@ func TestLibrariesRolesAndIsolation(t *testing.T) {
 	if err := store.SetMember(ctx, admin, first.ID, editor.ID, "editor"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetMember(ctx, admin, first.ID, reader.ID, "reader", true); err != nil {
+	if err := store.SetMember(ctx, admin, first.ID, reader.ID, "reader", true, false, true); err != nil {
 		t.Fatal(err)
 	}
 	readerLibrary, err := store.Library(ctx, reader, first.ID)
-	if err != nil || !readerLibrary.CanRequest {
+	if err != nil || !readerLibrary.CanRequest || readerLibrary.CanBypassApproval || !readerLibrary.CanAdvancedRequest {
 		t.Fatalf("reader acquisition permission = %#v, %v", readerLibrary, err)
 	}
 	members, err := store.Members(ctx, reader, first.ID)
-	if err != nil || len(members) != 3 || !members[2].CanRequest {
+	if err != nil || len(members) != 3 || !members[2].CanRequest || members[2].CanBypassApproval || !members[2].CanAdvancedRequest {
 		t.Fatalf("member acquisition permission = %#v, %v", members, err)
 	}
 	if _, err := store.Library(ctx, reader, first.ID); err != nil {

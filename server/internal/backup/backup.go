@@ -26,10 +26,13 @@ import (
 const manifestName = "manifest.json"
 
 type Manifest struct {
-	Version       string            `json:"version"`
-	SchemaVersion int               `json:"schema_version"`
-	CreatedAt     time.Time         `json:"created_at"`
-	Files         map[string]string `json:"files"`
+	Version                  string            `json:"version"`
+	SchemaVersion            int               `json:"schema_version"`
+	CreatedAt                time.Time         `json:"created_at"`
+	ConnectorSecretsRedacted bool              `json:"connector_secrets_redacted,omitempty"`
+	ManagedAcquisitionFiles  int               `json:"managed_acquisition_files,omitempty"`
+	ExternalMediaExcluded    int               `json:"external_media_excluded,omitempty"`
+	Files                    map[string]string `json:"files"`
 }
 
 type sqliteBackupConn interface {
@@ -63,6 +66,9 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err := snapshotDatabase(ctx, filepath.Join(dataDir, "aldus.db"), snapshot); err != nil {
 		return err
 	}
+	if err := redactConnectorSecrets(ctx, snapshot); err != nil {
+		return err
+	}
 	files, err := backupFiles(dataDir, snapshot)
 	if err != nil {
 		return err
@@ -71,7 +77,15 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err != nil {
 		return err
 	}
-	manifest := Manifest{Version: version, SchemaVersion: schemaVersion, CreatedAt: time.Now().UTC(), Files: make(map[string]string, len(files))}
+	manifest := Manifest{Version: version, SchemaVersion: schemaVersion, CreatedAt: time.Now().UTC(), ConnectorSecretsRedacted: true, Files: make(map[string]string, len(files))}
+	for name := range files {
+		if strings.HasPrefix(name, "acquisitions/") {
+			manifest.ManagedAcquisitionFiles++
+		}
+	}
+	if err := countExternalMedia(ctx, snapshot, &manifest.ExternalMediaExcluded); err != nil {
+		return err
+	}
 	for name, path := range files {
 		hash, err := fileHash(path)
 		if err != nil {
@@ -84,6 +98,30 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 		return err
 	}
 	return Verify(ctx, archivePath)
+}
+
+func countExternalMedia(ctx context.Context, snapshot string, count *int) error {
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(snapshot)+"?mode=ro")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM source_entries e JOIN library_sources s ON s.id=e.source_id WHERE e.state='registered' AND s.storage_kind='referenced' AND s.deleted_at IS NULL`).Scan(count); err != nil {
+		return fmt.Errorf("count external media excluded from backup: %w", err)
+	}
+	return nil
+}
+
+func redactConnectorSecrets(ctx context.Context, path string) error {
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		return fmt.Errorf("open backup snapshot for redaction: %w", err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `PRAGMA secure_delete=ON; UPDATE acquisition_settings SET indexer_api_key='',qbittorrent_password=''; VACUUM`); err != nil {
+		return fmt.Errorf("redact connector secrets from backup: %w", err)
+	}
+	return nil
 }
 
 func snapshotDatabase(ctx context.Context, source, destination string) error {

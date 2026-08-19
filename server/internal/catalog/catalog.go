@@ -25,20 +25,24 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 type Library struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Role       string    `json:"role,omitempty"`
-	CanRequest bool      `json:"can_request_acquisitions"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	Role               string    `json:"role,omitempty"`
+	CanRequest         bool      `json:"can_request_acquisitions"`
+	CanBypassApproval  bool      `json:"can_bypass_acquisition_approval"`
+	CanAdvancedRequest bool      `json:"can_advanced_acquisition_request"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type Membership struct {
-	UserID      string `json:"user_id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
-	CanRequest  bool   `json:"can_request_acquisitions"`
+	UserID             string `json:"user_id"`
+	Username           string `json:"username"`
+	DisplayName        string `json:"display_name"`
+	Role               string `json:"role"`
+	CanRequest         bool   `json:"can_request_acquisitions"`
+	CanBypassApproval  bool   `json:"can_bypass_acquisition_approval"`
+	CanAdvancedRequest bool   `json:"can_advanced_acquisition_request"`
 }
 
 type Work struct {
@@ -106,18 +110,18 @@ func (s *Store) CreateLibrary(ctx context.Context, actor auth.User, name string)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO libraries(id,name,created_at,updated_at) VALUES(?,?,?,?)`, id, name, stamp, stamp); err != nil {
 		return Library{}, fmt.Errorf("create library: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,created_at) VALUES(?,?,'owner',?)`, id, actor.ID, stamp); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,can_bypass_acquisition_approval,can_advanced_acquisition_request,created_at) VALUES(?,?,'owner',1,1,1,?)`, id, actor.ID, stamp); err != nil {
 		return Library{}, fmt.Errorf("create library owner: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Library{}, fmt.Errorf("commit library creation: %w", err)
 	}
-	return Library{ID: id, Name: name, Role: "owner", CreatedAt: now, UpdatedAt: now}, nil
+	return Library{ID: id, Name: name, Role: "owner", CanRequest: true, CanBypassApproval: true, CanAdvancedRequest: true, CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset int) ([]Library, error) {
 	limit, offset = page(limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE ? OR m.user_id IS NOT NULL ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`, actor.ID, actor.Admin, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),COALESCE(m.can_bypass_acquisition_approval,0),COALESCE(m.can_advanced_acquisition_request,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE ? OR m.user_id IS NOT NULL ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`, actor.ID, actor.Admin, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list libraries: %w", err)
 	}
@@ -126,7 +130,7 @@ func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset in
 	for rows.Next() {
 		var v Library
 		var c, u string
-		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &v.CanRequest, &c, &u); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &v.CanRequest, &v.CanBypassApproval, &v.CanAdvancedRequest, &c, &u); err != nil {
 			return nil, err
 		}
 		v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
@@ -139,7 +143,7 @@ func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset in
 func (s *Store) Library(ctx context.Context, actor auth.User, id string) (Library, error) {
 	var v Library
 	var c, u string
-	err := s.db.QueryRowContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.Name, &v.Role, &v.CanRequest, &c, &u)
+	err := s.db.QueryRowContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),COALESCE(m.can_bypass_acquisition_approval,0),COALESCE(m.can_advanced_acquisition_request,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&v.ID, &v.Name, &v.Role, &v.CanRequest, &v.CanBypassApproval, &v.CanAdvancedRequest, &c, &u)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Library{}, ErrNotFound
 	}
@@ -185,8 +189,14 @@ func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userI
 		}
 	}
 	canRequest := len(requested) > 0 && requested[0]
-	canRequest = canRequest || role == "owner" || role == "editor"
-	_, err = tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES(?,?,?,?,?) ON CONFLICT(library_id,user_id) DO UPDATE SET role=excluded.role,can_request_acquisitions=excluded.can_request_acquisitions`, libraryID, userID, role, canRequest, time.Now().UTC().Format(time.RFC3339Nano))
+	canBypassApproval := len(requested) > 1 && requested[1]
+	canAdvancedRequest := len(requested) > 2 && requested[2]
+	if role == "owner" || role == "editor" {
+		canRequest = true
+		canBypassApproval = true
+		canAdvancedRequest = true
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,can_bypass_acquisition_approval,can_advanced_acquisition_request,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(library_id,user_id) DO UPDATE SET role=excluded.role,can_request_acquisitions=excluded.can_request_acquisitions,can_bypass_acquisition_approval=excluded.can_bypass_acquisition_approval,can_advanced_acquisition_request=excluded.can_advanced_acquisition_request`, libraryID, userID, role, canRequest, canBypassApproval, canAdvancedRequest, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("save membership: %w", err)
 	}
@@ -231,7 +241,7 @@ func (s *Store) Members(ctx context.Context, actor auth.User, libraryID string) 
 	} else if !ok {
 		return nil, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT u.id,u.username,u.display_name,m.role,m.can_request_acquisitions FROM library_members m JOIN users u ON u.id=m.user_id WHERE m.library_id=? ORDER BY u.username_normalized`, libraryID)
+	rows, err := s.db.QueryContext(ctx, `SELECT u.id,u.username,u.display_name,m.role,m.can_request_acquisitions,m.can_bypass_acquisition_approval,m.can_advanced_acquisition_request FROM library_members m JOIN users u ON u.id=m.user_id WHERE m.library_id=? ORDER BY u.username_normalized`, libraryID)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +249,7 @@ func (s *Store) Members(ctx context.Context, actor auth.User, libraryID string) 
 	var out []Membership
 	for rows.Next() {
 		var m Membership
-		if err := rows.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.Role, &m.CanRequest); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Username, &m.DisplayName, &m.Role, &m.CanRequest, &m.CanBypassApproval, &m.CanAdvancedRequest); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

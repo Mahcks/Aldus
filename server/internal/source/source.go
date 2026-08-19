@@ -50,18 +50,20 @@ type Options struct {
 }
 
 type Store struct {
-	db           *sql.DB
-	allowedRoots []string
-	blockedRoots []string
-	managedRoot  string
-	maxBytes     int64
-	wake         chan struct{}
-	done         chan struct{}
-	startOnce    sync.Once
+	db              *sql.DB
+	allowedRoots    []string
+	blockedRoots    []string
+	managedRoot     string
+	acquisitionRoot string
+	maxBytes        int64
+	wake            chan struct{}
+	done            chan struct{}
+	startOnce       sync.Once
 }
 
 type LibrarySource struct {
 	ID, LibraryID, Kind, Name, RootPath string
+	StorageKind                         string
 	Enabled, AutoImport                 bool
 	CreatedAt, UpdatedAt                time.Time
 }
@@ -96,7 +98,77 @@ func New(db *sql.DB, options Options) (*Store, error) {
 		}
 	}
 	s.managedRoot = options.ManagedRoot
+	if options.DataRoot != "" {
+		absolute, err := filepath.Abs(options.DataRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolve data root: %w", err)
+		}
+		s.acquisitionRoot = filepath.Join(absolute, "acquisitions")
+		if err := os.MkdirAll(s.acquisitionRoot, 0o700); err != nil {
+			return nil, fmt.Errorf("create managed acquisition storage: %w", err)
+		}
+		if err := os.Chmod(s.acquisitionRoot, 0o700); err != nil {
+			return nil, fmt.Errorf("secure managed acquisition storage: %w", err)
+		}
+	}
 	return s, nil
+}
+
+// EnsureManagedSources creates the built-in acquisition destination for every
+// existing library. It is a no-op when no data root was configured.
+func (s *Store) EnsureManagedSources(ctx context.Context) error {
+	if s.acquisitionRoot == "" {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM libraries ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := s.ensureManagedSource(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureManagedSource(ctx context.Context, libraryID string) (LibrarySource, error) {
+	if s.acquisitionRoot == "" || !safeComponent(libraryID) {
+		return LibrarySource{}, ErrInvalid
+	}
+	root := filepath.Join(s.acquisitionRoot, libraryID)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return LibrarySource{}, fmt.Errorf("create managed library storage: %w", err)
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		return LibrarySource{}, fmt.Errorf("secure managed library storage: %w", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	id := "managed-" + libraryID
+	result, err := s.db.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at,storage_kind) SELECT ?,id,'local','Aldus managed downloads',?,1,1,?,?,'managed' FROM libraries WHERE id=? ON CONFLICT DO NOTHING`, id, root, now, now, libraryID)
+	if err != nil {
+		return LibrarySource{}, fmt.Errorf("create managed source: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		var existing string
+		if err := s.db.QueryRowContext(ctx, `SELECT id FROM library_sources WHERE library_id=? AND storage_kind='managed' AND deleted_at IS NULL`, libraryID).Scan(&existing); err != nil {
+			return LibrarySource{}, ErrNotFound
+		}
+		id = existing
+	}
+	return s.get(ctx, libraryID, id)
 }
 
 func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, root string, autoImport bool) (LibrarySource, error) {
@@ -127,7 +199,7 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 	if err != nil {
 		return LibrarySource{}, fmt.Errorf("create source: %w", err)
 	}
-	return LibrarySource{ID: id, LibraryID: libraryID, Kind: "local", Name: name, RootPath: resolved, Enabled: true, AutoImport: autoImport, CreatedAt: now, UpdatedAt: now}, nil
+	return LibrarySource{ID: id, LibraryID: libraryID, Kind: "local", Name: name, RootPath: resolved, StorageKind: "referenced", Enabled: true, AutoImport: autoImport, CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (s *Store) Roots(actor auth.User) ([]SourceRoot, error) {
@@ -188,7 +260,18 @@ func (s *Store) Directories(actor auth.User, rootID, relative string) (Directory
 }
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]LibrarySource, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.auto_import,ls.created_at,ls.updated_at FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor')) ORDER BY ls.created_at,ls.id`, actor.Admin, actor.ID, libraryID, actor.Admin)
+	if s.acquisitionRoot != "" {
+		var allowed int
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor')))`, actor.ID, libraryID, actor.Admin).Scan(&allowed); err != nil {
+			return nil, err
+		}
+		if allowed == 1 {
+			if _, err := s.ensureManagedSource(ctx, libraryID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.auto_import,ls.created_at,ls.updated_at,ls.storage_kind FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor')) ORDER BY ls.created_at,ls.id`, actor.Admin, actor.ID, libraryID, actor.Admin)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +320,19 @@ func (s *Store) EnqueueAcquisitionScan(ctx context.Context, libraryID, sourceID,
 	if err != nil {
 		return "", validation("download_path_unavailable", "The completed download is not visible to Aldus.")
 	}
-	if !within(v.RootPath, resolved) {
+	if v.StorageKind == "managed" {
+		if requestID == "" || !safeComponent(requestID) {
+			return "", validation("invalid_acquisition_id", "The acquisition identifier is invalid.")
+		}
+		resolved, err = copyManagedDownload(v.RootPath, requestID, resolved)
+		if err != nil {
+			return "", err
+		}
+		relative, _ := filepath.Rel(v.RootPath, resolved)
+		if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET managed_relative_path=? WHERE id=? AND library_id=? AND source_id=?`, filepath.ToSlash(relative), requestID, libraryID, sourceID); err != nil {
+			return "", fmt.Errorf("record managed acquisition path: %w", err)
+		}
+	} else if !within(v.RootPath, resolved) {
 		return "", validation("download_path_outside_source", "The completed download is outside the selected Aldus Source.")
 	}
 	if requestID != "" {
@@ -261,6 +356,11 @@ func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name
 	if !actor.Admin {
 		return ErrNotFound
 	}
+	if v, err := s.get(ctx, libraryID, id); err != nil {
+		return err
+	} else if v.StorageKind == "managed" {
+		return validation("managed_source", "Aldus managed downloads are configured automatically.")
+	}
 	name = strings.TrimSpace(name)
 	resolved, err := s.validateRoot(root)
 	if err != nil {
@@ -282,6 +382,11 @@ func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name
 func (s *Store) Delete(ctx context.Context, actor auth.User, libraryID, id string) error {
 	if !actor.Admin {
 		return ErrNotFound
+	}
+	if v, err := s.get(ctx, libraryID, id); err != nil {
+		return err
+	} else if v.StorageKind == "managed" {
+		return validation("managed_source", "Aldus managed downloads cannot be removed.")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := s.db.ExecContext(ctx, `UPDATE library_sources SET enabled=0,deleted_at=?,updated_at=? WHERE id=? AND library_id=? AND deleted_at IS NULL`, now, now, id, libraryID)
@@ -432,7 +537,7 @@ func within(root, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 func (s *Store) get(ctx context.Context, libraryID, id string) (LibrarySource, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at FROM library_sources WHERE id=? AND library_id=? AND deleted_at IS NULL`, id, libraryID)
+	row := s.db.QueryRowContext(ctx, `SELECT id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at,storage_kind FROM library_sources WHERE id=? AND library_id=? AND deleted_at IS NULL`, id, libraryID)
 	v, err := scan(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LibrarySource{}, ErrNotFound
@@ -446,12 +551,130 @@ func scan(row scanner) (LibrarySource, error) {
 	var v LibrarySource
 	var enabled, autoImport int
 	var c, u string
-	err := row.Scan(&v.ID, &v.LibraryID, &v.Kind, &v.Name, &v.RootPath, &enabled, &autoImport, &c, &u)
+	err := row.Scan(&v.ID, &v.LibraryID, &v.Kind, &v.Name, &v.RootPath, &enabled, &autoImport, &c, &u, &v.StorageKind)
 	v.Enabled = enabled == 1
 	v.AutoImport = autoImport == 1
 	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
 	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 	return v, err
+}
+
+func safeComponent(value string) bool {
+	return value != "" && value != "." && value != ".." && filepath.Base(value) == value && !strings.ContainsAny(value, `/\\`)
+}
+
+func copyManagedDownload(root, requestID, sourcePath string) (string, error) {
+	final := filepath.Join(root, requestID)
+	if info, err := os.Stat(final); err == nil && info.IsDir() {
+		return final, nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	stage, err := os.MkdirTemp(root, ".acquisition-*")
+	if err != nil {
+		return "", fmt.Errorf("stage managed acquisition: %w", err)
+	}
+	defer os.RemoveAll(stage)
+	if err := os.Chmod(stage, 0o700); err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(sourcePath)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 {
+		return "", validation("unsafe_download", "The completed download contains an unsupported link.")
+	}
+	var files []string
+	if info.Mode().IsRegular() {
+		files = []string{sourcePath}
+	} else if info.IsDir() {
+		err = filepath.WalkDir(sourcePath, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return validation("unsafe_download", "The completed download contains an unsupported link.")
+			}
+			if !entry.IsDir() {
+				files = append(files, path)
+			}
+			return nil
+		})
+	} else {
+		return "", validation("unsafe_download", "The completed download is not a regular file or folder.")
+	}
+	if err != nil {
+		return "", err
+	}
+	if len(files) == 0 {
+		return "", validation("empty_download", "The completed download contains no files.")
+	}
+	for i, path := range files {
+		ext := safeExtension(filepath.Ext(path))
+		target := filepath.Join(stage, fmt.Sprintf("file-%06d%s", i+1, ext))
+		if err := copyVerifiedFile(path, target); err != nil {
+			return "", err
+		}
+	}
+	if err := os.Rename(stage, final); err != nil {
+		return "", fmt.Errorf("publish managed acquisition: %w", err)
+	}
+	return final, nil
+}
+
+func safeExtension(ext string) string {
+	ext = strings.ToLower(ext)
+	if len(ext) < 2 || len(ext) > 12 {
+		return ""
+	}
+	for _, r := range ext[1:] {
+		if r < 'a' || r > 'z' {
+			if r < '0' || r > '9' {
+				return ""
+			}
+		}
+	}
+	return ext
+}
+
+func copyVerifiedFile(sourcePath, target string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	before, err := source.Stat()
+	if err != nil || !before.Mode().IsRegular() {
+		return validation("unsafe_download", "The completed download changed while Aldus was copying it.")
+	}
+	targetFile, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	hash := sha256.New()
+	written, copyErr := io.Copy(io.MultiWriter(targetFile, hash), source)
+	syncErr := targetFile.Sync()
+	closeErr := targetFile.Close()
+	after, statErr := source.Stat()
+	if copyErr != nil || syncErr != nil || closeErr != nil || statErr != nil || written != before.Size() || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+		return validation("download_changed", "The completed download changed while Aldus was copying it.")
+	}
+	actual, err := fileSHA256(target)
+	if err != nil || actual != hex.EncodeToString(hash.Sum(nil)) {
+		return errors.New("managed acquisition checksum verification failed")
+	}
+	return nil
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 func randomID() (string, error) {
 	b := make([]byte, 16)

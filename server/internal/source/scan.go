@@ -93,6 +93,12 @@ func (s *Store) enqueueLinkedScan(ctx context.Context, libraryID, sourceID, requ
 		}
 		return Scan{}, err
 	}
+	if requestID != "" {
+		if err := s.saveAcquisitionOutcome(ctx, requestID, id, "pending", "", "", ""); err != nil {
+			_, _ = s.db.ExecContext(ctx, `DELETE FROM source_scans WHERE id=?`, id)
+			return Scan{}, err
+		}
+	}
 	s.signalScan()
 	return Scan{ID: id, SourceID: sourceID, State: "pending", CreatedAt: now}, nil
 }
@@ -104,6 +110,9 @@ func (s *Store) RetryAcquisitionScan(ctx context.Context, scanID, requestID stri
 	}
 	if changed, _ := result.RowsAffected(); changed != 1 {
 		return ErrNotFound
+	}
+	if err := s.saveAcquisitionOutcome(ctx, requestID, scanID, "pending", "", "", ""); err != nil {
+		return err
 	}
 	s.signalScan()
 	return nil
@@ -316,17 +325,32 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 	if err := s.GenerateProposals(ctx, libraryID); err != nil {
 		return err
 	}
-	sum.autoImported, err = s.autoImportProposals(ctx, libraryID, job.SourceID, job.ID)
+	sum.autoImported, err = s.processAcquisitionImport(ctx, libraryID, job.SourceID, job.ID)
 	if err != nil {
 		return err
 	}
+	automatic, err := s.autoImportProposals(ctx, libraryID, job.SourceID, job.ID)
+	if err != nil {
+		return err
+	}
+	sum.autoImported += automatic
 	return s.finishScan(ctx, job.ID, "completed", sum, "")
 }
 
 func (s *Store) finishScan(ctx context.Context, id, state string, v summary, message string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.db.ExecContext(ctx, `UPDATE source_scans SET state=?,files_visited=?,supported_count=?,epub_count=?,audio_count=?,new_count=?,changed_count=?,unchanged_count=?,missing_count=?,problem_count=?,auto_imported_count=?,error_summary=?,finished_at=? WHERE id=?`, state, v.files, v.supported, v.epub, v.audio, v.new, v.changed, v.unchanged, v.missing, v.problems, v.autoImported, message, now, id)
-	return err
+	if err != nil {
+		return err
+	}
+	if state == "failed" {
+		reason := strings.TrimSpace(message)
+		if reason == "" {
+			reason = "Source scan failed."
+		}
+		return s.failAcquisitionOutcome(ctx, id, reason)
+	}
+	return nil
 }
 func (s *Store) canScan(ctx context.Context, actor auth.User, libraryID, sourceID string) (bool, error) {
 	var n int

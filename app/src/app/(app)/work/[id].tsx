@@ -1,4 +1,10 @@
-import type { AlignmentJob, Media, Representation, WorkDetail } from '../../../generated/api';
+import type {
+  AlignmentJob,
+  Collection,
+  Media,
+  Representation,
+  WorkDetail,
+} from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
@@ -23,7 +29,10 @@ import {
 import { Pressable, Text, View } from '../../../features/tw';
 import {
   Button,
+  Checkbox,
   colors,
+  Dialog,
+  EmptyState,
   ErrorState,
   IconButton,
   LoadingState,
@@ -72,6 +81,13 @@ export default function WorkScreen() {
   const [offline, setOffline] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [initialCollectionIDs, setInitialCollectionIDs] = useState<string[]>([]);
+  const [selectedCollectionIDs, setSelectedCollectionIDs] = useState<string[]>([]);
+  const [collectionLoading, setCollectionLoading] = useState(false);
+  const [collectionBusy, setCollectionBusy] = useState(false);
+  const [collectionError, setCollectionError] = useState('');
 
   async function load() {
     if (!id) return;
@@ -258,6 +274,61 @@ export default function WorkScreen() {
     }
   }
 
+  async function openCollections() {
+    if (!id || offline) return;
+    setCollectionOpen(true);
+    setCollectionLoading(true);
+    setCollectionError('');
+    try {
+      const summaries = await api.collections();
+      const details = await Promise.all(
+        summaries.map((collection) => api.collection(collection.id)),
+      );
+      const selected = details
+        .filter((collection) => collection.works?.some((item) => item.id === id))
+        .map((collection) => collection.id);
+      setCollections(details);
+      setInitialCollectionIDs(selected);
+      setSelectedCollectionIDs(selected);
+    } catch (value) {
+      setCollectionError(errorMessage(value));
+    } finally {
+      setCollectionLoading(false);
+    }
+  }
+
+  function toggleCollection(collectionID: string) {
+    setSelectedCollectionIDs((current) =>
+      current.includes(collectionID)
+        ? current.filter((value) => value !== collectionID)
+        : [...current, collectionID],
+    );
+  }
+
+  async function saveCollections() {
+    if (!id) return;
+    setCollectionBusy(true);
+    setCollectionError('');
+    const initial = new Set(initialCollectionIDs);
+    const selected = new Set(selectedCollectionIDs);
+    try {
+      await Promise.all([
+        ...selectedCollectionIDs
+          .filter((collectionID) => !initial.has(collectionID))
+          .map((collectionID) => api.addCollectionWork(collectionID, id)),
+        ...initialCollectionIDs
+          .filter((collectionID) => !selected.has(collectionID))
+          .map((collectionID) => api.removeCollectionWork(collectionID, id)),
+      ]);
+      setInitialCollectionIDs(selectedCollectionIDs);
+      setCollectionOpen(false);
+    } catch (value) {
+      setCollectionError(errorMessage(value));
+    } finally {
+      setCollectionBusy(false);
+    }
+  }
+
   return (
     <Page title="Work" hideHeader>
       <View className="flex-row items-center justify-between">
@@ -320,6 +391,13 @@ export default function WorkScreen() {
                 status={work.reading_status}
                 disabled={offline}
                 onPress={() => setStatusOpen(true)}
+              />
+              <Button
+                label="Add to collection"
+                icon="collections"
+                kind="quiet"
+                disabled={offline}
+                onPress={() => void openCollections()}
               />
             </View>
 
@@ -410,6 +488,52 @@ export default function WorkScreen() {
         onChange={(status) => void changeReadingStatus(status)}
         onClose={() => setStatusOpen(false)}
       />
+      <Dialog
+        visible={collectionOpen}
+        title="Add to collection"
+        onClose={() => setCollectionOpen(false)}
+      >
+        <View className="gap-4">
+          {collectionError ? <Notice tone="danger">{collectionError}</Notice> : null}
+          {collectionLoading ? (
+            <LoadingState label="Loading collections…" />
+          ) : collections.length ? (
+            <View className="gap-1">
+              {collections.map((collection) => (
+                <Checkbox
+                  key={collection.id}
+                  label={collection.title}
+                  checked={selectedCollectionIDs.includes(collection.id)}
+                  onPress={() => toggleCollection(collection.id)}
+                />
+              ))}
+              <Button
+                label="Save collections"
+                kind="primary"
+                loading={collectionBusy}
+                onPress={() => void saveCollections()}
+              />
+            </View>
+          ) : !collectionError ? (
+            <EmptyState
+              icon="collections"
+              title="No collections yet"
+              action={
+                <Button
+                  label="Create a collection"
+                  kind="primary"
+                  onPress={() => {
+                    setCollectionOpen(false);
+                    router.push('/collections');
+                  }}
+                />
+              }
+            >
+              Create a collection, then return here to add this book.
+            </EmptyState>
+          ) : null}
+        </View>
+      </Dialog>
     </Page>
   );
 }

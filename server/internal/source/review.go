@@ -161,13 +161,17 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 			return "", err
 		}
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE import_groups SET decision='accepted',accepted_work_id=?,state='obsolete',revision=revision+1,updated_at=? WHERE id=? AND revision=? AND decision=''`, workID, time.Now().UTC().Format(time.RFC3339Nano), proposalID, request.ExpectedRevision)
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := tx.ExecContext(ctx, `UPDATE import_groups SET decision='accepted',accepted_work_id=?,state='obsolete',revision=revision+1,updated_at=? WHERE id=? AND revision=? AND decision=''`, workID, stamp, proposalID, request.ExpectedRevision)
 	if err != nil {
 		return "", err
 	}
 	n, _ := result.RowsAffected()
 	if n != 1 {
 		return "", ErrConflict
+	}
+	if err := updateAcceptedOutcome(ctx, tx, proposalID, workID, stamp); err != nil {
+		return "", err
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
@@ -194,6 +198,9 @@ func (s *Store) IgnoreProposal(ctx context.Context, actor auth.User, libraryID, 
 	n, _ := result.RowsAffected()
 	if n != 1 {
 		return ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE acquisition_import_outcomes SET state='failed',reason='The import proposal was dismissed during review.',updated_at=? WHERE proposal_id=?`, time.Now().UTC().Format(time.RFC3339Nano), id); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

@@ -7,6 +7,8 @@ type MaterialName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 const names = {
   home: 'home-variant-outline',
   libraries: 'bookshelf',
+  collections: 'bookmark-multiple-outline',
+  activity: 'bell-outline',
   search: 'magnify',
   read: 'book-open-page-variant-outline',
   listen: 'headphones',
@@ -23,6 +25,8 @@ const names = {
   back: 'arrow-left',
   previousPage: 'chevron-left',
   nextPage: 'chevron-right',
+  moveUp: 'arrow-up',
+  moveDown: 'arrow-down',
   chevron: 'chevron-right',
   add: 'plus',
   users: 'account-group-outline',

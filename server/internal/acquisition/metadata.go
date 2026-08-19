@@ -14,8 +14,8 @@ import (
 )
 
 type Metadata struct {
-	Title, Author, ISBN, CoverURL string
-	Year                          int
+	ID, Title, Author, ISBN, CoverURL string
+	Year                              int
 }
 
 type cachedMetadata struct {
@@ -49,7 +49,7 @@ func (s *Store) searchMetadata(ctx context.Context, client *Client, query string
 func (c *Client) metadata(ctx context.Context, query string) ([]Metadata, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	endpoint := "https://openlibrary.org/search.json?limit=10&fields=cover_i,title,author_name,first_publish_year,isbn&q=" + url.QueryEscape(query)
+	endpoint := "https://openlibrary.org/search.json?limit=10&fields=key,cover_i,title,author_name,first_publish_year,isbn&q=" + url.QueryEscape(query)
 	return metadataFrom(ctx, c.http, endpoint, query)
 }
 
@@ -69,6 +69,7 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 	}
 	var payload struct {
 		Docs []struct {
+			Key     string   `json:"key"`
 			CoverID int      `json:"cover_i"`
 			Title   string   `json:"title"`
 			Authors []string `json:"author_name"`
@@ -85,7 +86,7 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 		if titleSimilarity(queryKey, normalizedWords(doc.Title)) < 0.5 {
 			continue
 		}
-		result := Metadata{Title: strings.TrimSpace(doc.Title), Year: doc.Year}
+		result := Metadata{ID: strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"), Title: strings.TrimSpace(doc.Title), Year: doc.Year}
 		if len(doc.Authors) > 0 {
 			result.Author = strings.TrimSpace(doc.Authors[0])
 		}

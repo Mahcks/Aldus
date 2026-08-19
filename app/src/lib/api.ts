@@ -4,6 +4,7 @@ import type {
   AcquisitionSettings,
   AcquisitionConnectionStatus,
   AcquisitionCapabilities,
+  AcquisitionPolicy,
   AcquisitionDiscovery,
   AcquisitionPair,
   AcquisitionTracker,
@@ -15,6 +16,8 @@ import type {
   AudioChapter,
   AudioLocator,
   CanonicalPosition,
+  Collection,
+  CollectionInput,
   CoverCandidate,
   CoverAsset,
   CreateAlignmentJobRequest,
@@ -31,6 +34,8 @@ import type {
   LoginRequest,
   Media,
   Membership,
+  NotificationList,
+  NotificationUnreadCount,
   Representation,
   RepresentationState,
   RepresentationStateUpdate,
@@ -40,6 +45,7 @@ import type {
   SetWorkStatusRequest,
   SetWorkPreferenceRequest,
   UpdateAcquisitionSettingsRequest,
+  UpdateAcquisitionPolicyRequest,
   SourceEntry,
   SourceDirectoryListing,
   SourceRoot,
@@ -47,6 +53,9 @@ import type {
   SetupStatus,
   SetupRequest,
   SystemDiagnostics,
+  TitleRequest,
+  TitleSearchResult,
+  CreateTitleRequest,
   StartActivityRequest,
   UpdateLibraryRequest,
   UpdateActivityRequest,
@@ -167,6 +176,58 @@ export const api = {
     }),
   deleteReaderCredential: (id: string) =>
     request<void>(`/me/reader-credentials/${id}`, { method: 'DELETE' }),
+  collections: () => request<Collection[]>('/me/collections'),
+  collection: (id: string) => request<Collection>(`/me/collections/${id}`),
+  createCollection: (body: CollectionInput) =>
+    request<Collection>('/me/collections', { method: 'POST', body: JSON.stringify(body) }),
+  updateCollection: (id: string, body: CollectionInput) =>
+    request<Collection>(`/me/collections/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  deleteCollection: (id: string) => request<void>(`/me/collections/${id}`, { method: 'DELETE' }),
+  addCollectionWork: (id: string, workID: string) =>
+    request<void>(`/me/collections/${id}/works`, {
+      method: 'POST',
+      body: JSON.stringify({ work_id: workID }),
+    }),
+  removeCollectionWork: (id: string, workID: string) =>
+    request<void>(`/me/collections/${id}/works/${workID}`, { method: 'DELETE' }),
+  reorderCollectionWorks: (id: string, workIDs: string[]) =>
+    request<void>(`/me/collections/${id}/works/order`, {
+      method: 'PUT',
+      body: JSON.stringify({ work_ids: workIDs }),
+    }),
+  notifications: (offset = 0) =>
+    request<NotificationList>(`/me/notifications?limit=50&offset=${offset}`),
+  notificationUnreadCount: () => request<NotificationUnreadCount>('/me/notifications/unread-count'),
+  markNotificationRead: (id: string) =>
+    request<void>(`/me/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request<void>('/me/notifications/read-all', { method: 'POST' }),
+  searchTitles: (query: string) =>
+    request<TitleSearchResult[]>(`/search/titles?q=${encodeURIComponent(query)}`),
+  createTitleRequest: (libraryID: string, body: CreateTitleRequest) =>
+    request<TitleRequest>(`/libraries/${libraryID}/title-requests`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  titleRequests: (libraryID: string) =>
+    request<TitleRequest[]>(`/libraries/${libraryID}/title-requests`),
+  approveTitleRequest: (libraryID: string, requestID: string, format: string) =>
+    request<TitleRequest>(
+      `/libraries/${libraryID}/title-requests/${requestID}/formats/${format}/approve`,
+      { method: 'POST' },
+    ),
+  denyTitleRequest: (libraryID: string, requestID: string, format: string) =>
+    request<TitleRequest>(
+      `/libraries/${libraryID}/title-requests/${requestID}/formats/${format}/deny`,
+      { method: 'POST' },
+    ),
+  cancelTitleRequest: (libraryID: string, requestID: string, format: string) =>
+    request<TitleRequest>(
+      `/libraries/${libraryID}/title-requests/${requestID}/formats/${format}/cancel`,
+      { method: 'POST' },
+    ),
 
   users: (offset = 0) => request<User[]>(`/users?limit=100&offset=${offset}`),
   createUser: (body: CreateUserRequest) =>
@@ -182,10 +243,22 @@ export const api = {
     request<void>(`/libraries/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteLibrary: (id: string) => request<void>(`/libraries/${id}`, { method: 'DELETE' }),
   members: (id: string) => request<Membership[]>(`/libraries/${id}/members`),
-  setMember: (libraryID: string, userID: string, role: string, canRequestAcquisitions = false) =>
+  setMember: (
+    libraryID: string,
+    userID: string,
+    role: string,
+    canRequestAcquisitions = false,
+    canBypassAcquisitionApproval = false,
+    canAdvancedAcquisitionRequest = false,
+  ) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, {
       method: 'PUT',
-      body: JSON.stringify({ role, can_request_acquisitions: canRequestAcquisitions }),
+      body: JSON.stringify({
+        role,
+        can_request_acquisitions: canRequestAcquisitions,
+        can_bypass_acquisition_approval: canBypassAcquisitionApproval,
+        can_advanced_acquisition_request: canAdvancedAcquisitionRequest,
+      }),
     }),
   removeMember: (libraryID: string, userID: string) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, { method: 'DELETE' }),
@@ -321,6 +394,13 @@ export const api = {
   testAcquisitionSettings: () =>
     request<AcquisitionConnectionStatus>('/acquisition-settings/test', { method: 'POST' }),
   acquisitionCapabilities: () => request<AcquisitionCapabilities>('/acquisition-capabilities'),
+  acquisitionPolicy: (libraryID: string) =>
+    request<AcquisitionPolicy>(`/libraries/${libraryID}/acquisition-policy`),
+  updateAcquisitionPolicy: (libraryID: string, body: UpdateAcquisitionPolicyRequest) =>
+    request<AcquisitionPolicy>(`/libraries/${libraryID}/acquisition-policy`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   acquisitionTracker: () => request<AcquisitionTracker>('/me/acquisition-tracker'),
   markAcquisitionTrackerSeen: () =>
     request<void>('/me/acquisition-tracker/seen', { method: 'POST' }),

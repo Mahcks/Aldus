@@ -21,10 +21,12 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/backup"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/collection"
 	"github.com/mahcks/aldus/server/internal/config"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
 	"github.com/mahcks/aldus/server/internal/ingest"
+	"github.com/mahcks/aldus/server/internal/notification"
 	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
 )
@@ -84,6 +86,7 @@ func main() {
 	slog.Debug("database ready", "path", databasePath)
 	store := position.New(db)
 	catalogStore := catalog.New(db)
+	collectionStore := collection.New(db)
 	mediaDir := cfg.MediaDir
 	if mediaDir == "" {
 		mediaDir = filepath.Join(cfg.DataDir, "media")
@@ -145,22 +148,36 @@ func main() {
 		os.Exit(1)
 	}
 	acquisitionStore := acquisition.NewStore(db, acquisitionClient)
+	acquisitionPolicyStore := acquisition.NewPolicyStore(db)
+	titleRequestStore := acquisition.NewTitleRequestStore(db)
+	notificationStore := notification.New(db)
 	diagnosticStore := diagnostics.New(db, cfg.DataDir, cfg.SourceRoots, version, cfg.Environment)
+	if err := sourceStore.EnsureManagedSources(ctx); err != nil {
+		slog.Error("create managed acquisition sources", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
 	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
 	acquisitionStore.SetScanRetry(sourceStore.RetryAcquisitionScan)
 	acquisitionStore.SetPairHandoff(func(ctx context.Context, pair acquisition.ReadyPair) error {
 		_, err := alignmentManager.Enqueue(ctx, auth.User{ID: pair.RequestedBy}, alignment.Request{EPUBMediaID: pair.EPUBMediaID, EPUBSHA256: pair.EPUBSHA256, AudioMediaID: pair.AudioMediaID, AudioSHA256: pair.AudioSHA256})
 		return err
 	})
+	titleRequestStore.SetAcquisitionStore(acquisitionStore)
+	titleRequestStore.SetNotificationStore(notificationStore)
 	acquisitionStore.Start(ctx)
+	titleRequestStore.Start(ctx)
 	server := &http.Server{
 		Addr: cfg.Addr,
 		Handler: api.Handler(api.Dependencies{
 			Web: os.DirFS("public"), Media: http.Dir(cfg.FixtureDir), Position: store, Auth: authStore,
-			Catalog: catalogStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
-			Acquisitions: acquisitionStore,
-			Diagnostics:  diagnosticStore,
-			KOReader:     koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
+			Catalog: catalogStore, Collections: collectionStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
+			Acquisitions:        acquisitionStore,
+			AcquisitionPolicies: acquisitionPolicyStore,
+			TitleRequests:       titleRequestStore,
+			Notifications:       notificationStore,
+			Diagnostics:         diagnosticStore,
+			KOReader:            koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
 			Ready: func(ctx context.Context) error {
 				if err := db.PingContext(ctx); err != nil {
 					return fmt.Errorf("database: %w", err)

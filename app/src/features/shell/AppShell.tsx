@@ -17,9 +17,11 @@ function isActive(path: string, href: string) {
     path === href ||
     (href === '/sources' && path.startsWith('/sources')) ||
     (href === '/acquisitions' && path.startsWith('/acquisitions')) ||
+    (href === '/collections' && path.startsWith('/collections')) ||
+    (href === '/activity' && path.startsWith('/activity')) ||
     (href === '/system' && path.startsWith('/system')) ||
     (href === '/libraries' &&
-      ['/library/', '/work/', '/representation/'].some((prefix) => path.startsWith(prefix)))
+      ['/library/', '/representation/'].some((prefix) => path.startsWith(prefix)))
   );
 }
 
@@ -42,16 +44,18 @@ function AppShellChrome() {
   const insets = useSafeAreaInsets();
   const desktop = useWindowDimensions().width >= 820;
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [requestUpdates, setRequestUpdates] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const consumerLinks: NavItem[] = [
     { label: 'Home', href: '/home', icon: 'home' },
-    { label: 'Libraries', href: '/libraries', icon: 'libraries' },
-    { label: 'Search', href: '/search', icon: 'search', badge: requestUpdates },
+    { label: 'Search', href: '/search', icon: 'search' },
+    { label: 'Collections', href: '/collections', icon: 'collections' },
+    { label: 'Activity', href: '/activity', icon: 'activity', badge: unreadNotifications },
     { label: 'Account', href: '/account', icon: 'account' },
   ];
   const adminLinks: NavItem[] = auth.user?.admin
     ? [
+        { label: 'Libraries', href: '/libraries', icon: 'libraries' },
         { label: 'Acquisitions', href: '/acquisitions', icon: 'acquire' },
         { label: 'Sources', href: '/sources', icon: 'folder' },
         { label: 'Users', href: '/users', icon: 'users' },
@@ -73,16 +77,11 @@ function AppShellChrome() {
     let active = true;
     async function refresh() {
       try {
-        const tracker = await api.acquisitionTracker();
+        const result = await api.notificationUnreadCount();
         if (!active) return;
-        if (path.startsWith('/search')) {
-          if (tracker.unread_count) await api.markAcquisitionTrackerSeen();
-          if (active) setRequestUpdates(0);
-        } else {
-          setRequestUpdates(tracker.unread_count);
-        }
+        setUnreadNotifications(result.unread_count);
       } catch {
-        if (active) setRequestUpdates(0);
+        if (active) setUnreadNotifications(0);
       }
     }
     void refresh();
@@ -91,7 +90,7 @@ function AppShellChrome() {
       active = false;
       clearInterval(interval);
     };
-  }, [path]);
+  }, []);
 
   async function handleSignOut() {
     setSheetOpen(false);
@@ -141,6 +140,9 @@ function AppShellChrome() {
         consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
         bottomInset={insets.bottom}
         sheetOpen={sheetOpen}
+        moreSelected={
+          path.startsWith('/account') || adminLinks.some((link) => isActive(path, link.href))
+        }
         onOpenSheet={openSheet}
       />
       <MoreSheet
@@ -173,7 +175,7 @@ function DesktopNav({
   onSignOut: () => void;
 }) {
   return (
-    <View className="w-56 border-r border-line bg-panel px-[18px] py-[22px]">
+    <View role="navigation" className="w-56 border-r border-line bg-panel px-[18px] py-[22px]">
       <Pressable
         accessibilityRole="link"
         onPress={onBrandPress}
@@ -190,7 +192,7 @@ function DesktopNav({
       </View>
       {adminLinks.length > 0 ? (
         <View className="mt-7 gap-1 border-t border-line pt-5">
-          <Text className="px-[11px] text-[11px] font-bold uppercase tracking-widest text-subtle">
+          <Text className="px-[11px] text-[11px] font-bold uppercase tracking-widest text-muted">
             Administration
           </Text>
           {adminLinks.map((link) => (
@@ -231,8 +233,8 @@ function NavLink({
   selected,
   tone = 'primary',
 }: NavItem & { selected: boolean; tone?: 'primary' | 'quiet' }) {
-  const inactiveTextClass = tone === 'quiet' ? 'text-subtle' : 'text-muted';
-  const iconColor = selected ? colors.accent : tone === 'quiet' ? colors.subtle : colors.muted;
+  const inactiveTextClass = 'text-muted';
+  const iconColor = selected ? colors.accent : colors.muted;
   const backgroundClass = selected ? 'bg-accent-soft' : '';
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -241,7 +243,7 @@ function NavLink({
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={badge ? `${label}, ${badge} request updates` : label}
+      accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
       accessibilityState={{ selected }}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
@@ -317,12 +319,14 @@ function MobileTabBar({
   consumerLinks,
   bottomInset,
   sheetOpen,
+  moreSelected,
   onOpenSheet,
 }: {
   path: string;
   consumerLinks: NavItem[];
   bottomInset: number;
   sheetOpen: boolean;
+  moreSelected: boolean;
   onOpenSheet: () => void;
 }) {
   return (
@@ -344,7 +348,7 @@ function MobileTabBar({
       <MobileTab
         label="More"
         icon="more"
-        selected={sheetOpen}
+        selected={sheetOpen || moreSelected}
         expanded={sheetOpen}
         onPress={onOpenSheet}
       />
@@ -375,7 +379,7 @@ function MobileTab({
   return (
     <Pressable
       accessibilityRole="tab"
-      accessibilityLabel={badge ? `${label}, ${badge} request updates` : label}
+      accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
       accessibilityState={{ selected, expanded }}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
@@ -454,7 +458,7 @@ function MoreSheet({
             </View>
             {adminLinks.length > 0 ? (
               <View className="gap-1 pb-2">
-                <Text className="px-[11px] pb-1 text-[11px] font-bold uppercase tracking-widest text-subtle">
+                <Text className="px-[11px] pb-1 text-[11px] font-bold uppercase tracking-widest text-muted">
                   Administration
                 </Text>
                 {adminLinks.map((link) => (
@@ -496,7 +500,7 @@ function SheetLink({
   selected,
   onPress,
 }: NavItem & { selected: boolean; onPress: () => void }) {
-  const iconColor = selected ? colors.accent : colors.subtle;
+  const iconColor = selected ? colors.accent : colors.muted;
   const backgroundClass = selected ? 'bg-accent-soft' : '';
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -514,7 +518,7 @@ function SheetLink({
       className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
       <AppIcon name={icon} size={18} color={iconColor} />
-      <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-subtle'}`}>
+      <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>

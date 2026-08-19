@@ -12,12 +12,12 @@ func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("missing User-Agent")
 		}
-		_, _ = w.Write([]byte(`{"docs":[{"title":"The Lord of the Rings","author_name":["J.R.R. Tolkien"],"first_publish_year":1954,"isbn":["9780000000000"],"cover_i":42},{"title":"The Lord of the Rings Series","author_name":["J.R.R. Tolkien"],"cover_i":43}]}`))
+		_, _ = w.Write([]byte(`{"docs":[{"key":"/works/OL1W","title":"The Lord of the Rings","author_name":["J.R.R. Tolkien"],"first_publish_year":1954,"isbn":["9780000000000"],"cover_i":42},{"key":"/works/OL2W","title":"The Lord of the Rings Series","author_name":["J.R.R. Tolkien"],"cover_i":43}]}`))
 	}))
 	defer server.Close()
 
 	got, err := metadataFrom(context.Background(), server.Client(), server.URL, "Lord of the Rings")
-	if err != nil || len(got) != 2 || got[0].Title != "The Lord of the Rings" || got[0].Author != "J.R.R. Tolkien" || got[0].Year != 1954 || got[0].ISBN == "" || got[0].CoverURL == "" {
+	if err != nil || len(got) != 2 || got[0].ID != "OL1W" || got[0].Title != "The Lord of the Rings" || got[0].Author != "J.R.R. Tolkien" || got[0].Year != 1954 || got[0].ISBN == "" || got[0].CoverURL == "" {
 		t.Fatalf("metadata = %+v, %v", got, err)
 	}
 	if match := matchingMetadata("Lord of the Rings Series", "J R R Tolkien", got); match.Title != "The Lord of the Rings Series" || match.CoverURL == "" {

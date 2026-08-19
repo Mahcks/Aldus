@@ -7,6 +7,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
+import Head from 'expo-router/head';
 import { AppIcon, type AppIconName } from './icons';
 import { fadeIn } from './motion';
 import { colors } from './theme';
@@ -689,12 +690,14 @@ function StateBlock({
   title,
   children,
   action,
+  titleIsHeader = true,
 }: PropsWithChildren<{
   icon: AppIconName;
   iconBackgroundClass: string;
   iconColor: string;
   title: string;
   action?: ReactNode;
+  titleIsHeader?: boolean;
 }>) {
   return (
     <View
@@ -704,7 +707,10 @@ function StateBlock({
       <View className={`h-14 w-14 items-center justify-center rounded-full ${iconBackgroundClass}`}>
         <AppIcon name={icon} size={28} color={iconColor} />
       </View>
-      <Text accessibilityRole="header" className="text-lg font-bold text-ink">
+      <Text
+        accessibilityRole={titleIsHeader ? 'header' : undefined}
+        className="text-lg font-bold text-ink"
+      >
         {title}
       </Text>
       <Text className="text-base leading-6 text-muted">{children}</Text>
@@ -730,6 +736,7 @@ export function EmptyState({
       iconColor={colors.accent}
       title={title}
       action={action}
+      titleIsHeader={false}
     >
       {children}
     </StateBlock>
@@ -983,6 +990,9 @@ export function Page({
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
+      <Head>
+        <title>{`${title} · Aldus`}</title>
+      </Head>
       <View className="flex-1 bg-canvas">
         {hideHeader ? null : (
           <PageHeader
@@ -994,6 +1004,7 @@ export function Page({
           />
         )}
         <ScrollView
+          role="main"
           className="flex-1"
           contentContainerClassName={`w-full max-w-[1240px] ${contentPaddingClass}`}
         >

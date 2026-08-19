@@ -112,6 +112,34 @@ export interface AcquisitionTracker {
 }
 
 //////////
+// source: acquisition_policy.go
+
+export interface AcquisitionPolicy {
+  library_id: string;
+  default_ebook_source_id?: string;
+  default_audiobook_source_id?: string;
+  max_ebook_bytes: number /* int64 */;
+  max_audiobook_bytes: number /* int64 */;
+  allowed_ebook_extensions: string[];
+  allowed_audiobook_extensions: string[];
+  preferred_language: string;
+  allow_abridged: boolean;
+  max_active_requests: number /* int */;
+  updated_at?: string;
+}
+export interface UpdateAcquisitionPolicyRequest {
+  default_ebook_source_id: string;
+  default_audiobook_source_id: string;
+  max_ebook_bytes: number /* int64 */;
+  max_audiobook_bytes: number /* int64 */;
+  allowed_ebook_extensions: string[];
+  allowed_audiobook_extensions: string[];
+  preferred_language: string;
+  allow_abridged: boolean;
+  max_active_requests: number /* int */;
+}
+
+//////////
 // source: alignment_jobs.go
 
 export interface CreateAlignmentJobRequest {
@@ -185,6 +213,8 @@ export interface Library {
   name: string;
   role?: string;
   can_request_acquisitions: boolean;
+  can_bypass_acquisition_approval: boolean;
+  can_advanced_acquisition_request: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -194,6 +224,8 @@ export interface Membership {
   display_name: string;
   role: string;
   can_request_acquisitions: boolean;
+  can_bypass_acquisition_approval: boolean;
+  can_advanced_acquisition_request: boolean;
 }
 export interface Work {
   id: string;
@@ -270,6 +302,8 @@ export interface UpdateLibraryRequest {
 export interface SetMembershipRequest {
   role: string;
   can_request_acquisitions: boolean;
+  can_bypass_acquisition_approval: boolean;
+  can_advanced_acquisition_request: boolean;
 }
 export interface CreateWorkRequest {
   title: string;
@@ -323,6 +357,36 @@ export interface UpdateRepresentationRequest {
 }
 
 //////////
+// source: collections.go
+
+export interface Collection {
+  id: string;
+  title: string;
+  description?: string;
+  work_count: number /* int */;
+  works?: CollectionWork[];
+  created_at: string;
+  updated_at: string;
+}
+export interface CollectionWork {
+  id: string;
+  title: string;
+  author?: string;
+  cover_url?: string;
+  position: number /* int */;
+}
+export interface CollectionInput {
+  title: string;
+  description: string;
+}
+export interface AddCollectionWorkRequest {
+  work_id: string;
+}
+export interface ReorderCollectionWorksRequest {
+  work_ids: string[];
+}
+
+//////////
 // source: diagnostics.go
 
 export interface SystemDiagnostics {
@@ -338,6 +402,8 @@ export interface SystemDiagnostics {
   pending_alignment_jobs: number /* int */;
   failed_alignment_jobs: number /* int */;
   acquisition_configured: boolean;
+  managed_acquisition_files: number /* int */;
+  external_media_excluded: number /* int */;
 }
 
 //////////
@@ -356,6 +422,26 @@ export interface AudioChapter {
   title: string;
   start_ms: number /* int64 */;
   end_ms: number /* int64 */;
+}
+
+//////////
+// source: notifications.go
+
+export interface Notification {
+  id: string;
+  kind: string;
+  title: string;
+  body?: string;
+  action_url?: string;
+  created_at: string;
+  read_at?: string;
+}
+export interface NotificationList {
+  items: Notification[];
+  unread_count: number /* int */;
+}
+export interface NotificationUnreadCount {
+  unread_count: number /* int */;
 }
 
 //////////
@@ -394,6 +480,7 @@ export interface LibrarySource {
   kind: string;
   name: string;
   root_path: string;
+  storage_kind: string;
   enabled: boolean;
   auto_import: boolean;
   created_at: string;
@@ -595,4 +682,58 @@ export interface EPUBLocator {
 export interface AudioLocator {
   resource: string;
   timestamp_ms: number /* int64 */;
+}
+
+//////////
+// source: title_requests.go
+
+export interface TitleRequest {
+  id: string;
+  library_id: string;
+  requested_by: string;
+  work_id?: string;
+  external_source?: string;
+  external_id?: string;
+  title: string;
+  author?: string;
+  cover_url?: string;
+  formats: TitleRequestFormat[];
+  created_at: string;
+  updated_at: string;
+}
+export interface TitleRequestFormat {
+  format: string;
+  state: string;
+  error?: string;
+  retry_count: number /* int */;
+  last_searched_at?: string;
+  next_search_at?: string;
+  updated_at: string;
+}
+export interface CreateTitleRequest {
+  work_id: string;
+  external_source: string;
+  external_id: string;
+  title: string;
+  author: string;
+  cover_url: string;
+  formats: string[];
+}
+
+//////////
+// source: title_search.go
+
+export interface TitleSearchResult {
+  work_id?: string;
+  library_id?: string;
+  title: string;
+  author?: string;
+  cover_url?: string;
+  external_source?: string;
+  external_id?: string;
+  readable: boolean;
+  listenable: boolean;
+  synchronized: boolean;
+  ebook_request_state?: string;
+  audiobook_request_state?: string;
 }

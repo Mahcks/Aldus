@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mahcks/aldus/server/internal/database"
@@ -22,12 +23,44 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','hash',1,0,'2026-01-01','2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
+	const indexerSecret, qbitSecret = "prowlarr-secret-that-must-not-leak", "qbittorrent-secret-that-must-not-leak"
+	if _, err := db.Exec(`INSERT INTO acquisition_settings(id,indexer_url,indexer_api_key,qbittorrent_url,qbittorrent_username,qbittorrent_password,qbittorrent_category,updated_at) VALUES(1,'http://prowlarr',?,'http://qbittorrent','aldus',?,'aldus','2026-01-01')`, indexerSecret, qbitSecret); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dataDir, "media", "book.bin"), []byte("immutable media"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "acquisitions", "library", "request"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "acquisitions", "library", "request", "file-000001.epub"), []byte("managed acquisition"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01','2026-01-01'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at,storage_kind) VALUES('external','library','local','External','/external',1,'2026-01-01','2026-01-01','referenced'); INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,state,created_at,updated_at) VALUES('entry','external','book.epub',1,'2026-01-01','registered','2026-01-01','2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(t.TempDir(), "backup.tar.gz")
 	if err := Create(ctx, dataDir, archive, "test"); err != nil {
 		t.Fatal(err)
+	}
+	var liveIndexerSecret, liveQBitSecret string
+	if err := db.QueryRow(`SELECT indexer_api_key,qbittorrent_password FROM acquisition_settings WHERE id=1`).Scan(&liveIndexerSecret, &liveQBitSecret); err != nil || liveIndexerSecret != indexerSecret || liveQBitSecret != qbitSecret {
+		t.Fatalf("live connector secrets changed = %q %q, %v", liveIndexerSecret, liveQBitSecret, err)
+	}
+	extracted := t.TempDir()
+	manifest, err := extractAndVerify(archive, extracted)
+	if err != nil || !manifest.ConnectorSecretsRedacted {
+		t.Fatalf("backup manifest redaction=%v, %v", manifest.ConnectorSecretsRedacted, err)
+	}
+	if manifest.ManagedAcquisitionFiles != 1 || manifest.ExternalMediaExcluded != 1 {
+		t.Fatalf("media completeness counts managed=%d external=%d", manifest.ManagedAcquisitionFiles, manifest.ExternalMediaExcluded)
+	}
+	snapshotBytes, err := os.ReadFile(filepath.Join(extracted, "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(snapshotBytes), indexerSecret) || strings.Contains(string(snapshotBytes), qbitSecret) {
+		t.Fatal("backup database retains connector secret bytes")
 	}
 	db.Close()
 	restored := filepath.Join(t.TempDir(), "restored")
@@ -38,6 +71,10 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if err != nil || string(data) != "immutable media" {
 		t.Fatalf("restored media = %q, %v", data, err)
 	}
+	managed, err := os.ReadFile(filepath.Join(restored, "acquisitions", "library", "request", "file-000001.epub"))
+	if err != nil || string(managed) != "managed acquisition" {
+		t.Fatalf("restored managed media=%q err=%v", managed, err)
+	}
 	restoredDB, err := database.Open(ctx, filepath.Join(restored, "aldus.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -46,6 +83,10 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	var users int
 	if err := restoredDB.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&users); err != nil || users != 1 {
 		t.Fatalf("restored users = %d, %v", users, err)
+	}
+	var restoredIndexerSecret, restoredQBitSecret string
+	if err := restoredDB.QueryRow(`SELECT indexer_api_key,qbittorrent_password FROM acquisition_settings WHERE id=1`).Scan(&restoredIndexerSecret, &restoredQBitSecret); err != nil || restoredIndexerSecret != "" || restoredQBitSecret != "" {
+		t.Fatalf("restored connector secrets = %q %q, %v", restoredIndexerSecret, restoredQBitSecret, err)
 	}
 }
 

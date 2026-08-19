@@ -28,6 +28,7 @@ func systemDiagnostics(store *diagnostics.Store) http.HandlerFunc {
 			Version: value.Version, Environment: value.Environment, SchemaVersion: value.SchemaVersion,
 			DatabaseStatus: value.DatabaseStatus, StorageStatus: value.StorageStatus,
 			SourceRootsConfigured: value.SourceRootsConfigured, SourceRootsReachable: value.SourceRootsReachable,
+			ManagedAcquisitionFiles: value.ManagedAcquisitionFiles, ExternalMediaExcluded: value.ExternalMediaExcluded,
 			PendingSourceScans: value.PendingSourceScans, FailedSourceScans: value.FailedSourceScans,
 			PendingAlignmentJobs: value.PendingAlignmentJobs, FailedAlignmentJobs: value.FailedAlignmentJobs,
 			AcquisitionConfigured: value.AcquisitionConfigured,

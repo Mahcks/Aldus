@@ -17,6 +17,9 @@ func Handler(deps Dependencies) http.Handler {
 		registerReaderCredentialRoutes(router, deps.Auth)
 		registerUserRoutes(router, deps.Auth)
 		registerLibraryRoutes(router, deps.Catalog)
+		if deps.Collections != nil {
+			registerCollectionRoutes(router, deps.Collections)
+		}
 		registerSourceRoutes(router, deps.Sources)
 		registerWorkRoutes(router, deps.Catalog, deps.Ingest)
 		registerRepresentationRoutes(router, deps.Catalog)
@@ -25,6 +28,15 @@ func Handler(deps Dependencies) http.Handler {
 		registerAlignmentRoutes(router, deps.Position, deps.Catalog)
 		registerProgressRoutes(router, deps.Position, deps.Catalog)
 		registerAcquisitionRoutes(router, deps.Acquisitions)
+		if deps.AcquisitionPolicies != nil {
+			registerAcquisitionPolicyRoutes(router, deps.AcquisitionPolicies)
+		}
+		if deps.TitleRequests != nil {
+			registerTitleRequestRoutes(router, deps.TitleRequests)
+		}
+		if deps.Notifications != nil {
+			registerNotificationRoutes(router, deps.Notifications)
+		}
 		if deps.Diagnostics != nil {
 			registerDiagnosticRoutes(router, deps.Diagnostics)
 		}

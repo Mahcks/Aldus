@@ -1,184 +1,294 @@
 # Aldus
 
-Aldus is a self-hosted books and audiobooks platform. This repository contains a universal Expo client and a Go HTTP server; the production image serves both the API and exported web client.
+Aldus is a self-hosted home for ebooks and audiobooks. Search your entire catalog, request a missing format, and read or listen from the same app on web, iPhone, and Android.
 
-Library administrators and editors can choose artwork embedded in an EPUB or audiobook, search Open Library for alternate edition artwork, or upload a JPEG/PNG from a Work's management screen. The choice is shared by reading and listening views, source media is never rewritten, and broken or missing artwork falls back to the generated Aldus cover.
+When both an ebook and audiobook are available, Aldus can synchronize them so you can move between reading and listening without losing your place.
 
-## Layout
+## What Aldus does
 
-- `app/` — Expo Router app for iOS, Android, and web
-- `server/` — Go API and production web server
-- `.github/workflows/` — CI and tagged GHCR releases
+- Keeps ebooks and audiobooks together by title.
+- Reads EPUBs and plays audiobooks in the app.
+- Synchronizes exact reading and listening positions across devices.
+- Searches your local catalog and Open Library from one screen.
+- Requests ebooks and audiobooks independently.
+- Watches for unavailable releases and tells you when they are ready.
+- Applies owner-defined download rules and approval requirements.
+- Organizes books into personal collections.
+- Imports existing folders without rewriting the original files.
+- Stores new acquisitions in optional Aldus-managed storage.
+- Provides OPDS and KOReader credentials per user.
+- Creates verified backups of its database and managed files.
 
-## Prerequisites
+Readers use **Home**, **Search**, **Collections**, and **Activity**. Libraries, folders, download connections, approvals, and import review stay under **Administration**.
 
-Go 1.25+, Bun 1.3.5+, Node.js LTS for Expo's native tooling, and optionally Docker.
+## Quick start with Docker
 
-Install client dependencies once with `cd app && bun install`.
-
-## Development
-
-Run both development servers with `make dev`, or separately with `make dev-server` and `make dev-app`. The standard web workflow allows Expo's `http://localhost:8081` origin automatically. Development defaults to `http://localhost:8080`; override `EXPO_PUBLIC_API_URL` and `ALDUS_ALLOWED_ORIGINS` together when using another web origin. Physical devices need your computer's LAN address, while Android emulators commonly use `http://10.0.2.2:8080`. Production web builds use the same-origin `/api` path.
-
-The server accepts `ALDUS_ADDR` (default `:8080`), `ALDUS_DATA_DIR` (default `/data`), `ALDUS_MEDIA_DIR` (default `$ALDUS_DATA_DIR/media`), `ALDUS_SOURCE_ROOTS` (comma-separated server-visible media roots), and `ALDUS_MAX_UPLOAD_BYTES` (default 2 GiB). On an empty database, the setup screen creates the first administrator and permanently closes as soon as that account exists. Complete this one-time setup on a trusted network before exposing Aldus publicly. Set `ALDUS_SECURE_COOKIES=true` when serving over HTTPS. For a web client on another origin, set `ALDUS_ALLOWED_ORIGINS` to a comma-separated exact-origin allowlist such as `http://localhost:8081`; credentialed CORS is disabled when it is empty. Audiobook ingestion requires `ffprobe`; it is included in the production image. `ALDUS_KOREADER_USER` and `ALDUS_KOREADER_KEY` remain a legacy single-user fallback; new installations should create per-user reader credentials from Account.
-
-Set `ALDUS_ENV` to the deployment name and `ALDUS_LOG_LEVEL` to `debug`, `info`, `warn`, or `error` (`info` by default). Development targets use `development` and `debug` automatically.
-
-Optional acquisition search connects directly to Prowlarr and qBittorrent. Administrators configure and test both connections under **Administration → Acquisitions**; Aldus discovers every enabled torrent indexer in Prowlarr, searches them together, watches its tagged qBittorrent downloads, and starts a Source scan after verifying the completed path is inside the selected Source. An individual Torznab feed remains available as an advanced provider. If separate containers use different paths for the shared download volume, set the qBittorrent download root (for example `/downloads`); Aldus maps the relative completed path into the selected Source root and validates the result. `ALDUS_INDEXER_KIND` (`prowlarr` by default), `ALDUS_INDEXER_URL`, `ALDUS_INDEXER_API_KEY`, `ALDUS_QBITTORRENT_URL`, `ALDUS_QBITTORRENT_USERNAME`, `ALDUS_QBITTORRENT_PASSWORD`, `ALDUS_QBITTORRENT_CATEGORY` (default `aldus`), and `ALDUS_QBITTORRENT_DOWNLOAD_ROOT` remain startup defaults for automated deployments. Listenarr and other external managers need no direct integration: download into a configured Aldus Source and use the normal scan/import-review workflow. Aldus never transfers the media payload itself. Usenet requires a future SABnzbd or NZBGet download-client adapter and is not sent to qBittorrent.
-
-## Test Aldus on a real iPhone
-
-Aldus uses an installed Expo development client, not Expo Go or EAS Build, for normal physical-device development. The generated `app/ios/` project is local CNG output and is intentionally ignored by Git.
-
-### Mac and iPhone prerequisites
-
-1. Install Xcode 26.4 or newer (required by Expo SDK 57), open it once, accept its license, and install the requested platform components.
-2. Select Xcode's command-line tools in Xcode Settings, or run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
-3. Install Node.js LTS and Bun 1.3.5. Run `cd app && bun install` after cloning or pulling dependency changes.
-4. CocoaPods is required by the generated iOS project. Expo normally runs it during prebuild; if `pod` is missing, install CocoaPods on the Mac before retrying. Watchman is optional and is not required by Aldus.
-5. Connect the unlocked iPhone to the Mac by cable, tap **Trust** on both devices, and leave the phone visible in Xcode's Devices and Simulators window.
-6. On iOS 16 or newer, open **Settings → Privacy & Security → Developer Mode**, enable it, restart when prompted, and confirm after restart.
-
-### Reach the backend over the LAN
-
-`localhost` on the iPhone means the iPhone itself. Set the public Expo variable to an address that the phone can reach. Do not commit a personal IP address.
-
-```sh
-export EXPO_PUBLIC_API_URL=http://aldus-dev.local:8080
-# Or: export EXPO_PUBLIC_API_URL=http://192.168.x.x:8080
-```
-
-The phone, Mac running Metro, and backend machine normally need to be on the same network. The development server command already uses `ALDUS_ADDR=:8080`, which listens on LAN interfaces. Permit inbound TCP 8080 in the backend machine's firewall. Native requests are not governed by browser CORS; keep `ALDUS_ALLOWED_ORIGINS` limited to the actual web-development origins.
-
-Before opening the app, verify the backend from Safari on the iPhone:
-
-```text
-http://aldus-dev.local:8080/healthcheck
-```
-
-### Fresh checkout and first local development build
-
-Clone or open the checkout on the Mac mini, install dependencies, and start the backend on the backend machine:
+You need Docker with Compose support.
 
 ```sh
 git clone https://github.com/mahcks/aldus.git
 cd aldus
-cd app
-bun install
-cd ..
-
-# Run this on the backend machine if it is the same checkout.
-make dev-server
-```
-
-Confirm `http://aldus-dev.local:8080/healthcheck` opens in iPhone Safari. Then, from the Mac checkout, install only the native development client:
-
-```sh
-make ios-dev
-```
-
-`make ios-dev` runs `expo run:ios --device --no-bundler`. Expo generates `app/ios/` when necessary, asks for the connected device, compiles with the local Xcode toolchain, and installs the development client without starting Metro on the Mac. It does not use EAS.
-
-If automatic signing needs attention, add your Apple Account under **Xcode → Settings → Accounts**, then open `app/ios/Aldus.xcworkspace`. Select the Aldus target, open **Signing & Capabilities**, enable **Automatically manage signing**, choose your Personal Team, select the connected iPhone as the run destination, and press Run. Do not commit a personal Team ID or signing certificate. A free Personal Team supports Aldus's current local-network, SecureStore, and background-audio development requirements. Its profiles are short-lived and it does not support capabilities such as production push notifications or App Store distribution, neither of which Aldus currently requires for this checklist. App Store and TestFlight setup are not required.
-
-If iOS asks you to trust the development certificate, open **Settings → General → VPN & Device Management**, select the developer entry, and trust it.
-
-### Daily development after installation
-
-For TS, TSX, CSS, and ordinary application logic changes, start Metro on the development machine that contains the active checkout and dependencies:
-
-```sh
-make expo-dev
-```
-
-Open Aldus on the iPhone and select the detected development server, or scan Metro's development-client QR code. If discovery fails, use the development client's **Enter URL** action and paste the development-server URL printed by Metro. In development, Aldus derives port 8080 on Metro's LAN host automatically; `EXPO_PUBLIC_API_URL` remains available when the backend is on another machine. Metro uses LAN mode on port 8081, so the iPhone must be able to reach that port on the development machine. The Mac only needs a checkout when rebuilding the native client; normal code and Metro can remain on another LAN-reachable development machine.
-
-Rebuild with `make ios-dev` after adding or removing a native dependency, changing `app.json` native configuration or plugins, changing entitlements/capabilities, or upgrading Expo/React Native. A rebuild is normally unnecessary after TS/TSX, styling, API-client, copy, or most application-logic changes.
-
-`make web-dev` retains the existing web-only Metro workflow. The tagged GitHub release workflow only builds and publishes the combined Go/web Docker image; it is not a native build or Expo update script and remains separate from local iPhone development. No EAS configuration or update/publish script is currently present.
-
-### Common failures
-
-- **Phone cannot reach Aldus:** confirm `EXPO_PUBLIC_API_URL` is not `localhost`, open `/healthcheck` in iPhone Safari, verify both devices are on the same LAN, and allow port 8080 through the backend firewall.
-- **Development client cannot find Metro:** run `make expo-dev` on the Mac checkout, keep the phone and Mac on the same LAN, disable VPN/client isolation temporarily, and allow Node/Metro through the Mac firewall.
-- **Signing fails:** trust the phone, select the correct Team with automatic signing in Xcode, and ensure `com.mahcks.aldus` is available to that Team.
-- **`expo-modules-jsi` fails to compile in Swift:** run `xcodebuild -version` and upgrade to Xcode 26.4 or newer; Expo SDK 57 cannot compile with Xcode 26.3.
-- **Personal Team is unavailable:** add your Apple Account under Xcode Settings → Accounts, reopen Signing & Capabilities, and select the Personal Team associated with that account.
-- **Developer Mode is disabled:** enable it under Privacy & Security, restart, and reconfirm.
-- **Device is not trusted:** reconnect the unlocked phone, accept the trust prompts on both devices, and verify it appears in Xcode's Devices and Simulators window.
-- **Native changes are missing:** rebuild with `make ios-dev`; restarting Metro cannot update native modules or entitlements.
-- **HTTP development endpoint fails:** use a LAN or `.local` endpoint and rebuild after changing native local-network configuration. Use HTTPS outside a trusted development LAN.
-
-### Physical iPhone acceptance checklist
-
-- **Authentication:** setup/login, relaunch and session restore, logout.
-- **Consumer:** Home, Search, Library, Work, long-title layout, navigation and safe areas.
-- **Reader:** open EPUB, previous/next page, reading cursor, Listen from Here, lock/unlock, background/foreground.
-- **Audio:** play/pause, ±15 seconds, seek, chapter navigation, sleep timer, playback speed with preserved pitch, Bluetooth/AirPods when available, screen-lock and background playback, lock-screen metadata.
-- **Synchronization:** Read → Listen, Listen → Read, non-anchor positions, partial and unavailable synchronization.
-- **Persistence:** force quit, reopen, verify session and exact progress restoration.
-- **Native UX:** keyboard/forms, touch targets, text scaling, portrait orientation, and the current automatic system appearance behavior.
-
-### Media folders
-
-Local Sources are folders visible to the Aldus server. Mount externally owned media read-only, then allowlist the container path. The included Compose file uses:
-
-```yaml
-volumes:
-  - /host/books:/library/media:ro
-environment:
-  ALDUS_SOURCE_ROOTS: /library/media
-```
-
-Set `ALDUS_SOURCE_PATH=/host/books` before `docker compose up` to use that pattern with the included Compose file. Aldus administrators can then choose `/library/media` or one of its subfolders from Sources & Imports. Aldus never browses outside configured roots, and source roots cannot overlap `/data` or managed media storage.
-
-On Windows or WSL, distinguish the host path from the server-visible path. A Windows folder such as `D:\Media\Books` may be mounted into the container as `/library/media`; Aldus selects `/library/media`, not the Windows path. Ensure the container user can read the mounted directory.
-
-Alignment jobs use one local external process at a time. `ALDUS_ALIGNMENT_COMMAND` defaults to `python3 ../tools/whisperx_worker.py`, `ALDUS_ALIGNMENT_TIMEOUT_SECONDS` defaults to 7200, and `ALDUS_ALIGNMENT_MODEL_DIR` selects the pre-populated Hugging Face cache. Jobs force offline model loading, so missing models fail closed instead of downloading mutable assets. For a local environment, install [`tools/requirements-alignment.txt`](tools/requirements-alignment.txt) and pre-cache `base.en`, Silero VAD, and WhisperX's English alignment model. The optional `make docker-alignment` image performs that download at image-build time; the normal image remains Go/Expo-only. The Alice CPU baseline was about 165 seconds and 2.7 GiB RAM.
-
-The deterministic unit-test alignment is `fixture-alignment`. Fetch the frozen real Alice media with `make fixture`; see [`docs/test-fixtures.md`](docs/test-fixtures.md). The real Alice fixtures validate exact DOM-range restoration, manual seeking, and the adopted WhisperX 3.8.6 MVP candidate against separately human-authored audible-onset anchors.
-
-## Build and test
-
-```sh
-make build
-make test
-make lint
-```
-
-`make docker` builds a local image. For a normal installation, copy `.env.example` to `.env`, pin `ALDUS_VERSION` to the release you intend to run, set `ALDUS_SOURCE_PATH` to your media folder, and run `docker compose up -d`. Open <http://localhost:8080> and create the first administrator. The production Compose file uses the published multi-architecture image, mounts Sources read-only, keeps application state in the `aldus-data` volume, and waits on `/api/ready`. The example permits cookies over plain HTTP for a trusted home network; set `ALDUS_SECURE_COOKIES=true` when serving Aldus through HTTPS.
-
-`/api/health` is process liveness. `/api/ready` additionally verifies that SQLite responds and the data directory is writable; use readiness for container traffic and upgrade checks.
-
-Create a verified online backup in the host folder configured by `ALDUS_BACKUP_PATH`:
-
-```sh
-docker compose run --rm aldus backup --archive /backups/aldus-backup-$(date +%Y%m%d).tar.gz
-```
-
-The target must not already exist. Aldus takes an online SQLite snapshot, includes managed media, covers, and alignment artifacts, records SHA-256 checksums, and checks database integrity before succeeding. Source files configured outside `/data` are not copied and must be backed up separately.
-
-Restore while Aldus is stopped and the destination data volume is empty. Start the same Aldus version first, confirm `/api/ready`, then upgrade:
-
-```sh
-docker compose stop aldus
-docker compose run --rm aldus restore --archive /backups/aldus-backup-20260817.tar.gz --data-dir /data
+cp .env.example .env
 docker compose up -d
 ```
 
-The restore command refuses a non-empty destination and validates every checksum before publishing files. Local checkouts may use `make backup BACKUP=/path/to/new.tar.gz` and `make restore BACKUP=/path/to/archive.tar.gz RESTORE_DIR=/path/to/empty-directory`.
+Open [http://localhost:8080](http://localhost:8080) and create the first administrator account.
 
-Run `make generate` after changing named SQL queries or public Go API contracts. See [docs/code-generation.md](docs/code-generation.md) for the pinned sqlc and Tygo workflow.
+The included Compose setup stores Aldus data in a Docker volume and mounts `./library-media` as a read-only folder for books you already own. You can change both host folders in `.env`:
 
-## Exact-progress fixture
-
-The initial screen is a deterministic sentence-alignment proof, not a library UI. Select a sentence in Read mode, switch to Listen, and Aldus resolves the canonical segment to its exact fixture timestamp. Selecting an audio cue performs the reverse translation. Both `/api/*` and explicit `/api/v1/*` routes address v1.
-
-Run the stale-client and all locator round-trip proofs with:
-
-```sh
-cd server
-go test ./internal/position ./internal/api/v1 ./internal/api/koreader
+```dotenv
+ALDUS_SOURCE_PATH=/path/to/your/books
+ALDUS_BACKUP_PATH=/path/to/your/backups
 ```
 
-Create a reader credential under **Account → KOReader and OPDS**. Add the displayed `/opds/` URL to KOReader's OPDS catalog using the displayed username and password, and use the Aldus origin as KOReader's custom progress server with the same values. Each credential is scoped to its Aldus user and can be revoked independently. Serve Aldus over HTTPS when credentials cross an untrusted network. Aldus registers the exact downloaded EPUB revision and translates KOReader XPointers through the Work's canonical alignment, including within-paragraph offsets and intentional backward reading. Existing compatible alignments are upgraded when the server starts; the startup log reports any that require realignment.
+Use an absolute path when possible. On Windows, this can be a path such as `D:\Media\Books`; Docker exposes it to Aldus as `/library/media`.
+
+### HTTPS
+
+The example uses plain HTTP for a trusted home network. If you put Aldus behind an HTTPS reverse proxy, set:
+
+```dotenv
+ALDUS_SECURE_COOKIES=true
+```
+
+Complete the first-account setup before exposing Aldus outside your trusted network.
+
+## First-time setup
+
+After creating the administrator:
+
+1. Create a Library under **Administration → Libraries**.
+2. Add an existing media folder as a Source, or use the built-in **Aldus managed downloads** Source.
+3. Scan the Source and review any uncertain matches.
+4. Optionally connect Prowlarr and qBittorrent under **Administration → Acquisitions**.
+5. Set the Library's ebook and audiobook rules and choose who may request them.
+6. Invite household members and assign their permissions.
+
+Once setup is complete, readers do not need to choose Libraries, Sources, folders, or download destinations. They search for a title and choose **Read**, **Listen**, or **Request**.
+
+## Adding books you already own
+
+Aldus calls a server-visible media folder a **Source**. The included Docker setup mounts your host folder at `/library/media` without write access.
+
+In Aldus:
+
+1. Open **Administration → Libraries**.
+2. Select a Library and add `/library/media` as a Source.
+3. Start a scan.
+4. Review only the items Aldus could not match confidently.
+
+Aldus does not rename, move, or modify files in an externally managed Source. Those files remain your responsibility to back up.
+
+## Requests and automatic downloads
+
+Aldus can connect to:
+
+- [Prowlarr](https://prowlarr.com/) for searching configured indexers.
+- [qBittorrent](https://www.qbittorrent.org/) for downloading selected releases.
+
+Configure both from **Administration → Acquisitions**. Then configure each Library's rules:
+
+- Default ebook and audiobook destination.
+- Maximum size for each format.
+- Allowed file formats.
+- Preferred language.
+- Whether abridged audiobooks are allowed.
+- Maximum active requests per user.
+
+Member permissions are separate:
+
+- **Can request:** may request missing ebooks or audiobooks.
+- **Skip approval:** compliant requests may begin automatically.
+- **Advanced release choice:** may inspect and choose raw releases instead of using guided selection.
+
+For normal readers, Aldus applies the rules automatically and hides release names, indexers, sizes, and download folders. If no suitable release exists, Aldus keeps watching and reports progress in **Activity**.
+
+Usenet clients are not supported yet. Aldus currently sends acquisitions only to qBittorrent.
+
+## Managed and external media
+
+Aldus supports two storage styles:
+
+- **Managed media:** acquisitions are copied into Aldus's data directory under generated safe names. Aldus verifies the copied size and SHA-256 checksum before importing it. The original qBittorrent payload is not deleted.
+- **External media:** Aldus references files in your mounted Source and never rewrites them.
+
+Managed media is included in Aldus backups. External media is not; the backup manifest and System diagnostics report how many external files still require a separate backup.
+
+## Backups
+
+Create a verified online backup:
+
+```sh
+docker compose run --rm aldus backup \
+  --archive /backups/aldus-backup-$(date +%Y%m%d).tar.gz
+```
+
+The archive includes:
+
+- The Aldus database.
+- Aldus-managed acquisition media.
+- Uploaded and generated covers.
+- Alignment artifacts.
+- A manifest with SHA-256 checksums.
+
+Prowlarr API keys and qBittorrent passwords are removed from the backup copy. Enter them again after restoring.
+
+Externally mounted Source files are not included. Back them up separately.
+
+### Restore
+
+Restore while Aldus is stopped. The destination data directory must be empty.
+
+```sh
+docker compose stop aldus
+docker compose run --rm aldus restore \
+  --archive /backups/aldus-backup-20260817.tar.gz \
+  --data-dir /data
+docker compose up -d
+```
+
+Aldus validates every checksum before publishing restored files. Restore with the same Aldus version that created the backup, verify the installation, and then upgrade.
+
+## KOReader and OPDS
+
+Create a reader credential under **Account → KOReader and OPDS**.
+
+- Add the displayed `/opds/` URL to KOReader as an OPDS catalog.
+- Use the Aldus origin as KOReader's custom progress server.
+- Enter the generated username and password for both.
+
+Each credential belongs to one Aldus user and can be revoked independently. Use HTTPS when credentials cross an untrusted network.
+
+## Updating Aldus
+
+Pin `ALDUS_VERSION` in `.env` to the release you want to run, then pull and restart:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+Create a backup before upgrading. Avoid relying on `latest` for an installation you care about.
+
+## Troubleshooting
+
+### Aldus cannot see my books
+
+- Confirm the host folder is mounted into the container.
+- Select the container path `/library/media`, not the original Windows, macOS, or Linux path.
+- Confirm Docker can read the host folder.
+- Check that `ALDUS_SOURCE_ROOTS` contains the server-visible path.
+
+### A request never starts
+
+- Test the Prowlarr and qBittorrent connections in Administration.
+- Confirm the Library has default ebook and audiobook destinations.
+- Check whether the request is waiting for owner approval.
+- Review the configured size, format, language, and abridged rules.
+- Open Activity for the reader-facing explanation and Acquisitions for administrator details.
+
+### A download is complete but the book is unavailable
+
+Open **Administration → Sources** and check Import Review. Aldus sends ambiguous editions, multiple-book downloads, and conflicting same-format media to review instead of guessing.
+
+### Health checks
+
+- `/api/health` confirms that the process is running.
+- `/api/ready` also checks SQLite and write access to the data directory.
+- `/healthcheck` remains available for compatible reader clients and simple LAN testing.
+
+## Mobile apps
+
+Aldus is an Expo app for iOS, Android, and web. This repository currently documents local development builds; App Store, Play Store, TestFlight, and EAS distribution are not configured.
+
+For day-to-day TypeScript and styling work on an installed development client:
+
+```sh
+export EXPO_PUBLIC_API_URL=http://192.168.x.x:8080
+make expo-dev
+```
+
+The phone, Metro machine, and Aldus server must be reachable on the same network. Verify the backend in the phone's browser before debugging the app:
+
+```text
+http://192.168.x.x:8080/healthcheck
+```
+
+On a Mac with Xcode and a connected iPhone, build and install the native development client with:
+
+```sh
+cd app
+bun install
+cd ..
+make ios-dev
+```
+
+Rebuild the native client after changing native dependencies, Expo plugins, entitlements, or native configuration. Ordinary TS, TSX, CSS, API-client, and copy changes only require Metro.
+
+If the phone cannot connect, confirm it is on the same Wi-Fi, disable conflicting VPNs temporarily, and allow ports 8080 and 8081 through the relevant firewalls.
+
+## Development
+
+Requirements:
+
+- Go 1.25 or newer.
+- Bun 1.3.5 or newer.
+- Node.js LTS for Expo tooling.
+- `ffprobe` for local audiobook ingestion.
+- Docker if you want to build or run the production container.
+
+Install dependencies and run the app:
+
+```sh
+cd app
+bun install
+cd ..
+make dev
+```
+
+Useful commands:
+
+```sh
+make dev-server   # Go server on port 8080
+make dev-app      # Expo development server
+make expo-dev     # Metro for an installed native development client
+make ios-dev      # Build and install the iOS development client
+make build        # Production web export and Go build
+make test         # Go, race, client, and TypeScript tests
+make lint         # Go vet, formatting, and Expo lint
+make acceptance   # Exact-progress cross-client acceptance test
+make generate     # Regenerate sqlc and public TypeScript contracts
+make docker       # Build the production container locally
+```
+
+The repository contains:
+
+- `app/`: universal Expo client.
+- `server/`: Go API and production web server.
+- `tools/`: optional alignment worker and supporting tools.
+- `docs/`: contributor documentation and test-fixture details.
+
+The production image serves both the API and exported web client.
+
+### Development configuration
+
+Common server variables:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `ALDUS_ADDR` | HTTP listen address | `:8080` |
+| `ALDUS_DATA_DIR` | Database and managed-data directory | `/data` |
+| `ALDUS_MEDIA_DIR` | Managed ingest storage | `$ALDUS_DATA_DIR/media` |
+| `ALDUS_SOURCE_ROOTS` | Comma-separated external Source roots | none |
+| `ALDUS_MAX_UPLOAD_BYTES` | Maximum upload size | 2 GiB |
+| `ALDUS_SECURE_COOKIES` | Require HTTPS cookies | `false` |
+| `ALDUS_ALLOWED_ORIGINS` | Exact web-development origins | none |
+| `ALDUS_LOG_LEVEL` | `debug`, `info`, `warn`, or `error` | `info` |
+
+Prowlarr and qBittorrent may be configured in the app. Matching environment variables remain available as startup defaults for automated deployments.
+
+Alignment development, frozen media fixtures, code generation, and internal architecture details live in [`docs/`](docs/) rather than this installation guide.
+
+## Project status
+
+Aldus is under active development. Back up your data, pin releases, and expect migrations as the product evolves.

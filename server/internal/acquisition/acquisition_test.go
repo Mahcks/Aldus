@@ -387,7 +387,8 @@ func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 		UPDATE acquisition_requests SET scan_id='scan' WHERE id='request';
 		INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,detected_kind,last_seen_scan_id) VALUES('entry','source','Alice/book.epub',10,'2026-01-01T00:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','registered','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','epub','scan');
 		INSERT INTO import_groups(id,library_id,logical_key,content_key,state,confidence,proposed_title,proposed_author,normalized_title,normalized_author,reasons_json,revision,created_at,updated_at) VALUES('proposal','library','logical','content','proposed','high','Alice','Author','alice','author','[]',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
-		INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json) VALUES('proposal','entry','epub','EPUB','{}');`)
+		INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json) VALUES('proposal','entry','epub','EPUB','{}');
+		INSERT INTO acquisition_import_outcomes(acquisition_request_id,scan_id,state,proposal_id,reason,updated_at) VALUES('request','scan','needs_review','proposal','Review required.','2026-01-01T00:01:00Z');`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +401,7 @@ func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 	if err := db.QueryRow(`SELECT fulfillment_state,COALESCE(proposal_id,'') FROM acquisition_requests WHERE id='request'`).Scan(&state, &proposalID); err != nil || state != "needs_review" || proposalID != "proposal" {
 		t.Fatalf("after scan state=%q proposal=%q err=%v", state, proposalID, err)
 	}
-	_, err = db.Exec(`INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES('work','library','Alice','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); UPDATE import_groups SET decision='accepted',accepted_work_id='work',state='obsolete' WHERE id='proposal'`)
+	_, err = db.Exec(`INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES('work','library','Alice','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); UPDATE import_groups SET decision='accepted',accepted_work_id='work',state='obsolete' WHERE id='proposal'; UPDATE acquisition_import_outcomes SET state='accepted',accepted_work_id='work',reason='' WHERE acquisition_request_id='request'`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +418,7 @@ func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 	}
 }
 
-func TestFulfillmentRejectsAmbiguousAndIgnoredImportProposals(t *testing.T) {
+func TestFulfillmentReviewsAmbiguousAndRejectsIgnoredImportProposals(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
 	if err != nil {
@@ -439,7 +440,8 @@ func TestFulfillmentRejectsAmbiguousAndIgnoredImportProposals(t *testing.T) {
 			('proposal-two','library','logical-two','content-two','proposed','high','Two','Author','two','author','[]',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 		INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json) VALUES
 			('proposal-one','entry-one','epub','EPUB','{}'),
-			('proposal-two','entry-two','epub','EPUB','{}');`)
+			('proposal-two','entry-two','epub','EPUB','{}');
+		INSERT INTO acquisition_import_outcomes(acquisition_request_id,scan_id,state,reason,updated_at) VALUES('request','scan','needs_review','Multiple books were found in the completed download; review the import proposals.','2026-01-01T00:01:00Z');`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,10 +451,10 @@ func TestFulfillmentRejectsAmbiguousAndIgnoredImportProposals(t *testing.T) {
 		t.Fatal(err)
 	}
 	var state, diagnosis string
-	if err := db.QueryRow(`SELECT fulfillment_state,download_error FROM acquisition_requests WHERE id='request'`).Scan(&state, &diagnosis); err != nil || state != "failed" || !strings.Contains(diagnosis, "Multiple books") {
+	if err := db.QueryRow(`SELECT fulfillment_state,download_error FROM acquisition_requests WHERE id='request'`).Scan(&state, &diagnosis); err != nil || state != "needs_review" || !strings.Contains(diagnosis, "Multiple books") {
 		t.Fatalf("ambiguous state=%q diagnosis=%q err=%v", state, diagnosis, err)
 	}
-	if _, err := db.Exec(`UPDATE acquisition_requests SET fulfillment_state='needs_review',proposal_id='proposal-one',download_error='' WHERE id='request'; UPDATE import_groups SET decision='ignored',state='obsolete' WHERE id='proposal-one'`); err != nil {
+	if _, err := db.Exec(`UPDATE acquisition_requests SET fulfillment_state='needs_review',proposal_id='proposal-one',download_error='' WHERE id='request'; UPDATE import_groups SET decision='ignored',state='obsolete' WHERE id='proposal-one'; UPDATE acquisition_import_outcomes SET state='failed',proposal_id='proposal-one',reason='The import proposal was dismissed during review.' WHERE acquisition_request_id='request'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.reconcileFulfillment(ctx); err != nil {

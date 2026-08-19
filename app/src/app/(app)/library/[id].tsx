@@ -1,8 +1,22 @@
-import type { Library, Membership, User, WorkSummary } from '../../../generated/api';
+import type {
+  AcquisitionPolicy,
+  Library,
+  LibrarySource,
+  Membership,
+  User,
+  WorkSummary,
+} from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { BrowseControls, WorkGrid } from '../../../features/browse';
+import {
+  formatSizeLimit,
+  parseFormats,
+  parseSizeLimit,
+  validFormats,
+  validPolicyToken,
+} from '../../../features/acquisition-policy-form';
 import { useAuth } from '../../../features/auth/AuthProvider';
 import { AppIcon, type AppIconName } from '../../../features/icons';
 import { Pressable, Text, View } from '../../../features/tw';
@@ -22,6 +36,7 @@ import {
   resolvePressStateClass,
   Row,
   SearchField,
+  Select,
   shared,
 } from '../../../features/ui';
 import { APIError, api, errorMessage } from '../../../lib/api';
@@ -32,7 +47,7 @@ import {
   rememberOfflineLibraries,
 } from '../../../lib/offline-library';
 
-type Panel = 'work' | 'members' | 'settings' | null;
+type Panel = 'work' | 'members' | 'policy' | 'settings' | null;
 type Role = 'owner' | 'editor' | 'reader';
 
 const roles: Role[] = ['owner', 'editor', 'reader'];
@@ -99,6 +114,23 @@ export default function LibraryScreen() {
   const [memberID, setMemberID] = useState('');
   const [role, setRole] = useState<Role>('reader');
   const [canRequestAcquisitions, setCanRequestAcquisitions] = useState(false);
+  const [canBypassAcquisitionApproval, setCanBypassAcquisitionApproval] = useState(false);
+  const [canAdvancedAcquisitionRequest, setCanAdvancedAcquisitionRequest] = useState(false);
+  const [sources, setSources] = useState<LibrarySource[]>([]);
+  const [policy, setPolicy] = useState<AcquisitionPolicy>();
+  const [ebookSourceID, setEbookSourceID] = useState('');
+  const [audiobookSourceID, setAudiobookSourceID] = useState('');
+  const [ebookSize, setEbookSize] = useState('');
+  const [audiobookSize, setAudiobookSize] = useState('');
+  const [ebookFormats, setEbookFormats] = useState('');
+  const [audiobookFormats, setAudiobookFormats] = useState('');
+  const [preferredLanguage, setPreferredLanguage] = useState('');
+  const [allowAbridged, setAllowAbridged] = useState(false);
+  const [maxActiveRequests, setMaxActiveRequests] = useState('');
+  const [policyLoading, setPolicyLoading] = useState(true);
+  const [policyBusy, setPolicyBusy] = useState(false);
+  const [policyError, setPolicyError] = useState('');
+  const [policySaved, setPolicySaved] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Membership | null>(null);
   const [removingMember, setRemovingMember] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -139,6 +171,41 @@ export default function LibraryScreen() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (
+      !id ||
+      !library ||
+      offline ||
+      !(auth.user?.admin || library.role === 'owner' || library.role === 'editor')
+    )
+      return;
+    let active = true;
+    Promise.all([api.sources(id), api.acquisitionPolicy(id)])
+      .then(([nextSources, nextPolicy]) => {
+        if (!active) return;
+        setSources(nextSources.filter((source) => source.enabled));
+        setPolicy(nextPolicy);
+        setEbookSourceID(nextPolicy.default_ebook_source_id ?? '');
+        setAudiobookSourceID(nextPolicy.default_audiobook_source_id ?? '');
+        setEbookSize(formatSizeLimit(nextPolicy.max_ebook_bytes));
+        setAudiobookSize(formatSizeLimit(nextPolicy.max_audiobook_bytes));
+        setEbookFormats(nextPolicy.allowed_ebook_extensions.join(', '));
+        setAudiobookFormats(nextPolicy.allowed_audiobook_extensions.join(', '));
+        setPreferredLanguage(nextPolicy.preferred_language);
+        setAllowAbridged(nextPolicy.allow_abridged);
+        setMaxActiveRequests(String(nextPolicy.max_active_requests));
+      })
+      .catch((value: unknown) => {
+        if (active) setPolicyError(errorMessage(value));
+      })
+      .finally(() => {
+        if (active) setPolicyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [id, library, offline, auth.user?.admin]);
 
   async function loadWorks(offset = 0) {
     if (!id) return;
@@ -247,9 +314,18 @@ export default function LibraryScreen() {
 
   async function saveMember() {
     try {
-      await api.setMember(id, memberID, role, canRequestAcquisitions);
+      await api.setMember(
+        id,
+        memberID,
+        role,
+        canRequestAcquisitions,
+        canBypassAcquisitionApproval,
+        canAdvancedAcquisitionRequest,
+      );
       setMemberID('');
       setCanRequestAcquisitions(false);
+      setCanBypassAcquisitionApproval(false);
+      setCanAdvancedAcquisitionRequest(false);
       await load();
     } catch (value) {
       setError(errorMessage(value));
@@ -258,19 +334,97 @@ export default function LibraryScreen() {
 
   async function changeMemberRole(member: Membership, next: Role) {
     try {
-      await api.setMember(id, member.user_id, next, member.can_request_acquisitions);
+      await api.setMember(
+        id,
+        member.user_id,
+        next,
+        member.can_request_acquisitions,
+        member.can_bypass_acquisition_approval,
+        member.can_advanced_acquisition_request,
+      );
       await load();
     } catch (value) {
       setError(errorMessage(value));
     }
   }
 
-  async function toggleAcquisitionPermission(member: Membership) {
+  async function toggleAcquisitionPermission(
+    member: Membership,
+    permission: 'request' | 'bypass' | 'advanced',
+  ) {
     try {
-      await api.setMember(id, member.user_id, member.role, !member.can_request_acquisitions);
+      await api.setMember(
+        id,
+        member.user_id,
+        member.role,
+        permission === 'request'
+          ? !member.can_request_acquisitions
+          : member.can_request_acquisitions,
+        permission === 'bypass'
+          ? !member.can_bypass_acquisition_approval
+          : member.can_bypass_acquisition_approval,
+        permission === 'advanced'
+          ? !member.can_advanced_acquisition_request
+          : member.can_advanced_acquisition_request,
+      );
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    }
+  }
+
+  async function savePolicy() {
+    if (!id) return;
+    const maxEbookBytes = parseSizeLimit(ebookSize);
+    const maxAudiobookBytes = parseSizeLimit(audiobookSize);
+    const allowedEbookExtensions = parseFormats(ebookFormats);
+    const allowedAudiobookExtensions = parseFormats(audiobookFormats);
+    const activeRequests = Number(maxActiveRequests);
+    if (!ebookSourceID || !audiobookSourceID) {
+      setPolicyError('Choose a default source for ebooks and audiobooks.');
+      return;
+    }
+    if (!maxEbookBytes || !maxAudiobookBytes) {
+      setPolicyError('Enter download limits with MB or GB, for example 200 MB or 5 GB.');
+      return;
+    }
+    if (!validFormats(allowedEbookExtensions) || !validFormats(allowedAudiobookExtensions)) {
+      setPolicyError('Enter one or more valid formats separated by commas.');
+      return;
+    }
+    if (!validPolicyToken(preferredLanguage.trim().toLowerCase())) {
+      setPolicyError('Use a language code such as en or en-us.');
+      return;
+    }
+    if (!Number.isInteger(activeRequests) || activeRequests < 1 || activeRequests > 100) {
+      setPolicyError('Active requests must be a whole number from 1 to 100.');
+      return;
+    }
+    setPolicyBusy(true);
+    setPolicyError('');
+    setPolicySaved(false);
+    try {
+      const saved = await api.updateAcquisitionPolicy(id, {
+        default_ebook_source_id: ebookSourceID,
+        default_audiobook_source_id: audiobookSourceID,
+        max_ebook_bytes: maxEbookBytes,
+        max_audiobook_bytes: maxAudiobookBytes,
+        allowed_ebook_extensions: allowedEbookExtensions,
+        allowed_audiobook_extensions: allowedAudiobookExtensions,
+        preferred_language: preferredLanguage.trim().toLowerCase(),
+        allow_abridged: allowAbridged,
+        max_active_requests: activeRequests,
+      });
+      setPolicy(saved);
+      setEbookSize(formatSizeLimit(saved.max_ebook_bytes));
+      setAudiobookSize(formatSizeLimit(saved.max_audiobook_bytes));
+      setEbookFormats(saved.allowed_ebook_extensions.join(', '));
+      setAudiobookFormats(saved.allowed_audiobook_extensions.join(', '));
+      setPolicySaved(true);
+    } catch (value) {
+      setPolicyError(errorMessage(value));
+    } finally {
+      setPolicyBusy(false);
     }
   }
 
@@ -317,6 +471,9 @@ export default function LibraryScreen() {
                 kind="quiet"
                 onPress={() => router.push(`/sources?libraryId=${id}`)}
               />
+            ) : null}
+            {canEdit ? (
+              <Button label="Acquisition policy" kind="quiet" onPress={() => setPanel('policy')} />
             ) : null}
             {canManage ? (
               <IconButton
@@ -426,6 +583,13 @@ export default function LibraryScreen() {
           {canEdit ? (
             <ManagementRow icon="folder" label="Sources" onPress={openSourcesFromManage} />
           ) : null}
+          {canEdit ? (
+            <ManagementRow
+              icon="acquire"
+              label="Acquisition policy"
+              onPress={() => openPanelFromManage('policy')}
+            />
+          ) : null}
           {canManage ? (
             <ManagementRow
               icon="settings"
@@ -452,6 +616,10 @@ export default function LibraryScreen() {
       </Dialog>
       <Dialog visible={panel === 'members'} title="Manage members" onClose={closePanel} wide>
         <View className="gap-1">
+          <Notice>
+            Guided requests always follow the owner’s download rules. Skip approval starts a guided
+            request automatically. Advanced release choice may bypass those rules.
+          </Notice>
           {members.map((member) => (
             <View
               key={member.user_id}
@@ -466,13 +634,25 @@ export default function LibraryScreen() {
                 onChange={(next) => void changeMemberRole(member, next)}
               />
               {member.role === 'reader' ? (
-                <Checkbox
-                  label="Can request books"
-                  checked={member.can_request_acquisitions}
-                  onPress={() => void toggleAcquisitionPermission(member)}
-                />
+                <View className="min-w-[220px] gap-1">
+                  <Checkbox
+                    label="Can request"
+                    checked={member.can_request_acquisitions}
+                    onPress={() => void toggleAcquisitionPermission(member, 'request')}
+                  />
+                  <Checkbox
+                    label="Skip approval"
+                    checked={member.can_bypass_acquisition_approval}
+                    onPress={() => void toggleAcquisitionPermission(member, 'bypass')}
+                  />
+                  <Checkbox
+                    label="Advanced release choice"
+                    checked={member.can_advanced_acquisition_request}
+                    onPress={() => void toggleAcquisitionPermission(member, 'advanced')}
+                  />
+                </View>
               ) : (
-                <Text className="text-xs text-muted">Can request books</Text>
+                <Text className="text-xs text-muted">Request access included with this role</Text>
               )}
               <Button label="Remove" kind="danger" onPress={() => setRemoveTarget(member)} />
             </View>
@@ -492,11 +672,23 @@ export default function LibraryScreen() {
               </View>
               <RoleControl value={role} onChange={setRole} />
               {role === 'reader' ? (
-                <Checkbox
-                  label="Can request books"
-                  checked={canRequestAcquisitions}
-                  onPress={() => setCanRequestAcquisitions((current) => !current)}
-                />
+                <View className="gap-1">
+                  <Checkbox
+                    label="Can request"
+                    checked={canRequestAcquisitions}
+                    onPress={() => setCanRequestAcquisitions((current) => !current)}
+                  />
+                  <Checkbox
+                    label="Skip approval"
+                    checked={canBypassAcquisitionApproval}
+                    onPress={() => setCanBypassAcquisitionApproval((current) => !current)}
+                  />
+                  <Checkbox
+                    label="Advanced release choice"
+                    checked={canAdvancedAcquisitionRequest}
+                    onPress={() => setCanAdvancedAcquisitionRequest((current) => !current)}
+                  />
+                </View>
               ) : null}
               <Button label="Add member" kind="primary" disabled={!memberID} onPress={saveMember} />
             </View>
@@ -507,6 +699,145 @@ export default function LibraryScreen() {
             </Notice>
           )}
         </View>
+      </Dialog>
+      <Dialog visible={panel === 'policy'} title="Acquisition policy" onClose={closePanel} wide>
+        {policyLoading ? (
+          <Loading label="Loading acquisition policy…" />
+        ) : (
+          <View className="gap-5">
+            <Notice>
+              These rules are mandatory for guided requests, including requests that skip approval.
+              Members with advanced release choice may bypass them.
+            </Notice>
+            {policyError ? <Notice danger>{policyError}</Notice> : null}
+            {policySaved ? <Notice tone="success">Acquisition policy saved.</Notice> : null}
+            {sources.length === 0 ? (
+              <Notice tone="warning">
+                Add and enable a source before choosing download destinations.
+              </Notice>
+            ) : (
+              <View className="gap-4">
+                <Select
+                  label="Default ebook source"
+                  options={sources.map((source) => ({ value: source.id, label: source.name }))}
+                  value={ebookSourceID}
+                  onChange={setEbookSourceID}
+                />
+                <Select
+                  label="Default audiobook source"
+                  options={sources.map((source) => ({ value: source.id, label: source.name }))}
+                  value={audiobookSourceID}
+                  onChange={setAudiobookSourceID}
+                />
+              </View>
+            )}
+            <View className="gap-4 sm:flex-row">
+              <View className="min-w-0 flex-1">
+                <Field
+                  label="Maximum ebook size"
+                  help="Use MB or GB, for example 200 MB."
+                  error={
+                    ebookSize && !parseSizeLimit(ebookSize)
+                      ? 'Enter a size in MB or GB.'
+                      : undefined
+                  }
+                  value={ebookSize}
+                  onChangeText={setEbookSize}
+                />
+              </View>
+              <View className="min-w-0 flex-1">
+                <Field
+                  label="Maximum audiobook size"
+                  help="Use MB or GB, for example 5 GB."
+                  error={
+                    audiobookSize && !parseSizeLimit(audiobookSize)
+                      ? 'Enter a size in MB or GB.'
+                      : undefined
+                  }
+                  value={audiobookSize}
+                  onChangeText={setAudiobookSize}
+                />
+              </View>
+            </View>
+            <View className="gap-4 sm:flex-row">
+              <View className="min-w-0 flex-1">
+                <Field
+                  label="Allowed ebook formats"
+                  help="Comma-separated, for example epub, pdf."
+                  error={
+                    ebookFormats && !validFormats(parseFormats(ebookFormats))
+                      ? 'Use simple format names separated by commas.'
+                      : undefined
+                  }
+                  value={ebookFormats}
+                  autoCapitalize="none"
+                  onChangeText={setEbookFormats}
+                />
+              </View>
+              <View className="min-w-0 flex-1">
+                <Field
+                  label="Allowed audiobook formats"
+                  help="Comma-separated, for example m4b, mp3."
+                  error={
+                    audiobookFormats && !validFormats(parseFormats(audiobookFormats))
+                      ? 'Use simple format names separated by commas.'
+                      : undefined
+                  }
+                  value={audiobookFormats}
+                  autoCapitalize="none"
+                  onChangeText={setAudiobookFormats}
+                />
+              </View>
+            </View>
+            <View className="gap-4 sm:flex-row">
+              <View className="min-w-0 flex-1">
+                <Field
+                  label="Preferred language"
+                  help="A language code such as en or en-us."
+                  error={
+                    preferredLanguage && !validPolicyToken(preferredLanguage.toLowerCase())
+                      ? 'Use a language code such as en or en-us.'
+                      : undefined
+                  }
+                  value={preferredLanguage}
+                  autoCapitalize="none"
+                  onChangeText={setPreferredLanguage}
+                />
+              </View>
+              <View className="min-w-0 flex-1">
+                <Field
+                  label="Maximum active requests per member"
+                  help="A whole number from 1 to 100."
+                  error={
+                    maxActiveRequests &&
+                    (!Number.isInteger(Number(maxActiveRequests)) ||
+                      Number(maxActiveRequests) < 1 ||
+                      Number(maxActiveRequests) > 100)
+                      ? 'Enter a whole number from 1 to 100.'
+                      : undefined
+                  }
+                  value={maxActiveRequests}
+                  keyboardType="number-pad"
+                  onChangeText={setMaxActiveRequests}
+                />
+              </View>
+            </View>
+            <Checkbox
+              label="Allow abridged audiobooks"
+              checked={allowAbridged}
+              onPress={() => setAllowAbridged((current) => !current)}
+            />
+            <View className="self-start">
+              <Button
+                label="Save acquisition policy"
+                kind="primary"
+                loading={policyBusy}
+                disabled={!policy || sources.length === 0}
+                onPress={() => void savePolicy()}
+              />
+            </View>
+          </View>
+        )}
       </Dialog>
       <Dialog visible={panel === 'settings'} title="Library settings" onClose={closePanel}>
         <View className={shared.form}>

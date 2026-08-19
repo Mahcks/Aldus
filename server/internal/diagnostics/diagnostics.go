@@ -20,6 +20,7 @@ type Report struct {
 	PendingSourceScans, FailedSourceScans               int
 	PendingAlignmentJobs, FailedAlignmentJobs           int
 	AcquisitionConfigured                               bool
+	ManagedAcquisitionFiles, ExternalMediaExcluded      int
 }
 
 type Store struct {
@@ -73,6 +74,8 @@ func (s *Store) Report(ctx context.Context, actor auth.User) (Report, error) {
 		{&report.FailedSourceScans, `SELECT COUNT(*) FROM source_scans WHERE state='failed'`},
 		{&report.PendingAlignmentJobs, `SELECT COUNT(*) FROM alignment_jobs WHERE state IN ('pending','processing')`},
 		{&report.FailedAlignmentJobs, `SELECT COUNT(*) FROM alignment_jobs WHERE state='failed'`},
+		{&report.ManagedAcquisitionFiles, `SELECT COUNT(*) FROM source_entries e JOIN library_sources s ON s.id=e.source_id WHERE e.state='registered' AND s.storage_kind='managed' AND s.deleted_at IS NULL`},
+		{&report.ExternalMediaExcluded, `SELECT COUNT(*) FROM source_entries e JOIN library_sources s ON s.id=e.source_id WHERE e.state='registered' AND s.storage_kind='referenced' AND s.deleted_at IS NULL`},
 	}
 	for _, query := range queries {
 		if err := s.db.QueryRowContext(ctx, query.query).Scan(query.destination); err != nil {

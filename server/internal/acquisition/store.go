@@ -329,7 +329,7 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 			return err
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',dismissed_at='',updated_at=? WHERE id=? AND fulfillment_state='failed'`, now, requestID)
+	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',dismissed_at='',torrent_hash='',download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='failed'`, now, now, requestID)
 	return err
 }
 
@@ -397,16 +397,15 @@ func (s *Store) Poll(ctx context.Context) error {
 	if err := s.reconcileFulfillment(ctx); err != nil {
 		return err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,library_id,COALESCE(source_id,'') FROM acquisition_requests WHERE status='queued' AND fulfillment_state='downloading'`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,library_id,COALESCE(source_id,''),torrent_hash,download_last_seen_at,download_progress,download_progress_updated_at,updated_at FROM acquisition_requests WHERE status='queued' AND fulfillment_state='downloading'`)
 	if err != nil {
 		return fmt.Errorf("list acquisition downloads: %w", err)
 	}
 	defer rows.Close()
-	type pending struct{ id, libraryID, sourceID string }
-	var requests []pending
+	var requests []downloadMonitorRequest
 	for rows.Next() {
-		var value pending
-		if err := rows.Scan(&value.id, &value.libraryID, &value.sourceID); err != nil {
+		var value downloadMonitorRequest
+		if err := rows.Scan(&value.id, &value.libraryID, &value.sourceID, &value.hash, &value.lastSeen, &value.progress, &value.progressUpdated, &value.updated); err != nil {
 			return err
 		}
 		requests = append(requests, value)
@@ -431,36 +430,51 @@ func (s *Store) Poll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 	for _, request := range requests {
-		for _, download := range downloads {
-			if !download.HasTag(request.id) || !download.ReadyForImport() {
-				continue
-			}
-			if request.sourceID == "" {
-				s.markDownloadProblem(ctx, request.id, "Choose an Aldus Source for this download.")
+		var download *Download
+		for i := range downloads {
+			if (request.hash != "" && downloads[i].Hash == request.hash) || downloads[i].HasTag(request.id) {
+				download = &downloads[i]
 				break
 			}
-			completedPath, err := s.mapDownloadPath(ctx, request.sourceID, download.ContentPath, client.options.DownloadRoot)
-			var scanID string
-			if err == nil {
-				scanID, err = s.handoff(ctx, request.libraryID, request.sourceID, request.id, completedPath)
-			}
-			if errors.Is(err, source.ErrActiveScan) {
-				break
-			}
-			if err != nil {
-				s.markDownloadProblem(ctx, request.id, err.Error())
-				break
-			}
-			relative, err := s.completedRelativePath(ctx, request.sourceID, completedPath)
-			if err != nil {
-				return err
-			}
-			_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='scanning',scan_id=?,completed_relative_path=?,download_error='',updated_at=? WHERE id=? AND fulfillment_state='downloading'`, scanID, relative, time.Now().UTC().Format(time.RFC3339Nano), request.id)
-			if err != nil {
-				return fmt.Errorf("finish acquisition handoff: %w", err)
-			}
-			break
+		}
+		failed, err := s.monitorDownload(ctx, request, download, now)
+		if err != nil {
+			return err
+		}
+		if failed || download == nil || !download.ReadyForImport() {
+			continue
+		}
+		if request.sourceID == "" {
+			s.markDownloadProblem(ctx, request.id, "Choose an Aldus Source for this download.")
+			continue
+		}
+		completedPath, err := s.mapDownloadPath(ctx, request.sourceID, download.ContentPath, client.options.DownloadRoot)
+		var scanID string
+		if err == nil {
+			scanID, err = s.handoff(ctx, request.libraryID, request.sourceID, request.id, completedPath)
+		}
+		if errors.Is(err, source.ErrActiveScan) {
+			continue
+		}
+		if err != nil {
+			s.markDownloadProblem(ctx, request.id, err.Error())
+			continue
+		}
+		var relative string
+		if err := s.db.QueryRowContext(ctx, `SELECT managed_relative_path FROM acquisition_requests WHERE id=?`, request.id).Scan(&relative); err != nil {
+			return err
+		}
+		if relative == "" {
+			relative, err = s.completedRelativePath(ctx, request.sourceID, completedPath)
+		}
+		if err != nil {
+			return err
+		}
+		_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='scanning',scan_id=?,completed_relative_path=?,download_error='',updated_at=? WHERE id=? AND fulfillment_state='downloading'`, scanID, relative, time.Now().UTC().Format(time.RFC3339Nano), request.id)
+		if err != nil {
+			return fmt.Errorf("finish acquisition handoff: %w", err)
 		}
 	}
 	return nil
@@ -509,7 +523,8 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 				continue
 			}
 		}
-		if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',updated_at=? WHERE id=? AND fulfillment_state='submitting'`, time.Now().UTC().Format(time.RFC3339Nano), value.id); err != nil {
+		stamp := time.Now().UTC().Format(time.RFC3339Nano)
+		if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',torrent_hash='',download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='submitting'`, stamp, stamp, value.id); err != nil {
 			return fmt.Errorf("finish recovered acquisition submission: %w", err)
 		}
 	}
@@ -530,23 +545,13 @@ func (s *Store) completedRelativePath(ctx context.Context, sourceID, completedPa
 
 func (s *Store) reconcileFulfillment(ctx context.Context) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_state='ready',download_error=COALESCE(NULLIF((SELECT error_summary FROM source_scans WHERE id=scan_id),''),'Source scan failed.'),updated_at=? WHERE fulfillment_state='scanning' AND EXISTS(SELECT 1 FROM source_scans WHERE id=scan_id AND state='failed')`, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_state='ready',download_error=COALESCE(NULLIF((SELECT reason FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),''),'Source scan failed.'),updated_at=? WHERE fulfillment_state IN ('scanning','needs_review') AND EXISTS(SELECT 1 FROM acquisition_import_outcomes o WHERE o.acquisition_request_id=acquisition_requests.id AND o.state='failed')`, now); err != nil {
 		return fmt.Errorf("reconcile failed acquisition scans: %w", err)
 	}
-	const matchingGroups = `SELECT DISTINCT ii.group_id FROM import_items ii JOIN import_groups g ON g.id=ii.group_id AND g.library_id=acquisition_requests.library_id JOIN source_entries e ON e.id=ii.source_entry_id WHERE e.source_id=acquisition_requests.source_id AND e.last_seen_scan_id=acquisition_requests.scan_id AND (e.relative_path=acquisition_requests.completed_relative_path OR substr(e.relative_path,1,length(acquisition_requests.completed_relative_path)+1)=acquisition_requests.completed_relative_path||'/')`
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET proposal_id=(`+matchingGroups+` LIMIT 1),fulfillment_state='needs_review',download_state='ready',updated_at=? WHERE fulfillment_state='scanning' AND EXISTS(SELECT 1 FROM source_scans WHERE id=scan_id AND state='completed') AND (SELECT COUNT(*) FROM (`+matchingGroups+`))=1`, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET proposal_id=(SELECT proposal_id FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),fulfillment_state='needs_review',download_state='ready',download_error=(SELECT reason FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),updated_at=? WHERE fulfillment_state='scanning' AND EXISTS(SELECT 1 FROM acquisition_import_outcomes o WHERE o.acquisition_request_id=acquisition_requests.id AND o.state='needs_review')`, now); err != nil {
 		return fmt.Errorf("reconcile completed acquisition scans: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_state='ready',download_error='No supported EPUB or audiobook was found in the completed download.',updated_at=? WHERE fulfillment_state='scanning' AND EXISTS(SELECT 1 FROM source_scans WHERE id=scan_id AND state='completed') AND (SELECT COUNT(*) FROM (`+matchingGroups+`))=0`, now); err != nil {
-		return fmt.Errorf("reconcile empty acquisition scans: %w", err)
-	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_state='ready',download_error='Multiple books were found in the completed download; review the Source import proposals separately.',updated_at=? WHERE fulfillment_state='scanning' AND EXISTS(SELECT 1 FROM source_scans WHERE id=scan_id AND state='completed') AND (SELECT COUNT(*) FROM (`+matchingGroups+`))>1`, now); err != nil {
-		return fmt.Errorf("reconcile ambiguous acquisition scans: %w", err)
-	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_error='The import proposal was dismissed during review.',updated_at=? WHERE fulfillment_state='needs_review' AND EXISTS(SELECT 1 FROM import_groups WHERE id=proposal_id AND library_id=acquisition_requests.library_id AND decision='ignored')`, now); err != nil {
-		return fmt.Errorf("reconcile ignored acquisitions: %w", err)
-	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET work_id=(SELECT accepted_work_id FROM import_groups WHERE id=proposal_id AND library_id=acquisition_requests.library_id),fulfillment_state='available',updated_at=? WHERE fulfillment_state='needs_review' AND proposal_id IS NOT NULL AND EXISTS(SELECT 1 FROM import_groups g JOIN works w ON w.id=g.accepted_work_id AND w.library_id=acquisition_requests.library_id WHERE g.id=proposal_id AND g.library_id=acquisition_requests.library_id AND g.decision='accepted')`, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET proposal_id=(SELECT proposal_id FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),work_id=(SELECT accepted_work_id FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),fulfillment_state='available',download_state='ready',download_error='',updated_at=? WHERE fulfillment_state IN ('scanning','needs_review') AND EXISTS(SELECT 1 FROM acquisition_import_outcomes o JOIN works w ON w.id=o.accepted_work_id AND w.library_id=acquisition_requests.library_id WHERE o.acquisition_request_id=acquisition_requests.id AND o.state='accepted')`, now); err != nil {
 		return fmt.Errorf("reconcile accepted acquisitions: %w", err)
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) SELECT requested_by,work_id,'want_to_read',? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL ON CONFLICT(user_id,work_id) DO NOTHING`, now); err != nil {
@@ -584,6 +589,13 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 }
 
 func (s *Store) mapDownloadPath(ctx context.Context, sourceID, completedPath, remoteRoot string) (string, error) {
+	var storageKind string
+	if err := s.db.QueryRowContext(ctx, `SELECT storage_kind FROM library_sources WHERE id=? AND enabled=1 AND deleted_at IS NULL`, sourceID).Scan(&storageKind); err != nil {
+		return "", errors.New("selected Aldus Source is unavailable")
+	}
+	if storageKind == "managed" {
+		return completedPath, nil
+	}
 	if remoteRoot == "" {
 		return completedPath, nil
 	}
@@ -909,20 +921,24 @@ func (s *Store) Select(ctx context.Context, actor auth.User, libraryID, requestI
 		s.markDownloadProblem(ctx, requestID, err.Error())
 		return Request{}, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',updated_at=? WHERE id=? AND fulfillment_state='submitting'`, time.Now().UTC().Format(time.RFC3339Nano), requestID)
+	stamp := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',torrent_hash='',download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='submitting'`, stamp, stamp, requestID)
 	if err != nil {
 		return Request{}, fmt.Errorf("finish acquisition submission: %w", err)
 	}
-	values, err := s.List(ctx, actor, libraryID)
-	if err != nil {
-		return Request{}, err
+	return s.request(ctx, requestID)
+}
+
+func (s *Store) request(ctx context.Context, id string) (Request, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id,library_id,requested_by,COALESCE(source_id,''),query,status,COALESCE(pair_id,''),download_state,download_error,fulfillment_state,COALESCE(scan_id,''),COALESCE(proposal_id,''),COALESCE(work_id,''),
+			COALESCE(selected_title,''),COALESCE(selected_source,''),COALESCE(selected_size,0),COALESCE(selected_published_at,''),created_at,updated_at
+		FROM acquisition_requests WHERE id=?`, id)
+	value, err := scanRequest(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Request{}, ErrNotFound
 	}
-	for _, value := range values {
-		if value.ID == requestID {
-			return value, nil
-		}
-	}
-	return Request{}, ErrNotFound
+	return value, err
 }
 
 func (s *Store) authorizedSelectableQuery(ctx context.Context, actor auth.User, libraryID, id string) (string, error) {

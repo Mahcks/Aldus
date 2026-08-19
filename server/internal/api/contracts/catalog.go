@@ -3,19 +3,23 @@ package contracts
 import "time"
 
 type Library struct {
-	ID                     string    `json:"id"`
-	Name                   string    `json:"name"`
-	Role                   string    `json:"role,omitempty"`
-	CanRequestAcquisitions bool      `json:"can_request_acquisitions"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	ID                            string    `json:"id"`
+	Name                          string    `json:"name"`
+	Role                          string    `json:"role,omitempty"`
+	CanRequestAcquisitions        bool      `json:"can_request_acquisitions"`
+	CanBypassAcquisitionApproval  bool      `json:"can_bypass_acquisition_approval"`
+	CanAdvancedAcquisitionRequest bool      `json:"can_advanced_acquisition_request"`
+	CreatedAt                     time.Time `json:"created_at"`
+	UpdatedAt                     time.Time `json:"updated_at"`
 }
 type Membership struct {
-	UserID                 string `json:"user_id"`
-	Username               string `json:"username"`
-	DisplayName            string `json:"display_name"`
-	Role                   string `json:"role"`
-	CanRequestAcquisitions bool   `json:"can_request_acquisitions"`
+	UserID                        string `json:"user_id"`
+	Username                      string `json:"username"`
+	DisplayName                   string `json:"display_name"`
+	Role                          string `json:"role"`
+	CanRequestAcquisitions        bool   `json:"can_request_acquisitions"`
+	CanBypassAcquisitionApproval  bool   `json:"can_bypass_acquisition_approval"`
+	CanAdvancedAcquisitionRequest bool   `json:"can_advanced_acquisition_request"`
 }
 type Work struct {
 	ID                   string    `json:"id"`
@@ -91,8 +95,10 @@ type UpdateLibraryRequest struct {
 	Name string `json:"name"`
 }
 type SetMembershipRequest struct {
-	Role                   string `json:"role"`
-	CanRequestAcquisitions bool   `json:"can_request_acquisitions"`
+	Role                          string `json:"role"`
+	CanRequestAcquisitions        bool   `json:"can_request_acquisitions"`
+	CanBypassAcquisitionApproval  bool   `json:"can_bypass_acquisition_approval"`
+	CanAdvancedAcquisitionRequest bool   `json:"can_advanced_acquisition_request"`
 }
 type CreateWorkRequest struct {
 	Title  string `json:"title"`

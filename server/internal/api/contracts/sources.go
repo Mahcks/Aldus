@@ -17,15 +17,16 @@ type SourceDirectoryListing struct {
 }
 
 type LibrarySource struct {
-	ID         string    `json:"id"`
-	LibraryID  string    `json:"library_id"`
-	Kind       string    `json:"kind"`
-	Name       string    `json:"name"`
-	RootPath   string    `json:"root_path"`
-	Enabled    bool      `json:"enabled"`
-	AutoImport bool      `json:"auto_import"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	LibraryID   string    `json:"library_id"`
+	Kind        string    `json:"kind"`
+	Name        string    `json:"name"`
+	RootPath    string    `json:"root_path"`
+	StorageKind string    `json:"storage_kind"`
+	Enabled     bool      `json:"enabled"`
+	AutoImport  bool      `json:"auto_import"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 type CreateLibrarySourceRequest struct {
 	Name       string `json:"name"`
