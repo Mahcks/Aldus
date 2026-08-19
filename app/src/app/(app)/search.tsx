@@ -388,7 +388,7 @@ export default function SearchScreen() {
   }
 
   return (
-    <Page title="Search">
+    <Page title="Search" hideHeader>
       <View className="max-w-[760px]">
         <SearchField
           label="Search title, author, or ISBN"

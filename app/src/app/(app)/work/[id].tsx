@@ -7,7 +7,7 @@ import type {
 } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../../features/auth/AuthProvider';
 import { AvailabilityIcons, BookCover, coverPresentation } from '../../../features/bookshelf';
@@ -39,7 +39,6 @@ import {
   Notice,
   Page,
   resolvePressStateClass,
-  StatusBadge,
 } from '../../../features/ui';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
@@ -360,7 +359,7 @@ export default function WorkScreen() {
       {error ? <Notice tone="danger">{error}</Notice> : null}
 
       <Animated.View entering={fadeIn}>
-        <View className="flex-row items-start gap-4 sm:gap-8">
+        <View className={narrow ? 'items-center gap-4' : 'flex-row items-start gap-8'}>
           <BookCover
             title={work.title}
             author={work.author}
@@ -368,18 +367,23 @@ export default function WorkScreen() {
             size={narrow ? 'small' : 'hero'}
             {...coverPresentation(work)}
           />
-          <View className="min-w-0 flex-1 items-start gap-3">
+          <View className={narrow ? 'w-full items-center gap-3' : 'min-w-0 flex-1 items-start gap-3'}>
             <Text
               numberOfLines={3}
-              className={`${narrow ? 'text-2xl leading-7' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
+              className={`${narrow ? 'text-center text-2xl leading-7' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
             >
               {work.title}
             </Text>
-            <Text numberOfLines={2} className="text-base text-muted sm:text-lg">
+            <Text
+              numberOfLines={2}
+              className={`text-base text-muted sm:text-lg ${narrow ? 'text-center' : ''}`}
+            >
               {work.author || 'Unknown author'}
             </Text>
 
-            <View className="flex-row flex-wrap items-center gap-3">
+            <View
+              className={`flex-row flex-wrap items-center gap-3 ${narrow ? 'justify-center' : ''}`}
+            >
               <AvailabilityIcons
                 value={{
                   readable: Boolean(selectedEPUB),
@@ -392,13 +396,30 @@ export default function WorkScreen() {
                 disabled={offline}
                 onPress={() => setStatusOpen(true)}
               />
-              <Button
-                label="Add to collection"
+              <IconButton
                 icon="collections"
+                label="Add to collection"
                 kind="quiet"
                 disabled={offline}
                 onPress={() => void openCollections()}
               />
+              {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
+                downloadBusy ? (
+                  <View className="h-11 w-11 items-center justify-center">
+                    <ActivityIndicator color={colors.accent} />
+                  </View>
+                ) : (
+                  <IconButton
+                    icon={downloaded ? 'enabled' : 'acquire'}
+                    label={
+                      downloaded ? 'Remove download (on this device)' : 'Download for offline'
+                    }
+                    kind="quiet"
+                    disabled={offline}
+                    onPress={() => void toggleOfflineDownload()}
+                  />
+                )
+              ) : null}
             </View>
 
             {work.in_progress ? (
@@ -413,7 +434,7 @@ export default function WorkScreen() {
                     style={{ width: `${work.completion_percent}%` }}
                   />
                 </View>
-                <Text className="text-sm text-muted">
+                <Text className={`text-sm text-muted ${narrow ? 'text-center' : ''}`}>
                   {work.completion_percent}% complete
                   {work.active_seconds > 0
                     ? ` · ${formatDuration(work.active_seconds)} active`
@@ -423,7 +444,9 @@ export default function WorkScreen() {
             ) : null}
 
             {primaryAvailable ? (
-              <View className="flex-row flex-wrap items-center gap-2 pt-1">
+              <View
+                className={`flex-row flex-wrap items-center gap-2 pt-1 ${narrow ? 'justify-center' : ''}`}
+              >
                 <Button
                   label={
                     narrow
@@ -451,22 +474,10 @@ export default function WorkScreen() {
               <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
             )}
 
-            {note ? <Text className="max-w-md text-sm text-muted">{note}</Text> : null}
-
-            {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
-              <View className="flex-row flex-wrap items-center gap-2 pt-1">
-                <Button
-                  label={downloaded ? 'Remove download' : 'Download for offline'}
-                  icon={downloaded ? 'delete' : 'acquire'}
-                  kind="quiet"
-                  loading={downloadBusy}
-                  disabled={downloadBusy || offline}
-                  onPress={() => void toggleOfflineDownload()}
-                />
-                {downloaded ? (
-                  <StatusBadge tone="success" icon="check" label="On this device" />
-                ) : null}
-              </View>
+            {note ? (
+              <Text className={`max-w-md text-sm text-muted ${narrow ? 'text-center' : ''}`}>
+                {note}
+              </Text>
             ) : null}
           </View>
         </View>

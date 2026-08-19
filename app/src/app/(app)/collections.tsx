@@ -105,7 +105,7 @@ export default function CollectionsScreen() {
 
   if (loading) {
     return (
-      <Page title="Collections">
+      <Page title="Collections" hideHeader>
         <LoadingState label="Loading collections…" />
       </Page>
     );
@@ -113,7 +113,7 @@ export default function CollectionsScreen() {
 
   if (error && items.length === 0) {
     return (
-      <Page title="Collections">
+      <Page title="Collections" hideHeader>
         <ErrorState
           title="Collections are unavailable"
           action={<Button label="Try again" kind="secondary" onPress={() => void load()} />}
@@ -125,24 +125,35 @@ export default function CollectionsScreen() {
   }
 
   return (
-    <Page
-      title="Collections"
-      actions={
-        <Button
-          label="New collection"
-          icon="add"
-          kind="primary"
-          onPress={() => setCreateOpen(true)}
-        />
-      }
-    >
+    <Page title="Collections" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
       {items.length === 0 ? (
-        <EmptyState icon="collections" title="Make your first collection">
+        <EmptyState
+          icon="collections"
+          title="Make your first collection"
+          action={
+            <Button
+              label="New collection"
+              icon="add"
+              kind="primary"
+              onPress={() => setCreateOpen(true)}
+            />
+          }
+        >
           Keep books together for a trip, a reading goal, or simply because they belong together.
         </EmptyState>
       ) : (
-        <Section title="Your collections">
+        <Section
+          title="Your collections"
+          action={
+            <Button
+              label="New collection"
+              icon="add"
+              kind="primary"
+              onPress={() => setCreateOpen(true)}
+            />
+          }
+        >
           <View>
             {items.map((item) => (
               <CollectionRow key={item.id} item={item} />

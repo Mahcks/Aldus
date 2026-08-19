@@ -197,7 +197,7 @@ export default function ActivityScreen() {
 
   if (error && items.length === 0 && requests.length === 0) {
     return (
-      <Page title="Activity">
+      <Page title="Activity" hideHeader>
         <ErrorState
           title="Activity is unavailable"
           action={<Button label="Try again" kind="secondary" onPress={() => void load()} />}
@@ -209,19 +209,7 @@ export default function ActivityScreen() {
   }
 
   return (
-    <Page
-      title="Activity"
-      actions={
-        unreadCount > 0 ? (
-          <Button
-            label="Mark all read"
-            kind="quiet"
-            loading={markingAll}
-            onPress={() => void handleMarkAllRead()}
-          />
-        ) : undefined
-      }
-    >
+    <Page title="Activity" hideHeader>
       {error ? <Text className="text-sm text-danger">{error}</Text> : null}
       {items.length === 0 && requests.length === 0 ? (
         <EmptyState icon="acquire" title="Nothing here yet">
@@ -271,7 +259,19 @@ export default function ActivityScreen() {
         </Section>
       ) : null}
       {items.length > 0 ? (
-        <Section title={unreadCount > 0 ? `${unreadCount} new` : 'Recent'}>
+        <Section
+          title={unreadCount > 0 ? `${unreadCount} new` : 'Recent'}
+          action={
+            unreadCount > 0 ? (
+              <Button
+                label="Mark all read"
+                kind="quiet"
+                loading={markingAll}
+                onPress={() => void handleMarkAllRead()}
+              />
+            ) : undefined
+          }
+        >
           <View accessibilityRole="list">
             {items.map((item) => (
               <ActivityRow

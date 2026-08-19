@@ -22,8 +22,12 @@ export const fadeIn = FadeIn.duration(DURATION_STANDARD)
   .reduceMotion(ReduceMotion.System);
 
 /** Bottom sheets and slide-up panels entering/exiting. */
-export const sheetEnter = SlideInDown.springify().damping(22).reduceMotion(ReduceMotion.System);
-export const sheetExit = SlideOutDown.duration(DURATION_QUICK).reduceMotion(ReduceMotion.System);
+export const sheetEnter = SlideInDown.duration(DURATION_STANDARD)
+  .easing(EASE_STANDARD)
+  .reduceMotion(ReduceMotion.System);
+export const sheetExit = SlideOutDown.duration(DURATION_QUICK)
+  .easing(EASE_STANDARD)
+  .reduceMotion(ReduceMotion.System);
 
 /**
  * Staggered fade-in for list/grid items. Delay is capped so long lists don't

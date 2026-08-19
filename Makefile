@@ -23,9 +23,15 @@ dev-server:
 web-dev: dev-app
 
 expo-dev:
-	@test -n "$$EXPO_PUBLIC_API_URL" || (echo "Set EXPO_PUBLIC_API_URL to the LAN-reachable Aldus origin" >&2; exit 1)
-	@PACKAGER_HOST=$$(printf '%s\n' "$$EXPO_PUBLIC_API_URL" | sed -E 's,https?://([^:/]+).*,\1,'); \
-	 cd app && EXPO_PUBLIC_WEB_API_URL=$${EXPO_PUBLIC_WEB_API_URL:-http://localhost:8080} REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
+	@API_URL="$$EXPO_PUBLIC_API_URL"; \
+	 if test -n "$$API_URL"; then PACKAGER_HOST=$$(printf '%s\n' "$$API_URL" | sed -E 's,https?://([^:/]+).*,\1,'); \
+	 elif command -v ip >/dev/null; then PACKAGER_HOST=$$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($$i=="src") {print $$(i+1); exit}}'); \
+	 elif command -v ipconfig >/dev/null; then INTERFACE=$$(route -n get default 2>/dev/null | awk '/interface:/{print $$2}'); PACKAGER_HOST=$$(ipconfig getifaddr "$$INTERFACE"); \
+	 fi; \
+	 test -n "$$PACKAGER_HOST" || (echo "Could not detect a LAN address; set EXPO_PUBLIC_API_URL once for this network" >&2; exit 1); \
+	 API_URL=$${API_URL:-http://$$PACKAGER_HOST:8080}; \
+	 echo "Starting Aldus for http://$$PACKAGER_HOST:8080"; \
+	 cd app && EXPO_PUBLIC_API_URL="$$API_URL" EXPO_PUBLIC_WEB_API_URL=$${EXPO_PUBLIC_WEB_API_URL:-http://localhost:8080} REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
 
 ios-dev:
 	cd app && bun run ios:device

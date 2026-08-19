@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   SafeAreaView,
@@ -570,44 +571,60 @@ export function Dialog({
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center p-6">
-        {/*
-         * The backdrop is a plain (non-button) Pressable positioned behind the
-         * dialog content, not a wrapping ancestor of it — an ancestor with
-         * accessibilityRole="button" renders as an actual <button> on web,
-         * which would illegally nest the dialog's own interactive controls
-         * (e.g. the Close IconButton) inside it. Escape and the visible Close
-         * button remain the accessible dismiss paths; this is a supplementary
-         * pointer convenience only, so it intentionally carries no button role.
-         */}
-        <Pressable
-          accessibilityLabel="Dismiss dialog"
-          onPress={onClose}
-          className="absolute inset-0 bg-ink/40"
-        />
-        <Animated.View entering={fadeIn} style={{ width: '100%', alignItems: 'center' }}>
+      {/*
+       * Modal renders in its own native window on Android, so the activity's
+       * automatic keyboard resize never reaches content inside it — without
+       * this, the keyboard simply covers whatever field is focused. `padding`
+       * on iOS avoids the double-adjustment that `height` causes there.
+       */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View className="flex-1 items-center justify-center p-6">
+          {/*
+           * The backdrop is a plain (non-button) Pressable positioned behind the
+           * dialog content, not a wrapping ancestor of it — an ancestor with
+           * accessibilityRole="button" renders as an actual <button> on web,
+           * which would illegally nest the dialog's own interactive controls
+           * (e.g. the Close IconButton) inside it. Escape and the visible Close
+           * button remain the accessible dismiss paths; this is a supplementary
+           * pointer convenience only, so it intentionally carries no button role.
+           */}
           <Pressable
-            onPress={noop}
-            accessibilityViewIsModal
-            role="dialog"
-            className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
-          >
-            <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
-              <Text accessibilityRole="header" className="flex-shrink text-lg font-bold text-ink">
-                {title}
-              </Text>
-              <IconButton
-                icon="close"
-                label="Close dialog"
-                kind="quiet"
-                onPress={onClose}
-                nativeID={closeButtonId}
-              />
-            </View>
-            <ScrollView className="flex-shrink">{children}</ScrollView>
-          </Pressable>
-        </Animated.View>
-      </View>
+            accessibilityLabel="Dismiss dialog"
+            onPress={onClose}
+            className="absolute inset-0 bg-ink/40"
+          />
+          <Animated.View entering={fadeIn} style={{ width: '100%', alignItems: 'center' }}>
+            <Pressable
+              onPress={noop}
+              accessibilityViewIsModal
+              role="dialog"
+              className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
+            >
+              <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
+                <Text
+                  accessibilityRole="header"
+                  className="flex-shrink text-lg font-bold text-ink"
+                >
+                  {title}
+                </Text>
+                <IconButton
+                  icon="close"
+                  label="Close dialog"
+                  kind="quiet"
+                  onPress={onClose}
+                  nativeID={closeButtonId}
+                />
+              </View>
+              <ScrollView className="flex-shrink" keyboardShouldPersistTaps="handled">
+                {children}
+              </ScrollView>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -702,18 +719,18 @@ function StateBlock({
   return (
     <View
       accessibilityLiveRegion="polite"
-      className="min-h-[180px] max-w-[560px] items-start justify-center gap-3"
+      className="min-h-[180px] max-w-[420px] items-center justify-center gap-3 self-center py-4"
     >
       <View className={`h-14 w-14 items-center justify-center rounded-full ${iconBackgroundClass}`}>
         <AppIcon name={icon} size={28} color={iconColor} />
       </View>
       <Text
         accessibilityRole={titleIsHeader ? 'header' : undefined}
-        className="text-lg font-bold text-ink"
+        className="text-center text-lg font-bold text-ink"
       >
         {title}
       </Text>
-      <Text className="text-base leading-6 text-muted">{children}</Text>
+      <Text className="text-center text-base leading-6 text-muted">{children}</Text>
       {action}
     </View>
   );
@@ -732,8 +749,8 @@ export function EmptyState({
   return (
     <StateBlock
       icon={icon}
-      iconBackgroundClass="bg-accent-soft"
-      iconColor={colors.accent}
+      iconBackgroundClass="bg-neutral-soft"
+      iconColor={colors.neutral}
       title={title}
       action={action}
       titleIsHeader={false}
@@ -990,9 +1007,11 @@ export function Page({
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <Head>
-        <title>{`${title} · Aldus`}</title>
-      </Head>
+      {Platform.OS === 'web' ? (
+        <Head>
+          <title>{`${title} · Aldus`}</title>
+        </Head>
+      ) : null}
       <View className="flex-1 bg-canvas">
         {hideHeader ? null : (
           <PageHeader
