@@ -2,7 +2,14 @@ import type { Href } from 'expo-router';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import type { Notification, TitleRequest, TitleRequestEvent } from '../../generated/api';
+import {
+  isCancelableRequestState,
+  isTakingLonger,
+  requestGroup,
+  type RequestFilter,
+} from '../../features/activity-presentation';
 import { useAuth } from '../../features/auth/AuthProvider';
+import { BookCover } from '../../features/bookshelf';
 import { AppIcon } from '../../features/icons';
 import {
   notificationHref,
@@ -11,8 +18,8 @@ import {
 } from '../../features/notification-presentation';
 import { RequestTimeline } from '../../features/request-timeline';
 import { colors } from '../../features/theme';
-import { titleRequestPresentation } from '../../features/title-search';
-import { Text, View } from '../../features/tw';
+import { titleRequestDetail, titleRequestPresentation } from '../../features/title-search';
+import { Pressable, Text, View } from '../../features/tw';
 import {
   Button,
   ConfirmDialog,
@@ -76,8 +83,10 @@ export default function ActivityScreen() {
   const [items, setItems] = useState<Notification[]>([]);
   const [requests, setRequests] = useState<TitleRequest[]>([]);
   const [requestEvents, setRequestEvents] = useState<Record<string, TitleRequestEvent[]>>({});
-  const [expandedRequestID, setExpandedRequestID] = useState('');
+  const [expandedFormat, setExpandedFormat] = useState('');
   const [historyLoadingID, setHistoryLoadingID] = useState('');
+  const [tab, setTab] = useState<'requests' | 'updates'>('requests');
+  const [requestFilter, setRequestFilter] = useState<RequestFilter>('active');
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -90,46 +99,47 @@ export default function ActivityScreen() {
   const [canceling, setCanceling] = useState(false);
 
   async function load() {
-    try {
-      const [result, libraries] = await Promise.all([api.notifications(), api.libraries()]);
-      const libraryRequests = await Promise.all(
-        libraries.map((library) => api.titleRequests(library.id)),
-      );
-      setItems(result.items);
-      setUnreadCount(result.unread_count);
-      const ownRequests = libraryRequests
-        .flat()
-        .filter((request) => request.requested_by === auth.user?.id)
-        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
-        .slice(0, 50);
-      setRequests(ownRequests);
-      setError('');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setLoading(false);
+    const [notificationsResult, requestsResult] = await Promise.allSettled([
+      api.notifications(),
+      loadOwnRequests(auth.user?.id),
+    ]);
+    const errors: string[] = [];
+    if (notificationsResult.status === 'fulfilled') {
+      setItems(notificationsResult.value.items);
+      setUnreadCount(notificationsResult.value.unread_count);
+    } else {
+      errors.push(errorMessage(notificationsResult.reason));
     }
+    if (requestsResult.status === 'fulfilled') {
+      setRequests(requestsResult.value.items);
+      if (requestsResult.value.partial) errors.push('Some library requests could not be loaded.');
+    } else {
+      errors.push(errorMessage(requestsResult.reason));
+    }
+    setError(errors.join(' '));
+    setLoading(false);
   }
 
   useEffect(() => {
     let canceled = false;
-    Promise.all([api.notifications(), api.libraries()])
-      .then(async ([result, libraries]) => {
-        const libraryRequests = await Promise.all(
-          libraries.map((library) => api.titleRequests(library.id)),
-        );
+    Promise.allSettled([api.notifications(), loadOwnRequests(auth.user?.id)])
+      .then(([notificationsResult, requestsResult]) => {
         if (canceled) return;
-        setItems(result.items);
-        setUnreadCount(result.unread_count);
-        const ownRequests = libraryRequests
-          .flat()
-          .filter((request) => request.requested_by === auth.user?.id)
-          .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
-          .slice(0, 50);
-        setRequests(ownRequests);
-      })
-      .catch((value: unknown) => {
-        if (!canceled) setError(errorMessage(value));
+        const errors: string[] = [];
+        if (notificationsResult.status === 'fulfilled') {
+          setItems(notificationsResult.value.items);
+          setUnreadCount(notificationsResult.value.unread_count);
+        } else {
+          errors.push(errorMessage(notificationsResult.reason));
+        }
+        if (requestsResult.status === 'fulfilled') {
+          setRequests(requestsResult.value.items);
+          if (requestsResult.value.partial)
+            errors.push('Some library requests could not be loaded.');
+        } else {
+          errors.push(errorMessage(requestsResult.reason));
+        }
+        setError(errors.join(' '));
       })
       .finally(() => {
         if (!canceled) setLoading(false);
@@ -158,17 +168,21 @@ export default function ActivityScreen() {
     }
   }
 
-  async function toggleRequestHistory(request: TitleRequest) {
-    if (expandedRequestID === request.id) {
-      setExpandedRequestID('');
+  async function toggleRequestHistory(request: TitleRequest, format: string) {
+    const key = `${request.id}:${format}`;
+    if (expandedFormat === key) {
+      setExpandedFormat('');
       return;
     }
-    setExpandedRequestID(request.id);
-    if (requestEvents[request.id]) return;
+    if (requestEvents[request.id]) {
+      setExpandedFormat(key);
+      return;
+    }
     setHistoryLoadingID(request.id);
     try {
       const events = await api.titleRequestEvents(request.library_id, request.id);
       setRequestEvents((current) => ({ ...current, [request.id]: events }));
+      setExpandedFormat(key);
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -219,7 +233,7 @@ export default function ActivityScreen() {
 
   if (error && items.length === 0 && requests.length === 0) {
     return (
-      <Page title="Activity" hideHeader>
+      <Page title="Activity">
         <ErrorState
           title="Activity is unavailable"
           action={<Button label="Try again" kind="secondary" onPress={() => void load()} />}
@@ -230,68 +244,175 @@ export default function ActivityScreen() {
     );
   }
 
+  const visibleRequests = requests.filter((request) => requestGroup(request) === requestFilter);
+
   return (
-    <Page title="Activity" hideHeader>
+    <Page title="Activity">
       {error ? <Text className="text-sm text-danger">{error}</Text> : null}
-      {items.length === 0 && requests.length === 0 ? (
-        <EmptyState icon="acquire" title="Nothing here yet">
-          Updates about requests and newly available books will appear here.
-        </EmptyState>
-      ) : null}
-      {requests.length > 0 ? (
-        <Section title="Your requests">
-          <View accessibilityRole="list" className="border-t border-line">
-            {requests.map((request) => (
-              <View key={request.id} className="gap-3 border-b border-line py-4">
-                <View className="gap-1">
-                  <Text className="font-editorial text-lg font-bold text-ink">{request.title}</Text>
-                  {request.author ? (
-                    <Text className="text-sm text-muted">{request.author}</Text>
-                  ) : null}
-                </View>
-                {request.formats.map((format) => {
-                  const status = titleRequestPresentation(format.state) ?? {
-                    label: 'In progress',
-                    tone: 'info' as const,
-                  };
-                  return (
-                    <View
-                      key={format.format}
-                      className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <View className="flex-row items-center gap-3">
-                        <Text className="w-24 text-sm font-bold text-ink">
-                          {formatLabel(format.format)}
-                        </Text>
-                        <StatusBadge tone={status.tone} label={status.label} />
-                      </View>
-                      {isActive(format.state) ? (
-                        <Button
-                          label="Cancel"
-                          kind="quiet"
-                          onPress={() => setCancelTarget({ request, format: format.format })}
-                        />
-                      ) : null}
-                    </View>
-                  );
-                })}
-                <View className="items-start">
-                  <Button
-                    label={expandedRequestID === request.id ? 'Hide history' : 'Show history'}
-                    kind="quiet"
-                    loading={historyLoadingID === request.id}
-                    onPress={() => void toggleRequestHistory(request)}
-                  />
-                </View>
-                {expandedRequestID === request.id ? (
-                  <RequestTimeline events={requestEvents[request.id] ?? []} />
-                ) : null}
-              </View>
+      <View
+        accessibilityLabel="Activity sections"
+        accessibilityRole="tablist"
+        className="mb-6 flex-row border-b border-line"
+      >
+        <ActivityTab
+          label="Requests"
+          selected={tab === 'requests'}
+          onPress={() => setTab('requests')}
+        />
+        <ActivityTab
+          label={unreadCount > 0 ? `Updates (${unreadCount})` : 'Updates'}
+          selected={tab === 'updates'}
+          onPress={() => setTab('updates')}
+        />
+      </View>
+      {tab === 'requests' ? (
+        <Section title={`${requestFilter[0].toUpperCase() + requestFilter.slice(1)} requests`}>
+          <View
+            accessibilityLabel="Filter requests"
+            accessibilityRole="radiogroup"
+            className="flex-row flex-wrap gap-1"
+          >
+            {(['active', 'ready', 'history'] as const).map((filter) => (
+              <FilterTab
+                key={filter}
+                label={filter[0].toUpperCase() + filter.slice(1)}
+                selected={requestFilter === filter}
+                onPress={() => setRequestFilter(filter)}
+              />
             ))}
           </View>
+          {visibleRequests.length === 0 ? (
+            <EmptyState
+              icon={requestFilter === 'ready' ? 'check' : 'acquire'}
+              title={requestFilter === 'active' ? 'No active requests' : `No ${requestFilter} yet`}
+            >
+              {requestFilter === 'active'
+                ? 'Request a missing ebook or audiobook from Search.'
+                : 'Requests will move here as their status changes.'}
+            </EmptyState>
+          ) : (
+            <View accessibilityRole="list" className="border-t border-line">
+              {visibleRequests.map((request) => (
+                <View key={request.id} className="flex-row gap-4 border-b border-line py-5">
+                  <BookCover
+                    title={request.title}
+                    author={request.author}
+                    coverURL={request.cover_url}
+                    size="mini"
+                  />
+                  <View className="min-w-0 flex-1 gap-3">
+                    <View className="gap-0.5">
+                      <Text
+                        numberOfLines={2}
+                        className="font-editorial text-lg font-bold leading-6 text-ink"
+                      >
+                        {request.title}
+                      </Text>
+                      {request.author ? (
+                        <Text numberOfLines={1} className="text-sm text-muted">
+                          {request.author}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {request.formats.map((format) => {
+                      const status = titleRequestPresentation(format.state) ?? {
+                        label: 'In progress',
+                        tone: 'info' as const,
+                      };
+                      const key = `${request.id}:${format.format}`;
+                      const expanded = expandedFormat === key;
+                      return (
+                        <View
+                          key={format.format}
+                          className="gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0"
+                        >
+                          <View className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <View className="min-w-0 flex-1 gap-1">
+                              <View className="flex-row flex-wrap items-center gap-2">
+                                <Text className="text-sm font-bold text-ink">
+                                  {formatLabel(format.format)}
+                                </Text>
+                                <StatusBadge tone={status.tone} label={status.label} />
+                                <Text className="text-xs text-subtle">
+                                  {notificationTime(format.updated_at)}
+                                </Text>
+                              </View>
+                              <Text className="text-sm leading-5 text-muted">
+                                {titleRequestDetail(format)}
+                              </Text>
+                              {isTakingLonger(format.state, format.updated_at) ? (
+                                <View className="flex-row items-start gap-2 bg-warning-soft px-3 py-2">
+                                  <AppIcon name="warning" size={17} color={colors.warning} />
+                                  <Text className="min-w-0 flex-1 text-sm leading-5 text-ink">
+                                    This download is taking longer than expected. Aldus will keep
+                                    checking it.
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <View className="flex-row flex-wrap items-center gap-1">
+                              {format.state === 'available' && request.work_id ? (
+                                <Button
+                                  label={format.format === 'audiobook' ? 'Listen' : 'Read'}
+                                  kind="secondary"
+                                  onPress={() =>
+                                    router.push(
+                                      `/consume/${request.work_id}?mode=${
+                                        format.format === 'audiobook' ? 'listen' : 'read'
+                                      }` as Href,
+                                    )
+                                  }
+                                />
+                              ) : null}
+                              {format.state === 'available' && !request.work_id ? (
+                                <Text className="self-center text-xs text-muted">
+                                  Open will appear when import finishes.
+                                </Text>
+                              ) : null}
+                              {['failed', 'denied', 'canceled'].includes(format.state) ? (
+                                <Button
+                                  label="Find again"
+                                  kind="secondary"
+                                  onPress={() =>
+                                    router.push(
+                                      `/search?q=${encodeURIComponent(request.title)}` as Href,
+                                    )
+                                  }
+                                />
+                              ) : null}
+                              {isCancelableRequestState(format.state) ? (
+                                <Button
+                                  label="Cancel"
+                                  kind="quiet"
+                                  onPress={() =>
+                                    setCancelTarget({ request, format: format.format })
+                                  }
+                                />
+                              ) : null}
+                              <Button
+                                label={expanded ? 'Hide updates' : 'View updates'}
+                                kind="quiet"
+                                loading={historyLoadingID === request.id}
+                                onPress={() => void toggleRequestHistory(request, format.format)}
+                              />
+                            </View>
+                          </View>
+                          {expanded ? (
+                            <RequestTimeline
+                              events={requestEvents[request.id] ?? []}
+                              format={format.format}
+                            />
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </Section>
-      ) : null}
-      {items.length > 0 ? (
+      ) : items.length > 0 ? (
         <Section
           title={unreadCount > 0 ? `${unreadCount} new` : 'Recent'}
           action={
@@ -316,7 +437,11 @@ export default function ActivityScreen() {
             ))}
           </View>
         </Section>
-      ) : null}
+      ) : (
+        <EmptyState icon="activity" title="No updates yet">
+          Download, approval, and ready updates will appear here.
+        </EmptyState>
+      )}
       <ConfirmDialog
         visible={Boolean(cancelTarget)}
         title={`Cancel ${cancelTarget ? formatLabel(cancelTarget.format).toLowerCase() : ''} request?`}
@@ -331,12 +456,71 @@ export default function ActivityScreen() {
   );
 }
 
-const terminalStates = new Set(['available', 'denied', 'canceled', 'failed']);
-
-function isActive(state: string) {
-  return !terminalStates.has(state);
-}
-
 function formatLabel(format: string) {
   return format === 'audiobook' ? 'Audiobook' : 'Ebook';
+}
+
+async function loadOwnRequests(userID?: string) {
+  const libraries = await api.libraries();
+  const results = await Promise.allSettled(
+    libraries.map((library) => api.titleRequests(library.id)),
+  );
+  const failures = results.filter((result) => result.status === 'rejected');
+  if (failures.length === results.length && failures.length > 0) throw failures[0].reason;
+  const items = results
+    .flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+    .filter((request) => request.requested_by === userID)
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+    .slice(0, 50);
+  return { items, partial: failures.length > 0 };
+}
+
+function ActivityTab({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      className={`min-h-11 justify-center border-b-2 px-4 ${
+        selected ? 'border-accent' : 'border-transparent'
+      }`}
+      onPress={onPress}
+    >
+      <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function FilterTab({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      className={`min-h-11 justify-center rounded-control border px-3 ${
+        selected ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
+      }`}
+      onPress={onPress}
+    >
+      <Text className={`text-sm font-semibold ${selected ? 'text-accent' : 'text-muted'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
 }
