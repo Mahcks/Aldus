@@ -225,14 +225,27 @@ func (s *Store) claimScan(ctx context.Context) (Scan, bool, error) {
 type summary struct{ files, supported, epub, audio, new, changed, unchanged, missing, problems, autoImported int }
 
 func (s *Store) runScan(ctx context.Context, job Scan) error {
-	var root string
+	var root, requestID, payloadRelative string
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT root_path,enabled FROM library_sources WHERE id=? AND deleted_at IS NULL`, job.SourceID).Scan(&root, &enabled)
+	err := s.db.QueryRowContext(ctx, `SELECT ls.root_path,ls.enabled,COALESCE(sc.acquisition_request_id,''),COALESCE(ar.completed_relative_path,'') FROM source_scans sc JOIN library_sources ls ON ls.id=sc.source_id LEFT JOIN acquisition_requests ar ON ar.id=sc.acquisition_request_id WHERE sc.id=? AND ls.deleted_at IS NULL`, job.ID).Scan(&root, &enabled, &requestID, &payloadRelative)
 	if err != nil || enabled == 0 {
 		return ErrUnavailable
 	}
+	scanRoot := root
+	if requestID != "" {
+		if payloadRelative == "" || filepath.IsAbs(payloadRelative) {
+			return validation("acquisition_payload_unavailable", "The completed acquisition payload was not recorded.")
+		}
+		scanRoot = filepath.Join(root, filepath.FromSlash(payloadRelative))
+		if !within(root, scanRoot) {
+			return validation("acquisition_payload_unavailable", "The completed acquisition payload is outside its destination Source.")
+		}
+		if _, err := os.Stat(scanRoot); err != nil {
+			return validation("acquisition_payload_unavailable", "The completed acquisition payload is no longer visible to Aldus.")
+		}
+	}
 	sum := summary{}
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(scanRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -240,7 +253,7 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 			sum.problems++
 			return nil
 		}
-		if path == root {
+		if path == scanRoot && d.IsDir() {
 			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
@@ -312,12 +325,14 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 	if err != nil {
 		return err
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE source_entries SET state='missing',updated_at=? WHERE source_id=? AND state!='missing' AND (last_seen_scan_id IS NULL OR last_seen_scan_id!=?)`, time.Now().UTC().Format(time.RFC3339Nano), job.SourceID, job.ID)
-	if err != nil {
-		return err
+	if requestID == "" {
+		result, err := s.db.ExecContext(ctx, `UPDATE source_entries SET state='missing',updated_at=? WHERE source_id=? AND state!='missing' AND (last_seen_scan_id IS NULL OR last_seen_scan_id!=?)`, time.Now().UTC().Format(time.RFC3339Nano), job.SourceID, job.ID)
+		if err != nil {
+			return err
+		}
+		missing, _ := result.RowsAffected()
+		sum.missing = int(missing)
 	}
-	missing, _ := result.RowsAffected()
-	sum.missing = int(missing)
 	var libraryID string
 	if err := s.db.QueryRowContext(ctx, `SELECT library_id FROM library_sources WHERE id=?`, job.SourceID).Scan(&libraryID); err != nil {
 		return err

@@ -16,7 +16,10 @@ import (
 	"unicode"
 )
 
-var ErrUnavailable = errors.New("acquisition is not configured")
+var (
+	ErrUnavailable       = errors.New("acquisition is not configured")
+	ErrSubmissionUnknown = errors.New("qBittorrent submission outcome is unknown")
+)
 
 type Options struct {
 	IndexerKind, IndexerURL, IndexerAPIKey                      string
@@ -315,18 +318,54 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 	}
 	response, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("send download to qBittorrent: %w", err)
+		return fmt.Errorf("%w: send download to qBittorrent: %v", ErrSubmissionUnknown, err)
 	}
 	defer response.Body.Close()
-	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, (4<<10)+1))
 	if readErr != nil {
-		return fmt.Errorf("read qBittorrent response: %w", readErr)
+		return fmt.Errorf("%w: read qBittorrent response: %v", ErrSubmissionUnknown, readErr)
+	}
+	if len(responseBody) > 4<<10 {
+		return fmt.Errorf("%w: qBittorrent response is too large", ErrSubmissionUnknown)
 	}
 	responseText := strings.TrimSpace(string(responseBody))
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || responseText != "" && responseText != "Ok." {
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
 	}
+	if err := acceptedAddResponse(responseText); err != nil {
+		if errors.Is(err, errSubmissionRejected) {
+			return fmt.Errorf("send download to qBittorrent: status %d: %w", response.StatusCode, err)
+		}
+		return fmt.Errorf("%w: qBittorrent returned status %d: %v", ErrSubmissionUnknown, response.StatusCode, err)
+	}
 	return nil
+}
+
+var errSubmissionRejected = errors.New("qBittorrent rejected the download")
+
+func acceptedAddResponse(body string) error {
+	if body == "" || body == "Ok." {
+		return nil
+	}
+	var receipt struct {
+		AddedTorrentIDs []string `json:"added_torrent_ids"`
+		FailureCount    *int     `json:"failure_count"`
+		PendingCount    *int     `json:"pending_count"`
+		SuccessCount    *int     `json:"success_count"`
+	}
+	if err := json.Unmarshal([]byte(body), &receipt); err != nil {
+		return fmt.Errorf("unexpected response %q", body)
+	}
+	if receipt.FailureCount == nil || receipt.PendingCount == nil || receipt.SuccessCount == nil || *receipt.FailureCount < 0 || *receipt.PendingCount < 0 || *receipt.SuccessCount < 0 {
+		return errors.New("malformed add receipt")
+	}
+	if *receipt.SuccessCount > 0 || *receipt.PendingCount > 0 || len(receipt.AddedTorrentIDs) > 0 {
+		return nil
+	}
+	if *receipt.FailureCount > 0 {
+		return errSubmissionRejected
+	}
+	return errors.New("contradictory empty add receipt")
 }
 
 func (c *Client) ensureCategory(ctx context.Context, cookies []*http.Cookie) error {

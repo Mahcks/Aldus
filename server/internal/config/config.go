@@ -33,6 +33,7 @@ type Config struct {
 	QBitTorrentPass         string
 	QBitTorrentCategory     string
 	QBitTorrentDownloadRoot string
+	DownloadIngress         string
 }
 
 func Load() (Config, error) {
@@ -64,6 +65,7 @@ func Load() (Config, error) {
 		QBitTorrentPass:         os.Getenv("ALDUS_QBITTORRENT_PASSWORD"),
 		QBitTorrentCategory:     envOr("ALDUS_QBITTORRENT_CATEGORY", "aldus"),
 		QBitTorrentDownloadRoot: os.Getenv("ALDUS_QBITTORRENT_DOWNLOAD_ROOT"),
+		DownloadIngress:         envOr("ALDUS_DOWNLOAD_INGRESS", "/downloads"),
 	}, nil
 }
 

@@ -328,16 +328,27 @@ func (s *Store) EnqueueAcquisitionScan(ctx context.Context, libraryID, sourceID,
 		if err != nil {
 			return "", err
 		}
-		relative, _ := filepath.Rel(v.RootPath, resolved)
-		if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET managed_relative_path=? WHERE id=? AND library_id=? AND source_id=?`, filepath.ToSlash(relative), requestID, libraryID, sourceID); err != nil {
-			return "", fmt.Errorf("record managed acquisition path: %w", err)
-		}
 	} else if !within(v.RootPath, resolved) {
 		return "", validation("download_path_outside_source", "The completed download is outside the selected Aldus Source.")
 	}
 	if requestID != "" {
+		relative, err := filepath.Rel(v.RootPath, resolved)
+		if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return "", validation("download_path_outside_source", "The completed download is outside the selected Aldus Source.")
+		}
+		managedRelative := ""
+		if v.StorageKind == "managed" {
+			managedRelative = filepath.ToSlash(relative)
+		}
+		result, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET completed_relative_path=?,managed_relative_path=CASE WHEN ?!='' THEN ? ELSE managed_relative_path END WHERE id=? AND library_id=? AND source_id=?`, filepath.ToSlash(relative), managedRelative, managedRelative, requestID, libraryID, sourceID)
+		if err != nil {
+			return "", fmt.Errorf("record acquisition payload: %w", err)
+		}
+		if changed, _ := result.RowsAffected(); changed != 1 {
+			return "", validation("acquisition_not_found", "The acquisition request is no longer available.")
+		}
 		var existing string
-		err := s.db.QueryRowContext(ctx, `SELECT id FROM source_scans WHERE acquisition_request_id=? AND source_id=?`, requestID, sourceID).Scan(&existing)
+		err = s.db.QueryRowContext(ctx, `SELECT id FROM source_scans WHERE acquisition_request_id=? AND source_id=?`, requestID, sourceID).Scan(&existing)
 		if err == nil {
 			return existing, nil
 		}

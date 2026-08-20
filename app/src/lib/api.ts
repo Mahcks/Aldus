@@ -54,6 +54,7 @@ import type {
   SetupRequest,
   SystemDiagnostics,
   TitleRequest,
+  TitleRequestEvent,
   TitleSearchResult,
   CreateTitleRequest,
   StartActivityRequest,
@@ -213,6 +214,8 @@ export const api = {
     }),
   titleRequests: (libraryID: string) =>
     request<TitleRequest[]>(`/libraries/${libraryID}/title-requests`),
+  titleRequestEvents: (libraryID: string, requestID: string) =>
+    request<TitleRequestEvent[]>(`/libraries/${libraryID}/title-requests/${requestID}/events`),
   approveTitleRequest: (libraryID: string, requestID: string, format: string) =>
     request<TitleRequest>(
       `/libraries/${libraryID}/title-requests/${requestID}/formats/${format}/approve`,

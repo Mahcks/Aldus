@@ -229,6 +229,15 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 	}
 	query := strings.TrimSpace(value.title + " " + value.author)
 	actor := auth.User{ID: value.requestedBy, Admin: true}
+	var existingID, existingState string
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? AND f.format=?`, value.requestID, value.format).Scan(&existingID, &existingState); err != nil {
+		return fmt.Errorf("check title request download: %w", err)
+	}
+	if existingID != "" && (existingState == "submitting" || existingState == "downloading") {
+		stamp := time.Now().UTC().Format(time.RFC3339Nano)
+		_, err := s.db.ExecContext(ctx, `UPDATE title_request_formats SET state='downloading',error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, stamp, value.requestID, value.format)
+		return err
+	}
 	legacy, err := s.acquisitions.Create(ctx, actor, value.libraryID, value.sourceID, query)
 	if err != nil {
 		return s.deferClaim(ctx, value, "search_failed", err.Error())
@@ -484,7 +493,7 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 }
 
 func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID string) ([]TitleRequest, error) {
-	rows, err := s.db.QueryContext(ctx, titleRequestSelect+` WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id`, actor.ID, libraryID, actor.ID, actor.Admin)
+	rows, err := s.db.QueryContext(ctx, titleRequestSelect+` WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID, libraryID, actor.ID, actor.Admin)
 	if err != nil {
 		return nil, fmt.Errorf("list title requests: %w", err)
 	}
@@ -500,11 +509,31 @@ func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read title requests: %w", err)
 	}
+	byID := make(map[string]int, len(values))
 	for i := range values {
-		values[i].Formats, err = s.formats(ctx, values[i].ID)
-		if err != nil {
+		byID[values[i].ID] = i
+	}
+	formatRows, err := s.db.QueryContext(ctx, `SELECT f.title_request_id,f.format,f.state,COALESCE(f.source_id,''),f.error,f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id,f.format LIMIT 200`, actor.ID, libraryID, actor.ID, actor.Admin)
+	if err != nil {
+		return nil, fmt.Errorf("list title request formats: %w", err)
+	}
+	defer formatRows.Close()
+	for formatRows.Next() {
+		var id, searched, next, created, updated string
+		var value TitleRequestFormat
+		if err := formatRows.Scan(&id, &value.Format, &value.State, &value.SourceID, &value.Error, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
 			return nil, err
 		}
+		value.LastSearchedAt, _ = time.Parse(time.RFC3339Nano, searched)
+		value.NextSearchAt, _ = time.Parse(time.RFC3339Nano, next)
+		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
+		value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		if i, ok := byID[id]; ok {
+			values[i].Formats = append(values[i].Formats, value)
+		}
+	}
+	if err := formatRows.Err(); err != nil {
+		return nil, fmt.Errorf("read title request formats: %w", err)
 	}
 	return values, nil
 }
@@ -531,6 +560,27 @@ func (s *TitleRequestStore) Deny(ctx context.Context, actor auth.User, libraryID
 }
 
 func (s *TitleRequestStore) Cancel(ctx context.Context, actor auth.User, libraryID, id, format string) error {
+	if format != "ebook" && format != "audiobook" {
+		return ErrInvalid
+	}
+	if s.acquisitions != nil {
+		var state, legacyID, legacyState string
+		err := s.db.QueryRowContext(ctx, `SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, format, actor.ID, id, libraryID, actor.Admin, actor.ID).Scan(&state, &legacyID, &legacyState)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("find title request download: %w", err)
+		}
+		if state == "available" || state == "denied" || state == "canceled" || state == "failed" {
+			return ErrInvalid
+		}
+		if legacyID != "" && (legacyState == "submitting" || legacyState == "downloading") {
+			if err := s.acquisitions.Cancel(ctx, actor, libraryID, legacyID); err != nil {
+				return fmt.Errorf("cancel title request download: %w", err)
+			}
+		}
+	}
 	return s.transition(ctx, actor, libraryID, id, format, "canceled", "canceled", false)
 }
 

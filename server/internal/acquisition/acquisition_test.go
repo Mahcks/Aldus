@@ -577,6 +577,76 @@ func TestQBitTorrentAcceptsAcceptedResponse(t *testing.T) {
 	}
 }
 
+func TestQBitTorrentAddReceipts(t *testing.T) {
+	for _, test := range []struct {
+		name, body string
+		wantErr    bool
+	}{
+		{name: "legacy empty"},
+		{name: "legacy ok", body: "Ok."},
+		{name: "pending", body: `{"added_torrent_ids":[],"failure_count":0,"pending_count":1,"success_count":0}`},
+		{name: "success", body: `{"added_torrent_ids":["abc"],"failure_count":0,"pending_count":0,"success_count":1}`},
+		{name: "all failed", body: `{"added_torrent_ids":[],"failure_count":1,"pending_count":0,"success_count":0}`, wantErr: true},
+		{name: "empty contradiction", body: `{"added_torrent_ids":[],"failure_count":0,"pending_count":0,"success_count":0}`, wantErr: true},
+		{name: "missing counts", body: `{"pending_count":1}`, wantErr: true},
+		{name: "not json", body: "accepted", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := acceptedAddResponse(test.body); (err != nil) != test.wantErr {
+				t.Fatalf("acceptedAddResponse(%q) error = %v", test.body, err)
+			}
+		})
+	}
+}
+
+func TestSubmissionRecoveryWaitsBeforeResubmitting(t *testing.T) {
+	ctx := context.Background()
+	var adds atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/info":
+			_, _ = w.Write([]byte(`[]`))
+		case "/api/v2/torrents/add":
+			adds.Add(1)
+			_, _ = w.Write([]byte("Ok."))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`
+		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,?,?);
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library',?,?);
+		INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,selected_url,fulfillment_state,created_at,updated_at) VALUES('request','library','reader','Alice','requested','https://download.test/alice','submitting',?,?)`, now, now, now, now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	client, _ := New(Options{QBitURL: server.URL})
+	store := NewStore(db, client)
+	if err := store.recoverSubmissions(ctx); err != nil || adds.Load() != 0 {
+		t.Fatalf("recent recovery adds=%d err=%v", adds.Load(), err)
+	}
+	old := time.Now().UTC().Add(-3 * time.Minute).Format(time.RFC3339Nano)
+	if _, err := db.Exec(`UPDATE acquisition_requests SET updated_at=? WHERE id='request'`, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.recoverSubmissions(ctx); err != nil || adds.Load() != 1 {
+		t.Fatalf("expired recovery adds=%d err=%v", adds.Load(), err)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT fulfillment_state FROM acquisition_requests WHERE id='request'`).Scan(&state); err != nil || state != "downloading" {
+		t.Fatalf("state=%q err=%v", state, err)
+	}
+}
+
 func TestQBitTorrentKeepsPortScopedSessionCookie(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

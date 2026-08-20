@@ -7,10 +7,12 @@ services:
     volumes:
       - aldus-data:/data
       - ${ALDUS_SOURCE_PATH:-./library-media}:/library/media:ro
+      - ${ALDUS_DOWNLOAD_PATH:-./downloads}:/downloads:ro
       - ${ALDUS_BACKUP_PATH:-./backups}:/backups
     environment:
       ALDUS_ENV: production
       ALDUS_SOURCE_ROOTS: /library/media
+      ALDUS_DOWNLOAD_INGRESS: /downloads
       ALDUS_SECURE_COOKIES: ${ALDUS_SECURE_COOKIES:-false}
       ALDUS_MAX_UPLOAD_BYTES: ${ALDUS_MAX_UPLOAD_BYTES:-2147483648}
     healthcheck:

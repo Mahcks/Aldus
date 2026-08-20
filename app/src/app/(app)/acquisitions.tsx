@@ -7,7 +7,7 @@ import type {
   User,
 } from '../../generated/api';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
 import {
@@ -15,6 +15,7 @@ import {
   acquisitionFulfillment,
   acquisitionSize,
 } from '../../features/acquisition';
+import { titleRequestDetail, titleRequestPresentation } from '../../features/title-search';
 import {
   Button,
   ConfirmDialog,
@@ -65,6 +66,10 @@ export default function AcquisitionsAdministration() {
   const [indexerKind, setIndexerKind] = useState<'prowlarr' | 'torznab'>('prowlarr');
   const hasActiveDownloads = requests.some((request) => request.download_state === 'downloading');
   const visibleRequests = requests.filter((request) => acquisitionFulfillment(request));
+  const reloadApprovals = useCallback(async () => {
+    const values = await Promise.all(libraries.map((library) => api.titleRequests(library.id)));
+    setTitleRequests(values.flat());
+  }, [libraries]);
 
   useEffect(() => {
     let active = true;
@@ -121,6 +126,14 @@ export default function AcquisitionsAdministration() {
     return () => clearInterval(timer);
   }, [hasActiveDownloads, libraryID]);
 
+  useEffect(() => {
+    if (libraries.length === 0) return;
+    const timer = setInterval(() => {
+      void reloadApprovals().catch((value) => setApprovalError(errorMessage(value)));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [libraries, reloadApprovals]);
+
   async function saveSettings() {
     if (savingSettings) return;
     setSavingSettings(true);
@@ -160,11 +173,6 @@ export default function AcquisitionsAdministration() {
     } finally {
       setTestingSettings(false);
     }
-  }
-
-  async function reloadApprovals() {
-    const values = await Promise.all(libraries.map((library) => api.titleRequests(library.id)));
-    setTitleRequests(values.flat());
   }
 
   async function approve(request: TitleRequest, format: string) {
@@ -207,12 +215,9 @@ export default function AcquisitionsAdministration() {
     }
   }
 
-  const pendingRequests = titleRequests
-    .map((request) => ({
-      request,
-      formats: request.formats.filter((format) => format.state === 'pending_approval'),
-    }))
-    .filter((entry) => entry.formats.length > 0);
+  const requestHistory = [...titleRequests].sort((left, right) =>
+    right.updated_at.localeCompare(left.updated_at),
+  );
 
   function requesterName(id: string) {
     const user = users.find((candidate) => candidate.id === id);
@@ -245,52 +250,70 @@ export default function AcquisitionsAdministration() {
         monitoring acquisition activity.
       </Notice>
 
-      <Section title="Requests awaiting approval">
+      <Section title="Requests">
         {approvalError ? <Notice tone="danger">{approvalError}</Notice> : null}
         {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
         {approvalLoading ? (
           <LoadingState label="Loading requests…" />
-        ) : pendingRequests.length === 0 ? (
-          <EmptyState icon="check" title="No requests need approval">
-            New guided requests will appear here when a reader needs your review.
+        ) : requestHistory.length === 0 ? (
+          <EmptyState icon="acquire" title="No requests yet">
+            Ebook and audiobook requests made from Search will appear here.
           </EmptyState>
         ) : (
           <View accessibilityRole="list" className="border-t border-line">
-            {pendingRequests.map(({ request, formats }) => (
+            {requestHistory.map((request) => (
               <View key={request.id} className="gap-3 border-b border-line py-4">
                 <View className="gap-1">
                   <Text className="font-editorial text-lg font-bold text-ink">{request.title}</Text>
                   <Text className="text-sm text-muted">
-                    {[request.author, `Requested by ${requesterName(request.requested_by)}`]
+                    {[
+                      request.author,
+                      `Requested by ${requesterName(request.requested_by)}`,
+                      acquisitionDate(request.created_at),
+                    ]
                       .filter(Boolean)
                       .join(' · ')}
                   </Text>
                 </View>
-                {formats.map((format) => {
+                {request.formats.map((format) => {
                   const key = `${request.id}:${format.format}`;
+                  const status = titleRequestPresentation(format.state) ?? {
+                    label: 'Requested',
+                    tone: 'info' as const,
+                  };
                   return (
                     <View
                       key={format.format}
-                      className="min-h-11 gap-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <Text className="text-sm font-bold text-ink">
-                        {formatLabel(format.format)}
-                      </Text>
-                      <View className="flex-row gap-2">
-                        <Button
-                          label="Approve"
-                          kind="primary"
-                          loading={approvalBusy === key}
-                          disabled={Boolean(approvalBusy)}
-                          onPress={() => void approve(request, format.format)}
-                        />
-                        <Button
-                          label="Deny"
-                          kind="quiet"
-                          disabled={Boolean(approvalBusy)}
-                          onPress={() => setDenyTarget({ request, format: format.format })}
-                        />
+                      <View className="min-w-0 flex-1 gap-1">
+                        <View className="flex-row items-center gap-3">
+                          <Text className="w-24 text-sm font-bold text-ink">
+                            {formatLabel(format.format)}
+                          </Text>
+                          <StatusBadge tone={status.tone} label={status.label} />
+                        </View>
+                        <Text className="text-sm leading-5 text-muted">
+                          {titleRequestDetail(format)}
+                        </Text>
                       </View>
+                      {format.state === 'pending_approval' ? (
+                        <View className="flex-row gap-2">
+                          <Button
+                            label="Approve"
+                            kind="primary"
+                            loading={approvalBusy === key}
+                            disabled={Boolean(approvalBusy)}
+                            onPress={() => void approve(request, format.format)}
+                          />
+                          <Button
+                            label="Deny"
+                            kind="quiet"
+                            disabled={Boolean(approvalBusy)}
+                            onPress={() => setDenyTarget({ request, format: format.format })}
+                          />
+                        </View>
+                      ) : null}
                     </View>
                   );
                 })}
@@ -445,7 +468,7 @@ export default function AcquisitionsAdministration() {
 
         <View className="min-w-0 flex-1 gap-8">
           <Section
-            title="Activity"
+            title="Downloads"
             action={
               <Button
                 label="Find books in Search"
@@ -469,9 +492,10 @@ export default function AcquisitionsAdministration() {
 
               {visibleRequests.length === 0 ? (
                 <View className="border-y border-line py-6">
-                  <Text className="text-base font-bold text-ink">No acquisition activity</Text>
+                  <Text className="text-base font-bold text-ink">No downloads yet</Text>
                   <Text className="mt-1 text-sm leading-5 text-muted">
-                    Books added from Search will appear here for monitoring.
+                    A request appears here after Aldus finds a matching release and sends it to
+                    qBittorrent.
                   </Text>
                 </View>
               ) : (

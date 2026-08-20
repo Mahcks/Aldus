@@ -5,10 +5,70 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/database"
 )
+
+func TestAcquisitionScanOnlyVisitsRecordedPayload(t *testing.T) {
+	ctx := context.Background()
+	data := t.TempDir()
+	db, err := database.Open(ctx, filepath.Join(data, "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','x',1,0,?,?); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library',?,?)`, now, now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	allowed := t.TempDir()
+	root := filepath.Join(allowed, "downloads")
+	payload := filepath.Join(root, "requested-book")
+	unrelated := filepath.Join(root, "someone-elses-book")
+	if err := os.MkdirAll(payload, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(unrelated, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice.epub")
+	copyFile(t, fixture, filepath.Join(payload, "book.epub"))
+	copyFile(t, fixture, filepath.Join(unrelated, "unrelated.epub"))
+	store, err := New(db, Options{AllowedRoots: []string{allowed}, DataRoot: data, MaxBytes: 16 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Create(ctx, auth.User{ID: "admin", Admin: true}, "library", "Downloads", root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,download_state,fulfillment_state,created_at,updated_at) VALUES('request','library','admin',?,'Alice','queued','ready','scanning',?,?)`, saved.ID, now, now); err != nil {
+		t.Fatal(err)
+	}
+	scanID, err := store.EnqueueAcquisitionScan(ctx, "library", saved.ID, "request", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.runScan(ctx, Scan{ID: scanID, SourceID: saved.ID}); err != nil {
+		t.Fatal(err)
+	}
+	var relative string
+	if err := db.QueryRow(`SELECT completed_relative_path FROM acquisition_requests WHERE id='request'`).Scan(&relative); err != nil || relative != "requested-book" {
+		t.Fatalf("payload=%q err=%v", relative, err)
+	}
+	var visited, unrelatedEntries int
+	if err := db.QueryRow(`SELECT files_visited FROM source_scans WHERE id=?`, scanID).Scan(&visited); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM source_entries WHERE relative_path LIKE 'someone-elses-book/%'`).Scan(&unrelatedEntries); err != nil {
+		t.Fatal(err)
+	}
+	if visited != 1 || unrelatedEntries != 0 {
+		t.Fatalf("visited=%d unrelated entries=%d", visited, unrelatedEntries)
+	}
+}
 
 func TestManagedAcquisitionCopiesAtomicallyWithoutTorrentNames(t *testing.T) {
 	ctx := context.Background()

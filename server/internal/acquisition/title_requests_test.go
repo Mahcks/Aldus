@@ -87,6 +87,13 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM title_request_events WHERE title_request_id=?`, request.ID).Scan(&events); err != nil || events != 5 {
 		t.Fatalf("events=%d, %v", events, err)
 	}
+	history, err := store.Events(ctx, reader, "library", request.ID)
+	if err != nil || len(history) != 5 || history[0].State != "canceled" {
+		t.Fatalf("reader history=%#v, %v", history, err)
+	}
+	if _, err := store.Events(ctx, auth.User{ID: "other"}, "library", request.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unrelated user history error=%v", err)
+	}
 	readerNotifications, err := inbox.List(ctx, "reader", 20, 0)
 	if err != nil || len(readerNotifications) != 5 {
 		t.Fatalf("reader notifications=%#v err=%v", readerNotifications, err)
@@ -133,7 +140,8 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 			if r.FormValue("urls") != "https://download.test/alice" {
 				t.Fatalf("selected release=%q", r.FormValue("urls"))
 			}
-			_, _ = w.Write([]byte("Ok."))
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"added_torrent_ids":[],"failure_count":0,"pending_count":1,"success_count":0}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -190,9 +198,9 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 	if adds.Load() != 1 || addedTag == "" {
 		t.Fatalf("downloads=%d tag=%q", adds.Load(), addedTag)
 	}
-	var state, legacyID string
-	if err := db.QueryRow(`SELECT state,COALESCE(legacy_acquisition_request_id,'') FROM title_request_formats WHERE title_request_id=? AND format='ebook'`, alice.ID).Scan(&state, &legacyID); err != nil || state != "downloading" || legacyID != addedTag {
-		t.Fatalf("alice state=%q legacy=%q tag=%q err=%v", state, legacyID, addedTag, err)
+	var state, legacyID, legacyState string
+	if err := db.QueryRow(`SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? AND f.format='ebook'`, alice.ID).Scan(&state, &legacyID, &legacyState); err != nil || state != "downloading" || legacyState != "downloading" || legacyID != addedTag {
+		t.Fatalf("alice state=%q legacy=%q legacy state=%q tag=%q err=%v", state, legacyID, legacyState, addedTag, err)
 	}
 	var retries int
 	var next string
@@ -220,6 +228,50 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 	notifications, err := inbox.List(ctx, "owner", 20, 0)
 	if err != nil || len(notifications) != 4 || notifications[0].Kind != "acquisition.available" {
 		t.Fatalf("worker notifications=%#v err=%v", notifications, err)
+	}
+}
+
+func TestCancelTitleRequestStopsLinkedDownload(t *testing.T) {
+	ctx := context.Background()
+	var deletes atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/info":
+			_, _ = w.Write([]byte(`[{"hash":"abc","tags":"legacy","state":"downloading","progress":0.5}]`))
+		case "/api/v2/torrents/delete":
+			deletes.Add(1)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES('library','reader','reader',1,'2026-01-01T00:00:00Z');
+		INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,selected_url,download_state,download_error,fulfillment_state,created_at,updated_at) VALUES('legacy','library','reader','Alice','queued','https://download.test/alice','downloading','','downloading','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES('title','library','reader','Alice','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO title_request_formats(title_request_id,format,state,legacy_acquisition_request_id,created_at,updated_at) VALUES('title','ebook','downloading','legacy','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	client, _ := New(Options{QBitURL: server.URL})
+	legacy := NewStore(db, client)
+	store := NewTitleRequestStore(db)
+	store.SetAcquisitionStore(legacy)
+	if err := store.Cancel(ctx, auth.User{ID: "reader"}, "library", "title", "ebook"); err != nil {
+		t.Fatal(err)
+	}
+	var titleState, legacyState string
+	if err := db.QueryRow(`SELECT f.state,a.fulfillment_state FROM title_request_formats f JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id='title'`).Scan(&titleState, &legacyState); err != nil || titleState != "canceled" || legacyState != "failed" || deletes.Load() != 1 {
+		t.Fatalf("title=%q legacy=%q deletes=%d err=%v", titleState, legacyState, deletes.Load(), err)
 	}
 }
 

@@ -27,6 +27,12 @@ type TitleRequestFormat struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type TitleRequestEvent struct {
+	Format    string    `json:"format,omitempty"`
+	State     string    `json:"state,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type CreateTitleRequest struct {
 	WorkID         string   `json:"work_id"`
 	ExternalSource string   `json:"external_source"`

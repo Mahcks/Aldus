@@ -28,11 +28,12 @@ func TestLoad(t *testing.T) {
 	t.Setenv("ALDUS_QBITTORRENT_PASSWORD", "download-key")
 	t.Setenv("ALDUS_QBITTORRENT_CATEGORY", "books")
 	t.Setenv("ALDUS_QBITTORRENT_DOWNLOAD_ROOT", "/downloads")
+	t.Setenv("ALDUS_DOWNLOAD_INGRESS", "/mnt/completed")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Addr != "localhost:9000" || cfg.DataDir != "/tmp/aldus" || cfg.FixtureDir != "/tmp/alice" || cfg.KOReaderUser != "reader" || cfg.KOReaderKey != "secret" || !cfg.SecureCookies || len(cfg.AllowedOrigins) != 2 || cfg.AllowedOrigins[0] != "http://localhost:8081" || cfg.AllowedOrigins[1] != "https://aldus.example" || cfg.MediaDir != "/tmp/media" || cfg.MaxUploadBytes != 12345 || cfg.AlignmentCommand != "worker --fixed" || cfg.AlignmentTimeout != 45*time.Second || cfg.AlignmentModelDir != "/tmp/models" || cfg.Environment != "development" || cfg.LogLevel != slog.LevelDebug || cfg.IndexerKind != "prowlarr" || cfg.IndexerURL != "https://indexer.example/api" || cfg.IndexerAPIKey != "indexer-key" || cfg.QBitTorrentURL != "https://qbit.example" || cfg.QBitTorrentUser != "aldus" || cfg.QBitTorrentPass != "download-key" || cfg.QBitTorrentCategory != "books" || cfg.QBitTorrentDownloadRoot != "/downloads" {
+	if cfg.Addr != "localhost:9000" || cfg.DataDir != "/tmp/aldus" || cfg.FixtureDir != "/tmp/alice" || cfg.KOReaderUser != "reader" || cfg.KOReaderKey != "secret" || !cfg.SecureCookies || len(cfg.AllowedOrigins) != 2 || cfg.AllowedOrigins[0] != "http://localhost:8081" || cfg.AllowedOrigins[1] != "https://aldus.example" || cfg.MediaDir != "/tmp/media" || cfg.MaxUploadBytes != 12345 || cfg.AlignmentCommand != "worker --fixed" || cfg.AlignmentTimeout != 45*time.Second || cfg.AlignmentModelDir != "/tmp/models" || cfg.Environment != "development" || cfg.LogLevel != slog.LevelDebug || cfg.IndexerKind != "prowlarr" || cfg.IndexerURL != "https://indexer.example/api" || cfg.IndexerAPIKey != "indexer-key" || cfg.QBitTorrentURL != "https://qbit.example" || cfg.QBitTorrentUser != "aldus" || cfg.QBitTorrentPass != "download-key" || cfg.QBitTorrentCategory != "books" || cfg.QBitTorrentDownloadRoot != "/downloads" || cfg.DownloadIngress != "/mnt/completed" {
 		t.Fatalf("Load() = %#v", cfg)
 	}
 }

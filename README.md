@@ -109,6 +109,8 @@ Aldus supports two storage styles:
 - **External media** stays in a folder you mounted as a Source. Aldus references it without modifying it. You remain responsible for backing it up.
 - **Managed media** is copied from completed acquisitions into Aldus's data directory under generated safe names. Aldus verifies its size and SHA-256 checksum before import and leaves the original download alone.
 
+For acquisitions, qBittorrent and Aldus must see the same completed-download folder. Set `ALDUS_DOWNLOAD_PATH` to the host folder qBittorrent uses, then set **qBittorrent download root** in Aldus to qBittorrent's container path (commonly `/downloads`). Aldus maps that path to its read-only `/downloads` ingress before copying or scanning the exact completed payload.
+
 To mount different host folders, edit `.env`:
 
 ```dotenv
@@ -193,7 +195,9 @@ Create a credential under **Account → KOReader and OPDS**. Add the displayed `
 
 ### A download finished but the title is unavailable
 
-Open **More → Sources → Import review**. Aldus asks for help when an edition is ambiguous, a download contains multiple books, or importing it would conflict with an existing format.
+- Confirm `ALDUS_DOWNLOAD_PATH` points to the same host folder mounted into qBittorrent.
+- In **More → Acquisitions**, set **qBittorrent download root** to qBittorrent's path for that folder, usually `/downloads`.
+- Open **More → Sources → Import review**. Aldus asks for help when the completed payload is ambiguous, contains multiple books, or conflicts with an existing format.
 
 ### Is the server healthy?
 

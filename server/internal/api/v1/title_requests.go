@@ -12,9 +12,21 @@ func registerTitleRequestRoutes(router chi.Router, store *acquisition.TitleReque
 	router.Get("/libraries/{libraryID}/title-requests", listTitleRequests(store))
 	router.Post("/libraries/{libraryID}/title-requests", createTitleRequest(store))
 	router.Get("/libraries/{libraryID}/title-requests/{requestID}", getTitleRequest(store))
+	router.Get("/libraries/{libraryID}/title-requests/{requestID}/events", listTitleRequestEvents(store))
 	router.Post("/libraries/{libraryID}/title-requests/{requestID}/formats/{format}/approve", approveTitleRequest(store))
 	router.Post("/libraries/{libraryID}/title-requests/{requestID}/formats/{format}/deny", denyTitleRequest(store))
 	router.Post("/libraries/{libraryID}/title-requests/{requestID}/formats/{format}/cancel", cancelTitleRequest(store))
+}
+
+func listTitleRequestEvents(store *acquisition.TitleRequestStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		values, err := store.Events(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "requestID"))
+		result := make([]contracts.TitleRequestEvent, len(values))
+		for i, value := range values {
+			result[i] = contracts.TitleRequestEvent{Format: value.Format, State: value.State, CreatedAt: value.CreatedAt}
+		}
+		writeAcquisitionResult(w, result, err)
+	}
 }
 
 func listTitleRequests(store *acquisition.TitleRequestStore) http.HandlerFunc {

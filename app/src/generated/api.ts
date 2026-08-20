@@ -710,6 +710,11 @@ export interface TitleRequestFormat {
   next_search_at?: string;
   updated_at: string;
 }
+export interface TitleRequestEvent {
+  format?: string;
+  state?: string;
+  created_at: string;
+}
 export interface CreateTitleRequest {
   work_id: string;
   external_source: string;

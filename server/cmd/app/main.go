@@ -148,6 +148,7 @@ func main() {
 		os.Exit(1)
 	}
 	acquisitionStore := acquisition.NewStore(db, acquisitionClient)
+	acquisitionStore.SetDownloadIngress(cfg.DownloadIngress)
 	acquisitionPolicyStore := acquisition.NewPolicyStore(db)
 	titleRequestStore := acquisition.NewTitleRequestStore(db)
 	notificationStore := notification.New(db)

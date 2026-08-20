@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import type { Notification, TitleRequest } from '../../generated/api';
+import type { Notification, TitleRequest, TitleRequestEvent } from '../../generated/api';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { AppIcon } from '../../features/icons';
 import {
@@ -9,6 +9,7 @@ import {
   notificationIcon,
   notificationTime,
 } from '../../features/notification-presentation';
+import { RequestTimeline } from '../../features/request-timeline';
 import { colors } from '../../features/theme';
 import { titleRequestPresentation } from '../../features/title-search';
 import { Text, View } from '../../features/tw';
@@ -74,6 +75,9 @@ export default function ActivityScreen() {
   const auth = useAuth();
   const [items, setItems] = useState<Notification[]>([]);
   const [requests, setRequests] = useState<TitleRequest[]>([]);
+  const [requestEvents, setRequestEvents] = useState<Record<string, TitleRequestEvent[]>>({});
+  const [expandedRequestID, setExpandedRequestID] = useState('');
+  const [historyLoadingID, setHistoryLoadingID] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -93,12 +97,12 @@ export default function ActivityScreen() {
       );
       setItems(result.items);
       setUnreadCount(result.unread_count);
-      setRequests(
-        libraryRequests
-          .flat()
-          .filter((request) => request.requested_by === auth.user?.id)
-          .filter((request) => request.formats.some((format) => isActive(format.state))),
-      );
+      const ownRequests = libraryRequests
+        .flat()
+        .filter((request) => request.requested_by === auth.user?.id)
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .slice(0, 50);
+      setRequests(ownRequests);
       setError('');
     } catch (value) {
       setError(errorMessage(value));
@@ -117,12 +121,12 @@ export default function ActivityScreen() {
         if (canceled) return;
         setItems(result.items);
         setUnreadCount(result.unread_count);
-        setRequests(
-          libraryRequests
-            .flat()
-            .filter((request) => request.requested_by === auth.user?.id)
-            .filter((request) => request.formats.some((format) => isActive(format.state))),
-        );
+        const ownRequests = libraryRequests
+          .flat()
+          .filter((request) => request.requested_by === auth.user?.id)
+          .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+          .slice(0, 50);
+        setRequests(ownRequests);
       })
       .catch((value: unknown) => {
         if (!canceled) setError(errorMessage(value));
@@ -151,6 +155,24 @@ export default function ActivityScreen() {
       setError(errorMessage(value));
     } finally {
       setCanceling(false);
+    }
+  }
+
+  async function toggleRequestHistory(request: TitleRequest) {
+    if (expandedRequestID === request.id) {
+      setExpandedRequestID('');
+      return;
+    }
+    setExpandedRequestID(request.id);
+    if (requestEvents[request.id]) return;
+    setHistoryLoadingID(request.id);
+    try {
+      const events = await api.titleRequestEvents(request.library_id, request.id);
+      setRequestEvents((current) => ({ ...current, [request.id]: events }));
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setHistoryLoadingID('');
     }
   }
 
@@ -227,32 +249,43 @@ export default function ActivityScreen() {
                     <Text className="text-sm text-muted">{request.author}</Text>
                   ) : null}
                 </View>
-                {request.formats
-                  .filter((format) => isActive(format.state))
-                  .map((format) => {
-                    const status = titleRequestPresentation(format.state) ?? {
-                      label: 'In progress',
-                      tone: 'info' as const,
-                    };
-                    return (
-                      <View
-                        key={format.format}
-                        className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <View className="flex-row items-center gap-3">
-                          <Text className="w-24 text-sm font-bold text-ink">
-                            {formatLabel(format.format)}
-                          </Text>
-                          <StatusBadge tone={status.tone} label={status.label} />
-                        </View>
+                {request.formats.map((format) => {
+                  const status = titleRequestPresentation(format.state) ?? {
+                    label: 'In progress',
+                    tone: 'info' as const,
+                  };
+                  return (
+                    <View
+                      key={format.format}
+                      className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <View className="flex-row items-center gap-3">
+                        <Text className="w-24 text-sm font-bold text-ink">
+                          {formatLabel(format.format)}
+                        </Text>
+                        <StatusBadge tone={status.tone} label={status.label} />
+                      </View>
+                      {isActive(format.state) ? (
                         <Button
                           label="Cancel"
                           kind="quiet"
                           onPress={() => setCancelTarget({ request, format: format.format })}
                         />
-                      </View>
-                    );
-                  })}
+                      ) : null}
+                    </View>
+                  );
+                })}
+                <View className="items-start">
+                  <Button
+                    label={expandedRequestID === request.id ? 'Hide history' : 'Show history'}
+                    kind="quiet"
+                    loading={historyLoadingID === request.id}
+                    onPress={() => void toggleRequestHistory(request)}
+                  />
+                </View>
+                {expandedRequestID === request.id ? (
+                  <RequestTimeline events={requestEvents[request.id] ?? []} />
+                ) : null}
               </View>
             ))}
           </View>

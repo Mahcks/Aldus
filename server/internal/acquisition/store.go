@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -94,16 +95,17 @@ type discoverySession struct {
 }
 
 type Store struct {
-	db            *sql.DB
-	client        *Client
-	handoff       func(context.Context, string, string, string, string) (string, error)
-	pairHandoff   func(context.Context, ReadyPair) error
-	retryScan     func(context.Context, string, string) error
-	selectMu      sync.Mutex
-	metadataMu    sync.Mutex
-	metadataCache map[string]cachedMetadata
-	discoveryMu   sync.Mutex
-	discoveries   map[string]discoverySession
+	db              *sql.DB
+	client          *Client
+	handoff         func(context.Context, string, string, string, string) (string, error)
+	pairHandoff     func(context.Context, ReadyPair) error
+	retryScan       func(context.Context, string, string) error
+	downloadIngress string
+	selectMu        sync.Mutex
+	metadataMu      sync.Mutex
+	metadataCache   map[string]cachedMetadata
+	discoveryMu     sync.Mutex
+	discoveries     map[string]discoverySession
 }
 
 func NewStore(db *sql.DB, client *Client) *Store {
@@ -120,6 +122,13 @@ func (s *Store) SetPairHandoff(handoff func(context.Context, ReadyPair) error) {
 
 func (s *Store) SetScanRetry(retry func(context.Context, string, string) error) {
 	s.retryScan = retry
+}
+
+func (s *Store) SetDownloadIngress(root string) {
+	s.downloadIngress = strings.TrimSpace(root)
+	if s.downloadIngress != "" {
+		s.downloadIngress = filepath.Clean(s.downloadIngress)
+	}
 }
 
 func (s *Store) Settings(ctx context.Context, actor auth.User) (Settings, error) {
@@ -215,12 +224,48 @@ func (s *Store) TestConnections(ctx context.Context, actor auth.User) (Connectio
 			status.ProwlarrError = err.Error()
 		}
 	}
-	if _, err := client.Downloads(ctx); err != nil {
+	downloads, err := client.Downloads(ctx)
+	if err != nil {
 		status.QBitTorrentError = err.Error()
+	} else if s.downloadIngress != "" {
+		if err := s.validateDownloadIngress(downloads, client.options.DownloadRoot); err != nil {
+			status.QBitTorrentError = err.Error()
+		} else {
+			status.QBitTorrentOK = true
+		}
 	} else {
 		status.QBitTorrentOK = true
 	}
 	return status, nil
+}
+
+func (s *Store) validateDownloadIngress(downloads []Download, remoteRoot string) error {
+	info, err := os.Stat(s.downloadIngress)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("Aldus download ingress %q is unavailable; mount qBittorrent's completed-download folder there", s.downloadIngress)
+	}
+	directory, err := os.Open(s.downloadIngress)
+	if err != nil {
+		return fmt.Errorf("Aldus cannot read download ingress %q: %w", s.downloadIngress, err)
+	}
+	_ = directory.Close()
+	if remoteRoot == "" {
+		return nil
+	}
+	for _, download := range downloads {
+		if download.ContentPath == "" {
+			continue
+		}
+		relative, err := relativeDownloadPath(download.ContentPath, remoteRoot)
+		if err != nil {
+			return err
+		}
+		mapped := filepath.Join(s.downloadIngress, filepath.FromSlash(relative))
+		if _, err := os.Stat(mapped); err != nil {
+			return fmt.Errorf("qBittorrent sees %q but Aldus cannot see it at %q; ALDUS_DOWNLOAD_PATH must mount the same host folder: %w", download.ContentPath, mapped, err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) Available(ctx context.Context) (bool, error) {
@@ -481,16 +526,16 @@ func (s *Store) Poll(ctx context.Context) error {
 }
 
 func (s *Store) recoverSubmissions(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,selected_url FROM acquisition_requests WHERE fulfillment_state='submitting' ORDER BY created_at,id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,selected_url,updated_at FROM acquisition_requests WHERE fulfillment_state='submitting' ORDER BY created_at,id`)
 	if err != nil {
 		return fmt.Errorf("list acquisition submissions: %w", err)
 	}
 	defer rows.Close()
-	type submission struct{ id, url string }
+	type submission struct{ id, url, updated string }
 	var pending []submission
 	for rows.Next() {
 		var value submission
-		if err := rows.Scan(&value.id, &value.url); err != nil {
+		if err := rows.Scan(&value.id, &value.url, &value.updated); err != nil {
 			return err
 		}
 		pending = append(pending, value)
@@ -518,7 +563,15 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 			}
 		}
 		if !found {
+			updated, _ := time.Parse(time.RFC3339Nano, value.updated)
+			if time.Since(updated) < 2*time.Minute {
+				continue
+			}
 			if err := client.AddTracked(ctx, value.url, value.id); err != nil {
+				if errors.Is(err, ErrSubmissionUnknown) {
+					_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET updated_at=? WHERE id=? AND fulfillment_state='submitting'`, time.Now().UTC().Format(time.RFC3339Nano), value.id)
+					continue
+				}
 				s.markDownloadProblem(ctx, value.id, err.Error())
 				continue
 			}
@@ -589,27 +642,39 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 }
 
 func (s *Store) mapDownloadPath(ctx context.Context, sourceID, completedPath, remoteRoot string) (string, error) {
-	var storageKind string
-	if err := s.db.QueryRowContext(ctx, `SELECT storage_kind FROM library_sources WHERE id=? AND enabled=1 AND deleted_at IS NULL`, sourceID).Scan(&storageKind); err != nil {
+	var storageKind, sourceRoot string
+	if err := s.db.QueryRowContext(ctx, `SELECT storage_kind,root_path FROM library_sources WHERE id=? AND enabled=1 AND deleted_at IS NULL`, sourceID).Scan(&storageKind, &sourceRoot); err != nil {
 		return "", errors.New("selected Aldus Source is unavailable")
 	}
-	if storageKind == "managed" {
-		return completedPath, nil
+	mapped := completedPath
+	if remoteRoot != "" {
+		relative, err := relativeDownloadPath(completedPath, remoteRoot)
+		if err != nil {
+			return "", err
+		}
+		if storageKind == "managed" {
+			if s.downloadIngress != "" {
+				mapped = filepath.Join(s.downloadIngress, filepath.FromSlash(relative))
+			}
+		} else {
+			mapped = filepath.Join(sourceRoot, filepath.FromSlash(relative))
+		}
 	}
-	if remoteRoot == "" {
-		return completedPath, nil
+	if storageKind == "managed" && s.downloadIngress != "" {
+		if _, err := os.Stat(mapped); err != nil {
+			return "", fmt.Errorf("completed download %q is not visible to Aldus at %q; mount the qBittorrent download folder at %q: %w", completedPath, mapped, s.downloadIngress, err)
+		}
 	}
+	return mapped, nil
+}
+
+func relativeDownloadPath(completedPath, remoteRoot string) (string, error) {
 	normalize := func(value string) string { return path.Clean(strings.ReplaceAll(value, `\`, "/")) }
 	root, completed := normalize(remoteRoot), normalize(completedPath)
 	if completed != root && !strings.HasPrefix(completed, strings.TrimSuffix(root, "/")+"/") {
-		return "", errors.New("qBittorrent completed outside its configured download root")
+		return "", fmt.Errorf("qBittorrent reported %q outside its configured download root %q", completedPath, remoteRoot)
 	}
-	var sourceRoot string
-	if err := s.db.QueryRowContext(ctx, `SELECT root_path FROM library_sources WHERE id=? AND enabled=1 AND deleted_at IS NULL`, sourceID).Scan(&sourceRoot); err != nil {
-		return "", errors.New("selected Aldus Source is unavailable")
-	}
-	relative := strings.TrimPrefix(strings.TrimPrefix(completed, root), "/")
-	return filepath.Join(sourceRoot, filepath.FromSlash(relative)), nil
+	return strings.TrimPrefix(strings.TrimPrefix(completed, root), "/"), nil
 }
 
 func (s *Store) markDownloadProblem(ctx context.Context, id, diagnosis string) {
@@ -918,6 +983,9 @@ func (s *Store) Select(ctx context.Context, actor auth.User, libraryID, requestI
 		return Request{}, err
 	}
 	if err := client.AddTracked(ctx, result.DownloadURL, requestID); err != nil {
+		if errors.Is(err, ErrSubmissionUnknown) {
+			return s.request(ctx, requestID)
+		}
 		s.markDownloadProblem(ctx, requestID, err.Error())
 		return Request{}, err
 	}

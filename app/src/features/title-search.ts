@@ -1,3 +1,6 @@
+import type { TitleRequestFormat } from '../generated/api';
+import { acquisitionDate } from './acquisition';
+
 export type TitleRequestPresentation = {
   label: string;
   tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
@@ -36,5 +39,39 @@ export function titleRequestPresentation(state?: string): TitleRequestPresentati
       return { label: 'Canceled', tone: 'neutral', requestable: true };
     default:
       return { label: 'Requested', tone: 'info', requestable: false };
+  }
+}
+
+export function titleRequestDetail(format: TitleRequestFormat) {
+  if (format.error) return format.error;
+  switch (format.state) {
+    case 'pending_approval':
+      return 'Waiting for an owner to approve this request.';
+    case 'wanted':
+      return 'Queued for Aldus to search.';
+    case 'searching':
+      return 'Searching connected indexers now.';
+    case 'awaiting_release':
+      return format.next_search_at
+        ? `No matching release yet. Searching again ${acquisitionDate(format.next_search_at)}.`
+        : 'No matching release yet. Aldus will keep looking.';
+    case 'downloading':
+      return 'Sent to qBittorrent and downloading.';
+    case 'verifying':
+    case 'scanning':
+    case 'importing':
+      return 'Downloaded and being prepared for the library.';
+    case 'needs_review':
+      return 'The downloaded files need an owner to review the import.';
+    case 'available':
+      return 'Available in Aldus.';
+    case 'denied':
+      return 'An owner declined this request.';
+    case 'canceled':
+      return 'The requester canceled this request.';
+    case 'failed':
+      return 'Aldus could not complete this request.';
+    default:
+      return `Updated ${acquisitionDate(format.updated_at)}.`;
   }
 }

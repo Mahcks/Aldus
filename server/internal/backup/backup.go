@@ -118,7 +118,11 @@ func redactConnectorSecrets(ctx context.Context, path string) error {
 		return fmt.Errorf("open backup snapshot for redaction: %w", err)
 	}
 	defer db.Close()
-	if _, err := db.ExecContext(ctx, `PRAGMA secure_delete=ON; UPDATE acquisition_settings SET indexer_api_key='',qbittorrent_password=''; VACUUM`); err != nil {
+	if _, err := db.ExecContext(ctx, `PRAGMA secure_delete=ON;
+		UPDATE acquisition_settings SET indexer_api_key='',qbittorrent_password='';
+		UPDATE acquisition_requests SET selected_url=NULL;
+		UPDATE acquisition_results SET download_url='';
+		VACUUM`); err != nil {
 		return fmt.Errorf("redact connector secrets from backup: %w", err)
 	}
 	return nil
