@@ -604,10 +604,7 @@ export function Dialog({
               className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
             >
               <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
-                <Text
-                  accessibilityRole="header"
-                  className="flex-shrink text-lg font-bold text-ink"
-                >
+                <Text accessibilityRole="header" className="flex-shrink text-lg font-bold text-ink">
                   {title}
                 </Text>
                 <IconButton

@@ -367,7 +367,9 @@ export default function WorkScreen() {
             size={narrow ? 'small' : 'hero'}
             {...coverPresentation(work)}
           />
-          <View className={narrow ? 'w-full items-center gap-3' : 'min-w-0 flex-1 items-start gap-3'}>
+          <View
+            className={narrow ? 'w-full items-center gap-3' : 'min-w-0 flex-1 items-start gap-3'}
+          >
             <Text
               numberOfLines={3}
               className={`${narrow ? 'text-center text-2xl leading-7' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
@@ -411,9 +413,7 @@ export default function WorkScreen() {
                 ) : (
                   <IconButton
                     icon={downloaded ? 'enabled' : 'acquire'}
-                    label={
-                      downloaded ? 'Remove download (on this device)' : 'Download for offline'
-                    }
+                    label={downloaded ? 'Remove download (on this device)' : 'Download for offline'}
                     kind="quiet"
                     disabled={offline}
                     onPress={() => void toggleOfflineDownload()}

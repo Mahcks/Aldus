@@ -231,7 +231,7 @@ If the phone cannot connect, confirm it is on the same Wi-Fi, disable conflictin
 
 Requirements:
 
-- Go 1.25 or newer.
+- Go 1.26 or newer.
 - Bun 1.3.5 or newer.
 - Node.js LTS for Expo tooling.
 - `ffprobe` for local audiobook ingestion.

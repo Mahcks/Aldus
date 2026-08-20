@@ -6,7 +6,7 @@ RUN bun install --frozen-lockfile
 COPY app/ ./
 RUN bun run build:web
 
-FROM golang:1.25-alpine AS server
+FROM golang:1.26-alpine AS server
 ARG VERSION=dev
 WORKDIR /src/server
 COPY server/go.* ./
