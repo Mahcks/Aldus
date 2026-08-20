@@ -273,6 +273,34 @@ func (c *Client) Add(ctx context.Context, downloadURL string) error {
 	return c.AddTracked(ctx, downloadURL, "")
 }
 
+func (c *Client) RemoveTag(ctx context.Context, hash, tag string) error {
+	if hash == "" || !validTag(tag) {
+		return nil
+	}
+	cookies, err := c.login(ctx)
+	if err != nil {
+		return err
+	}
+	form := url.Values{"hashes": {hash}, "tags": {tag}}
+	req, err := c.qbitRequest(ctx, http.MethodPost, "/api/v2/torrents/removeTags", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	response, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("remove qBittorrent tag: status %d", response.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error {
 	if c.options.QBitURL == "" {
 		return ErrUnavailable

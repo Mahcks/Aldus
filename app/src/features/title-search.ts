@@ -45,7 +45,6 @@ export function titleRequestPresentation(state?: string): TitleRequestPresentati
 }
 
 export function titleRequestDetail(format: TitleRequestFormat) {
-  if (format.error) return format.error;
   switch (format.state) {
     case 'pending_approval':
       return 'Waiting for an owner to approve this request.';

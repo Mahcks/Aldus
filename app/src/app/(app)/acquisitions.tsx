@@ -409,7 +409,7 @@ export default function AcquisitionsAdministration() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 placeholder="/downloads"
-                help="Optional. Set this when qBittorrent and Aldus use different container paths for the same files."
+                help="Enter the path qBittorrent reports for completed files. This is not Aldus's /downloads mount unless qBittorrent also reports /downloads."
               />
               <View className="items-start">
                 <View className="gap-3 sm:flex-row">

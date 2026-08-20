@@ -16,7 +16,7 @@ describe('title request presentation', () => {
     expect(titleRequestPresentation('canceled')?.requestable).toBeTrue();
   });
 
-  test('explains request progress and preserves useful errors', () => {
+  test('explains request progress without exposing technical download data', () => {
     const format = {
       format: 'ebook',
       state: 'awaiting_release',
@@ -24,8 +24,6 @@ describe('title request presentation', () => {
       updated_at: '2026-08-20T12:00:00Z',
     };
     expect(titleRequestDetail(format)).toBe('No matching release yet. Aldus will keep looking.');
-    expect(titleRequestDetail({ ...format, error: 'Indexer unavailable' })).toBe(
-      'Indexer unavailable',
-    );
+    expect(titleRequestDetail({ ...format, error: 'magnet:?secret' })).not.toContain('magnet:');
   });
 });

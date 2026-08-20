@@ -120,6 +120,27 @@ func TestAddTrackedUploadsIndexerTorrentInsteadOfLeavingQBitPending(t *testing.T
 	}
 }
 
+func TestRemoveTag(t *testing.T) {
+	var removed bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/removeTags":
+			_ = r.ParseForm()
+			removed = r.Form.Get("hashes") == "hash" && r.Form.Get("tags") == "request_123"
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client, _ := New(Options{QBitURL: server.URL})
+	if err := client.RemoveTag(context.Background(), "hash", "request_123"); err != nil || !removed {
+		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+}
+
 func TestSearchOnlyReturnsSupportedBookAndAudiobookReleases(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<rss><channel>

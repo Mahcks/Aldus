@@ -488,6 +488,9 @@ func (s *Store) Poll(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		if download != nil && download.Hash != "" && download.HasTag(request.id) {
+			_ = client.RemoveTag(ctx, download.Hash, request.id)
+		}
 		if failed || download == nil || !download.ReadyForImport() {
 			continue
 		}
