@@ -564,7 +564,7 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 		}
 		if !found {
 			updated, _ := time.Parse(time.RFC3339Nano, value.updated)
-			if time.Since(updated) < 2*time.Minute {
+			if time.Since(updated) < downloadMissingGrace {
 				continue
 			}
 			if err := client.AddTracked(ctx, value.url, value.id); err != nil {

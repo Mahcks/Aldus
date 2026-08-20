@@ -342,6 +342,7 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 }
 
 var errSubmissionRejected = errors.New("qBittorrent rejected the download")
+var errSubmissionPending = errors.New("qBittorrent is still processing the download")
 
 func acceptedAddResponse(body string) error {
 	if body == "" || body == "Ok." {
@@ -359,8 +360,11 @@ func acceptedAddResponse(body string) error {
 	if receipt.FailureCount == nil || receipt.PendingCount == nil || receipt.SuccessCount == nil || *receipt.FailureCount < 0 || *receipt.PendingCount < 0 || *receipt.SuccessCount < 0 {
 		return errors.New("malformed add receipt")
 	}
-	if *receipt.SuccessCount > 0 || *receipt.PendingCount > 0 || len(receipt.AddedTorrentIDs) > 0 {
+	if *receipt.SuccessCount > 0 || len(receipt.AddedTorrentIDs) > 0 {
 		return nil
+	}
+	if *receipt.PendingCount > 0 {
+		return errSubmissionPending
 	}
 	if *receipt.FailureCount > 0 {
 		return errSubmissionRejected

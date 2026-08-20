@@ -584,7 +584,7 @@ func TestQBitTorrentAddReceipts(t *testing.T) {
 	}{
 		{name: "legacy empty"},
 		{name: "legacy ok", body: "Ok."},
-		{name: "pending", body: `{"added_torrent_ids":[],"failure_count":0,"pending_count":1,"success_count":0}`},
+		{name: "pending", body: `{"added_torrent_ids":[],"failure_count":0,"pending_count":1,"success_count":0}`, wantErr: true},
 		{name: "success", body: `{"added_torrent_ids":["abc"],"failure_count":0,"pending_count":0,"success_count":1}`},
 		{name: "all failed", body: `{"added_torrent_ids":[],"failure_count":1,"pending_count":0,"success_count":0}`, wantErr: true},
 		{name: "empty contradiction", body: `{"added_torrent_ids":[],"failure_count":0,"pending_count":0,"success_count":0}`, wantErr: true},
@@ -634,7 +634,7 @@ func TestSubmissionRecoveryWaitsBeforeResubmitting(t *testing.T) {
 	if err := store.recoverSubmissions(ctx); err != nil || adds.Load() != 0 {
 		t.Fatalf("recent recovery adds=%d err=%v", adds.Load(), err)
 	}
-	old := time.Now().UTC().Add(-3 * time.Minute).Format(time.RFC3339Nano)
+	old := time.Now().UTC().Add(-16 * time.Minute).Format(time.RFC3339Nano)
 	if _, err := db.Exec(`UPDATE acquisition_requests SET updated_at=? WHERE id='request'`, old); err != nil {
 		t.Fatal(err)
 	}

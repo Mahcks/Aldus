@@ -199,7 +199,7 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 		t.Fatalf("downloads=%d tag=%q", adds.Load(), addedTag)
 	}
 	var state, legacyID, legacyState string
-	if err := db.QueryRow(`SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? AND f.format='ebook'`, alice.ID).Scan(&state, &legacyID, &legacyState); err != nil || state != "downloading" || legacyState != "downloading" || legacyID != addedTag {
+	if err := db.QueryRow(`SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? AND f.format='ebook'`, alice.ID).Scan(&state, &legacyID, &legacyState); err != nil || state != "submitting" || legacyState != "submitting" || legacyID != addedTag {
 		t.Fatalf("alice state=%q legacy=%q legacy state=%q tag=%q err=%v", state, legacyID, legacyState, addedTag, err)
 	}
 	var retries int
@@ -226,8 +226,19 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 		t.Fatalf("available state=%q err=%v", state, err)
 	}
 	notifications, err := inbox.List(ctx, "owner", 20, 0)
-	if err != nil || len(notifications) != 4 || notifications[0].Kind != "acquisition.available" {
+	if err != nil || len(notifications) != 3 || notifications[0].Kind != "acquisition.available" {
 		t.Fatalf("worker notifications=%#v err=%v", notifications, err)
+	}
+}
+
+func TestGuidedResultsRejectWrongVolume(t *testing.T) {
+	policy := guidedPolicy{maxBytes: 1024, allowedExtensions: map[string]bool{"epub": true}}
+	results := matchingGuidedResults([]SearchResult{
+		{Title: "Heartstopper - Volume 1 - Alice Oseman.epub", Size: 500, Kind: "ebook", Format: "epub"},
+		{Title: "Heartstopper - Volume 2 - Alice Oseman.epub", Size: 500, Kind: "ebook", Format: "epub"},
+	}, "Heartstopper, Volume 2", "ebook", policy)
+	if len(results) != 1 || !strings.Contains(results[0].Title, "Volume 2") {
+		t.Fatalf("matched %#v", results)
 	}
 }
 

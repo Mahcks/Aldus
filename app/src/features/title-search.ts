@@ -21,6 +21,8 @@ export function titleRequestPresentation(state?: string): TitleRequestPresentati
       };
     case 'awaiting_release':
       return { label: 'Watching', tone: 'info', requestable: false };
+    case 'submitting':
+      return { label: 'Sending', tone: 'info', requestable: false };
     case 'downloading':
       return { label: 'Downloading', tone: 'info', requestable: false };
     case 'verifying':
@@ -55,6 +57,8 @@ export function titleRequestDetail(format: TitleRequestFormat) {
       return format.next_search_at
         ? `No matching release yet. Searching again ${acquisitionDate(format.next_search_at)}.`
         : 'No matching release yet. Aldus will keep looking.';
+    case 'submitting':
+      return 'Waiting for qBittorrent to accept the download.';
     case 'downloading':
       return 'Sent to qBittorrent and downloading.';
     case 'verifying':

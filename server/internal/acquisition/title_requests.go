@@ -98,7 +98,7 @@ func (s *TitleRequestStore) Poll(ctx context.Context) error {
 func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 	for range 10 {
 		var requestID, requestedBy, title, format, current, legacyState, diagnosis string
-		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,r.requested_by,r.title,f.format,f.state,a.fulfillment_state,a.download_error FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('downloading','scanning','needs_review') AND a.fulfillment_state IN ('scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis)
+		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,r.requested_by,r.title,f.format,f.state,a.fulfillment_state,a.download_error FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('submitting','downloading','scanning','needs_review') AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -150,7 +150,9 @@ func (s *TitleRequestStore) recoverClaims(ctx context.Context) error {
 			return fmt.Errorf("find interrupted title request: %w", err)
 		}
 		nextState, eventType, diagnosis := "awaiting_release", "search_recovered", "Search was interrupted and will retry."
-		if legacyState == "submitting" || legacyState == "downloading" {
+		if legacyState == "submitting" {
+			nextState, eventType, diagnosis = "submitting", "submission_recovered", ""
+		} else if legacyState == "downloading" {
 			nextState, eventType, diagnosis = "downloading", "download_recovered", ""
 		}
 		stamp := time.Now().UTC().Format(time.RFC3339Nano)
@@ -235,7 +237,7 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 	}
 	if existingID != "" && (existingState == "submitting" || existingState == "downloading") {
 		stamp := time.Now().UTC().Format(time.RFC3339Nano)
-		_, err := s.db.ExecContext(ctx, `UPDATE title_request_formats SET state='downloading',error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, stamp, value.requestID, value.format)
+		_, err := s.db.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, existingState, stamp, value.requestID, value.format)
 		return err
 	}
 	legacy, err := s.acquisitions.Create(ctx, actor, value.libraryID, value.sourceID, query)
@@ -247,7 +249,7 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return s.deferClaim(ctx, value, "search_failed", err.Error())
 	}
-	results = matchingGuidedResults(results, value.format, policy)
+	results = matchingGuidedResults(results, value.title, value.format, policy)
 	if len(results) == 0 {
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return s.deferClaim(ctx, value, "no_match", "No release currently matches the owner's rules.")
@@ -260,12 +262,17 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return nil
 	}
-	_, selectErr := s.acquisitions.Select(ctx, actor, value.libraryID, legacy.ID, results[0].ID)
+	selected, selectErr := s.acquisitions.Select(ctx, actor, value.libraryID, legacy.ID, results[0].ID)
 	if selectErr != nil {
 		current, currentErr := s.acquisitions.request(ctx, legacy.ID)
 		if currentErr != nil || (current.FulfillmentState != "submitting" && current.FulfillmentState != "downloading") {
 			return s.deferClaim(ctx, value, "submission_failed", selectErr.Error())
 		}
+		selected = current
+	}
+	nextState, eventType := selected.FulfillmentState, "download_submitted"
+	if nextState == "downloading" {
+		eventType = "download_started"
 	}
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -273,18 +280,20 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		return fmt.Errorf("finish title request submission: %w", err)
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state='downloading',error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, stamp, value.requestID, value.format)
+	result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, nextState, stamp, value.requestID, value.format)
 	if err != nil {
 		return fmt.Errorf("finish title request submission: %w", err)
 	}
 	if changed, _ := result.RowsAffected(); changed != 1 {
 		return nil
 	}
-	if err := appendTitleRequestEvent(ctx, tx, value.requestID, value.format, "download_started", "downloading", "", results[0].Title, stamp); err != nil {
+	if err := appendTitleRequestEvent(ctx, tx, value.requestID, value.format, eventType, nextState, "", results[0].Title, stamp); err != nil {
 		return err
 	}
-	if err := s.notifyRequesterTx(ctx, tx, value.requestID, value.format, "downloading", value.title, value.requestedBy, stamp); err != nil {
-		return err
+	if nextState == "downloading" {
+		if err := s.notifyRequesterTx(ctx, tx, value.requestID, value.format, "downloading", value.title, value.requestedBy, stamp); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE title_requests SET updated_at=? WHERE id=?`, stamp, value.requestID); err != nil {
 		return fmt.Errorf("update title request: %w", err)
@@ -321,10 +330,11 @@ func (s *TitleRequestStore) guidedPolicy(ctx context.Context, libraryID, format 
 	return guidedPolicy{maxBytes: maxBytes, allowedExtensions: allowed, preferredLanguage: strings.ToLower(language), allowAbridged: abridged}, nil
 }
 
-func matchingGuidedResults(results []SearchResult, format string, policy guidedPolicy) []SearchResult {
+func matchingGuidedResults(results []SearchResult, requestedTitle, format string, policy guidedPolicy) []SearchResult {
+	requestedVolume := titleVolume(requestedTitle)
 	matched := make([]SearchResult, 0, len(results))
 	for _, result := range results {
-		if result.Kind != format || result.Size <= 0 || result.Size > policy.maxBytes || !policy.allowedExtensions[strings.ToLower(result.Format)] || (!policy.allowAbridged && result.Abridged) || (result.Language != "" && policy.preferredLanguage != "" && strings.ToLower(result.Language) != policy.preferredLanguage) {
+		if result.Kind != format || result.Size <= 0 || result.Size > policy.maxBytes || !policy.allowedExtensions[strings.ToLower(result.Format)] || (!policy.allowAbridged && result.Abridged) || (result.Language != "" && policy.preferredLanguage != "" && strings.ToLower(result.Language) != policy.preferredLanguage) || (requestedVolume != "" && titleVolume(result.Title) != requestedVolume) {
 			continue
 		}
 		matched = append(matched, result)
@@ -345,6 +355,17 @@ func matchingGuidedResults(results []SearchResult, format string, policy guidedP
 		return matched[i].ID < matched[j].ID
 	})
 	return matched
+}
+
+func titleVolume(title string) string {
+	words := releaseWords(title)
+	for index, word := range words[:max(0, len(words)-1)] {
+		switch strings.ToLower(word) {
+		case "volume", "vol", "book", "part":
+			return strings.ToLower(words[index+1])
+		}
+	}
+	return ""
 }
 
 func (s *TitleRequestStore) deferClaim(ctx context.Context, value claimedTitleFormat, eventType, diagnosis string) error {

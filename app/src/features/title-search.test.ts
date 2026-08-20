@@ -6,6 +6,7 @@ describe('title request presentation', () => {
     expect(titleRequestPresentation('pending_approval')?.label).toBe('Awaiting approval');
     expect(titleRequestPresentation('awaiting_release')?.label).toBe('Watching');
     expect(titleRequestPresentation('downloading')?.label).toBe('Downloading');
+    expect(titleRequestPresentation('submitting')?.label).toBe('Sending');
     expect(titleRequestPresentation('importing')?.label).toBe('Preparing');
   });
 
