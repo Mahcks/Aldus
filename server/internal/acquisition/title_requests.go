@@ -89,7 +89,9 @@ func (s *TitleRequestStore) Poll(ctx context.Context) error {
 			return nil
 		}
 		if err := s.fulfillClaim(ctx, claimed); err != nil {
-			return err
+			if deferErr := s.deferClaim(ctx, claimed, "search_failed", err.Error()); deferErr != nil {
+				return errors.Join(err, deferErr)
+			}
 		}
 	}
 	return nil

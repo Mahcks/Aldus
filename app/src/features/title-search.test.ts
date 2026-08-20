@@ -26,4 +26,19 @@ describe('title request presentation', () => {
     expect(titleRequestDetail(format)).toBe('No matching release yet. Aldus will keep looking.');
     expect(titleRequestDetail({ ...format, error: 'magnet:?secret' })).not.toContain('magnet:');
   });
+
+  test('shows the time for a same-day watched retry', () => {
+    const retry = new Date();
+    retry.setHours(23, 45, 0, 0);
+
+    expect(
+      titleRequestDetail({
+        format: 'ebook',
+        state: 'awaiting_release',
+        retry_count: 1,
+        updated_at: retry.toISOString(),
+        next_search_at: retry.toISOString(),
+      }),
+    ).toContain('Next search: Today,');
+  });
 });

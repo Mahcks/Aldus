@@ -120,6 +120,40 @@ func TestAddTrackedUploadsIndexerTorrentInsteadOfLeavingQBitPending(t *testing.T
 	}
 }
 
+func TestAddTrackedPassesIndexerMagnetRedirectToQBit(t *testing.T) {
+	const magnet = "magnet:?xt=urn:btih:abcdef"
+	var added string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/download":
+			http.Redirect(w, r, magnet, http.StatusFound)
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{"aldus":{}}`))
+		case "/api/v2/torrents/add":
+			added = r.FormValue("urls")
+			_, _ = w.Write([]byte("Ok."))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := New(Options{IndexerURL: server.URL, QBitURL: server.URL, Category: "aldus"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.AddTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
+		t.Fatal(err)
+	}
+	if added != magnet {
+		t.Fatalf("added %q", added)
+	}
+}
+
 func TestRemoveTag(t *testing.T) {
 	var removed bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

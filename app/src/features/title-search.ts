@@ -1,5 +1,6 @@
 import type { TitleRequestFormat } from '../generated/api';
 import { acquisitionDate } from './acquisition';
+import { notificationTime } from './notification-presentation';
 
 export type TitleRequestPresentation = {
   label: string;
@@ -54,7 +55,7 @@ export function titleRequestDetail(format: TitleRequestFormat) {
       return 'Searching connected indexers now.';
     case 'awaiting_release':
       return format.next_search_at
-        ? `No matching release yet. Searching again ${acquisitionDate(format.next_search_at)}.`
+        ? `No matching release yet. Next search: ${notificationTime(format.next_search_at)}.`
         : 'No matching release yet. Aldus will keep looking.';
     case 'submitting':
       return 'Waiting for qBittorrent to accept the download.';

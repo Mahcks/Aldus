@@ -86,6 +86,9 @@ func New(options Options) (*Client, error) {
 	return &Client{options: options, http: &http.Client{
 		Timeout: 20 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if req.URL.Scheme == "magnet" && validDownloadURL(req.URL.String()) {
+				return magnetRedirectError{URL: req.URL.String()}
+			}
 			if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
 				return errors.New("cross-origin redirect refused")
 			}
@@ -322,15 +325,21 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 	writer := multipart.NewWriter(&body)
 	if c.shouldFetchTorrent(downloadURL) {
 		torrent, err := c.fetchTorrent(ctx, downloadURL)
+		var redirect magnetRedirectError
+		if errors.As(err, &redirect) {
+			err = writer.WriteField("urls", redirect.URL)
+		}
 		if err != nil {
 			return err
 		}
-		part, err := writer.CreateFormFile("torrents", "download.torrent")
-		if err != nil {
-			return fmt.Errorf("build qBittorrent request: %w", err)
-		}
-		if _, err := part.Write(torrent); err != nil {
-			return fmt.Errorf("build qBittorrent request: %w", err)
+		if redirect.URL == "" {
+			part, err := writer.CreateFormFile("torrents", "download.torrent")
+			if err != nil {
+				return fmt.Errorf("build qBittorrent request: %w", err)
+			}
+			if _, err := part.Write(torrent); err != nil {
+				return fmt.Errorf("build qBittorrent request: %w", err)
+			}
 		}
 	} else if err := writer.WriteField("urls", downloadURL); err != nil {
 		return fmt.Errorf("build qBittorrent request: %w", err)
@@ -380,6 +389,10 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 	}
 	return nil
 }
+
+type magnetRedirectError struct{ URL string }
+
+func (e magnetRedirectError) Error() string { return "indexer redirected to magnet" }
 
 func (c *Client) shouldFetchTorrent(raw string) bool {
 	download, err := url.Parse(raw)
