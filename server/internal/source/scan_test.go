@@ -76,7 +76,7 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 		if entry.Kind == "epub" && !strings.Contains(string(entry.Metadata), `"has_cover":true`) {
 			t.Fatalf("EPUB cover metadata=%s", entry.Metadata)
 		}
-		if entry.Kind == "audio" && !strings.Contains(string(entry.Metadata), "864253") {
+		if entry.Kind == "audio" && !strings.Contains(string(entry.Metadata), `"duration_ms":864`) {
 			t.Fatalf("audio metadata=%s", entry.Metadata)
 		}
 	}
