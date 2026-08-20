@@ -712,6 +712,7 @@ export interface TitleRequestFormat {
 }
 export interface TitleRequestEvent {
   format?: string;
+  event_type: string;
   state?: string;
   created_at: string;
 }

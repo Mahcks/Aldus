@@ -88,7 +88,7 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 		t.Fatalf("events=%d, %v", events, err)
 	}
 	history, err := store.Events(ctx, reader, "library", request.ID)
-	if err != nil || len(history) != 5 || history[0].State != "canceled" {
+	if err != nil || len(history) != 5 || history[0].State != "canceled" || history[0].EventType != "canceled" {
 		t.Fatalf("reader history=%#v, %v", history, err)
 	}
 	if _, err := store.Events(ctx, auth.User{ID: "other"}, "library", request.ID); !errors.Is(err, ErrNotFound) {

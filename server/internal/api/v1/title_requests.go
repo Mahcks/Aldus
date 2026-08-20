@@ -23,7 +23,7 @@ func listTitleRequestEvents(store *acquisition.TitleRequestStore) http.HandlerFu
 		values, err := store.Events(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "requestID"))
 		result := make([]contracts.TitleRequestEvent, len(values))
 		for i, value := range values {
-			result[i] = contracts.TitleRequestEvent{Format: value.Format, State: value.State, CreatedAt: value.CreatedAt}
+			result[i] = contracts.TitleRequestEvent{Format: value.Format, EventType: value.EventType, State: value.State, CreatedAt: value.CreatedAt}
 		}
 		writeAcquisitionResult(w, result, err)
 	}

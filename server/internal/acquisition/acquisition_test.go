@@ -3,6 +3,7 @@ package acquisition
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -68,6 +69,54 @@ func TestSearchAndAdd(t *testing.T) {
 	}
 	if requestError != "" {
 		t.Fatal(requestError)
+	}
+}
+
+func TestAddTrackedUploadsIndexerTorrentInsteadOfLeavingQBitPending(t *testing.T) {
+	const torrent = "d4:infod4:name4:bookee"
+	var uploaded string
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/download":
+			if r.Header.Get("X-Api-Key") != "secret" {
+				http.Error(w, "missing API key", http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(torrent))
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{"aldus":{}}`))
+		case "/api/v2/torrents/add":
+			file, _, err := r.FormFile("torrents")
+			if err != nil {
+				t.Errorf("torrent upload missing: %v", err)
+				return
+			}
+			defer file.Close()
+			body, _ := io.ReadAll(file)
+			uploaded = string(body)
+			if r.FormValue("urls") != "" || r.FormValue("tags") != "request_123" {
+				t.Errorf("unexpected add form: urls=%q tags=%q", r.FormValue("urls"), r.FormValue("tags"))
+			}
+			_, _ = w.Write([]byte(`{"added_torrent_ids":["abc"],"failure_count":0,"pending_count":0,"success_count":1}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := New(Options{IndexerURL: server.URL, IndexerAPIKey: "secret", QBitURL: server.URL, Category: "aldus"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.AddTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
+		t.Fatal(err)
+	}
+	if uploaded != torrent {
+		t.Fatalf("uploaded %q", uploaded)
 	}
 }
 

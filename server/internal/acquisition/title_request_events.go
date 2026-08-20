@@ -9,15 +9,15 @@ import (
 )
 
 type TitleRequestEvent struct {
-	Format, State, Message string
-	CreatedAt              time.Time
+	Format, EventType, State, Message string
+	CreatedAt                         time.Time
 }
 
 func (s *TitleRequestStore) Events(ctx context.Context, actor auth.User, libraryID, requestID string) ([]TitleRequestEvent, error) {
 	if _, err := s.Get(ctx, actor, libraryID, requestID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(format,''),COALESCE(state,''),message,created_at FROM title_request_events WHERE title_request_id=? ORDER BY id DESC LIMIT 100`, requestID)
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(format,''),event_type,COALESCE(state,''),message,created_at FROM title_request_events WHERE title_request_id=? ORDER BY id DESC LIMIT 100`, requestID)
 	if err != nil {
 		return nil, fmt.Errorf("list title request events: %w", err)
 	}
@@ -26,7 +26,7 @@ func (s *TitleRequestStore) Events(ctx context.Context, actor auth.User, library
 	for rows.Next() {
 		var value TitleRequestEvent
 		var created string
-		if err := rows.Scan(&value.Format, &value.State, &value.Message, &created); err != nil {
+		if err := rows.Scan(&value.Format, &value.EventType, &value.State, &value.Message, &created); err != nil {
 			return nil, fmt.Errorf("scan title request event: %w", err)
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)

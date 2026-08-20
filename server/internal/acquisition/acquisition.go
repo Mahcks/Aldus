@@ -292,7 +292,19 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 	}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	if err := writer.WriteField("urls", downloadURL); err != nil {
+	if c.shouldFetchTorrent(downloadURL) {
+		torrent, err := c.fetchTorrent(ctx, downloadURL)
+		if err != nil {
+			return err
+		}
+		part, err := writer.CreateFormFile("torrents", "download.torrent")
+		if err != nil {
+			return fmt.Errorf("build qBittorrent request: %w", err)
+		}
+		if _, err := part.Write(torrent); err != nil {
+			return fmt.Errorf("build qBittorrent request: %w", err)
+		}
+	} else if err := writer.WriteField("urls", downloadURL); err != nil {
 		return fmt.Errorf("build qBittorrent request: %w", err)
 	}
 	if c.options.Category != "" {
@@ -339,6 +351,37 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 		return fmt.Errorf("%w: qBittorrent returned status %d: %v", ErrSubmissionUnknown, response.StatusCode, err)
 	}
 	return nil
+}
+
+func (c *Client) shouldFetchTorrent(raw string) bool {
+	download, err := url.Parse(raw)
+	indexer, indexerErr := url.Parse(c.options.IndexerURL)
+	return err == nil && indexerErr == nil && sameOrigin(indexer, download) && (download.Scheme == "http" || download.Scheme == "https")
+}
+
+func (c *Client) fetchTorrent(ctx context.Context, raw string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build torrent download request: %w", err)
+	}
+	req.Header.Set("X-Api-Key", c.options.IndexerAPIKey)
+	response, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download torrent from indexer: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download torrent from indexer: status %d", response.StatusCode)
+	}
+	const maxTorrentSize = 16 << 20
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxTorrentSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("download torrent from indexer: %w", err)
+	}
+	if len(body) == 0 || len(body) > maxTorrentSize {
+		return nil, errors.New("download torrent from indexer: invalid file size")
+	}
+	return body, nil
 }
 
 var errSubmissionRejected = errors.New("qBittorrent rejected the download")

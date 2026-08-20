@@ -29,6 +29,7 @@ type TitleRequestFormat struct {
 
 type TitleRequestEvent struct {
 	Format    string    `json:"format,omitempty"`
+	EventType string    `json:"event_type"`
 	State     string    `json:"state,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
