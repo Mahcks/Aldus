@@ -2,6 +2,7 @@
 FROM oven/bun:1.3.5-alpine AS web
 WORKDIR /src/app
 COPY app/package.json app/bun.lock app/bunfig.toml ./
+COPY app/patches ./patches
 RUN bun install --frozen-lockfile
 COPY app/ ./
 RUN bun run build:web
