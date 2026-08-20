@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1.3.5-alpine AS web
+FROM --platform=$BUILDPLATFORM oven/bun:1.3.5-alpine AS web
 WORKDIR /src/app
 COPY app/package.json app/bun.lock app/bunfig.toml ./
 COPY app/patches ./patches
@@ -7,13 +7,15 @@ RUN bun install --frozen-lockfile
 COPY app/ ./
 RUN bun run build:web
 
-FROM golang:1.26-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS server
 ARG VERSION=dev
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src/server
 COPY server/go.* ./
 RUN go mod download
 COPY server/ ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /aldus ./cmd/app
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /aldus ./cmd/app
 
 FROM alpine:3.22 AS production
 RUN apk add --no-cache ffmpeg && addgroup -S aldus && adduser -S -G aldus aldus && mkdir /data /app && chown aldus:aldus /data /app

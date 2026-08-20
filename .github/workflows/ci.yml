@@ -51,3 +51,5 @@ jobs:
         with:
           context: .
           push: false
+          cache-from: type=gha,scope=production
+          cache-to: type=gha,mode=max,scope=production

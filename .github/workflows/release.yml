@@ -38,3 +38,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ github.ref_name }}
+          cache-from: type=gha,scope=production
+          cache-to: type=gha,mode=max,scope=production
