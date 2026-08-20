@@ -41,4 +41,16 @@ describe('title request presentation', () => {
       }),
     ).toContain('Next search: Today,');
   });
+
+  test('explains when qBittorrent is waiting for magnet metadata', () => {
+    expect(
+      titleRequestDetail({
+        format: 'ebook',
+        state: 'downloading',
+        download_state: 'forcedMetaDL',
+        retry_count: 0,
+        updated_at: '2026-08-20T12:00:00Z',
+      }),
+    ).toBe('Waiting for torrent metadata and peers.');
+  });
 });

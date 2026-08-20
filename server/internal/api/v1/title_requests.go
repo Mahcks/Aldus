@@ -85,7 +85,7 @@ func titleRequestAction(action func(*http.Request) error) http.HandlerFunc {
 func titleRequestDTO(value acquisition.TitleRequest) contracts.TitleRequest {
 	formats := make([]contracts.TitleRequestFormat, len(value.Formats))
 	for i, format := range value.Formats {
-		formats[i] = contracts.TitleRequestFormat{Format: format.Format, State: format.State, Error: format.Error, RetryCount: format.RetryCount, LastSearchedAt: format.LastSearchedAt, NextSearchAt: format.NextSearchAt, UpdatedAt: format.UpdatedAt}
+		formats[i] = contracts.TitleRequestFormat{Format: format.Format, State: format.State, Error: format.Error, DownloadState: format.DownloadState, RetryCount: format.RetryCount, LastSearchedAt: format.LastSearchedAt, NextSearchAt: format.NextSearchAt, UpdatedAt: format.UpdatedAt}
 	}
 	return contracts.TitleRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, WorkID: value.WorkID, ExternalSource: value.ExternalSource, ExternalID: value.ExternalID, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, Formats: formats, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 }

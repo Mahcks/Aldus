@@ -10,6 +10,7 @@ import (
 
 const (
 	downloadMissingGrace = 15 * time.Minute
+	metadataStallLimit   = 30 * time.Minute
 	downloadStallLimit   = 24 * time.Hour
 )
 
@@ -45,7 +46,7 @@ func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequ
 	if progressChanged {
 		progressUpdated = stamp
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=?,download_last_seen_at=?,download_progress=?,download_progress_updated_at=? WHERE id=? AND fulfillment_state='downloading'`, download.Hash, stamp, download.Progress, progressUpdated, request.id); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=?,qbit_state=?,download_last_seen_at=?,download_progress=?,download_progress_updated_at=? WHERE id=? AND fulfillment_state='downloading'`, download.Hash, download.State, stamp, download.Progress, progressUpdated, request.id); err != nil {
 		return false, fmt.Errorf("record acquisition download progress: %w", err)
 	}
 
@@ -56,6 +57,14 @@ func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequ
 	case "missingfiles":
 		s.markDownloadProblem(ctx, request.id, "qBittorrent cannot find the downloaded files. Recheck the torrent or restore its download path.")
 		return true, nil
+	case "metadl", "forcedmetadl":
+		startedAt, err := time.Parse(time.RFC3339Nano, request.progressUpdated)
+		if err == nil && download.Seeds == 0 && download.Peers == 0 && now.Sub(startedAt) >= metadataStallLimit {
+			diagnosis := "No peers supplied torrent metadata for 30 minutes. Aldus will try a different release."
+			s.blacklistRelease(ctx, request.id, download.Hash, diagnosis)
+			s.markDownloadProblem(ctx, request.id, diagnosis)
+			return true, nil
+		}
 	}
 
 	if !progressChanged && activeDownloadState(download.State) {

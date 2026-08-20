@@ -60,6 +60,9 @@ export function titleRequestDetail(format: TitleRequestFormat) {
     case 'submitting':
       return 'Waiting for qBittorrent to accept the download.';
     case 'downloading':
+      if (['metadl', 'forcedmetadl'].includes(format.download_state?.toLowerCase() ?? '')) {
+        return 'Waiting for torrent metadata and peers.';
+      }
       return 'Sent to qBittorrent and downloading.';
     case 'verifying':
     case 'scanning':

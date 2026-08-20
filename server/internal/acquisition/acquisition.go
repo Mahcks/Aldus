@@ -3,6 +3,8 @@ package acquisition
 import (
 	"bytes"
 	"context"
+	"encoding/base32"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -47,6 +49,7 @@ type Download struct {
 	Hash, Name, State, ContentPath, Tags string
 	Progress                             float64
 	Size                                 int64
+	Seeds, Peers                         int
 }
 
 func (d Download) HasTag(tag string) bool {
@@ -305,21 +308,27 @@ func (c *Client) RemoveTag(ctx context.Context, hash, tag string) error {
 }
 
 func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error {
+	_, err := c.addTracked(ctx, downloadURL, tag)
+	return err
+}
+
+func (c *Client) addTracked(ctx context.Context, downloadURL, tag string) (string, error) {
 	if c.options.QBitURL == "" {
-		return ErrUnavailable
+		return "", ErrUnavailable
 	}
 	if !validDownloadURL(downloadURL) {
-		return errors.New("invalid download URL")
+		return "", errors.New("invalid download URL")
 	}
 	if tag != "" && !validTag(tag) {
-		return errors.New("invalid download tag")
+		return "", errors.New("invalid download tag")
 	}
+	infoHash := magnetInfoHash(downloadURL)
 	cookies, err := c.login(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := c.ensureCategory(ctx, cookies); err != nil {
-		return err
+		return "", err
 	}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -327,39 +336,40 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 		torrent, err := c.fetchTorrent(ctx, downloadURL)
 		var redirect magnetRedirectError
 		if errors.As(err, &redirect) {
+			infoHash = magnetInfoHash(redirect.URL)
 			err = writer.WriteField("urls", redirect.URL)
 		}
 		if err != nil {
-			return err
+			return infoHash, err
 		}
 		if redirect.URL == "" {
 			part, err := writer.CreateFormFile("torrents", "download.torrent")
 			if err != nil {
-				return fmt.Errorf("build qBittorrent request: %w", err)
+				return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 			}
 			if _, err := part.Write(torrent); err != nil {
-				return fmt.Errorf("build qBittorrent request: %w", err)
+				return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 			}
 		}
 	} else if err := writer.WriteField("urls", downloadURL); err != nil {
-		return fmt.Errorf("build qBittorrent request: %w", err)
+		return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 	}
 	if c.options.Category != "" {
 		if err := writer.WriteField("category", c.options.Category); err != nil {
-			return fmt.Errorf("build qBittorrent request: %w", err)
+			return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 		}
 	}
 	if tag != "" {
 		if err := writer.WriteField("tags", tag); err != nil {
-			return fmt.Errorf("build qBittorrent request: %w", err)
+			return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("build qBittorrent request: %w", err)
+		return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 	}
 	req, err := c.qbitRequest(ctx, http.MethodPost, "/api/v2/torrents/add", &body)
 	if err != nil {
-		return fmt.Errorf("build qBittorrent request: %w", err)
+		return infoHash, fmt.Errorf("build qBittorrent request: %w", err)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	for _, cookie := range cookies {
@@ -367,27 +377,30 @@ func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error 
 	}
 	response, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: send download to qBittorrent: %v", ErrSubmissionUnknown, err)
+		return infoHash, fmt.Errorf("%w: send download to qBittorrent: %v", ErrSubmissionUnknown, err)
 	}
 	defer response.Body.Close()
 	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, (4<<10)+1))
 	if readErr != nil {
-		return fmt.Errorf("%w: read qBittorrent response: %v", ErrSubmissionUnknown, readErr)
+		return infoHash, fmt.Errorf("%w: read qBittorrent response: %v", ErrSubmissionUnknown, readErr)
 	}
 	if len(responseBody) > 4<<10 {
-		return fmt.Errorf("%w: qBittorrent response is too large", ErrSubmissionUnknown)
+		return infoHash, fmt.Errorf("%w: qBittorrent response is too large", ErrSubmissionUnknown)
 	}
 	responseText := strings.TrimSpace(string(responseBody))
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
+		return infoHash, fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
 	}
 	if err := acceptedAddResponse(responseText); err != nil {
-		if errors.Is(err, errSubmissionRejected) {
-			return fmt.Errorf("send download to qBittorrent: status %d: %w", response.StatusCode, err)
+		if errors.Is(err, errSubmissionPending) && infoHash != "" {
+			return infoHash, nil
 		}
-		return fmt.Errorf("%w: qBittorrent returned status %d: %v", ErrSubmissionUnknown, response.StatusCode, err)
+		if errors.Is(err, errSubmissionRejected) {
+			return infoHash, fmt.Errorf("send download to qBittorrent: status %d: %w", response.StatusCode, err)
+		}
+		return infoHash, fmt.Errorf("%w: qBittorrent returned status %d: %v", ErrSubmissionUnknown, response.StatusCode, err)
 	}
-	return nil
+	return infoHash, nil
 }
 
 type magnetRedirectError struct{ URL string }
@@ -531,6 +544,8 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 		Tags        string  `json:"tags"`
 		Progress    float64 `json:"progress"`
 		Size        int64   `json:"size"`
+		Seeds       int     `json:"num_seeds"`
+		Peers       int     `json:"num_leechs"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("parse qBittorrent downloads: %w", err)
@@ -540,6 +555,7 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 		downloads[i] = Download{
 			Hash: item.Hash, Name: item.Name, State: item.State, ContentPath: item.ContentPath, Tags: item.Tags,
 			Progress: item.Progress, Size: item.Size,
+			Seeds: item.Seeds, Peers: item.Peers,
 		}
 	}
 	return downloads, nil
@@ -646,6 +662,31 @@ func validDownloadURL(raw string) bool {
 		return strings.HasPrefix(strings.ToLower(u.Query().Get("xt")), "urn:btih:")
 	}
 	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+func magnetInfoHash(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "magnet" {
+		return ""
+	}
+	for _, exactTopic := range u.Query()["xt"] {
+		value := strings.TrimPrefix(strings.ToLower(exactTopic), "urn:btih:")
+		if value == strings.ToLower(exactTopic) {
+			continue
+		}
+		if len(value) == 40 {
+			if _, err := hex.DecodeString(value); err == nil {
+				return value
+			}
+		}
+		if len(value) == 32 {
+			decoded, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(value))
+			if err == nil && len(decoded) == 20 {
+				return hex.EncodeToString(decoded)
+			}
+		}
+	}
+	return ""
 }
 
 func validTag(tag string) bool {

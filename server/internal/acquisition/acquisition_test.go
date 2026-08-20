@@ -121,7 +121,7 @@ func TestAddTrackedUploadsIndexerTorrentInsteadOfLeavingQBitPending(t *testing.T
 }
 
 func TestAddTrackedPassesIndexerMagnetRedirectToQBit(t *testing.T) {
-	const magnet = "magnet:?xt=urn:btih:abcdef"
+	const magnet = "magnet:?xt=urn:btih:2f969ff125dc4f6ec0b7ffd82c11a4bea561f419"
 	var added string
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +135,8 @@ func TestAddTrackedPassesIndexerMagnetRedirectToQBit(t *testing.T) {
 			_, _ = w.Write([]byte(`{"aldus":{}}`))
 		case "/api/v2/torrents/add":
 			added = r.FormValue("urls")
-			_, _ = w.Write([]byte("Ok."))
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"added_torrent_ids":[],"failure_count":0,"pending_count":1,"success_count":0}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -146,11 +147,15 @@ func TestAddTrackedPassesIndexerMagnetRedirectToQBit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.AddTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
+	hash, err := client.addTracked(context.Background(), server.URL+"/download", "request_123")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if added != magnet {
 		t.Fatalf("added %q", added)
+	}
+	if hash != "2f969ff125dc4f6ec0b7ffd82c11a4bea561f419" {
+		t.Fatalf("hash %q", hash)
 	}
 }
 

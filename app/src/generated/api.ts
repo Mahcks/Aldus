@@ -705,6 +705,7 @@ export interface TitleRequestFormat {
   format: string;
   state: string;
   error?: string;
+  download_state?: string;
   retry_count: number /* int */;
   last_searched_at?: string;
   next_search_at?: string;

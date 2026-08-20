@@ -35,7 +35,7 @@ func TestDownloadMonitoringClassifiesOnlyDurableFailures(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('user','user','user','User','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"complete", "error", "missing", "never", "stalled", "paused", "resumed"} {
+	for _, id := range []string{"complete", "error", "missing", "never", "metadata", "stalled", "paused", "resumed"} {
 		if _, err := db.Exec(`INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,download_state,fulfillment_state,created_at,updated_at) VALUES(?,'library','user','Book','queued','downloading','downloading','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, id); err != nil {
 			t.Fatal(err)
 		}
@@ -76,6 +76,13 @@ func TestDownloadMonitoringClassifiesOnlyDurableFailures(t *testing.T) {
 		t.Fatalf("never-seen expiry failed=%v err=%v", failed, err)
 	}
 	assertDownloadDiagnosis(t, db, "never", "never reported")
+
+	metadataOld := now.Add(-31 * time.Minute).Format(time.RFC3339Nano)
+	failed, err = store.monitorDownload(ctx, downloadMonitorRequest{id: "metadata", progressUpdated: metadataOld}, &Download{Hash: "dead", State: "forcedMetaDL"}, now)
+	if err != nil || !failed {
+		t.Fatalf("metadata monitor failed=%v err=%v", failed, err)
+	}
+	assertDownloadDiagnosis(t, db, "metadata", "No peers supplied torrent metadata")
 
 	failed, err = store.monitorDownload(ctx, downloadMonitorRequest{id: "stalled", progress: .3, progressUpdated: old}, &Download{Hash: "stall", State: "stalledDL", Progress: .3}, now)
 	if err != nil || !failed {

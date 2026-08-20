@@ -110,7 +110,10 @@ var acquisitionImportOutcomesSchema string
 //go:embed migrations/033_managed_media.sql
 var managedMediaSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema}
+//go:embed migrations/034_acquisition_release_failures.sql
+var acquisitionReleaseFailuresSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema}
 
 func SupportedSchemaVersion() int { return len(migrations) }
 

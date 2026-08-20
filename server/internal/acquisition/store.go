@@ -58,6 +58,7 @@ type SearchResult struct {
 	Published                                                                                             time.Time
 	Relevance, Year                                                                                       int
 	Abridged                                                                                              bool
+	downloadURL                                                                                           string
 }
 
 type Discovery struct {
@@ -329,8 +330,8 @@ func (s *Store) MarkTrackerSeen(ctx context.Context, actor auth.User) error {
 }
 
 func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID string) error {
-	var selectedURL, scanID, state string
-	err := s.db.QueryRowContext(ctx, `SELECT r.selected_url,COALESCE(r.scan_id,''),r.fulfillment_state FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, actor.ID, requestID, libraryID, actor.Admin, actor.ID).Scan(&selectedURL, &scanID, &state)
+	var selectedURL, scanID, state, torrentHash string
+	err := s.db.QueryRowContext(ctx, `SELECT r.selected_url,COALESCE(r.scan_id,''),r.fulfillment_state,r.torrent_hash FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, actor.ID, requestID, libraryID, actor.Admin, actor.ID).Scan(&selectedURL, &scanID, &state, &torrentHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -364,17 +365,22 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 	}
 	found := false
 	for _, download := range downloads {
-		if download.HasTag(requestID) {
+		if (torrentHash != "" && strings.EqualFold(download.Hash, torrentHash)) || download.HasTag(requestID) {
 			found = true
+			torrentHash = download.Hash
 			break
 		}
 	}
 	if !found {
-		if err := client.AddTracked(ctx, selectedURL, requestID); err != nil {
+		torrentHash, err = client.addTracked(ctx, selectedURL, requestID)
+		if torrentHash != "" {
+			_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=? WHERE id=?`, torrentHash, requestID)
+		}
+		if err != nil {
 			return err
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',dismissed_at='',torrent_hash='',download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='failed'`, now, now, requestID)
+	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',dismissed_at='',torrent_hash=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='failed'`, torrentHash, now, now, requestID)
 	return err
 }
 
@@ -529,16 +535,16 @@ func (s *Store) Poll(ctx context.Context) error {
 }
 
 func (s *Store) recoverSubmissions(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,selected_url,updated_at FROM acquisition_requests WHERE fulfillment_state='submitting' ORDER BY created_at,id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,selected_url,torrent_hash,updated_at FROM acquisition_requests WHERE fulfillment_state='submitting' ORDER BY created_at,id`)
 	if err != nil {
 		return fmt.Errorf("list acquisition submissions: %w", err)
 	}
 	defer rows.Close()
-	type submission struct{ id, url, updated string }
+	type submission struct{ id, url, hash, updated string }
 	var pending []submission
 	for rows.Next() {
 		var value submission
-		if err := rows.Scan(&value.id, &value.url, &value.updated); err != nil {
+		if err := rows.Scan(&value.id, &value.url, &value.hash, &value.updated); err != nil {
 			return err
 		}
 		pending = append(pending, value)
@@ -560,8 +566,9 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 	for _, value := range pending {
 		found := false
 		for _, download := range downloads {
-			if download.HasTag(value.id) {
+			if (value.hash != "" && strings.EqualFold(download.Hash, value.hash)) || download.HasTag(value.id) {
 				found = true
+				value.hash = download.Hash
 				break
 			}
 		}
@@ -570,7 +577,12 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 			if time.Since(updated) < downloadMissingGrace {
 				continue
 			}
-			if err := client.AddTracked(ctx, value.url, value.id); err != nil {
+			hash, err := client.addTracked(ctx, value.url, value.id)
+			if hash != "" {
+				value.hash = hash
+				_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=? WHERE id=? AND fulfillment_state='submitting'`, hash, value.id)
+			}
+			if err != nil {
 				if errors.Is(err, ErrSubmissionUnknown) {
 					_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET updated_at=? WHERE id=? AND fulfillment_state='submitting'`, time.Now().UTC().Format(time.RFC3339Nano), value.id)
 					continue
@@ -580,7 +592,7 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 			}
 		}
 		stamp := time.Now().UTC().Format(time.RFC3339Nano)
-		if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',torrent_hash='',download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='submitting'`, stamp, stamp, value.id); err != nil {
+		if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',torrent_hash=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='submitting'`, value.hash, stamp, stamp, value.id); err != nil {
 			return fmt.Errorf("finish recovered acquisition submission: %w", err)
 		}
 	}
@@ -787,7 +799,7 @@ func (s *Store) Search(ctx context.Context, actor auth.User, libraryID, id strin
 			return nil, fmt.Errorf("store acquisition result: %w", err)
 		}
 		_, _, _, _, abridged := releaseMetadata(result.Title)
-		value := SearchResult{ID: resultID, Title: result.Title, Source: result.Source, Size: max(0, result.Size), Published: result.Published, CanonicalTitle: item.CanonicalTitle, Author: item.Author, Language: item.Language, Format: item.Format, Kind: item.Kind, Edition: item.Edition, Narrator: item.Narrator, GroupKey: item.GroupKey, Match: item.Match, Relevance: item.Relevance, Abridged: abridged}
+		value := SearchResult{ID: resultID, Title: result.Title, Source: result.Source, Size: max(0, result.Size), Published: result.Published, CanonicalTitle: item.CanonicalTitle, Author: item.Author, Language: item.Language, Format: item.Format, Kind: item.Kind, Edition: item.Edition, Narrator: item.Narrator, GroupKey: item.GroupKey, Match: item.Match, Relevance: item.Relevance, Abridged: abridged, downloadURL: result.DownloadURL}
 		if match := matchingMetadata(value.CanonicalTitle, value.Author, metadata); match.Title != "" {
 			value.CanonicalTitle, value.Year, value.ISBN, value.CoverURL = match.Title, match.Year, match.ISBN, match.CoverURL
 			if value.Author == "" {
@@ -985,19 +997,44 @@ func (s *Store) Select(ctx context.Context, actor auth.User, libraryID, requestI
 	if err != nil {
 		return Request{}, err
 	}
-	if err := client.AddTracked(ctx, result.DownloadURL, requestID); err != nil {
-		if errors.Is(err, ErrSubmissionUnknown) {
+	hash, addErr := client.addTracked(ctx, result.DownloadURL, requestID)
+	if hash != "" {
+		_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=? WHERE id=? AND fulfillment_state='submitting'`, hash, requestID)
+	}
+	if addErr != nil && errors.Is(addErr, ErrSubmissionUnknown) {
+		downloads, listErr := client.Downloads(ctx)
+		if listErr == nil {
+			for _, download := range downloads {
+				if (hash != "" && strings.EqualFold(download.Hash, hash)) || download.HasTag(requestID) {
+					hash, addErr = download.Hash, nil
+					break
+				}
+			}
+		}
+	}
+	if addErr != nil {
+		if errors.Is(addErr, ErrSubmissionUnknown) {
 			return s.request(ctx, requestID)
 		}
-		s.markDownloadProblem(ctx, requestID, err.Error())
-		return Request{}, err
+		s.blacklistRelease(ctx, requestID, hash, addErr.Error())
+		s.markDownloadProblem(ctx, requestID, addErr.Error())
+		return Request{}, addErr
 	}
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',torrent_hash='',download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='submitting'`, stamp, stamp, requestID)
+	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET status='queued',download_state='downloading',fulfillment_state='downloading',download_error='',torrent_hash=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,updated_at=? WHERE id=? AND fulfillment_state='submitting'`, hash, stamp, stamp, requestID)
 	if err != nil {
 		return Request{}, fmt.Errorf("finish acquisition submission: %w", err)
 	}
 	return s.request(ctx, requestID)
+}
+
+func (s *Store) blacklistRelease(ctx context.Context, acquisitionRequestID, hash, reason string) {
+	_, _ = s.db.ExecContext(ctx, `
+		INSERT INTO acquisition_release_failures(title_request_id,format,download_url,info_hash,reason,failed_at)
+		SELECT f.title_request_id,f.format,a.selected_url,?,?,?
+		FROM title_request_formats f JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id
+		WHERE a.id=? AND a.selected_url!=''
+		ON CONFLICT(title_request_id,format,download_url) DO UPDATE SET info_hash=excluded.info_hash,reason=excluded.reason,failed_at=excluded.failed_at`, hash, reason, time.Now().UTC().Format(time.RFC3339Nano), acquisitionRequestID)
 }
 
 func (s *Store) request(ctx context.Context, id string) (Request, error) {

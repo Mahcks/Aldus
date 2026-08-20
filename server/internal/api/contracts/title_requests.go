@@ -21,6 +21,7 @@ type TitleRequestFormat struct {
 	Format         string    `json:"format"`
 	State          string    `json:"state"`
 	Error          string    `json:"error,omitempty"`
+	DownloadState  string    `json:"download_state,omitempty"`
 	RetryCount     int       `json:"retry_count"`
 	LastSearchedAt time.Time `json:"last_searched_at,omitempty"`
 	NextSearchAt   time.Time `json:"next_search_at,omitempty"`

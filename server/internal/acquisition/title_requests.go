@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -22,10 +23,10 @@ type TitleRequest struct {
 }
 
 type TitleRequestFormat struct {
-	Format, State, SourceID, Error string
-	RetryCount                     int
-	LastSearchedAt, NextSearchAt   time.Time
-	CreatedAt, UpdatedAt           time.Time
+	Format, State, SourceID, Error, DownloadState string
+	RetryCount                                    int
+	LastSearchedAt, NextSearchAt                  time.Time
+	CreatedAt, UpdatedAt                          time.Time
 }
 
 type CreateTitleRequest struct {
@@ -108,16 +109,27 @@ func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 			return fmt.Errorf("sync title request fulfillment: %w", err)
 		}
 		stamp := time.Now().UTC().Format(time.RFC3339Nano)
+		eventType, nextSearch := "fulfillment_"+legacyState, ""
+		if legacyState == "failed" {
+			var tryAnother bool
+			if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM acquisition_release_failures WHERE title_request_id=? AND format=?)`, requestID, format).Scan(&tryAnother); err != nil {
+				return fmt.Errorf("check failed release: %w", err)
+			}
+			if tryAnother {
+				legacyState, eventType, nextSearch = "awaiting_release", "release_failed", stamp
+				diagnosis = "That release could not start. Aldus will try a different match."
+			}
+		}
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("sync title request fulfillment: %w", err)
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error=?,updated_at=? WHERE title_request_id=? AND format=? AND state=?`, legacyState, diagnosis, stamp, requestID, format, current)
+		result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error=?,next_search_at=NULLIF(?,''),updated_at=? WHERE title_request_id=? AND format=? AND state=?`, legacyState, diagnosis, nextSearch, stamp, requestID, format, current)
 		if err == nil {
 			var changed int64
 			changed, err = result.RowsAffected()
 			if err == nil && changed == 1 {
-				err = appendTitleRequestEvent(ctx, tx, requestID, format, "fulfillment_"+legacyState, legacyState, "", diagnosis, stamp)
+				err = appendTitleRequestEvent(ctx, tx, requestID, format, eventType, legacyState, "", diagnosis, stamp)
 			}
 			if err == nil && changed == 1 && (legacyState == "available" || legacyState == "failed") {
 				err = s.notifyRequesterTx(ctx, tx, requestID, format, legacyState, title, requestedBy, stamp)
@@ -252,6 +264,26 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		return s.deferClaim(ctx, value, "search_failed", err.Error())
 	}
 	results = matchingGuidedResults(results, value.title, value.format, policy)
+	blocked := make(map[string]bool)
+	rows, err := s.db.QueryContext(ctx, `SELECT download_url,info_hash FROM acquisition_release_failures WHERE title_request_id=? AND format=? AND failed_at>=?`, value.requestID, value.format, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339Nano))
+	if err != nil {
+		return s.deferClaim(ctx, value, "search_failed", err.Error())
+	}
+	for rows.Next() {
+		var downloadURL, hash string
+		if err := rows.Scan(&downloadURL, &hash); err != nil {
+			rows.Close()
+			return s.deferClaim(ctx, value, "search_failed", err.Error())
+		}
+		blocked[downloadURL] = true
+		blocked[hash] = hash != ""
+	}
+	if err := rows.Close(); err != nil {
+		return s.deferClaim(ctx, value, "search_failed", err.Error())
+	}
+	results = slices.DeleteFunc(results, func(result SearchResult) bool {
+		return blocked[result.downloadURL] || blocked[magnetInfoHash(result.downloadURL)]
+	})
 	if len(results) == 0 {
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return s.deferClaim(ctx, value, "no_match", "No release currently matches the owner's rules.")
@@ -536,7 +568,7 @@ func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID
 	for i := range values {
 		byID[values[i].ID] = i
 	}
-	formatRows, err := s.db.QueryContext(ctx, `SELECT f.title_request_id,f.format,f.state,COALESCE(f.source_id,''),f.error,f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id,f.format LIMIT 200`, actor.ID, libraryID, actor.ID, actor.Admin)
+	formatRows, err := s.db.QueryContext(ctx, `SELECT f.title_request_id,f.format,f.state,COALESCE(f.source_id,''),f.error,COALESCE(a.qbit_state,''),f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id,f.format LIMIT 200`, actor.ID, libraryID, actor.ID, actor.Admin)
 	if err != nil {
 		return nil, fmt.Errorf("list title request formats: %w", err)
 	}
@@ -544,7 +576,7 @@ func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID
 	for formatRows.Next() {
 		var id, searched, next, created, updated string
 		var value TitleRequestFormat
-		if err := formatRows.Scan(&id, &value.Format, &value.State, &value.SourceID, &value.Error, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
+		if err := formatRows.Scan(&id, &value.Format, &value.State, &value.SourceID, &value.Error, &value.DownloadState, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
 			return nil, err
 		}
 		value.LastSearchedAt, _ = time.Parse(time.RFC3339Nano, searched)
@@ -668,7 +700,7 @@ func scanTitleRequest(row rowScanner) (TitleRequest, error) {
 }
 
 func (s *TitleRequestStore) formats(ctx context.Context, id string) ([]TitleRequestFormat, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT format,state,COALESCE(source_id,''),error,retry_count,COALESCE(last_searched_at,''),COALESCE(next_search_at,''),created_at,updated_at FROM title_request_formats WHERE title_request_id=? ORDER BY format`, id)
+	rows, err := s.db.QueryContext(ctx, `SELECT f.format,f.state,COALESCE(f.source_id,''),f.error,COALESCE(a.qbit_state,''),f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? ORDER BY f.format`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list title request formats: %w", err)
 	}
@@ -677,7 +709,7 @@ func (s *TitleRequestStore) formats(ctx context.Context, id string) ([]TitleRequ
 	for rows.Next() {
 		var value TitleRequestFormat
 		var searched, next, created, updated string
-		if err := rows.Scan(&value.Format, &value.State, &value.SourceID, &value.Error, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
+		if err := rows.Scan(&value.Format, &value.State, &value.SourceID, &value.Error, &value.DownloadState, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
 			return nil, err
 		}
 		value.LastSearchedAt, _ = time.Parse(time.RFC3339Nano, searched)
