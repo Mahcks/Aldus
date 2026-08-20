@@ -245,15 +245,29 @@ function FolderBrowser({
   onChangeRoot: () => void;
 }) {
   const parent = parentDirectory(directory.relative_path);
+  const selectedName = directory.relative_path.split('/').filter(Boolean).at(-1) ?? root.label;
 
   return (
-    <View className="gap-2">
+    <View className="gap-3">
       <View className="flex-row flex-wrap items-center justify-between gap-2">
         <Breadcrumb root={root} relativePath={directory.relative_path} onNavigate={onNavigate} />
         {roots.length > 1 ? (
           <Button label="Change folder" kind="quiet" onPress={onChangeRoot} />
         ) : null}
       </View>
+      <View className="gap-1 rounded-control border border-accent bg-accent-soft p-3">
+        <View className="flex-row items-center gap-2">
+          <AppIcon name="check" size={18} color={colors.accent} />
+          <Text className="text-sm font-bold text-ink">Selected folder: {selectedName}</Text>
+        </View>
+        <Text className="text-sm text-muted">Everything inside this folder will be scanned.</Text>
+        <Text selectable className="font-mono text-xs text-muted">
+          {directory.selected_path}
+        </Text>
+      </View>
+      {directory.directories.length > 0 ? (
+        <Text className="text-sm font-semibold text-muted">Or choose a subfolder instead</Text>
+      ) : null}
       <ScrollView className="max-h-[260px] rounded-control border border-line-strong">
         {directory.has_parent ? (
           <Pressable
@@ -281,7 +295,7 @@ function FolderBrowser({
         ))}
         {directory.directories.length === 0 ? (
           <Text className="px-3 py-4 text-sm text-muted">
-            This folder has no subfolders — you can still choose it using Add source below.
+            This folder has no subfolders. You can add the selected folder below.
           </Text>
         ) : null}
       </ScrollView>
