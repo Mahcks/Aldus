@@ -6,11 +6,10 @@ import type {
   TitleRequest,
   User,
 } from '../../generated/api';
-import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
 import {
+  acquisitionFailureMessage,
   acquisitionDate,
   acquisitionFulfillment,
   acquisitionSize,
@@ -29,12 +28,15 @@ import {
   Select,
   StatusBadge,
 } from '../../features/ui';
-import { Text, View } from '../../features/tw';
+import { Pressable, Text, View } from '../../features/tw';
 import { api, errorMessage } from '../../lib/api';
 
 export default function AcquisitionsAdministration() {
   const auth = useAuth();
-  const wide = useWindowDimensions().width >= 1100;
+  const [tab, setTab] = useState<'requests' | 'downloads' | 'settings'>('requests');
+  const [showRequestHistory, setShowRequestHistory] = useState(false);
+  const [showDownloadHistory, setShowDownloadHistory] = useState(false);
+  const [technicalRequestID, setTechnicalRequestID] = useState('');
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryID, setLibraryID] = useState('');
   const [requests, setRequests] = useState<AcquisitionRequest[]>([]);
@@ -218,6 +220,18 @@ export default function AcquisitionsAdministration() {
   const requestHistory = [...titleRequests].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
   );
+  const currentRequests = requestHistory.filter((request) =>
+    request.formats.some((format) => !['available', 'denied', 'canceled'].includes(format.state)),
+  );
+  const finishedRequests = requestHistory.filter((request) => !currentRequests.includes(request));
+  const shownRequests = showRequestHistory
+    ? [...currentRequests, ...finishedRequests]
+    : currentRequests;
+  const currentDownloads = visibleRequests.filter((request) => {
+    const status = acquisitionFulfillment(request);
+    return status?.pending || status?.tone === 'danger' || status?.action === 'review';
+  });
+  const shownDownloads = showDownloadHistory ? visibleRequests : currentDownloads;
 
   function requesterName(id: string) {
     const user = users.find((candidate) => candidate.id === id);
@@ -245,86 +259,115 @@ export default function AcquisitionsAdministration() {
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
 
-      <Notice tone="info">
-        Readers find and add books from Search. This page is for configuring connections and
-        monitoring acquisition activity.
-      </Notice>
+      <View accessibilityRole="tablist" className="flex-row border-b border-line">
+        {(['requests', 'downloads', 'settings'] as const).map((value) => (
+          <Pressable
+            key={value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === value }}
+            className={`min-h-11 justify-center border-b-2 px-4 ${
+              tab === value ? 'border-accent' : 'border-transparent'
+            }`}
+            onPress={() => setTab(value)}
+          >
+            <Text className={`text-sm font-bold ${tab === value ? 'text-accent' : 'text-muted'}`}>
+              {value === 'settings' ? 'Connections' : `${value[0].toUpperCase()}${value.slice(1)}`}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
-      <Section title="Requests">
-        {approvalError ? <Notice tone="danger">{approvalError}</Notice> : null}
-        {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
-        {approvalLoading ? (
-          <LoadingState label="Loading requests…" />
-        ) : requestHistory.length === 0 ? (
-          <EmptyState icon="acquire" title="No requests yet">
-            Ebook and audiobook requests made from Search will appear here.
-          </EmptyState>
-        ) : (
-          <View accessibilityRole="list" className="border-t border-line">
-            {requestHistory.map((request) => (
-              <View key={request.id} className="gap-3 border-b border-line py-4">
-                <View className="gap-1">
-                  <Text className="font-editorial text-lg font-bold text-ink">{request.title}</Text>
-                  <Text className="text-sm text-muted">
-                    {[
-                      request.author,
-                      `Requested by ${requesterName(request.requested_by)}`,
-                      acquisitionDate(request.created_at),
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </Text>
-                </View>
-                {request.formats.map((format) => {
-                  const key = `${request.id}:${format.format}`;
-                  const status = titleRequestPresentation(format.state) ?? {
-                    label: 'Requested',
-                    tone: 'info' as const,
-                  };
-                  return (
-                    <View
-                      key={format.format}
-                      className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <View className="min-w-0 flex-1 gap-1">
-                        <View className="flex-row items-center gap-3">
-                          <Text className="w-24 text-sm font-bold text-ink">
-                            {formatLabel(format.format)}
+      {tab === 'requests' ? (
+        <Section
+          title="Requests"
+          action={
+            finishedRequests.length ? (
+              <Button
+                label={showRequestHistory ? 'Hide history' : `History (${finishedRequests.length})`}
+                kind="quiet"
+                onPress={() => setShowRequestHistory((value) => !value)}
+              />
+            ) : undefined
+          }
+        >
+          {approvalError ? <Notice tone="danger">{approvalError}</Notice> : null}
+          {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
+          {approvalLoading ? (
+            <LoadingState label="Loading requests…" />
+          ) : shownRequests.length === 0 ? (
+            <EmptyState icon="acquire" title="No active requests">
+              New requests and anything needing attention will appear here. Open history for
+              completed and canceled requests.
+            </EmptyState>
+          ) : (
+            <View accessibilityRole="list" className="border-t border-line">
+              {shownRequests.map((request) => (
+                <View key={request.id} className="gap-3 border-b border-line py-4">
+                  <View className="gap-1">
+                    <Text className="font-editorial text-lg font-bold text-ink">
+                      {request.title}
+                    </Text>
+                    <Text className="text-sm text-muted">
+                      {[
+                        request.author,
+                        `Requested by ${requesterName(request.requested_by)}`,
+                        acquisitionDate(request.created_at),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </View>
+                  {request.formats.map((format) => {
+                    const key = `${request.id}:${format.format}`;
+                    const status = titleRequestPresentation(format.state) ?? {
+                      label: 'Requested',
+                      tone: 'info' as const,
+                    };
+                    return (
+                      <View
+                        key={format.format}
+                        className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <View className="min-w-0 flex-1 gap-1">
+                          <View className="flex-row items-center gap-3">
+                            <Text className="w-24 text-sm font-bold text-ink">
+                              {formatLabel(format.format)}
+                            </Text>
+                            <StatusBadge tone={status.tone} label={status.label} />
+                          </View>
+                          <Text className="text-sm leading-5 text-muted">
+                            {titleRequestDetail(format)}
                           </Text>
-                          <StatusBadge tone={status.tone} label={status.label} />
                         </View>
-                        <Text className="text-sm leading-5 text-muted">
-                          {titleRequestDetail(format)}
-                        </Text>
+                        {format.state === 'pending_approval' ? (
+                          <View className="flex-row gap-2">
+                            <Button
+                              label="Approve"
+                              kind="primary"
+                              loading={approvalBusy === key}
+                              disabled={Boolean(approvalBusy)}
+                              onPress={() => void approve(request, format.format)}
+                            />
+                            <Button
+                              label="Deny"
+                              kind="quiet"
+                              disabled={Boolean(approvalBusy)}
+                              onPress={() => setDenyTarget({ request, format: format.format })}
+                            />
+                          </View>
+                        ) : null}
                       </View>
-                      {format.state === 'pending_approval' ? (
-                        <View className="flex-row gap-2">
-                          <Button
-                            label="Approve"
-                            kind="primary"
-                            loading={approvalBusy === key}
-                            disabled={Boolean(approvalBusy)}
-                            onPress={() => void approve(request, format.format)}
-                          />
-                          <Button
-                            label="Deny"
-                            kind="quiet"
-                            disabled={Boolean(approvalBusy)}
-                            onPress={() => setDenyTarget({ request, format: format.format })}
-                          />
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
-        )}
-      </Section>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          )}
+        </Section>
+      ) : null}
 
-      <View className={wide ? 'flex-row items-start gap-8' : 'gap-8'}>
-        <View className={wide ? 'w-[640px]' : undefined}>
+      {tab === 'settings' ? (
+        <View className="max-w-[720px]">
           <Section title="Connections">
             <View className="max-w-[720px] gap-4">
               <Select
@@ -465,17 +508,22 @@ export default function AcquisitionsAdministration() {
             </View>
           </Section>
         </View>
+      ) : null}
 
+      {tab === 'downloads' ? (
         <View className="min-w-0 flex-1 gap-8">
           <Section
             title="Downloads"
             action={
-              <Button
-                label="Find books in Search"
-                icon="search"
-                kind="secondary"
-                onPress={() => router.push('/search')}
-              />
+              <View className="flex-row gap-2">
+                {visibleRequests.length > currentDownloads.length ? (
+                  <Button
+                    label={showDownloadHistory ? 'Hide history' : 'Show history'}
+                    kind="quiet"
+                    onPress={() => setShowDownloadHistory((value) => !value)}
+                  />
+                ) : null}
+              </View>
             }
           >
             <View className="gap-4">
@@ -490,17 +538,16 @@ export default function AcquisitionsAdministration() {
                 <Text className="text-sm text-muted">{libraries[0].name}</Text>
               ) : null}
 
-              {visibleRequests.length === 0 ? (
+              {shownDownloads.length === 0 ? (
                 <View className="border-y border-line py-6">
-                  <Text className="text-base font-bold text-ink">No downloads yet</Text>
+                  <Text className="text-base font-bold text-ink">No active downloads</Text>
                   <Text className="mt-1 text-sm leading-5 text-muted">
-                    A request appears here after Aldus finds a matching release and sends it to
-                    qBittorrent.
+                    New downloads will appear here. Open history to review earlier attempts.
                   </Text>
                 </View>
               ) : (
                 <View className="border-t border-line">
-                  {visibleRequests.map((request) => {
+                  {shownDownloads.map((request) => {
                     const status = acquisitionFulfillment(request);
                     if (!status) return null;
                     return (
@@ -522,9 +569,32 @@ export default function AcquisitionsAdministration() {
                               .join(' · ')}
                           </Text>
                           {request.download_error ? (
-                            <Text className="text-sm leading-5 text-danger">
-                              {request.download_error}
-                            </Text>
+                            <View className="items-start gap-1">
+                              <Text className="text-sm leading-5 text-danger">
+                                {acquisitionFailureMessage(request)}
+                              </Text>
+                              <Button
+                                label={
+                                  technicalRequestID === request.id
+                                    ? 'Hide technical details'
+                                    : 'Technical details'
+                                }
+                                kind="quiet"
+                                onPress={() =>
+                                  setTechnicalRequestID((value) =>
+                                    value === request.id ? '' : request.id,
+                                  )
+                                }
+                              />
+                              {technicalRequestID === request.id ? (
+                                <Text
+                                  selectable
+                                  className="max-w-[72ch] text-xs leading-5 text-muted"
+                                >
+                                  {request.download_error}
+                                </Text>
+                              ) : null}
+                            </View>
                           ) : null}
                         </View>
                         <StatusBadge tone={status.tone} label={status.label} />
@@ -541,7 +611,7 @@ export default function AcquisitionsAdministration() {
             folder. Aldus can scan completed files without a search-provider connection.
           </Notice>
         </View>
-      </View>
+      ) : null}
       <ConfirmDialog
         visible={Boolean(denyTarget)}
         title={`Deny ${denyTarget ? formatLabel(denyTarget.format).toLowerCase() : ''} request?`}

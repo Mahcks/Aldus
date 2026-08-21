@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import {
   acquisitionDate,
   acquisitionCounterparts,
+  acquisitionFailureMessage,
   acquisitionFulfillment,
   acquisitionSize,
   groupAcquisitionResults,
@@ -42,6 +43,15 @@ test('presents persisted acquisition fulfillment states truthfully', () => {
     'open',
   );
   expect(acquisitionFulfillment({ ...request, selected_title: undefined })).toBeNull();
+});
+
+test('hides raw magnet failures from the primary acquisition message', () => {
+  expect(
+    acquisitionFailureMessage({
+      ...request,
+      download_error: 'download torrent from indexer: Get "magnet:?xt=urn:btih:secret"',
+    }),
+  ).toBe('The download client did not accept this request. Check its connection and try again.');
 });
 
 test('formats acquisition metadata without exposing invalid values', () => {

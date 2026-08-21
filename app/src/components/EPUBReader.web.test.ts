@@ -8,6 +8,7 @@ import {
   directionAfterRelocation,
   deferredDisposal,
   disposeReaderView,
+  initializeReaderView,
   relocationCursor,
   relocatedCursor,
   segmentRangeMode,
@@ -134,6 +135,16 @@ describe('EPUB relocation', () => {
     disposal.request();
     disposal.fail();
     expect(calls).toEqual(['dispose']);
+  });
+
+  test('initializes Foliate at readable text after opening a new book', async () => {
+    const calls: unknown[] = [];
+    await initializeReaderView({
+      init: async (options) => {
+        calls.push(options);
+      },
+    });
+    expect(calls).toEqual([{ showTextStart: true }]);
   });
 
   test('classifies full, partial, and unavailable visible pages', () => {

@@ -10,6 +10,7 @@ import {
   directionAfterRelocation,
   deferredDisposal,
   disposeReaderView,
+  initializeReaderView,
   relocationCursor,
   segmentRangeMode,
 } from './reader-location';
@@ -320,6 +321,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             ? new File([source], 'book.epub', { type: 'application/epub+zip' })
             : source,
         );
+        await initializeReaderView(view);
         disposal.settle();
         if (disposed) {
           return;

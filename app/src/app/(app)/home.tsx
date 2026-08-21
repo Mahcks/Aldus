@@ -2,7 +2,8 @@ import type { Collection, Notification, WorkSummary } from '../../generated/api'
 import type { Href } from 'expo-router';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { coverPresentation, WorkRow } from '../../features/bookshelf';
+import { BookCover, coverPresentation, WorkRow } from '../../features/bookshelf';
+import { requestNotification } from '../../features/activity-presentation';
 import { collectionCount } from '../../features/collection-presentation';
 import { AppIcon } from '../../features/icons';
 import { notificationHref } from '../../features/notification-presentation';
@@ -57,16 +58,45 @@ function WorkList({ works, continuing }: { works: WorkSummary[]; continuing?: bo
 
 function ReadyRow({ item }: { item: Notification }) {
   const href = notificationHref(item.action_url);
+  const request = requestNotification(item);
+  const title = request?.title ?? item.body ?? item.title;
+  const format = request?.format;
+  const canConsume = href?.startsWith('/consume/');
+
+  async function open() {
+    await api.markNotificationRead(item.id).catch(() => undefined);
+    if (href) router.push(href as Href);
+  }
+
   return (
-    <View className="min-h-14 flex-row items-center gap-3 border-b border-line py-3">
-      <View className="h-10 w-10 items-center justify-center">
-        <AppIcon name="check" size={21} color={colors.success} />
+    <View className="flex-row items-center gap-4 border-b border-line py-4">
+      <BookCover title={title} size="mini" />
+      <View className="min-w-0 flex-1 gap-1">
+        <Text numberOfLines={2} className="font-editorial text-lg font-bold text-ink">
+          {title}
+        </Text>
+        <View className="flex-row items-center gap-2">
+          <AppIcon name="check" size={17} color={colors.success} />
+          <Text className="text-sm font-semibold text-success">
+            {format === 'audiobook' ? 'Your audiobook is ready' : 'Your ebook is ready'}
+          </Text>
+        </View>
+        <Text className="text-sm text-muted">
+          {canConsume
+            ? format === 'audiobook'
+              ? 'Start listening whenever you’re ready.'
+              : 'Start reading whenever you’re ready.'
+            : 'A book you requested is now in Aldus.'}
+        </Text>
       </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-sm font-bold text-ink">{item.title}</Text>
-        {item.body ? <Text className="text-sm text-muted">{item.body}</Text> : null}
-      </View>
-      {href ? <Button label="Open" kind="quiet" onPress={() => router.push(href as Href)} /> : null}
+      {href ? (
+        <Button
+          label={canConsume ? (format === 'audiobook' ? 'Listen now' : 'Read now') : 'View request'}
+          icon={canConsume ? (format === 'audiobook' ? 'listen' : 'read') : undefined}
+          kind="primary"
+          onPress={open}
+        />
+      ) : null}
     </View>
   );
 }
@@ -205,7 +235,7 @@ export default function HomeScreen() {
           ) : null}
           {ready.length ? (
             <Section
-              title="Ready from requests"
+              title="Ready for you"
               action={
                 <Button
                   label="View activity"

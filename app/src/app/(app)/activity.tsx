@@ -3,9 +3,11 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import type { Notification, TitleRequest, TitleRequestEvent } from '../../generated/api';
 import {
+  groupNotifications,
   isCancelableRequestState,
   isTakingLonger,
   requestGroup,
+  type NotificationGroup,
   type RequestFilter,
 } from '../../features/activity-presentation';
 import { useAuth } from '../../features/auth/AuthProvider';
@@ -33,20 +35,21 @@ import {
 import { api, errorMessage } from '../../lib/api';
 
 function ActivityRow({
-  item,
+  group,
   busy,
   onRead,
 }: {
-  item: Notification;
+  group: NotificationGroup;
   busy: boolean;
-  onRead: (item: Notification) => void;
+  onRead: (group: NotificationGroup) => void;
 }) {
+  const item = group.latest;
   const href = notificationHref(item.action_url);
-  const unread = !item.read_at;
-  const actionLabel = href ? 'Open' : unread ? 'Mark read' : '';
+  const unread = group.unreadCount > 0;
+  const actionLabel = group.requestID ? 'View request' : href ? 'Open' : unread ? 'Mark read' : '';
 
   return (
-    <View className={`flex-row gap-3 border-b border-line py-4 ${unread ? 'bg-paper' : ''}`}>
+    <View className={`flex-row gap-3 border-b border-line px-2 py-4 ${unread ? 'bg-paper' : ''}`}>
       <View className="relative h-11 w-9 flex-none items-center justify-center">
         <AppIcon
           name={notificationIcon(item.kind)}
@@ -61,17 +64,23 @@ function ActivityRow({
         ) : null}
       </View>
       <View className="min-w-0 flex-1 gap-1">
-        <Text
-          className={`text-base leading-5 text-ink ${unread ? 'font-extrabold' : 'font-semibold'}`}
-        >
-          {item.title}
+        <Text className="font-editorial text-base font-bold leading-5 text-ink">{group.title}</Text>
+        <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
+          <Text className={`text-sm leading-5 ${unread ? 'font-bold text-ink' : 'text-muted'}`}>
+            {item.title}
+          </Text>
+          {group.format ? (
+            <Text className="text-sm text-muted">· {formatLabel(group.format)}</Text>
+          ) : null}
+        </View>
+        <Text className="text-xs text-muted">
+          {notificationTime(item.created_at)}
+          {group.items.length > 1 ? ` · ${group.items.length} updates` : ''}
         </Text>
-        {item.body ? <Text className="text-sm leading-5 text-muted">{item.body}</Text> : null}
-        <Text className="text-xs text-muted">{notificationTime(item.created_at)}</Text>
       </View>
       {actionLabel ? (
         <View className="flex-none self-center">
-          <Button label={actionLabel} kind="quiet" disabled={busy} onPress={() => onRead(item)} />
+          <Button label={actionLabel} kind="quiet" disabled={busy} onPress={() => onRead(group)} />
         </View>
       ) : null}
     </View>
@@ -168,9 +177,9 @@ export default function ActivityScreen() {
     }
   }
 
-  async function toggleRequestHistory(request: TitleRequest, format: string) {
+  async function toggleRequestHistory(request: TitleRequest, format: string, open = false) {
     const key = `${request.id}:${format}`;
-    if (expandedFormat === key) {
+    if (expandedFormat === key && !open) {
       setExpandedFormat('');
       return;
     }
@@ -190,25 +199,38 @@ export default function ActivityScreen() {
     }
   }
 
-  async function handleNotification(item: Notification) {
-    const href = notificationHref(item.action_url);
-    if (!item.read_at) {
-      setBusyID(item.id);
+  async function handleNotification(group: NotificationGroup) {
+    const href = notificationHref(group.latest.action_url);
+    const unreadIDs = group.items.filter((item) => !item.read_at).map((item) => item.id);
+    if (unreadIDs.length > 0) {
+      setBusyID(group.key);
       setError('');
       try {
-        await api.markNotificationRead(item.id);
+        await Promise.all(unreadIDs.map((id) => api.markNotificationRead(id)));
         const readAt = new Date().toISOString();
+        const ids = new Set(unreadIDs);
         setItems((current) =>
           current.map((candidate) =>
-            candidate.id === item.id ? { ...candidate, read_at: readAt } : candidate,
+            ids.has(candidate.id) ? { ...candidate, read_at: readAt } : candidate,
           ),
         );
-        setUnreadCount((count) => Math.max(0, count - 1));
+        setUnreadCount((count) => Math.max(0, count - unreadIDs.length));
       } catch (value) {
         setError(errorMessage(value));
+        await load();
         return;
       } finally {
         setBusyID('');
+      }
+    }
+
+    if (group.requestID) {
+      const request = requests.find((candidate) => candidate.id === group.requestID);
+      if (request) {
+        setRequestFilter(requestGroup(request));
+        setTab('requests');
+        if (group.format) await toggleRequestHistory(request, group.format, true);
+        return;
       }
     }
     if (href) router.push(href as Href);
@@ -245,6 +267,8 @@ export default function ActivityScreen() {
   }
 
   const visibleRequests = requests.filter((request) => requestGroup(request) === requestFilter);
+  const notificationGroups = groupNotifications(items);
+  const unreadGroups = notificationGroups.filter((group) => group.unreadCount > 0).length;
 
   return (
     <Page title="Activity">
@@ -260,7 +284,7 @@ export default function ActivityScreen() {
           onPress={() => setTab('requests')}
         />
         <ActivityTab
-          label={unreadCount > 0 ? `Updates (${unreadCount})` : 'Updates'}
+          label={unreadGroups > 0 ? `Updates (${unreadGroups})` : 'Updates'}
           selected={tab === 'updates'}
           onPress={() => setTab('updates')}
         />
@@ -414,7 +438,7 @@ export default function ActivityScreen() {
         </Section>
       ) : items.length > 0 ? (
         <Section
-          title={unreadCount > 0 ? `${unreadCount} new` : 'Recent'}
+          title={unreadGroups > 0 ? `${unreadGroups} new` : 'Recent'}
           action={
             unreadCount > 0 ? (
               <Button
@@ -427,11 +451,11 @@ export default function ActivityScreen() {
           }
         >
           <View accessibilityRole="list">
-            {items.map((item) => (
+            {notificationGroups.map((group) => (
               <ActivityRow
-                key={item.id}
-                item={item}
-                busy={busyID === item.id}
+                key={group.key}
+                group={group}
+                busy={busyID === group.key}
                 onRead={(value) => void handleNotification(value)}
               />
             ))}

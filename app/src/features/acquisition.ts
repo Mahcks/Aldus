@@ -10,7 +10,7 @@ export type AcquisitionFulfillment = {
 export function acquisitionFailureMessage(request: AcquisitionRequest) {
   const error = request.download_error?.trim();
   if (!error) return 'Aldus could not complete this request.';
-  if (/qBittorrent|download client/i.test(error)) {
+  if (/qBittorrent|download client|magnet:\?|download torrent from indexer/i.test(error)) {
     return 'The download client did not accept this request. Check its connection and try again.';
   }
   return error;

@@ -103,4 +103,10 @@ export function deferredDisposal(dispose: () => void) {
   };
 }
 
+export function initializeReaderView(view: {
+  init: (options: { showTextStart: boolean }) => Promise<void>;
+}) {
+  return view.init({ showTextStart: true });
+}
+
 const meaningful = (element: Element) => Boolean(element.textContent?.replace(/\s+/g, ' ').trim());

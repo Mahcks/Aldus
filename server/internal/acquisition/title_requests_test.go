@@ -226,7 +226,7 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 		t.Fatalf("available state=%q err=%v", state, err)
 	}
 	notifications, err := inbox.List(ctx, "owner", 20, 0)
-	if err != nil || len(notifications) != 3 || notifications[0].Kind != "acquisition.available" {
+	if err != nil || len(notifications) != 3 || notifications[0].Kind != "acquisition.available" || notifications[0].ActionURL != "/consume/alice-work?mode=read" {
 		t.Fatalf("worker notifications=%#v err=%v", notifications, err)
 	}
 }
