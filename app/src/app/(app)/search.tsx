@@ -81,26 +81,31 @@ function FormatAction({
   const state = titleRequestPresentation(requestState);
 
   return (
-    <View className="min-h-14 gap-2 border-t border-line py-3 sm:flex-row sm:items-center sm:justify-between">
-      <View className="min-w-0 flex-1 flex-row items-center gap-2">
-        <Text className="text-sm font-bold text-ink">{label}</Text>
-        {available ? (
-          <StatusBadge tone="success" label="Available" icon="check" />
-        ) : state ? (
-          <StatusBadge tone={state.tone} label={state.label} />
-        ) : null}
-      </View>
+    <View className="flex-row items-center gap-2">
       {available ? (
-        <Button label={format === 'ebook' ? 'Read' : 'Listen'} kind="primary" onPress={onOpen} />
+        <Button
+          label={format === 'ebook' ? 'Read ebook' : 'Listen'}
+          kind="primary"
+          onPress={onOpen}
+        />
       ) : !state || state.requestable ? (
         <Button
-          label={state?.requestable ? 'Request again' : `Request ${label.toLowerCase()}`}
+          label={
+            state?.requestable
+              ? `Request ${label.toLowerCase()} again`
+              : `Request ${label.toLowerCase()}`
+          }
           kind="secondary"
           loading={busy}
           disabled={!requestEnabled}
           onPress={onRequest}
         />
-      ) : null}
+      ) : (
+        <View className="min-h-11 flex-row items-center gap-2 px-2">
+          <Text className="text-sm font-bold text-ink">{label}</Text>
+          <StatusBadge tone={state.tone} label={state.label} />
+        </View>
+      )}
     </View>
   );
 }
@@ -123,7 +128,7 @@ function TitleRow({
   const canOpen = Boolean(result.work_id);
 
   return (
-    <View className="border-b border-line py-5">
+    <View className="border-b border-line py-4">
       <View className="flex-row items-start gap-4">
         <BookCover
           title={result.title}
@@ -143,36 +148,34 @@ function TitleRow({
               <StatusBadge tone="info" label="Read & Listen" icon="synced" />
             </View>
           ) : null}
-        </View>
-      </View>
-      <View className="mt-3 pl-0 sm:pl-[72px]">
-        <FormatAction
-          format="ebook"
-          available={result.readable}
-          requestState={result.ebook_request_state}
-          busy={requestBusy === 'ebook'}
-          requestEnabled={requestEnabled}
-          onOpen={() => {
-            if (canOpen) router.push(`/consume/${result.work_id}?mode=read`);
-          }}
-          onRequest={() => onRequest('ebook')}
-        />
-        <FormatAction
-          format="audiobook"
-          available={result.listenable}
-          requestState={result.audiobook_request_state}
-          busy={requestBusy === 'audiobook'}
-          requestEnabled={requestEnabled}
-          onOpen={() => {
-            if (canOpen) router.push(`/consume/${result.work_id}?mode=listen`);
-          }}
-          onRequest={() => onRequest('audiobook')}
-        />
-        {canChooseRelease ? (
-          <View className="items-start pt-2">
-            <Button label="Choose release" kind="quiet" onPress={onChooseRelease} />
+          <View className="mt-3 flex-row flex-wrap items-center gap-2">
+            <FormatAction
+              format="ebook"
+              available={result.readable}
+              requestState={result.ebook_request_state}
+              busy={requestBusy === 'ebook'}
+              requestEnabled={requestEnabled}
+              onOpen={() => {
+                if (canOpen) router.push(`/consume/${result.work_id}?mode=read`);
+              }}
+              onRequest={() => onRequest('ebook')}
+            />
+            <FormatAction
+              format="audiobook"
+              available={result.listenable}
+              requestState={result.audiobook_request_state}
+              busy={requestBusy === 'audiobook'}
+              requestEnabled={requestEnabled}
+              onOpen={() => {
+                if (canOpen) router.push(`/consume/${result.work_id}?mode=listen`);
+              }}
+              onRequest={() => onRequest('audiobook')}
+            />
+            {canChooseRelease ? (
+              <Button label="Choose release" kind="quiet" onPress={onChooseRelease} />
+            ) : null}
           </View>
-        ) : null}
+        </View>
       </View>
     </View>
   );

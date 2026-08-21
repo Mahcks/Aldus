@@ -43,7 +43,7 @@ var metadataWords = map[string]bool{
 var derivativePhrases = []string{
 	"unofficial", "official companion", "companion", "cookbook", "recipes", "knitting", "knits",
 	"coloring", "colouring", "cliffsnotes", "cliff notes", "study guide", "sparknotes", "philosophy",
-	"strategy", "board game", "battle game", "trivia", "quiz", "explains", "hidden meaning",
+	"strategy", "board game", "battle game", "trivia", "quiz", "sheet music", "soundtrack", "explains", "hidden meaning",
 }
 
 type discoveryResult struct {

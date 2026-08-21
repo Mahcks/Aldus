@@ -3,6 +3,7 @@ package acquisition
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -131,6 +132,16 @@ func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string,
 		}
 		applyRequestState(&results[match], request)
 	}
+	slices.SortStableFunc(results, func(a, b TitleSearchResult) int {
+		aScore, bScore := metadataSearchScore(query, a.Title), metadataSearchScore(query, b.Title)
+		if a.WorkID != "" || a.EbookRequestState != "" || a.AudiobookRequestState != "" {
+			aScore += 20
+		}
+		if b.WorkID != "" || b.EbookRequestState != "" || b.AudiobookRequestState != "" {
+			bScore += 20
+		}
+		return bScore - aScore
+	})
 	return results, nil
 }
 

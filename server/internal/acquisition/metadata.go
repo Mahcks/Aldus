@@ -15,7 +15,7 @@ import (
 
 type Metadata struct {
 	ID, Title, Author, ISBN, CoverURL string
-	Year                              int
+	Year, EditionCount, RatingsCount  int
 }
 
 type cachedMetadata struct {
@@ -49,8 +49,28 @@ func (s *Store) searchMetadata(ctx context.Context, client *Client, query string
 func (c *Client) metadata(ctx context.Context, query string) ([]Metadata, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	endpoint := "https://openlibrary.org/search.json?limit=10&fields=key,cover_i,title,author_name,first_publish_year,isbn&q=" + url.QueryEscape(query)
-	return metadataFrom(ctx, c.http, endpoint, query)
+	endpoint := "https://openlibrary.org/search.json?limit=10&fields=key,cover_i,title,author_name,first_publish_year,isbn,edition_count,ratings_count&q=" + url.QueryEscape(query)
+	values, err := metadataFrom(ctx, c.http, endpoint, query)
+	if err != nil {
+		return nil, err
+	}
+	for i := range values {
+		if titleSimilarity(normalizedWords(query), normalizedWords(values[i].Title)) >= .5 || values[i].RatingsCount < 10 {
+			continue
+		}
+		title, err := englishEditionTitleFrom(ctx, c.http, "https://openlibrary.org/works/"+url.PathEscape(values[i].ID)+"/editions.json?limit=10", query)
+		if err == nil && title != "" {
+			values[i].Title = title
+		}
+	}
+	values = slices.DeleteFunc(values, func(value Metadata) bool {
+		return titleSimilarity(normalizedWords(query), normalizedWords(value.Title)) < .5
+	})
+	rankMetadata(values, query)
+	if len(values) > 6 {
+		values = values[:6]
+	}
+	return values, nil
 }
 
 func metadataFrom(ctx context.Context, client *http.Client, endpoint, query string) ([]Metadata, error) {
@@ -69,12 +89,14 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 	}
 	var payload struct {
 		Docs []struct {
-			Key     string   `json:"key"`
-			CoverID int      `json:"cover_i"`
-			Title   string   `json:"title"`
-			Authors []string `json:"author_name"`
-			Year    int      `json:"first_publish_year"`
-			ISBNs   []string `json:"isbn"`
+			Key      string   `json:"key"`
+			CoverID  int      `json:"cover_i"`
+			Title    string   `json:"title"`
+			Authors  []string `json:"author_name"`
+			Year     int      `json:"first_publish_year"`
+			ISBNs    []string `json:"isbn"`
+			Editions int      `json:"edition_count"`
+			Ratings  int      `json:"ratings_count"`
 		} `json:"docs"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&payload); err != nil {
@@ -83,10 +105,13 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 	queryKey := normalizedWords(query)
 	values := make([]Metadata, 0, len(payload.Docs))
 	for _, doc := range payload.Docs {
-		if titleSimilarity(queryKey, normalizedWords(doc.Title)) < 0.5 {
+		if derivativeKind(doc.Title) != derivativeKind(query) {
 			continue
 		}
-		result := Metadata{ID: strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"), Title: strings.TrimSpace(doc.Title), Year: doc.Year}
+		result := Metadata{ID: strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"), Title: strings.TrimSpace(doc.Title), Year: doc.Year, EditionCount: doc.Editions, RatingsCount: doc.Ratings}
+		if titleSimilarity(queryKey, normalizedWords(result.Title)) < .5 && result.RatingsCount < 10 {
+			continue
+		}
 		if len(doc.Authors) > 0 {
 			result.Author = strings.TrimSpace(doc.Authors[0])
 		}
@@ -98,7 +123,86 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 		}
 		values = append(values, result)
 	}
+	rankMetadata(values, query)
 	return values, nil
+}
+
+func rankMetadata(values []Metadata, query string) {
+	slices.SortStableFunc(values, func(a, b Metadata) int {
+		aScore, bScore := metadataSearchScore(query, a.Title)+metadataPopularityScore(a), metadataSearchScore(query, b.Title)+metadataPopularityScore(b)
+		if aScore != bScore {
+			return bScore - aScore
+		}
+		if a.RatingsCount != b.RatingsCount {
+			return b.RatingsCount - a.RatingsCount
+		}
+		return b.EditionCount - a.EditionCount
+	})
+}
+
+func metadataPopularityScore(value Metadata) int {
+	if value.RatingsCount >= 10 {
+		return 20
+	}
+	if value.RatingsCount > 0 {
+		return 5
+	}
+	return 0
+}
+
+func englishEditionTitleFrom(ctx context.Context, client *http.Client, endpoint, query string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", ErrUnavailable
+	}
+	var payload struct {
+		Entries []struct {
+			Title     string `json:"title"`
+			Languages []struct {
+				Key string `json:"key"`
+			} `json:"languages"`
+		} `json:"entries"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&payload); err != nil {
+		return "", err
+	}
+	best, bestScore := "", 0
+	for _, edition := range payload.Entries {
+		english := false
+		for _, language := range edition.Languages {
+			english = english || language.Key == "/languages/eng"
+		}
+		if !english {
+			continue
+		}
+		score := metadataSearchScore(query, edition.Title)
+		if score > bestScore {
+			best, bestScore = strings.TrimSpace(edition.Title), score
+		}
+	}
+	return best, nil
+}
+
+func metadataSearchScore(query, title string) int {
+	query, title = comparableTitle(query), comparableTitle(title)
+	if query == title {
+		return 100
+	}
+	if len(strings.Fields(title)) >= 2 && strings.HasSuffix(query, " "+title) {
+		return 90
+	}
+	if strings.Contains(title, query) {
+		return 70
+	}
+	return int(50 * titleSimilarity(normalizedWords(query), normalizedWords(title)))
 }
 
 func matchingMetadata(title, author string, values []Metadata) Metadata {

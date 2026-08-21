@@ -12,7 +12,7 @@ func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("missing User-Agent")
 		}
-		_, _ = w.Write([]byte(`{"docs":[{"key":"/works/OL1W","title":"The Lord of the Rings","author_name":["J.R.R. Tolkien"],"first_publish_year":1954,"isbn":["9780000000000"],"cover_i":42},{"key":"/works/OL2W","title":"The Lord of the Rings Series","author_name":["J.R.R. Tolkien"],"cover_i":43}]}`))
+		_, _ = w.Write([]byte(`{"docs":[{"key":"/works/OL1W","title":"The Lord of the Rings","author_name":["J.R.R. Tolkien"],"first_publish_year":1954,"isbn":["9780000000000"],"cover_i":42},{"key":"/works/OL2W","title":"The Lord of the Rings Series","author_name":["J.R.R. Tolkien"],"cover_i":43},{"key":"/works/OL3W","title":"The Lord of the Rings Trivia Quiz","author_name":["Someone Else"]},{"key":"/works/OL4W","title":"The Lord of the Rings Sheet Music","author_name":["Howard Shore"]}]}`))
 	}))
 	defer server.Close()
 
@@ -34,6 +34,24 @@ func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 	server.Close()
 	if _, err := metadataFrom(context.Background(), server.Client(), server.URL, "Lord of the Rings"); err == nil {
 		t.Fatal("remote failure was not reported")
+	}
+}
+
+func TestMetadataSearchPrefersTheBookInsideASeriesQuery(t *testing.T) {
+	if metadataSearchScore("Hunger Games Catching Fire", "Catching Fire") <= metadataSearchScore("Hunger Games Catching Fire", "The Hunger Games Trilogy Hunger Games Catching Fire Mockingjay") {
+		t.Fatal("buried the requested book beneath a series bundle")
+	}
+}
+
+func TestEnglishEditionTitleRepairsLocalizedWorkTitle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"entries":[{"title":"Fatta Eld","languages":[{"key":"/languages/swe"}]},{"title":"Catching Fire","languages":[{"key":"/languages/eng"}]}]}`))
+	}))
+	defer server.Close()
+
+	title, err := englishEditionTitleFrom(context.Background(), server.Client(), server.URL, "Hunger Games Catching Fire")
+	if err != nil || title != "Catching Fire" {
+		t.Fatalf("title=%q err=%v", title, err)
 	}
 }
 
