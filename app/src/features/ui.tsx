@@ -543,7 +543,9 @@ export function Dialog({
   wide?: boolean;
 }>) {
   const closeButtonId = useId();
+  const titleId = useId();
   const previouslyFocusedRef = useRef<{ focus: () => void } | null>(null);
+  const { height: windowHeight } = useWindowDimensions();
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !visible) return;
@@ -568,6 +570,7 @@ export function Dialog({
   if (!visible) return null;
 
   const maxWidthClass = wide ? 'max-w-[720px]' : 'max-w-[480px]';
+  const dialogMaxHeight = Math.max(0, windowHeight - 32);
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
@@ -581,7 +584,7 @@ export function Dialog({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <View className="flex-1 items-center justify-center p-6">
+        <View className="flex-1 items-center justify-center p-4">
           {/*
            * The backdrop is a plain (non-button) Pressable positioned behind the
            * dialog content, not a wrapping ancestor of it — an ancestor with
@@ -600,11 +603,17 @@ export function Dialog({
             <Pressable
               onPress={noop}
               accessibilityViewIsModal
+              aria-labelledby={titleId}
               role="dialog"
-              className={`max-h-[85%] w-full gap-4 rounded-dialog border border-line bg-raised p-6 shadow-popover ${maxWidthClass}`}
+              style={{ maxHeight: dialogMaxHeight }}
+              className={`w-full overflow-hidden rounded-dialog border border-line bg-raised shadow-popover ${maxWidthClass}`}
             >
-              <View className="flex-row items-center justify-between gap-4 border-b border-line pb-3">
-                <Text accessibilityRole="header" className="flex-shrink text-lg font-bold text-ink">
+              <View className="flex-row items-center justify-between gap-4 border-b border-line px-6 py-3">
+                <Text
+                  nativeID={titleId}
+                  accessibilityRole="header"
+                  className="flex-shrink text-lg font-bold text-ink"
+                >
                   {title}
                 </Text>
                 <IconButton
@@ -615,7 +624,12 @@ export function Dialog({
                   nativeID={closeButtonId}
                 />
               </View>
-              <ScrollView className="flex-shrink" keyboardShouldPersistTaps="handled">
+              <ScrollView
+                className="min-h-0 flex-shrink px-6 py-4"
+                contentContainerClassName="pb-1"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+              >
                 {children}
               </ScrollView>
             </Pressable>

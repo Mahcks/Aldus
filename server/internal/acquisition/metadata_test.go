@@ -2,10 +2,19 @@ package acquisition
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+type metadataRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f metadataRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +49,27 @@ func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 func TestMetadataSearchPrefersTheBookInsideASeriesQuery(t *testing.T) {
 	if metadataSearchScore("Hunger Games Catching Fire", "Catching Fire") <= metadataSearchScore("Hunger Games Catching Fire", "The Hunger Games Trilogy Hunger Games Catching Fire Mockingjay") {
 		t.Fatal("buried the requested book beneath a series bundle")
+	}
+}
+
+func TestMetadataSearchDoesNotHideMatchingTitles(t *testing.T) {
+	docs := make([]string, 7)
+	for i := range docs {
+		docs[i] = fmt.Sprintf(`{"key":"/works/OL%dW","title":"Alice Adventures %d","author_name":["Lewis Carroll"]}`, i, i)
+	}
+	client := Client{http: &http.Client{Transport: metadataRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Query().Get("limit") != "25" {
+			t.Fatalf("limit = %q, want 25", request.URL.Query().Get("limit"))
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"docs":[%s]}`, strings.Join(docs, ","))))}, nil
+	})}}
+
+	got, err := client.metadata(context.Background(), "Alice Adventures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 7 {
+		t.Fatalf("got %d results, want all 7", len(got))
 	}
 }
 

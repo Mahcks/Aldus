@@ -49,7 +49,7 @@ func (s *Store) searchMetadata(ctx context.Context, client *Client, query string
 func (c *Client) metadata(ctx context.Context, query string) ([]Metadata, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	endpoint := "https://openlibrary.org/search.json?limit=10&fields=key,cover_i,title,author_name,first_publish_year,isbn,edition_count,ratings_count&q=" + url.QueryEscape(query)
+	endpoint := "https://openlibrary.org/search.json?limit=25&fields=key,cover_i,title,author_name,first_publish_year,isbn,edition_count,ratings_count&q=" + url.QueryEscape(query)
 	values, err := metadataFrom(ctx, c.http, endpoint, query)
 	if err != nil {
 		return nil, err
@@ -67,9 +67,6 @@ func (c *Client) metadata(ctx context.Context, query string) ([]Metadata, error)
 		return titleSimilarity(normalizedWords(query), normalizedWords(value.Title)) < .5
 	})
 	rankMetadata(values, query)
-	if len(values) > 6 {
-		values = values[:6]
-	}
 	return values, nil
 }
 
