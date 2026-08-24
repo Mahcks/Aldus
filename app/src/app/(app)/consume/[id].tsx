@@ -108,6 +108,7 @@ export default function ConsumeWorkScreen() {
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [chaptersOpen, setChaptersOpen] = useState(false);
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
   const [sleepTimerDeadline, setSleepTimerDeadline] = useState<number>();
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number>();
@@ -974,6 +975,10 @@ export default function ConsumeWorkScreen() {
   function handleNextChapter() {
     if (chapter?.next) seekToSeconds(chapter.next.start_ms / 1000);
   }
+  function selectChapter(next: AudioChapter) {
+    seekToSeconds(next.start_ms / 1000);
+    setChaptersOpen(false);
+  }
   function setSleepTimer(minutes?: number) {
     sleepTimerExpired.current = false;
     setSleepTimerDeadline(deadlineForSleepTimer(minutes));
@@ -1196,6 +1201,24 @@ export default function ConsumeWorkScreen() {
         />
       </Dialog>
       <Dialog
+        visible={mode === 'listen' && chaptersOpen}
+        onClose={() => setChaptersOpen(false)}
+        title="Chapters"
+      >
+        <View className="gap-2">
+          {audioChapters.map((item, index) => (
+            <Button
+              key={`${item.start_ms}-${item.title}`}
+              label={`${index + 1}. ${item.title} · ${formatAudioTime((item.end_ms - item.start_ms) / 1000)}`}
+              kind="quiet"
+              selected={chapter?.index === index}
+              accessibilityRole="button"
+              onPress={() => selectChapter(item)}
+            />
+          ))}
+        </View>
+      </Dialog>
+      <Dialog
         visible={mode === 'listen' && sleepTimerOpen}
         onClose={() => setSleepTimerOpen(false)}
         title="Sleep timer"
@@ -1389,14 +1412,19 @@ export default function ConsumeWorkScreen() {
                     disabled={!chapter.previous}
                     onPress={handlePreviousChapter}
                   />
-                  <View className="min-w-0 flex-1 items-center gap-0.5">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`View chapters. Current chapter: ${chapter.current.title}`}
+                    onPress={() => setChaptersOpen(true)}
+                    className="min-h-11 min-w-0 flex-1 items-center justify-center gap-0.5 rounded-control px-2 focus-visible:border focus-visible:border-focus"
+                  >
                     <Text numberOfLines={1} className="text-center text-sm font-bold text-ink">
                       {chapter.current.title}
                     </Text>
                     <Text className="text-center text-[11px] font-semibold uppercase tracking-[1px] text-subtle">
-                      Chapter {chapter.index + 1} of {audioChapters.length}
+                      Chapter {chapter.index + 1} of {audioChapters.length} · View all
                     </Text>
-                  </View>
+                  </Pressable>
                   <IconButton
                     icon="nextPage"
                     label="Next chapter"

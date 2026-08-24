@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -16,6 +18,51 @@ func TestParseOpenLibraryCovers(t *testing.T) {
 	got := values[0]
 	if got.Source != "open_library" || got.SourceID != "42" || got.Title != "Alice" || got.Author != "Lewis Carroll" || got.Publisher != "Macmillan" || got.ISBN != "123" || got.FirstPublishYear != 1865 || got.ImageURL != "https://covers.openlibrary.org/b/id/42-L.jpg?default=false" {
 		t.Fatalf("cover = %#v", got)
+	}
+}
+
+func TestRefreshOpenLibraryMetadataUsesExactTitleAndAuthor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/search" {
+			_, _ = w.Write([]byte(`{"docs":[{"key":"/works/Wrong","cover_i":1,"title":"Astrophysics for People in a Hurry","author_name":["Someone Else"]},{"key":"/works/OL42W","cover_i":42,"title":"Astrophysics for People in a Hurry","author_name":["Neil deGrasse Tyson"]}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"description":{"value":"A short tour of the universe."}}`))
+	}))
+	defer server.Close()
+
+	value, err := refreshOpenLibraryMetadata(context.Background(), server.Client(), server.URL+"/search", "Astrophysics for People in a Hurry", "Neil deGrasse Tyson", func(id string) string {
+		return server.URL + "/works/" + id
+	})
+	if err != nil || value.CoverID != "42" || value.Description != "A short tour of the universe." {
+		t.Fatalf("metadata = %#v, %v", value, err)
+	}
+}
+
+func TestSaveRefreshedMetadataPreservesExistingValues(t *testing.T) {
+	ctx := context.Background()
+	store, _, admin := testCatalog(t)
+	library, _ := store.CreateLibrary(ctx, admin, "Library")
+	work, _ := store.CreateWork(ctx, admin, library.ID, "Astrophysics", "Neil deGrasse Tyson")
+	if err := store.saveRefreshedMetadata(ctx, work.ID, refreshedMetadata{CoverID: "42", Description: "From Open Library"}); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := store.WorkDetail(ctx, admin, work.ID)
+	if err != nil || detail.CoverURL == "" || detail.Description != "From Open Library" {
+		t.Fatalf("first refresh = %#v, %v", detail, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE work_metadata SET description='Curated'; UPDATE works SET selected_cover_id=NULL WHERE id=?`, work.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SelectCover(ctx, admin, work.ID, "open_library", "99"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.saveRefreshedMetadata(ctx, work.ID, refreshedMetadata{CoverID: "100", Description: "Replacement"}); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.WorkDetail(ctx, admin, work.ID)
+	if err != nil || detail.CoverURL != openLibraryCoverURL("99") || detail.Description != "Curated" {
+		t.Fatalf("preserved refresh = %#v, %v", detail, err)
 	}
 }
 

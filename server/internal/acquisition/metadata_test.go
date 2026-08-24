@@ -21,12 +21,12 @@ func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 		if r.Header.Get("User-Agent") == "" {
 			t.Error("missing User-Agent")
 		}
-		_, _ = w.Write([]byte(`{"docs":[{"key":"/works/OL1W","title":"The Lord of the Rings","author_name":["J.R.R. Tolkien"],"first_publish_year":1954,"isbn":["9780000000000"],"cover_i":42},{"key":"/works/OL2W","title":"The Lord of the Rings Series","author_name":["J.R.R. Tolkien"],"cover_i":43},{"key":"/works/OL3W","title":"The Lord of the Rings Trivia Quiz","author_name":["Someone Else"]},{"key":"/works/OL4W","title":"The Lord of the Rings Sheet Music","author_name":["Howard Shore"]}]}`))
+		_, _ = w.Write([]byte(`{"docs":[{"key":"/works/OL1W","title":"The Lord of the Rings","author_name":["J.R.R. Tolkien"],"first_publish_year":1954,"isbn":["9780000000000"],"cover_i":42,"first_sentence":"An epic journey."},{"key":"/works/OL2W","title":"The Lord of the Rings Series","author_name":["J.R.R. Tolkien"],"cover_i":43,"first_sentence":["A celebrated series."]},{"key":"/works/OL3W","title":"The Lord of the Rings Trivia Quiz","author_name":["Someone Else"]},{"key":"/works/OL4W","title":"The Lord of the Rings Sheet Music","author_name":["Howard Shore"]}]}`))
 	}))
 	defer server.Close()
 
 	got, err := metadataFrom(context.Background(), server.Client(), server.URL, "Lord of the Rings")
-	if err != nil || len(got) != 2 || got[0].ID != "OL1W" || got[0].Title != "The Lord of the Rings" || got[0].Author != "J.R.R. Tolkien" || got[0].Year != 1954 || got[0].ISBN == "" || got[0].CoverURL == "" {
+	if err != nil || len(got) != 2 || got[0].ID != "OL1W" || got[0].Title != "The Lord of the Rings" || got[0].Author != "J.R.R. Tolkien" || got[0].Year != 1954 || got[0].ISBN == "" || got[0].CoverURL == "" || got[0].Description != "An epic journey." || got[1].Description != "A celebrated series." {
 		t.Fatalf("metadata = %+v, %v", got, err)
 	}
 	if match := matchingMetadata("Lord of the Rings Series", "J R R Tolkien", got); match.Title != "The Lord of the Rings Series" || match.CoverURL == "" {
@@ -49,6 +49,34 @@ func TestMetadataRequiresStrongTitleMatchAndDegradesSafely(t *testing.T) {
 func TestMetadataSearchPrefersTheBookInsideASeriesQuery(t *testing.T) {
 	if metadataSearchScore("Hunger Games Catching Fire", "Catching Fire") <= metadataSearchScore("Hunger Games Catching Fire", "The Hunger Games Trilogy Hunger Games Catching Fire Mockingjay") {
 		t.Fatal("buried the requested book beneath a series bundle")
+	}
+}
+
+func TestWorkDescriptionSupportsOpenLibraryShapesAndBoundsText(t *testing.T) {
+	for _, test := range []struct {
+		payload, want string
+	}{
+		{`{"description":"A short description."}`, "A short description."},
+		{`{"description":{"value":"An object description."}}`, "An object description."},
+		{`{"description":["An array description."]}`, "An array description."},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(test.payload))
+		}))
+		got, err := workDescriptionFrom(context.Background(), server.Client(), server.URL)
+		server.Close()
+		if err != nil || got != test.want {
+			t.Fatalf("description=%q want=%q err=%v", got, test.want, err)
+		}
+	}
+	long := strings.Repeat("é", maxDescriptionRunes+1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"description":%q}`, long)
+	}))
+	got, err := workDescriptionFrom(context.Background(), server.Client(), server.URL)
+	server.Close()
+	if err != nil || len([]rune(got)) != maxDescriptionRunes {
+		t.Fatalf("bounded description runes=%d err=%v", len([]rune(got)), err)
 	}
 }
 

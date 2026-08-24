@@ -87,6 +87,7 @@ export default function WorkScreen() {
   const [collectionLoading, setCollectionLoading] = useState(false);
   const [collectionBusy, setCollectionBusy] = useState(false);
   const [collectionError, setCollectionError] = useState('');
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -185,6 +186,14 @@ export default function WorkScreen() {
   const secondaryMode: 'read' | 'listen' = primaryMode === 'read' ? 'listen' : 'read';
   const secondaryAvailable =
     secondaryMode === 'read' ? Boolean(selectedEPUB) : Boolean(selectedAudio);
+  const description = work.description?.trim();
+  const formatLabel = selectedEPUB
+    ? selectedAudio
+      ? 'Ebook and audiobook'
+      : 'Ebook'
+    : selectedAudio
+      ? 'Audiobook'
+      : 'Unavailable';
 
   function consume(mode: 'read' | 'listen') {
     router.push(`/consume/${id}?mode=${mode}&epub=${epubID}&audio=${audioID}`);
@@ -359,7 +368,13 @@ export default function WorkScreen() {
       {error ? <Notice tone="danger">{error}</Notice> : null}
 
       <Animated.View entering={fadeIn}>
-        <View className={narrow ? 'items-center gap-4' : 'flex-row items-start gap-8'}>
+        <View
+          className={
+            narrow
+              ? 'items-center gap-6 py-4'
+              : 'mx-auto w-full max-w-[1000px] flex-row items-start gap-12 py-10'
+          }
+        >
           <BookCover
             title={work.title}
             author={work.author}
@@ -368,11 +383,18 @@ export default function WorkScreen() {
             {...coverPresentation(work)}
           />
           <View
-            className={narrow ? 'w-full items-center gap-3' : 'min-w-0 flex-1 items-start gap-3'}
+            className={
+              narrow ? 'w-full items-center gap-4' : 'min-w-0 flex-1 items-start gap-4 pt-2'
+            }
           >
             <Text
+              className={`text-xs font-bold uppercase tracking-wide text-accent ${narrow ? 'text-center' : ''}`}
+            >
+              {formatLabel}
+            </Text>
+            <Text
               numberOfLines={3}
-              className={`${narrow ? 'text-center text-2xl leading-7' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
+              className={`${narrow ? 'text-center text-3xl leading-9' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
             >
               {work.title}
             </Text>
@@ -393,33 +415,15 @@ export default function WorkScreen() {
                   synchronized: Boolean(readyJob(jobs, epubID, audioID)),
                 }}
               />
-              <ReadingStatusTrigger
-                status={work.reading_status}
-                disabled={offline}
-                onPress={() => setStatusOpen(true)}
-              />
-              <IconButton
-                icon="collections"
-                label="Add to collection"
-                kind="quiet"
-                disabled={offline}
-                onPress={() => void openCollections()}
-              />
-              {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
-                downloadBusy ? (
-                  <View className="h-11 w-11 items-center justify-center">
-                    <ActivityIndicator color={colors.accent} />
-                  </View>
-                ) : (
-                  <IconButton
-                    icon={downloaded ? 'enabled' : 'acquire'}
-                    label={downloaded ? 'Remove download (on this device)' : 'Download for offline'}
-                    kind="quiet"
-                    disabled={offline}
-                    onPress={() => void toggleOfflineDownload()}
-                  />
-                )
-              ) : null}
+              <Text className="text-sm text-muted">
+                {selectedEPUB && selectedAudio
+                  ? 'Read or listen'
+                  : selectedEPUB
+                    ? 'Ready to read'
+                    : selectedAudio
+                      ? 'Ready to listen'
+                      : 'Not yet available'}
+              </Text>
             </View>
 
             {work.in_progress ? (
@@ -462,10 +466,10 @@ export default function WorkScreen() {
                   onPress={() => consume(primaryMode)}
                 />
                 {secondaryAvailable ? (
-                  <IconButton
+                  <Button
                     icon={secondaryMode === 'read' ? 'read' : 'listen'}
-                    label={secondaryMode === 'read' ? 'Read this book' : 'Listen to this book'}
-                    kind="quiet"
+                    label={secondaryMode === 'read' ? 'Read instead' : 'Listen instead'}
+                    kind="secondary"
                     onPress={() => consume(secondaryMode)}
                   />
                 ) : null}
@@ -479,18 +483,71 @@ export default function WorkScreen() {
                 {note}
               </Text>
             ) : null}
+
+            <View
+              className={`w-full flex-row flex-wrap items-center gap-2 border-t border-line pt-4 ${narrow ? 'justify-center' : ''}`}
+            >
+              <ReadingStatusTrigger
+                status={work.reading_status}
+                disabled={offline}
+                onPress={() => setStatusOpen(true)}
+              />
+              <Button
+                label="Add to collection"
+                icon="collections"
+                kind="quiet"
+                disabled={offline}
+                onPress={() => void openCollections()}
+              />
+              {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
+                downloadBusy ? (
+                  <View className="h-11 w-11 items-center justify-center">
+                    <ActivityIndicator color={colors.accent} />
+                  </View>
+                ) : (
+                  <IconButton
+                    icon={downloaded ? 'enabled' : 'acquire'}
+                    label={downloaded ? 'Remove download (on this device)' : 'Download for offline'}
+                    kind="quiet"
+                    disabled={offline}
+                    onPress={() => void toggleOfflineDownload()}
+                  />
+                )
+              ) : null}
+            </View>
           </View>
         </View>
       </Animated.View>
 
-      <EditionSection
-        epubs={epubs}
-        audio={audio}
-        epubID={epubID}
-        audioID={audioID}
-        onSelectEPUB={selectEPUB}
-        onSelectAudio={selectAudio}
-      />
+      {description ? (
+        <View className="mx-auto w-full max-w-[1000px] gap-3 border-t border-line py-6 sm:py-8">
+          <Text className="font-editorial text-2xl font-bold text-ink">About this book</Text>
+          <Text
+            numberOfLines={descriptionExpanded ? undefined : 5}
+            className="max-w-[70ch] text-base leading-7 text-muted"
+          >
+            {description}
+          </Text>
+          {description.length > 360 ? (
+            <Button
+              label={descriptionExpanded ? 'Show less' : 'Show more'}
+              kind="quiet"
+              onPress={() => setDescriptionExpanded((current) => !current)}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      <View className="mx-auto w-full max-w-[1000px]">
+        <EditionSection
+          epubs={epubs}
+          audio={audio}
+          epubID={epubID}
+          audioID={audioID}
+          onSelectEPUB={selectEPUB}
+          onSelectAudio={selectAudio}
+        />
+      </View>
 
       <ReadingStatusDialog
         work={work}

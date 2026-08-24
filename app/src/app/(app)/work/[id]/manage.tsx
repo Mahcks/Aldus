@@ -92,6 +92,8 @@ export default function ManageWorkScreen() {
   const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[]>([]);
   const [coverAssets, setCoverAssets] = useState<CoverAsset[]>([]);
   const [searchingCovers, setSearchingCovers] = useState(false);
+  const [refreshingMetadata, setRefreshingMetadata] = useState(false);
+  const [metadataMessage, setMetadataMessage] = useState('');
   const [savingCover, setSavingCover] = useState('');
   const [coverFit, setCoverFit] = useState<'cover' | 'contain'>('cover');
   const [coverFocalPoint, setCoverFocalPoint] = useState('50:50');
@@ -260,6 +262,22 @@ export default function ManageWorkScreen() {
     }
   }
 
+  async function refreshMetadata() {
+    setRefreshingMetadata(true);
+    setMetadataMessage('');
+    setError('');
+    try {
+      const nextWork = await api.refreshWorkMetadata(id);
+      setWork(nextWork);
+      setCoverAssets(await api.covers(id));
+      setMetadataMessage('Artwork and description refreshed where they were missing.');
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setRefreshingMetadata(false);
+    }
+  }
+
   async function chooseCover(candidate: { source: string; source_id: string }) {
     setSavingCover(candidate.source_id);
     try {
@@ -363,6 +381,7 @@ export default function ManageWorkScreen() {
       editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
+      {metadataMessage ? <Notice>{metadataMessage}</Notice> : null}
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel="Manage section"
@@ -381,6 +400,22 @@ export default function ManageWorkScreen() {
       {activeTab === 'cover' ? (
         <View className="gap-8">
           <Section title="Presentation">
+            <View className="gap-2">
+              <Text className={shared.itemMeta}>
+                Missing artwork or a description? Aldus can match this title and author with Open
+                Library without replacing details you selected yourself.
+              </Text>
+              <View className="self-start">
+                <Button
+                  label={refreshingMetadata ? 'Refreshing…' : 'Refresh metadata'}
+                  icon="scan"
+                  kind="secondary"
+                  loading={refreshingMetadata}
+                  disabled={refreshingMetadata || Boolean(savingCover)}
+                  onPress={() => void refreshMetadata()}
+                />
+              </View>
+            </View>
             <View className="flex-row flex-wrap items-start gap-6">
               <BookCover
                 title={work.title}

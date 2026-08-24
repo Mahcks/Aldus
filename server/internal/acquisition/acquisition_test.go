@@ -491,7 +491,7 @@ func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','x',1,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 		INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Downloads','/library/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
-		INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,download_state,fulfillment_state,completed_relative_path,created_at,updated_at) VALUES('request','library','admin','source','Alice','queued','downloading','scanning','Alice','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,download_state,fulfillment_state,completed_relative_path,advisory_cover_id,advisory_cover_url,advisory_description,advisory_source,created_at,updated_at) VALUES('request','library','admin','source','Alice','queued','downloading','scanning','Alice','42','https://covers.openlibrary.org/b/id/42-M.jpg?default=false','A curious adventure.','open_library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 		INSERT INTO source_scans(id,source_id,state,created_at,finished_at,acquisition_request_id) VALUES('scan','source','completed','2026-01-01T00:00:00Z','2026-01-01T00:01:00Z','request');
 		UPDATE acquisition_requests SET scan_id='scan' WHERE id='request';
 		INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,detected_kind,last_seen_scan_id) VALUES('entry','source','Alice/book.epub',10,'2026-01-01T00:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','registered','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','epub','scan');
@@ -524,6 +524,10 @@ func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 	var readingStatus string
 	if err := db.QueryRow(`SELECT status FROM user_work_statuses WHERE user_id='admin' AND work_id='work'`).Scan(&readingStatus); err != nil || readingStatus != "want_to_read" {
 		t.Fatalf("acquired work status=%q err=%v", readingStatus, err)
+	}
+	var coverURL, description string
+	if err := db.QueryRow(`SELECT c.image_url,m.description FROM works w JOIN work_covers c ON c.id=w.selected_cover_id JOIN work_metadata m ON m.work_id=w.id WHERE w.id='work'`).Scan(&coverURL, &description); err != nil || coverURL != "https://covers.openlibrary.org/b/id/42-M.jpg?default=false" || description != "A curious adventure." {
+		t.Fatalf("acquired metadata cover=%q description=%q err=%v", coverURL, description, err)
 	}
 }
 

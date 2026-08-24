@@ -13,9 +13,11 @@ import (
 	"unicode"
 )
 
+const maxDescriptionRunes = 4000
+
 type Metadata struct {
-	ID, Title, Author, ISBN, CoverURL string
-	Year, EditionCount, RatingsCount  int
+	ID, Title, Author, ISBN, CoverID, CoverURL, Description string
+	Year, EditionCount, RatingsCount                        int
 }
 
 type cachedMetadata struct {
@@ -49,7 +51,7 @@ func (s *Store) searchMetadata(ctx context.Context, client *Client, query string
 func (c *Client) metadata(ctx context.Context, query string) ([]Metadata, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	endpoint := "https://openlibrary.org/search.json?limit=25&fields=key,cover_i,title,author_name,first_publish_year,isbn,edition_count,ratings_count&q=" + url.QueryEscape(query)
+	endpoint := "https://openlibrary.org/search.json?limit=25&fields=key,cover_i,title,author_name,first_publish_year,isbn,edition_count,ratings_count,first_sentence&q=" + url.QueryEscape(query)
 	values, err := metadataFrom(ctx, c.http, endpoint, query)
 	if err != nil {
 		return nil, err
@@ -86,14 +88,15 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 	}
 	var payload struct {
 		Docs []struct {
-			Key      string   `json:"key"`
-			CoverID  int      `json:"cover_i"`
-			Title    string   `json:"title"`
-			Authors  []string `json:"author_name"`
-			Year     int      `json:"first_publish_year"`
-			ISBNs    []string `json:"isbn"`
-			Editions int      `json:"edition_count"`
-			Ratings  int      `json:"ratings_count"`
+			Key           string          `json:"key"`
+			CoverID       int             `json:"cover_i"`
+			Title         string          `json:"title"`
+			Authors       []string        `json:"author_name"`
+			Year          int             `json:"first_publish_year"`
+			ISBNs         []string        `json:"isbn"`
+			Editions      int             `json:"edition_count"`
+			Ratings       int             `json:"ratings_count"`
+			FirstSentence json.RawMessage `json:"first_sentence"`
 		} `json:"docs"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&payload); err != nil {
@@ -105,7 +108,7 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 		if derivativeKind(doc.Title) != derivativeKind(query) {
 			continue
 		}
-		result := Metadata{ID: strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"), Title: strings.TrimSpace(doc.Title), Year: doc.Year, EditionCount: doc.Editions, RatingsCount: doc.Ratings}
+		result := Metadata{ID: strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"), Title: strings.TrimSpace(doc.Title), Year: doc.Year, EditionCount: doc.Editions, RatingsCount: doc.Ratings, Description: firstSentence(doc.FirstSentence)}
 		if titleSimilarity(queryKey, normalizedWords(result.Title)) < .5 && result.RatingsCount < 10 {
 			continue
 		}
@@ -116,12 +119,66 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 			result.ISBN = strings.TrimSpace(doc.ISBNs[0])
 		}
 		if doc.CoverID > 0 {
+			result.CoverID = strconv.Itoa(doc.CoverID)
 			result.CoverURL = "https://covers.openlibrary.org/b/id/" + strconv.Itoa(doc.CoverID) + "-M.jpg?default=false"
 		}
 		values = append(values, result)
 	}
 	rankMetadata(values, query)
 	return values, nil
+}
+
+func firstSentence(raw json.RawMessage) string {
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return strings.TrimSpace(value)
+	}
+	var values []string
+	if json.Unmarshal(raw, &values) == nil && len(values) > 0 {
+		return strings.TrimSpace(values[0])
+	}
+	return ""
+}
+
+func (c *Client) workDescription(ctx context.Context, id string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return workDescriptionFrom(ctx, c.http, "https://openlibrary.org/works/"+url.PathEscape(id)+".json")
+}
+
+func workDescriptionFrom(ctx context.Context, client *http.Client, endpoint string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Aldus/dev (+https://github.com/mahcks/aldus)")
+	response, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", ErrUnavailable
+	}
+	var payload struct {
+		Description json.RawMessage `json:"description"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+		return "", err
+	}
+	description := firstSentence(payload.Description)
+	if description == "" {
+		var object struct {
+			Value string `json:"value"`
+		}
+		_ = json.Unmarshal(payload.Description, &object)
+		description = strings.TrimSpace(object.Value)
+	}
+	runes := []rune(description)
+	if len(runes) > maxDescriptionRunes {
+		description = strings.TrimSpace(string(runes[:maxDescriptionRunes]))
+	}
+	return description, nil
 }
 
 func rankMetadata(values []Metadata, query string) {

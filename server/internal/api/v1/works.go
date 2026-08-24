@@ -14,6 +14,7 @@ func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.S
 	router.Get("/libraries/{libraryID}/works", listWorks(store))
 	router.Post("/libraries/{libraryID}/works", createWork(store))
 	router.Get("/works/{workID}", getWork(store))
+	router.Post("/works/{workID}/metadata/refresh", refreshWorkMetadata(store))
 	router.Put("/works/{workID}/status", setWorkStatus(store))
 	router.Get("/works/{workID}/covers/search", searchCovers(store, media))
 	router.Get("/works/{workID}/covers", listCovers(store, media))
@@ -25,6 +26,13 @@ func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.S
 	router.Delete("/works/{workID}/cover", restoreCover(store))
 	router.Patch("/works/{workID}", updateWork(store))
 	router.Delete("/works/{workID}", deleteWork(store))
+}
+
+func refreshWorkMetadata(s *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := s.RefreshMetadata(r.Context(), actor(r), chi.URLParam(r, "workID"))
+		writeCatalogResult(w, workDetailDTO(value), err)
+	}
 }
 
 func listCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {

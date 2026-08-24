@@ -333,6 +333,8 @@ export const api = {
     return request<WorkBrowsePage>(`/works?${query}`);
   },
   work: (id: string) => request<WorkDetail>(`/works/${id}`),
+  refreshWorkMetadata: (id: string) =>
+    request<WorkDetail>(`/works/${id}/metadata/refresh`, { method: 'POST' }),
   setWorkStatus: (id: string, body: SetWorkStatusRequest) =>
     request<void>(`/works/${id}/status`, { method: 'PUT', body: JSON.stringify(body) }),
   createWork: (libraryID: string, body: CreateWorkRequest) =>

@@ -59,6 +59,7 @@ type Work struct {
 
 type WorkDetail struct {
 	Work
+	Description                                                        string
 	InProgress                                                         bool
 	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
 	LastMode                                                           string
@@ -404,6 +405,10 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 		return WorkDetail{}, err
 	}
 	value := WorkDetail{Work: work}
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(description,'') FROM work_metadata WHERE work_id=?`, id).Scan(&value.Description)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return WorkDetail{}, fmt.Errorf("get work metadata: %w", err)
+	}
 	var updated string
 	err = s.db.QueryRowContext(ctx, `
 		SELECT p.work_id IS NOT NULL,COALESCE(p.updated_at,''),

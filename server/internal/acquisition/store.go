@@ -52,7 +52,7 @@ type Request struct {
 
 type SearchResult struct {
 	ID, Title, Source, CanonicalTitle, Author, Language, Format, Kind, Edition, Narrator, GroupKey, Match string
-	ISBN, CoverURL, MatchConfidence                                                                       string
+	ISBN, CoverID, CoverURL, Description, OpenLibraryID, MatchConfidence                                  string
 	MatchReasons, LikelyPairIDs                                                                           []string
 	Size                                                                                                  int64
 	Published                                                                                             time.Time
@@ -631,8 +631,14 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE import_groups SET existing_work_id=(SELECT p.work_id FROM acquisition_requests r JOIN acquisition_pairs p ON p.id=r.pair_id WHERE r.proposal_id=import_groups.id AND p.work_id IS NOT NULL LIMIT 1),updated_at=? WHERE decision='' AND EXISTS(SELECT 1 FROM acquisition_requests r JOIN acquisition_pairs p ON p.id=r.pair_id WHERE r.proposal_id=import_groups.id AND p.work_id IS NOT NULL)`, now); err != nil {
 		return fmt.Errorf("reconcile paired import target: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO work_metadata(work_id,isbn,first_publish_year,cover_url,source,updated_at) SELECT work_id,advisory_isbn,advisory_year,advisory_cover_url,advisory_source,? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL AND (advisory_isbn!='' OR advisory_year>0 OR advisory_cover_url!='') ON CONFLICT(work_id) DO UPDATE SET isbn=CASE WHEN work_metadata.isbn='' THEN excluded.isbn ELSE work_metadata.isbn END,first_publish_year=CASE WHEN work_metadata.first_publish_year=0 THEN excluded.first_publish_year ELSE work_metadata.first_publish_year END,cover_url=CASE WHEN work_metadata.cover_url='' THEN excluded.cover_url ELSE work_metadata.cover_url END,source=CASE WHEN work_metadata.source='' THEN excluded.source ELSE work_metadata.source END,updated_at=excluded.updated_at`, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO work_metadata(work_id,isbn,first_publish_year,cover_url,description,source,updated_at) SELECT work_id,advisory_isbn,advisory_year,advisory_cover_url,advisory_description,advisory_source,? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL AND (advisory_isbn!='' OR advisory_year>0 OR advisory_cover_url!='' OR advisory_description!='') ON CONFLICT(work_id) DO UPDATE SET isbn=CASE WHEN work_metadata.isbn='' THEN excluded.isbn ELSE work_metadata.isbn END,first_publish_year=CASE WHEN work_metadata.first_publish_year=0 THEN excluded.first_publish_year ELSE work_metadata.first_publish_year END,cover_url=CASE WHEN work_metadata.cover_url='' THEN excluded.cover_url ELSE work_metadata.cover_url END,description=CASE WHEN work_metadata.description='' THEN excluded.description ELSE work_metadata.description END,source=CASE WHEN work_metadata.source='' THEN excluded.source ELSE work_metadata.source END,updated_at=excluded.updated_at`, now); err != nil {
 		return fmt.Errorf("reconcile acquisition metadata: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) SELECT 'acquisition-'||hex(randomblob(16)),work_id,'open_library',advisory_cover_id,advisory_cover_url,? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL AND advisory_cover_id!='' AND advisory_cover_url!='' ON CONFLICT(work_id,source,source_id) DO NOTHING`, now); err != nil {
+		return fmt.Errorf("save acquisition covers: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE works SET selected_cover_id=(SELECT c.id FROM work_covers c WHERE c.work_id=works.id AND c.source='open_library' ORDER BY c.created_at,c.id LIMIT 1),updated_at=? WHERE selected_cover_id IS NULL AND EXISTS(SELECT 1 FROM work_covers c WHERE c.work_id=works.id AND c.source='open_library')`, now); err != nil {
+		return fmt.Errorf("select acquisition covers: %w", err)
 	}
 	if s.pairHandoff != nil {
 		rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.requested_by,em.id,em.sha256,am.id,am.sha256 FROM acquisition_pairs p JOIN acquisition_requests er ON er.pair_id=p.id AND er.fulfillment_state='available' JOIN import_items ei ON ei.group_id=er.proposal_id AND ei.representation_kind='epub' JOIN media_locations el ON el.source_entry_id=ei.source_entry_id JOIN media em ON em.id=el.media_id AND em.kind='epub' JOIN acquisition_requests ar ON ar.pair_id=p.id AND ar.fulfillment_state='available' JOIN import_items ai ON ai.group_id=ar.proposal_id AND ai.representation_kind='audiobook' JOIN media_locations al ON al.source_entry_id=ai.source_entry_id JOIN media am ON am.id=al.media_id AND am.kind IN ('audio','audiobook') WHERE er.work_id=ar.work_id`)
@@ -801,7 +807,7 @@ func (s *Store) Search(ctx context.Context, actor auth.User, libraryID, id strin
 		_, _, _, _, abridged := releaseMetadata(result.Title)
 		value := SearchResult{ID: resultID, Title: result.Title, Source: result.Source, Size: max(0, result.Size), Published: result.Published, CanonicalTitle: item.CanonicalTitle, Author: item.Author, Language: item.Language, Format: item.Format, Kind: item.Kind, Edition: item.Edition, Narrator: item.Narrator, GroupKey: item.GroupKey, Match: item.Match, Relevance: item.Relevance, Abridged: abridged, downloadURL: result.DownloadURL}
 		if match := matchingMetadata(value.CanonicalTitle, value.Author, metadata); match.Title != "" {
-			value.CanonicalTitle, value.Year, value.ISBN, value.CoverURL = match.Title, match.Year, match.ISBN, match.CoverURL
+			value.CanonicalTitle, value.Year, value.ISBN, value.CoverID, value.CoverURL, value.Description, value.OpenLibraryID = match.Title, match.Year, match.ISBN, match.CoverID, match.CoverURL, match.Description, match.ID
 			if value.Author == "" {
 				value.Author = match.Author
 			}
@@ -863,6 +869,9 @@ func (s *Store) SelectDiscovery(ctx context.Context, actor auth.User, libraryID,
 	if !ok || !resultOK || time.Now().After(discovery.ExpiresAt) || discovery.LibraryID != libraryID || discovery.UserID != actor.ID {
 		return Request{}, ErrNotFound
 	}
+	if result.Metadata.Description == "" && result.Metadata.OpenLibraryID != "" {
+		result.Metadata.Description, _ = s.client.workDescription(ctx, result.Metadata.OpenLibraryID)
+	}
 	request, err := s.Create(ctx, actor, libraryID, discovery.SourceID, discovery.Query)
 	if err != nil {
 		return Request{}, err
@@ -898,6 +907,11 @@ func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, librar
 	if !valid {
 		return Pair{}, ErrNotFound
 	}
+	for _, selected := range []*selectedDiscoveryResult{&first, &second} {
+		if selected.Metadata.Description == "" && selected.Metadata.OpenLibraryID != "" {
+			selected.Metadata.Description, _ = s.client.workDescription(ctx, selected.Metadata.OpenLibraryID)
+		}
+	}
 	pairID, err := randomID()
 	if err != nil {
 		return Pair{}, err
@@ -918,7 +932,7 @@ func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, librar
 			return Pair{}, err
 		}
 		requestIDs[index] = requestID
-		result, err := tx.ExecContext(ctx, `INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,pair_id,advisory_title,advisory_author,advisory_isbn,advisory_year,advisory_cover_url,advisory_source,created_at,updated_at) SELECT ?,l.id,?,ls.id,?,'requested',?,?,?,?,?,?,? ,?,? FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.id=? AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1)`, requestID, actor.ID, discovery.Query, pairID, selected.Metadata.CanonicalTitle, selected.Metadata.Author, selected.Metadata.ISBN, max(0, selected.Metadata.Year), selected.Metadata.CoverURL, "open_library", now, now, discovery.SourceID, actor.ID, libraryID, actor.Admin)
+		result, err := tx.ExecContext(ctx, `INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,pair_id,advisory_title,advisory_author,advisory_isbn,advisory_year,advisory_cover_id,advisory_cover_url,advisory_description,advisory_source,created_at,updated_at) SELECT ?,l.id,?,ls.id,?,'requested',?,?,?,?,?,?,?,?,?,?,? FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.id=? AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1)`, requestID, actor.ID, discovery.Query, pairID, selected.Metadata.CanonicalTitle, selected.Metadata.Author, selected.Metadata.ISBN, max(0, selected.Metadata.Year), selected.Metadata.CoverID, selected.Metadata.CoverURL, selected.Metadata.Description, "open_library", now, now, discovery.SourceID, actor.ID, libraryID, actor.Admin)
 		if err != nil {
 			return Pair{}, fmt.Errorf("create paired acquisition request: %w", err)
 		}
@@ -957,7 +971,7 @@ func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, librar
 }
 
 func (s *Store) persistAdvisory(ctx context.Context, requestID, pairID string, result SearchResult) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET pair_id=NULLIF(?,''),advisory_title=?,advisory_author=?,advisory_isbn=?,advisory_year=?,advisory_cover_url=?,advisory_source=? WHERE id=?`, pairID, result.CanonicalTitle, result.Author, result.ISBN, max(0, result.Year), result.CoverURL, "open_library", requestID)
+	_, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET pair_id=NULLIF(?,''),advisory_title=?,advisory_author=?,advisory_isbn=?,advisory_year=?,advisory_cover_id=?,advisory_cover_url=?,advisory_description=?,advisory_source=? WHERE id=?`, pairID, result.CanonicalTitle, result.Author, result.ISBN, max(0, result.Year), result.CoverID, result.CoverURL, result.Description, "open_library", requestID)
 	if err != nil {
 		return fmt.Errorf("persist acquisition metadata: %w", err)
 	}

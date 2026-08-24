@@ -38,6 +38,7 @@ type Work struct {
 }
 type WorkDetail struct {
 	Work              `tstype:",extends,required"`
+	Description       string    `json:"description,omitempty"`
 	InProgress        bool      `json:"in_progress"`
 	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
 	CompletionPercent int       `json:"completion_percent"`

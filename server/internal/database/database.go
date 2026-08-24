@@ -113,7 +113,10 @@ var managedMediaSchema string
 //go:embed migrations/034_acquisition_release_failures.sql
 var acquisitionReleaseFailuresSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema}
+//go:embed migrations/035_work_descriptions.sql
+var workDescriptionsSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema, workDescriptionsSchema}
 
 func SupportedSchemaVersion() int { return len(migrations) }
 

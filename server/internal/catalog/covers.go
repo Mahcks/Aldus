@@ -22,6 +22,7 @@ import (
 
 type CoverCandidate struct {
 	Source, SourceID, ImageURL, Title, Author, Publisher, ISBN string
+	WorkID                                                     string
 	FirstPublishYear                                           int
 }
 
@@ -38,6 +39,7 @@ type CoverSettings struct {
 
 type openLibraryResult struct {
 	Docs []struct {
+		Key              string   `json:"key"`
 		CoverID          int      `json:"cover_i"`
 		Title            string   `json:"title"`
 		Authors          []string `json:"author_name"`
@@ -45,6 +47,138 @@ type openLibraryResult struct {
 		Publishers       []string `json:"publisher"`
 		ISBNs            []string `json:"isbn"`
 	} `json:"docs"`
+}
+
+const maxWorkDescriptionRunes = 4000
+
+type refreshedMetadata struct {
+	CoverID, Description string
+}
+
+func (s *Store) RefreshMetadata(ctx context.Context, actor auth.User, workID string) (WorkDetail, error) {
+	work, err := s.editableWork(ctx, actor, workID)
+	if err != nil {
+		return WorkDetail{}, err
+	}
+	query := strings.TrimSpace(work.Title + " " + work.Author)
+	endpoint := "https://openlibrary.org/search.json?limit=12&fields=key,cover_i,title,author_name&q=" + url.QueryEscape(query)
+	metadata, err := refreshOpenLibraryMetadata(ctx, &http.Client{Timeout: 10 * time.Second}, endpoint, work.Title, work.Author, func(id string) string {
+		return "https://openlibrary.org/works/" + url.PathEscape(id) + ".json"
+	})
+	if err != nil {
+		return WorkDetail{}, err
+	}
+	if err := s.saveRefreshedMetadata(ctx, workID, metadata); err != nil {
+		return WorkDetail{}, err
+	}
+	return s.WorkDetail(ctx, actor, workID)
+}
+
+func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metadata refreshedMetadata) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO work_metadata(work_id,cover_url,source,description,updated_at) VALUES(?,?,'open_library',?,?) ON CONFLICT(work_id) DO UPDATE SET cover_url=CASE WHEN work_metadata.cover_url='' THEN excluded.cover_url ELSE work_metadata.cover_url END,description=CASE WHEN work_metadata.description='' THEN excluded.description ELSE work_metadata.description END,updated_at=excluded.updated_at`, workID, openLibraryCoverURL(metadata.CoverID), metadata.Description, now); err != nil {
+		return fmt.Errorf("save refreshed metadata: %w", err)
+	}
+	coverRecordID, err := randomID()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) SELECT ?,?,'open_library',?,?,? FROM works WHERE id=? AND selected_cover_id IS NULL ON CONFLICT(work_id,source,source_id) DO NOTHING`, coverRecordID, workID, metadata.CoverID, openLibraryCoverURL(metadata.CoverID), now, workID); err != nil {
+		return fmt.Errorf("save refreshed cover: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE works SET selected_cover_id=(SELECT id FROM work_covers WHERE work_id=? AND source='open_library' AND source_id=?),updated_at=? WHERE id=? AND selected_cover_id IS NULL`, workID, metadata.CoverID, now, workID); err != nil {
+		return fmt.Errorf("select refreshed cover: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, searchEndpoint, title, author string, workEndpoint func(string) string) (refreshedMetadata, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, searchEndpoint, nil)
+	if err != nil {
+		return refreshedMetadata{}, err
+	}
+	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
+	response, err := client.Do(request)
+	if err != nil {
+		return refreshedMetadata{}, fmt.Errorf("search Open Library: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return refreshedMetadata{}, fmt.Errorf("search Open Library: unexpected status %d", response.StatusCode)
+	}
+	candidates, err := parseOpenLibraryCovers(io.LimitReader(response.Body, 2<<20))
+	if err != nil {
+		return refreshedMetadata{}, fmt.Errorf("decode Open Library search: %w", err)
+	}
+	var selected CoverCandidate
+	for _, candidate := range candidates {
+		if normalizedMetadataText(candidate.Title) == normalizedMetadataText(title) && (strings.TrimSpace(author) == "" || normalizedMetadataText(candidate.Author) == normalizedMetadataText(author)) {
+			selected = candidate
+			break
+		}
+	}
+	if selected.SourceID == "" || selected.WorkID == "" {
+		return refreshedMetadata{}, ErrNotFound
+	}
+	description, err := openLibraryDescription(ctx, client, workEndpoint(selected.WorkID))
+	if err != nil {
+		return refreshedMetadata{}, err
+	}
+	return refreshedMetadata{CoverID: selected.SourceID, Description: description}, nil
+}
+
+func openLibraryDescription(ctx context.Context, client *http.Client, endpoint string) (string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
+	response, err := client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("load Open Library work: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("load Open Library work: unexpected status %d", response.StatusCode)
+	}
+	var payload struct {
+		Description json.RawMessage `json:"description"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+		return "", err
+	}
+	var description string
+	if json.Unmarshal(payload.Description, &description) != nil {
+		var object struct {
+			Value string `json:"value"`
+		}
+		_ = json.Unmarshal(payload.Description, &object)
+		description = object.Value
+	}
+	description = strings.TrimSpace(description)
+	runes := []rune(description)
+	if len(runes) > maxWorkDescriptionRunes {
+		description = strings.TrimSpace(string(runes[:maxWorkDescriptionRunes]))
+	}
+	return description, nil
+}
+
+func normalizedMetadataText(value string) string {
+	var result strings.Builder
+	for _, r := range strings.ToLower(value) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
 }
 
 func (s *Store) SearchCovers(ctx context.Context, actor auth.User, workID, query string) ([]CoverCandidate, error) {
@@ -92,7 +226,7 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 			continue
 		}
 		seen[doc.CoverID] = true
-		candidate := CoverCandidate{Source: "open_library", SourceID: strconv.Itoa(doc.CoverID), ImageURL: openLibraryCoverURL(strconv.Itoa(doc.CoverID)), Title: doc.Title, FirstPublishYear: doc.FirstPublishYear}
+		candidate := CoverCandidate{Source: "open_library", SourceID: strconv.Itoa(doc.CoverID), WorkID: strings.TrimPrefix(doc.Key, "/works/"), ImageURL: openLibraryCoverURL(strconv.Itoa(doc.CoverID)), Title: doc.Title, FirstPublishYear: doc.FirstPublishYear}
 		if len(doc.Authors) > 0 {
 			candidate.Author = doc.Authors[0]
 		}

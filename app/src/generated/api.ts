@@ -243,6 +243,7 @@ export interface Work {
   updated_at: string;
 }
 export interface WorkDetail extends Work {
+  description?: string;
   in_progress: boolean;
   progress_updated_at?: string;
   completion_percent: number /* int */;

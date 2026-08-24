@@ -287,6 +287,20 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if err != nil || detail.CoverURL != "" {
 		t.Fatalf("restored cover = %q, %v", detail.CoverURL, err)
 	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO work_metadata(work_id,cover_url,description,updated_at) VALUES(?,?,?,'2026-01-03T00:00:00Z')`, alice.ID, "https://covers.test/alice.jpg", "A curious adventure."); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.WorkDetail(ctx, reader, alice.ID)
+	if err != nil || detail.CoverURL != "" || detail.Description != "A curious adventure." {
+		t.Fatalf("metadata detail = %#v, %v", detail, err)
+	}
+	if err := store.SelectCover(ctx, admin, alice.ID, "open_library", "10521270"); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.WorkDetail(ctx, reader, alice.ID)
+	if err != nil || detail.CoverURL != "https://covers.openlibrary.org/b/id/10521270-L.jpg?default=false" {
+		t.Fatalf("selected cover did not override metadata = %q, %v", detail.CoverURL, err)
+	}
 	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Sort: "title"})
 	if err != nil || len(values) != 2 {
 		t.Fatalf("authorized global browse = %#v, %v", values, err)
