@@ -34,6 +34,8 @@ type Config struct {
 	QBitTorrentCategory     string
 	QBitTorrentDownloadRoot string
 	DownloadIngress         string
+	DemoLibraryID           string
+	TrustProxyHeaders       bool
 }
 
 func Load() (Config, error) {
@@ -66,6 +68,8 @@ func Load() (Config, error) {
 		QBitTorrentCategory:     envOr("ALDUS_QBITTORRENT_CATEGORY", "aldus"),
 		QBitTorrentDownloadRoot: os.Getenv("ALDUS_QBITTORRENT_DOWNLOAD_ROOT"),
 		DownloadIngress:         envOr("ALDUS_DOWNLOAD_INGRESS", "/downloads"),
+		DemoLibraryID:           strings.TrimSpace(os.Getenv("ALDUS_DEMO_LIBRARY_ID")),
+		TrustProxyHeaders:       envBool("ALDUS_TRUST_PROXY_HEADERS"),
 	}, nil
 }
 

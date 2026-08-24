@@ -49,4 +49,15 @@ EXPOSE 8080
 VOLUME ["/data"]
 ENTRYPOINT ["aldus"]
 
-FROM production AS final
+FROM production AS aldus-base
+
+FROM aldus-base AS demo
+USER root
+RUN apk add --no-cache curl jq su-exec
+COPY --chmod=755 demo/fetch.sh /opt/aldus-demo/fetch
+COPY demo/catalog.json /opt/aldus-demo/catalog.json
+COPY --chmod=755 demo/fly-entrypoint.sh /usr/local/bin/fly-entrypoint
+ENTRYPOINT ["fly-entrypoint"]
+CMD ["aldus"]
+
+FROM aldus-base AS final

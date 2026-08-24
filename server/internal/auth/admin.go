@@ -28,7 +28,7 @@ func (s *Store) Users(ctx context.Context, actor User, limit, offset int) ([]Use
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,username,display_name,is_admin,disabled,created_at,updated_at FROM users ORDER BY username_normalized LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,username,display_name,is_admin,disabled,created_at,updated_at FROM users WHERE demo_expires_at IS NULL ORDER BY username_normalized LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}

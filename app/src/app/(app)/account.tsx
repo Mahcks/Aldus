@@ -1,8 +1,10 @@
 import type { Library, ReaderCredential, WorkSummary } from '../../generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
+import { useServer } from '../../features/auth/ServerProvider';
 import { LibraryCard } from '../../features/bookshelf';
 import { formatDuration } from '../../features/format';
 import { AppIcon } from '../../features/icons';
@@ -26,6 +28,7 @@ import { apiBaseURL } from '../../lib/api-base';
 
 export default function AccountScreen() {
   const auth = useAuth();
+  const server = useServer();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [activity, setActivity] = useState<WorkSummary[]>([]);
   const [credentials, setCredentials] = useState<ReaderCredential[]>([]);
@@ -69,7 +72,7 @@ export default function AccountScreen() {
 
   async function signOut() {
     await auth.signOut();
-    router.replace('/login');
+    router.replace('/');
   }
 
   async function createCredential() {
@@ -108,6 +111,26 @@ export default function AccountScreen() {
   return (
     <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
       {error ? <Notice danger>{error}</Notice> : null}
+      {Platform.OS !== 'web' ? (
+        <Section title="Server">
+          <View className="gap-2 border-y border-line py-4">
+            <Text className="font-sans-semibold text-ink">
+              {server.origin.replace(/^https?:\/\//, '')}
+            </Text>
+            <Text className="text-sm leading-5 text-muted">
+              Offline books and reading progress stay separate for each connected server.
+            </Text>
+            <View className="items-start">
+              <Button
+                label="Switch server"
+                icon="system"
+                kind="secondary"
+                onPress={() => router.push('/connect')}
+              />
+            </View>
+          </View>
+        </Section>
+      ) : null}
       <View className="max-w-[680px] gap-8">
         <Section title="Profile">
           <View className="gap-3 border-b border-line pb-5">

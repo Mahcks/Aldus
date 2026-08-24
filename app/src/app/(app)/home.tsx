@@ -198,7 +198,9 @@ export default function HomeScreen() {
         setReady(readyItems);
         setCollections(savedCollections.slice(0, 5));
 
-        const workIDs = [...new Set(readyItems.map((item) => item.work_id).filter(Boolean))] as string[];
+        const workIDs = [
+          ...new Set(readyItems.map((item) => item.work_id).filter(Boolean)),
+        ] as string[];
         if (workIDs.length) {
           const works = await Promise.all(
             workIDs.map((workID) => api.work(workID).catch(() => undefined)),
@@ -206,7 +208,9 @@ export default function HomeScreen() {
           if (canceled) return;
           setReadyWorks(
             Object.fromEntries(
-              works.filter((value): value is NonNullable<typeof value> => Boolean(value)).map((value) => [value.id, value]),
+              works
+                .filter((value): value is NonNullable<typeof value> => Boolean(value))
+                .map((value) => [value.id, value]),
             ),
           );
         }

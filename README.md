@@ -51,6 +51,8 @@ That's enough to explore covers, title pages, reading, listening, collections, a
 
 The included Compose file mounts `./library-media` read-only. Aldus indexes those files but does not rename, move, or rewrite them.
 
+Maintainers building the public guest instance should use the reproducible catalog and VPS runbook in [`demo/`](demo/README.md); those media files are never bundled into the normal image.
+
 ## Choose how far you want to go
 
 | I want to… | Set up… | Then explore… |
@@ -209,6 +211,7 @@ make dev-server   # Go server on port 8080
 make dev-app      # Expo development server
 make expo-dev     # Metro for an installed native development client
 make ios-dev      # Build and install the iOS development client
+make demo-media   # Fetch and verify the public-domain demo catalog
 make build        # Production web export and Go build
 make test         # Go, race, client, and TypeScript tests
 make lint         # Go vet, formatting, and Expo lint

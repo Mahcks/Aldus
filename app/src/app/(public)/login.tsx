@@ -1,5 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
+import { Platform } from 'react-native';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { AuthCard, AuthLayout } from '../../features/auth/AuthLayout';
 import { Button, Field, Notice } from '../../features/ui';
@@ -14,7 +15,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const visibleError = error || auth.error;
 
-  if (auth.user) return <Redirect href="/libraries" />;
+  if (auth.user) return <Redirect href="/home" />;
   if (auth.setupAvailable) return <Redirect href="/setup" />;
 
   async function submit() {
@@ -22,8 +23,8 @@ export default function Login() {
     setError('');
     try {
       const user = await api.login({ username, password });
-      auth.signedIn(user);
-      router.replace('/libraries');
+      await auth.signedIn(user);
+      router.replace('/home');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -62,6 +63,16 @@ export default function Login() {
           disabled={busy || !username || !password}
           onPress={submit}
         />
+        {auth.demoAvailable ? (
+          <Button label="Back to demo" kind="quiet" onPress={() => router.replace('/demo')} />
+        ) : null}
+        {Platform.OS !== 'web' ? (
+          <Button
+            label="Use another server"
+            kind="quiet"
+            onPress={() => router.replace('/connect')}
+          />
+        ) : null}
       </AuthCard>
     </AuthLayout>
   );

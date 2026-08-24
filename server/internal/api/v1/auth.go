@@ -13,11 +13,13 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 )
 
-func registerAuthRoutes(router chi.Router, store *auth.Store) {
-	limiter := newLimiter(10, time.Minute)
+func registerAuthRoutes(router chi.Router, store *auth.Store, trustProxyHeaders bool) {
+	limiter := newLimiter(10, time.Minute, trustProxyHeaders)
+	demoLimiter := newLimiter(5, time.Hour, trustProxyHeaders)
 	router.Get("/setup/status", setupStatus(store))
 	router.With(limiter.middleware).Post("/setup", setup(store))
 	router.With(limiter.middleware).Post("/auth/login", login(store))
+	router.With(demoLimiter.middleware).Post("/auth/demo", demoLogin(store))
 }
 
 func registerSessionRoutes(router chi.Router, store *auth.Store) {
@@ -32,7 +34,31 @@ func setupStatus(store *auth.Store) http.HandlerFunc {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, contracts.SetupStatus{Available: available})
+		demoAvailable, err := store.DemoReady(r.Context())
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, contracts.SetupStatus{Available: available, DemoAvailable: demoAvailable})
+	}
+}
+
+func demoLogin(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, err := store.CreateDemoSession(r.Context())
+		switch {
+		case errors.Is(err, auth.ErrDemoDisabled):
+			http.NotFound(w, r)
+			return
+		case errors.Is(err, auth.ErrDemoCapacity):
+			http.Error(w, "The demo is busy. Please try again later.", http.StatusServiceUnavailable)
+			return
+		case err != nil:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		store.SetCookie(w, session)
+		writeJSON(w, http.StatusCreated, sessionDTO(session))
 	}
 }
 
@@ -107,6 +133,7 @@ type limiter struct {
 	mu      sync.Mutex
 	limit   int
 	window  time.Duration
+	proxy   bool
 	attempt map[string]attempt
 }
 
@@ -115,8 +142,8 @@ type attempt struct {
 	count int
 }
 
-func newLimiter(limit int, window time.Duration) *limiter {
-	return &limiter{limit: limit, window: window, attempt: make(map[string]attempt)}
+func newLimiter(limit int, window time.Duration, trustProxyHeaders bool) *limiter {
+	return &limiter{limit: limit, window: window, proxy: trustProxyHeaders, attempt: make(map[string]attempt)}
 }
 
 func (l *limiter) middleware(next http.Handler) http.Handler {
@@ -124,6 +151,15 @@ func (l *limiter) middleware(next http.Handler) http.Handler {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			host = r.RemoteAddr
+		}
+		if l.proxy {
+			forwarded := strings.TrimSpace(r.Header.Get("Fly-Client-IP"))
+			if forwarded == "" {
+				forwarded = strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0])
+			}
+			if net.ParseIP(forwarded) != nil {
+				host = forwarded
+			}
 		}
 		path := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/v1"), "/api")
 		key := path + "\x00" + host

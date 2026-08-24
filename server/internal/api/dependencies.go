@@ -35,5 +35,6 @@ type Dependencies struct {
 	Diagnostics         *diagnostics.Store
 	KOReader            koreader.Credentials
 	AllowedOrigins      []string
+	TrustProxyHeaders   bool
 	Ready               func(context.Context) error
 }

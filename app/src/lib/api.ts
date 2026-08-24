@@ -75,7 +75,7 @@ import type {
   WorkPreference,
 } from '../generated/api';
 import { clearToken, getToken, setToken } from './auth-token';
-import { apiBaseURL } from './api-base';
+import { getAPIBaseURL } from './api-base';
 
 let unauthorized: (() => void) | undefined;
 export function onUnauthorized(handler?: () => void) {
@@ -103,13 +103,14 @@ async function responseErrorMessage(response: Response) {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = await getToken();
+  const origin = getAPIBaseURL();
+  const token = await getToken(origin);
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try {
-    response = await fetch(`${apiBaseURL}/api${path}`, {
+    response = await fetch(`${origin}/api${path}`, {
       ...init,
       headers,
       credentials: 'include',
@@ -120,8 +121,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     const message = await responseErrorMessage(response);
     if (response.status === 401) {
-      await clearToken();
-      unauthorized?.();
+      await clearToken(origin);
+      if (origin === getAPIBaseURL()) unauthorized?.();
     }
     throw new APIError(
       response.status,
@@ -134,10 +135,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 async function download(path: string) {
-  const token = await getToken();
+  const origin = getAPIBaseURL();
+  const token = await getToken(origin);
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${apiBaseURL}/api${path}`, { headers, credentials: 'include' });
+  const response = await fetch(`${origin}/api${path}`, { headers, credentials: 'include' });
   if (!response.ok)
     throw new APIError(
       response.status,
@@ -147,26 +149,39 @@ async function download(path: string) {
   return response.blob();
 }
 
-async function acceptSession(session: Session) {
-  if (session.token) await setToken(session.token);
+async function acceptSession(session: Session, origin: string) {
+  if (session.token) await setToken(session.token, origin);
   return session.user;
 }
 
 export const api = {
   setupStatus: () => request<SetupStatus>('/setup/status'),
-  setup: (body: SetupRequest) =>
-    request<Session>('/setup', { method: 'POST', body: JSON.stringify(body) }).then(acceptSession),
-  login: (body: LoginRequest) =>
-    request<Session>('/auth/login', { method: 'POST', body: JSON.stringify(body) }).then(
-      acceptSession,
-    ),
+  setup: (body: SetupRequest) => {
+    const origin = getAPIBaseURL();
+    return request<Session>('/setup', { method: 'POST', body: JSON.stringify(body) }).then(
+      (session) => acceptSession(session, origin),
+    );
+  },
+  login: (body: LoginRequest) => {
+    const origin = getAPIBaseURL();
+    return request<Session>('/auth/login', { method: 'POST', body: JSON.stringify(body) }).then(
+      (session) => acceptSession(session, origin),
+    );
+  },
+  demoLogin: () => {
+    const origin = getAPIBaseURL();
+    return request<Session>('/auth/demo', { method: 'POST' }).then((session) =>
+      acceptSession(session, origin),
+    );
+  },
   me: () => request<User>('/auth/me'),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),
   logout: async () => {
+    const origin = getAPIBaseURL();
     try {
       await request<void>('/auth/logout', { method: 'POST' });
     } finally {
-      await clearToken();
+      await clearToken(origin);
     }
   },
   readerCredentials: () => request<ReaderCredential[]>('/me/reader-credentials'),

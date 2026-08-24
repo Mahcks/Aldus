@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "acquired_at": "2026-08-24",
+  "evidence": {
+    "gutenberg": "https://www.gutenberg.org/policy/permission",
+    "librivox": "https://librivox.org/pages/public-domain/"
+  },
+  "works": [
+    {
+      "title": "Alice's Adventures in Wonderland",
+      "author": "Lewis Carroll",
+      "editions": [
+        {
+          "kind": "ebook",
+          "edition": "Project Gutenberg EPUB 3 with images, ebook 11",
+          "source": "https://www.gutenberg.org/ebooks/11",
+          "public_domain_evidence": "gutenberg",
+          "files": [{ "path": "alice/alice.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/11.epub3.images", "bytes": 189231, "sha256": "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c" }]
+        },
+        {
+          "kind": "audiobook",
+          "edition": "LibriVox collaborative recording",
+          "narrator": "LibriVox volunteers",
+          "source": "https://librivox.org/alices-adventures-in-wonderland-by-lewis-carroll/",
+          "public_domain_evidence": "librivox",
+          "files": [{ "path": "alice/alice.m4b", "format": "M4B", "url": "https://archive.org/download/alice_in_wonderland_librivox/AliceInWonderland_librivox.m4b", "bytes": 87525736, "sha256": "1ba22e284ee80e8cf25077bc8f10b81f0fadef6b8e61ac7964f059402e8ee1d3" }]
+        }
+      ]
+    },
+    {
+      "title": "Pride and Prejudice",
+      "author": "Jane Austen",
+      "editions": [
+        {
+          "kind": "ebook",
+          "edition": "Project Gutenberg EPUB 3 with images, ebook 1342",
+          "source": "https://www.gutenberg.org/ebooks/1342",
+          "public_domain_evidence": "gutenberg",
+          "files": [{ "path": "pride-and-prejudice/pride-and-prejudice.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/1342.epub3.images", "bytes": 24835612, "sha256": "2c1a5bce2f7fb394609372442c56c49d87e87b94657ccf90c2b90b571a9dfed6" }]
+        },
+        {
+          "kind": "audiobook",
+          "edition": "LibriVox version 3",
+          "narrator": "Karen Savage",
+          "source": "https://librivox.org/pride-and-prejudice-by-jane-austen-2/",
+          "public_domain_evidence": "librivox",
+          "files": [{ "path": "pride-and-prejudice/pride-and-prejudice.m4b", "format": "M4B", "url": "https://archive.org/download/pride_prejudice_krs_librivox/PrideAndPrejudice_librivox.m4b", "bytes": 299749157, "sha256": "8551ca09538db88923355e7afda0c848e63fe50101002d5f63722dadfcfc03b9" }]
+        }
+      ]
+    },
+    {
+      "title": "Frankenstein",
+      "author": "Mary Wollstonecraft Shelley",
+      "editions": [
+        {
+          "kind": "ebook",
+          "edition": "Project Gutenberg EPUB 3 with images, ebook 84",
+          "source": "https://www.gutenberg.org/ebooks/84",
+          "public_domain_evidence": "gutenberg",
+          "files": [{ "path": "frankenstein/frankenstein.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/84.epub3.images", "bytes": 474401, "sha256": "dd7ec02d2c8db4162bf587aa09a692ed5394ead3dfb12d8cc14b449d89795a6a" }]
+        },
+        {
+          "kind": "audiobook",
+          "edition": "LibriVox version 4",
+          "narrator": "John Van Stan",
+          "source": "https://librivox.org/frankenstein-or-the-modern-prometheus-version-4-by-mary-wollstonecraft-shelley/",
+          "public_domain_evidence": "librivox",
+          "files": [{ "path": "frankenstein/frankenstein.m4b", "format": "M4B", "url": "https://archive.org/download/frankenstein_4_2010_librivox/Frankenstein_librivox.m4b", "bytes": 289160852, "sha256": "08ffa55a81533d44fbdbc4dc67686c7f09f04ab3ea30d47fabba9f85e0f444f4" }]
+        }
+      ]
+    },
+    {
+      "title": "Dracula",
+      "author": "Bram Stoker",
+      "editions": [
+        {
+          "kind": "ebook",
+          "edition": "Project Gutenberg EPUB 3 with images, ebook 345",
+          "source": "https://www.gutenberg.org/ebooks/345",
+          "public_domain_evidence": "gutenberg",
+          "files": [{ "path": "dracula/dracula.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/345.epub3.images", "bytes": 602409, "sha256": "8a275fd1e858a9a873ca857592b48cca3183ccff7b561fa5cb03a4fabca054dc" }]
+        },
+        {
+          "kind": "audiobook",
+          "edition": "LibriVox collaborative recording",
+          "narrator": "LibriVox volunteers",
+          "source": "https://librivox.org/dracula-by-bram-stoker/",
+          "public_domain_evidence": "librivox",
+          "files": [{ "path": "dracula/dracula.m4b", "format": "M4B", "url": "https://archive.org/download/dracula_librivox/DraculaStoker_64kb_librivox.m4b", "bytes": 623585158, "sha256": "cf57d8379885c8d337c8fddacb4d4844bb141077fb38741f042f6220efd51400" }]
+        }
+      ]
+    },
+    {
+      "title": "The Wonderful Wizard of Oz",
+      "author": "L. Frank Baum",
+      "editions": [
+        {
+          "kind": "ebook",
+          "edition": "Project Gutenberg EPUB 3 with images, ebook 55",
+          "source": "https://www.gutenberg.org/ebooks/55",
+          "public_domain_evidence": "gutenberg",
+          "files": [{ "path": "wizard-of-oz/wizard-of-oz.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/55.epub3.images", "bytes": 350507, "sha256": "3e4d594ef72898b8c87ad9a0ee370cd2a9519f4aa7c35c97e65f9d3f881147c1" }]
+        },
+        {
+          "kind": "audiobook",
+          "edition": "LibriVox solo recording",
+          "narrator": "J. Hall",
+          "source": "https://librivox.org/the-wonderful-wizard-of-oz/",
+          "public_domain_evidence": "librivox",
+          "files": [{ "path": "wizard-of-oz/wizard-of-oz.m4b", "format": "M4B", "url": "https://archive.org/download/wizard_of_oz/WonderfulWizardOfOz-48kb_librivox.m4b", "bytes": 82097686, "sha256": "447f9f14f05b9953d8beaeb41f1a3af94bd5d5b3364d51292b2679ccf7a1ff2e" }]
+        }
+      ]
+    },
+    {
+      "title": "The Adventures of Sherlock Holmes",
+      "author": "Arthur Conan Doyle",
+      "editions": [
+        {
+          "kind": "ebook",
+          "edition": "Project Gutenberg EPUB 3 with images, ebook 1661",
+          "source": "https://www.gutenberg.org/ebooks/1661",
+          "public_domain_evidence": "gutenberg",
+          "files": [{ "path": "sherlock-holmes/sherlock-holmes.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/1661.epub3.images", "bytes": 379445, "sha256": "e837276635b63b808453ed833f0e34a0ffca95bc67603f43eb8ae3302713dd9a" }]
+        },
+        {
+          "kind": "audiobook",
+          "edition": "LibriVox collaborative recording",
+          "narrator": "LibriVox volunteers",
+          "source": "https://librivox.org/the-adventures-of-sherlock-holmes/",
+          "public_domain_evidence": "librivox",
+          "files": [{ "path": "sherlock-holmes/sherlock-holmes.m4b", "format": "M4B", "url": "https://archive.org/download/adventures_holmes/Adventures%20of%20Sherlock%20Holmes_librivox.m4b", "bytes": 295730637, "sha256": "f788aafe129cfd846abe23655d545071d43c58288df08767694dc0b0019e5833" }]
+        }
+      ]
+    },
+    {
+      "title": "The Time Machine",
+      "author": "H. G. Wells",
+      "editions": [{ "kind": "ebook", "edition": "Project Gutenberg EPUB 3 with images, ebook 35", "source": "https://www.gutenberg.org/ebooks/35", "public_domain_evidence": "gutenberg", "files": [{ "path": "time-machine/time-machine.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/35.epub3.images", "bytes": 306944, "sha256": "4968e2e2639f7744dbc0df44df35ef55bc590852238dd285737596b9311e5124" }] }]
+    },
+    {
+      "title": "Treasure Island",
+      "author": "Robert Louis Stevenson",
+      "editions": [{ "kind": "ebook", "edition": "Project Gutenberg EPUB 3 with images, ebook 120", "source": "https://www.gutenberg.org/ebooks/120", "public_domain_evidence": "gutenberg", "files": [{ "path": "treasure-island/treasure-island.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/120.epub3.images", "bytes": 49450222, "sha256": "44ff99cf86a502854fb21521f97d2f7bfa5c5a6fe67cd61c092378c0aedd1b65" }] }]
+    },
+    {
+      "title": "Anne of Green Gables",
+      "author": "L. M. Montgomery",
+      "editions": [{ "kind": "ebook", "edition": "Project Gutenberg EPUB 3 with images, ebook 45", "source": "https://www.gutenberg.org/ebooks/45", "public_domain_evidence": "gutenberg", "files": [{ "path": "anne-of-green-gables/anne-of-green-gables.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/45.epub3.images", "bytes": 548997, "sha256": "70f6b218afaa1f72bad045ac400c2d50982aaf70dcab75e0175cfbb5e4c0b990" }] }]
+    },
+    {
+      "title": "The Picture of Dorian Gray",
+      "author": "Oscar Wilde",
+      "editions": [{ "kind": "ebook", "edition": "Project Gutenberg EPUB 3 with images, ebook 174", "source": "https://www.gutenberg.org/ebooks/174", "public_domain_evidence": "gutenberg", "files": [{ "path": "dorian-gray/dorian-gray.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/174.epub3.images", "bytes": 461303, "sha256": "815eda08ac677be35d54eb05ed9e7fe05f667b420fdbe89208088e04f3278631" }] }]
+    },
+    {
+      "title": "The Yellow Wallpaper",
+      "author": "Charlotte Perkins Gilman",
+      "editions": [{ "kind": "ebook", "edition": "Project Gutenberg EPUB 3 with images, ebook 1952", "source": "https://www.gutenberg.org/ebooks/1952", "public_domain_evidence": "gutenberg", "files": [{ "path": "yellow-wallpaper/yellow-wallpaper.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/1952.epub3.images", "bytes": 228848, "sha256": "15217e4a6b8386427538151996aa18923053e3613798e90c2ec97b5d4f848188" }] }]
+    },
+    {
+      "title": "A Christmas Carol",
+      "author": "Charles Dickens",
+      "editions": [{ "kind": "ebook", "edition": "Project Gutenberg EPUB 3 with images, ebook 46", "source": "https://www.gutenberg.org/ebooks/46", "public_domain_evidence": "gutenberg", "files": [{ "path": "christmas-carol/christmas-carol.epub", "format": "EPUB3", "url": "https://www.gutenberg.org/ebooks/46.epub3.images", "bytes": 641209, "sha256": "93444b96ff6d3a6cc9fc4003745a89dfc3090c3e120c525e43a065b4202181b0" }] }]
+    }
+  ],
+  "alignment": {
+    "work": "Alice's Adventures in Wonderland",
+    "required_state": "ready",
+    "note": "Generate and verify the complete read/listen alignment before creating the golden backup."
+  }
+}

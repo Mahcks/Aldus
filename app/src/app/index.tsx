@@ -1,12 +1,24 @@
 import { Redirect, type Href } from 'expo-router';
-import { AppBootState, Notice } from '../features/ui';
+import { AppBootState } from '../features/ui';
 import { useAuth } from '../features/auth/AuthProvider';
+import { useServer } from '../features/auth/ServerProvider';
 
 export default function Home() {
   const auth = useAuth();
-  if (auth.loading) return <AppBootState />;
-  if (auth.error) return <Notice danger>{auth.error}</Notice>;
+  const server = useServer();
+  if (server.loading || auth.loading) return <AppBootState />;
+  if (!server.connected) return <Redirect href={'/connect' as Href} />;
   return (
-    <Redirect href={(auth.user ? '/home' : auth.setupAvailable ? '/setup' : '/login') as Href} />
+    <Redirect
+      href={
+        (auth.user
+          ? '/home'
+          : auth.demoAvailable
+            ? '/demo'
+            : auth.setupAvailable
+              ? '/setup'
+              : '/login') as Href
+      }
+    />
   );
 }

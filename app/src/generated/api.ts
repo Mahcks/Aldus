@@ -175,6 +175,7 @@ export interface User {
   disabled: boolean;
   created_at: string;
   updated_at: string;
+  demo_expires_at?: string;
 }
 export interface Session {
   token?: string;
@@ -194,6 +195,7 @@ export interface SetupRequest {
 }
 export interface SetupStatus {
   available: boolean;
+  demo_available: boolean;
 }
 export interface CreateUserRequest {
   username: string;

@@ -1,0 +1,12 @@
+demo.aldus.media {
+  encode zstd gzip
+  reverse_proxy aldus:8080 {
+    header_up Fly-Client-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+  }
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+  }
+}

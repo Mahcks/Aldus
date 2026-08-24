@@ -1,5 +1,7 @@
 import type { User } from '../../generated/api';
 import { APIError, api, onUnauthorized } from '../../lib/api';
+import { getAPIBaseURL } from '../../lib/api-base';
+import { clearToken } from '../../lib/auth-token';
 import { lastUser, rememberUser } from '../../lib/last-user';
 import { reconcileAllPendingProgress } from '../../lib/progress-outbox';
 import {
@@ -12,37 +14,90 @@ import {
   type PropsWithChildren,
 } from 'react';
 import { AppState, Platform } from 'react-native';
+import { clearStorageScope, prepareStorageScope, setStorageUserID } from '../../lib/storage-scope';
+import { useServer } from './ServerProvider';
 
 type AuthState = {
   loading: boolean;
   setupAvailable: boolean;
+  demoAvailable: boolean;
   user: User | null;
   error: string | null;
 };
 type AuthContextValue = AuthState & {
   refresh: () => Promise<void>;
-  signedIn: (user: User) => void;
+  signedIn: (user: User) => Promise<void>;
   signOut: () => Promise<void>;
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
+  const server = useServer();
   const [state, setState] = useState<AuthState>({
     loading: true,
     setupAvailable: false,
+    demoAvailable: false,
     user: null,
     error: null,
   });
   const refresh = useCallback(async () => {
+    const origin = getAPIBaseURL();
+    if (server.loading) return;
+    if (!server.connected) {
+      setStorageUserID('');
+      setState({
+        loading: false,
+        setupAvailable: false,
+        demoAvailable: false,
+        user: null,
+        error: null,
+      });
+      return;
+    }
     try {
       const user = await api.me();
-      await rememberUser(user);
-      setState({ loading: false, setupAvailable: false, user, error: null });
+      const setup = await api.setupStatus();
+      if (origin !== getAPIBaseURL()) return;
+      await prepareStorageScope(user.id);
+      await rememberUser(user, origin);
+      if (origin !== getAPIBaseURL()) return;
+      setState({
+        loading: false,
+        setupAvailable: false,
+        demoAvailable: setup.demo_available,
+        user,
+        error: null,
+      });
     } catch (error) {
+      if (origin !== getAPIBaseURL()) return;
       if (error instanceof APIError && error.status === 0) {
-        const user = await lastUser();
+        const user = await lastUser(origin);
+        if (origin !== getAPIBaseURL()) return;
         if (user) {
-          setState({ loading: false, setupAvailable: false, user, error: null });
+          if (user.demo_expires_at && new Date(user.demo_expires_at).getTime() <= Date.now()) {
+            await Promise.all([
+              clearToken(origin),
+              rememberUser(null, origin),
+              clearStorageScope(origin, user.id),
+            ]);
+            setStorageUserID('');
+            setState({
+              loading: false,
+              setupAvailable: false,
+              demoAvailable: true,
+              user: null,
+              error: 'This demo visit expired. Connect to start a new one.',
+            });
+            return;
+          }
+          await prepareStorageScope(user.id);
+          setState({
+            loading: false,
+            setupAvailable: false,
+            demoAvailable: Boolean(user.demo_expires_at),
+            user,
+            error: null,
+          });
           return;
         }
       }
@@ -50,6 +105,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setState({
           loading: false,
           setupAvailable: false,
+          demoAvailable: false,
           user: null,
           error: error instanceof Error ? error.message : 'Unable to load Aldus.',
         });
@@ -57,28 +113,45 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       try {
         const setup = await api.setupStatus();
-        setState({ loading: false, setupAvailable: setup.available, user: null, error: null });
+        if (origin !== getAPIBaseURL()) return;
+        setStorageUserID('');
+        setState({
+          loading: false,
+          setupAvailable: setup.available,
+          demoAvailable: setup.demo_available,
+          user: null,
+          error: null,
+        });
       } catch (setupError) {
+        if (origin !== getAPIBaseURL()) return;
         setState({
           loading: false,
           setupAvailable: false,
+          demoAvailable: false,
           user: null,
           error: setupError instanceof Error ? setupError.message : 'Unable to load Aldus.',
         });
       }
     }
-  }, []);
+  }, [server.connected, server.loading]);
   useEffect(() => {
+    setStorageUserID('');
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
   useEffect(() => {
     onUnauthorized(() => {
       void rememberUser(null);
-      setState((value) => ({ ...value, user: null }));
+      setStorageUserID('');
+      setState((value) => ({
+        ...value,
+        demoAvailable: value.demoAvailable || Boolean(value.user?.demo_expires_at),
+        user: null,
+      }));
+      if (state.user?.demo_expires_at) void clearStorageScope(server.origin, state.user.id);
     });
     return () => onUnauthorized();
-  }, []);
+  }, [server.origin, state.user]);
   useEffect(() => {
     if (!state.user || Platform.OS === 'web') return;
     void reconcileAllPendingProgress();
@@ -91,16 +164,35 @@ export function AuthProvider({ children }: PropsWithChildren) {
     () => ({
       ...state,
       refresh,
-      signedIn: (user: User) => {
-        void rememberUser(user);
-        setState({ loading: false, setupAvailable: false, user, error: null });
+      signedIn: async (user: User) => {
+        const origin = getAPIBaseURL();
+        await prepareStorageScope(user.id);
+        await rememberUser(user, origin);
+        if (origin !== getAPIBaseURL()) return;
+        setState({
+          loading: false,
+          setupAvailable: false,
+          demoAvailable: state.demoAvailable || Boolean(user.demo_expires_at),
+          user,
+          error: null,
+        });
       },
       signOut: async () => {
+        const origin = getAPIBaseURL();
         try {
           await api.logout();
         } finally {
-          await rememberUser(null);
-          setState({ loading: false, setupAvailable: false, user: null, error: null });
+          await rememberUser(null, origin);
+          if (origin === getAPIBaseURL()) {
+            setStorageUserID('');
+            setState({
+              loading: false,
+              setupAvailable: false,
+              demoAvailable: state.demoAvailable || Boolean(state.user?.demo_expires_at),
+              user: null,
+              error: null,
+            });
+          }
         }
       },
     }),

@@ -27,5 +27,6 @@ type Dependencies struct {
 	TitleRequests       *acquisition.TitleRequestStore
 	Diagnostics         *diagnostics.Store
 	Notifications       *notification.Store
+	TrustProxyHeaders   bool
 	Ready               func(context.Context) error
 }

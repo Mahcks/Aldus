@@ -15,6 +15,7 @@ describe('API transport', () => {
       'http://aldus-dev.local:8080',
     );
     expect(resolveAPIBaseURL(undefined, 'web')).toBe('');
+    expect(resolveAPIBaseURL('https://demo.aldus.media', 'web')).toBe('');
     expect(resolveAPIBaseURL('http://192.168.86.28:8080', 'web', 'http://localhost:8080')).toBe(
       'http://localhost:8080',
     );
@@ -27,9 +28,9 @@ describe('API transport', () => {
     let request: RequestInit | undefined;
     globalThis.fetch = (async (_input, init) => {
       request = init;
-      return Response.json({ available: true });
+      return Response.json({ available: true, demo_available: false });
     }) as typeof fetch;
-    expect(await api.setupStatus()).toEqual({ available: true });
+    expect(await api.setupStatus()).toEqual({ available: true, demo_available: false });
     expect(request?.credentials).toBe('include');
   });
 

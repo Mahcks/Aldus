@@ -20,6 +20,8 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUnauthenticated    = errors.New("unauthenticated")
 	ErrInvalid            = errors.New("invalid authentication input")
+	ErrDemoDisabled       = errors.New("demo access disabled")
+	ErrDemoCapacity       = errors.New("demo access is full")
 )
 
 const CookieName = "aldus_session"
@@ -29,16 +31,20 @@ var usernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,63}$`)
 type Options struct {
 	SessionTTL    time.Duration
 	SecureCookies bool
+	DemoLibraryID string
+	DemoTTL       time.Duration
+	DemoCapacity  int
 }
 
 type User struct {
-	ID          string    `json:"id"`
-	Username    string    `json:"username"`
-	DisplayName string    `json:"display_name"`
-	Admin       bool      `json:"admin"`
-	Disabled    bool      `json:"disabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            string     `json:"id"`
+	Username      string     `json:"username"`
+	DisplayName   string     `json:"display_name"`
+	Admin         bool       `json:"admin"`
+	Disabled      bool       `json:"disabled"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DemoExpiresAt *time.Time `json:"demo_expires_at,omitempty"`
 }
 
 type Session struct {
@@ -64,6 +70,12 @@ func New(db *sql.DB, options Options) (*Store, error) {
 	if options.SessionTTL <= 0 {
 		options.SessionTTL = 30 * 24 * time.Hour
 	}
+	if options.DemoTTL <= 0 {
+		options.DemoTTL = 24 * time.Hour
+	}
+	if options.DemoCapacity <= 0 {
+		options.DemoCapacity = 500
+	}
 	dummyHash, err := HashPassword("not-a-real-password")
 	if err != nil {
 		return nil, fmt.Errorf("prepare credential check: %w", err)
@@ -77,6 +89,19 @@ func (s *Store) SetupAvailable(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("count users: %w", err)
 	}
 	return count == 0, nil
+}
+
+func (s *Store) DemoAvailable() bool { return s.options.DemoLibraryID != "" }
+
+func (s *Store) DemoReady(ctx context.Context) (bool, error) {
+	if !s.DemoAvailable() {
+		return false, nil
+	}
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, s.options.DemoLibraryID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("find demo library: %w", err)
+	}
+	return exists == 1, nil
 }
 
 func (s *Store) Setup(ctx context.Context, credentials Credentials) (Session, error) {
@@ -130,8 +155,9 @@ func (s *Store) Login(ctx context.Context, credentials Credentials) (Session, er
 	var user User
 	var passwordHash, createdAt, updatedAt string
 	var admin, disabled int
-	err := s.db.QueryRowContext(ctx, `SELECT id,username,display_name,password_hash,is_admin,disabled,created_at,updated_at FROM users WHERE username_normalized = ?`, username).
-		Scan(&user.ID, &user.Username, &user.DisplayName, &passwordHash, &admin, &disabled, &createdAt, &updatedAt)
+	var demoExpiresAt sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id,username,display_name,password_hash,is_admin,disabled,created_at,updated_at,demo_expires_at FROM users WHERE username_normalized = ?`, username).
+		Scan(&user.ID, &user.Username, &user.DisplayName, &passwordHash, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		_, _ = VerifyPassword(s.dummyHash, credentials.Password)
 		return Session{}, ErrInvalidCredentials
@@ -147,6 +173,16 @@ func (s *Store) Login(ctx context.Context, credentials Credentials) (Session, er
 		return Session{}, ErrInvalidCredentials
 	}
 	user.Admin, user.Disabled = admin != 0, disabled != 0
+	if demoExpiresAt.Valid {
+		expires, parseErr := parseTime(demoExpiresAt.String)
+		if parseErr != nil {
+			return Session{}, parseErr
+		}
+		user.DemoExpiresAt = &expires
+		if !expires.After(time.Now().UTC()) {
+			return Session{}, ErrInvalidCredentials
+		}
+	}
 	if user.CreatedAt, err = parseTime(createdAt); err != nil {
 		return Session{}, err
 	}
@@ -186,8 +222,9 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	var createdAt, updatedAt string
 	var admin, disabled int
 	now := time.Now().UTC()
-	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.username,u.display_name,u.is_admin,u.disabled,u.created_at,u.updated_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0`, hash[:], formatTime(now)).
-		Scan(&user.ID, &user.Username, &user.DisplayName, &admin, &disabled, &createdAt, &updatedAt)
+	var demoExpiresAt sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.username,u.display_name,u.is_admin,u.disabled,u.created_at,u.updated_at,u.demo_expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0 AND (u.demo_expires_at IS NULL OR u.demo_expires_at>?)`, hash[:], formatTime(now), formatTime(now)).
+		Scan(&user.ID, &user.Username, &user.DisplayName, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrUnauthenticated
 	}
@@ -195,6 +232,13 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 		return User{}, fmt.Errorf("authenticate session: %w", err)
 	}
 	user.Admin, user.Disabled = admin != 0, disabled != 0
+	if demoExpiresAt.Valid {
+		expires, parseErr := parseTime(demoExpiresAt.String)
+		if parseErr != nil {
+			return User{}, parseErr
+		}
+		user.DemoExpiresAt = &expires
+	}
 	if user.CreatedAt, err = parseTime(createdAt); err != nil {
 		return User{}, err
 	}

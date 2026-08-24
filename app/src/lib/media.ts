@@ -6,8 +6,8 @@ export function mediaURL(name: string) {
   return `${apiBaseURL}/media/${name}`;
 }
 
-export function productMediaURL(id: string) {
-  return `${apiBaseURL}/api/media/${encodeURIComponent(id)}`;
+export function productMediaURL(id: string, origin = apiBaseURL) {
+  return `${origin}/api/media/${encodeURIComponent(id)}`;
 }
 
 export async function productAudioSource(id: string, _expectedSize?: number): Promise<AudioSource> {

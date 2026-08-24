@@ -135,9 +135,14 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
-	authStore, err := auth.New(db, auth.Options{SecureCookies: cfg.SecureCookies})
+	authStore, err := auth.New(db, auth.Options{SecureCookies: cfg.SecureCookies, DemoLibraryID: cfg.DemoLibraryID})
 	if err != nil {
 		slog.Error("open authentication database", "error", err)
+		db.Close()
+		os.Exit(1)
+	}
+	if err := authStore.CleanupExpiredDemoUsers(ctx); err != nil {
+		slog.Error("clean expired demo users", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
@@ -178,7 +183,7 @@ func main() {
 			TitleRequests:       titleRequestStore,
 			Notifications:       notificationStore,
 			Diagnostics:         diagnosticStore,
-			KOReader:            koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins,
+			KOReader:            koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins, TrustProxyHeaders: cfg.TrustProxyHeaders,
 			Ready: func(ctx context.Context) error {
 				if err := db.PingContext(ctx); err != nil {
 					return fmt.Errorf("database: %w", err)

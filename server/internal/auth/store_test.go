@@ -177,6 +177,74 @@ func TestExpiredAndDisabledSessionsAreRejected(t *testing.T) {
 	}
 }
 
+func TestDemoSessionLifecycle(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{DemoLibraryID: "demo-library", DemoTTL: time.Hour, DemoCapacity: 1})
+	admin, err := store.Setup(ctx, Credentials{Username: "admin", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO libraries(id,name,created_at,updated_at) VALUES('demo-library','Demo',?,?)`, formatTime(time.Now().UTC()), formatTime(time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	guest, err := store.CreateDemoSession(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guest.User.Admin || guest.User.DemoExpiresAt == nil || guest.User.Username == admin.User.Username {
+		t.Fatalf("demo user = %#v", guest.User)
+	}
+	users, err := store.Users(ctx, admin.User, 50, 0)
+	if err != nil || len(users) != 1 || users[0].ID != admin.User.ID {
+		t.Fatalf("admin users = %#v, %v", users, err)
+	}
+	var role string
+	var exclusive, canRequest, canBypass, canAdvanced int
+	if err := store.db.QueryRowContext(ctx, `SELECT role,exclusive,can_request_acquisitions,can_bypass_acquisition_approval,can_advanced_acquisition_request FROM library_members WHERE user_id=?`, guest.User.ID).Scan(&role, &exclusive, &canRequest, &canBypass, &canAdvanced); err != nil {
+		t.Fatal(err)
+	}
+	if role != "reader" || exclusive != 0 || canRequest != 0 || canBypass != 0 || canAdvanced != 0 {
+		t.Fatalf("demo membership = %q %d %d %d %d", role, exclusive, canRequest, canBypass, canAdvanced)
+	}
+	if _, err := store.CreateDemoSession(ctx); !errors.Is(err, ErrDemoCapacity) {
+		t.Fatalf("capacity error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE users SET demo_expires_at=? WHERE id=?`, formatTime(time.Now().Add(-time.Hour)), guest.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, guest.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("expired guest authentication = %v", err)
+	}
+	if err := store.CleanupExpiredDemoUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE id=?`, guest.User.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("expired guest count = %d, %v", count, err)
+	}
+	if _, err := store.CreateDemoSession(ctx); err != nil {
+		t.Fatalf("replacement guest = %v", err)
+	}
+}
+
+func TestDemoSessionRequiresConfiguredLibrary(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{})
+	if store.DemoAvailable() {
+		t.Fatal("demo unexpectedly available")
+	}
+	if _, err := store.CreateDemoSession(ctx); !errors.Is(err, ErrDemoDisabled) {
+		t.Fatalf("disabled demo error = %v", err)
+	}
+	configured, _ := openTestStore(t, Options{DemoLibraryID: "missing"})
+	if ready, err := configured.DemoReady(ctx); err != nil || ready {
+		t.Fatalf("missing demo library ready = %v, %v", ready, err)
+	}
+	if _, err := configured.CreateDemoSession(ctx); !errors.Is(err, ErrDemoDisabled) {
+		t.Fatalf("missing library error = %v", err)
+	}
+}
+
 func TestAdminUserManagement(t *testing.T) {
 	ctx := context.Background()
 	store, _ := openTestStore(t, Options{})

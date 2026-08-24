@@ -95,7 +95,7 @@ function AppShellChrome() {
   async function handleSignOut() {
     setSheetOpen(false);
     await auth.signOut();
-    router.replace('/login');
+    router.replace('/');
   }
   function handleBrandPress() {
     router.replace('/home' as Href);

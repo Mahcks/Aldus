@@ -1,0 +1,44 @@
+app = "aldus-demo"
+primary_region = "ord"
+
+[build]
+  dockerfile = "../Dockerfile"
+  ignorefile = "../.dockerignore"
+  build-target = "demo"
+
+  [build.args]
+    VERSION = "demo"
+
+[env]
+  ALDUS_ADDR = ":8080"
+  ALDUS_ALLOWED_ORIGINS = "https://demo.aldus.media"
+  ALDUS_DATA_DIR = "/data/aldus"
+  ALDUS_ENV = "production"
+  ALDUS_LOG_LEVEL = "info"
+  ALDUS_SECURE_COOKIES = "true"
+  ALDUS_SOURCE_ROOTS = "/data/demo-media"
+  ALDUS_TRUST_PROXY_HEADERS = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/ready"
+    timeout = "5s"
+
+[[mounts]]
+  source = "aldus_demo_data"
+  destination = "/data"
+  initial_size = "10gb"
+  snapshot_retention = 14
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

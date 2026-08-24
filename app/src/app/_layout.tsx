@@ -12,6 +12,17 @@ import { StatusBar } from 'expo-status-bar';
 
 import '../global.css';
 import { AuthProvider } from '../features/auth/AuthProvider';
+import { ServerProvider, useServer } from '../features/auth/ServerProvider';
+
+function ServerSession() {
+  const server = useServer();
+  return (
+    <AuthProvider key={server.origin}>
+      <Stack screenOptions={{ headerShown: false }} />
+      <StatusBar style="auto" />
+    </AuthProvider>
+  );
+}
 
 export default function Layout() {
   const [fontsLoaded] = useFonts({
@@ -27,9 +38,8 @@ export default function Layout() {
   if (!fontsLoaded) return null;
 
   return (
-    <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="auto" />
-    </AuthProvider>
+    <ServerProvider>
+      <ServerSession />
+    </ServerProvider>
   );
 }

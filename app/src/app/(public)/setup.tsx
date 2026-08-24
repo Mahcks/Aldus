@@ -29,7 +29,7 @@ export default function Setup() {
     try {
       const user = await api.setup(form);
       setForm((value) => ({ ...value, password: '', password_confirmation: '' }));
-      auth.signedIn(user);
+      await auth.signedIn(user);
       router.replace('/system');
     } catch (value) {
       setError(

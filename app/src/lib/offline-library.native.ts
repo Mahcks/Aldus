@@ -16,6 +16,7 @@ import { productEPUBSource } from './epub-source';
 import { productAudioSource } from './media';
 import { pendingProgress } from './progress-outbox';
 import { parseStoredJSON } from './stored-json';
+import { activeStorageScope, scopedMediaFileName, scopedStorageKey } from './storage-scope';
 
 export type OfflineWork = {
   work: WorkDetail;
@@ -32,26 +33,35 @@ export type OfflineWork = {
   downloaded_at: string;
 };
 
-const key = (workID: string) => `aldus:offline-work:${workID}`;
-const prefix = 'aldus:offline-work:';
-const librariesKey = 'aldus:offline-libraries';
+const key = (scope: string, workID: string) => scopedStorageKey(`offline-work:${workID}`, scope);
+const prefix = (scope: string) => scopedStorageKey('offline-work:', scope);
+const librariesKey = (scope: string) => scopedStorageKey('offline-libraries', scope);
 
 export async function offlineWorks(): Promise<OfflineWork[]> {
-  const keys = (await AsyncStorage.getAllKeys()).filter((item) => item.startsWith(prefix));
-  const values = await Promise.all(keys.map((item) => offlineWork(item.slice(prefix.length))));
+  const scope = activeStorageScope();
+  const scopedPrefix = prefix(scope);
+  const keys = (await AsyncStorage.getAllKeys()).filter((item) => item.startsWith(scopedPrefix));
+  const values = await Promise.all(
+    keys.map((item) => offlineWork(item.slice(scopedPrefix.length), scope)),
+  );
   return values.filter((item): item is OfflineWork => Boolean(item));
 }
 
 export async function rememberOfflineLibraries(libraries: Library[]) {
-  const raw = await AsyncStorage.getItem(librariesKey);
+  const scope = activeStorageScope();
+  const raw = await AsyncStorage.getItem(librariesKey(scope));
   const saved = parseStoredJSON<Library[]>(raw) ?? [];
   const merged = new Map(saved.map((item) => [item.id, item]));
   for (const library of libraries) merged.set(library.id, library);
-  await AsyncStorage.setItem(librariesKey, JSON.stringify([...merged.values()]));
+  await AsyncStorage.setItem(librariesKey(scope), JSON.stringify([...merged.values()]));
 }
 
 export async function offlineLibraries(): Promise<Library[]> {
-  const [raw, works] = await Promise.all([AsyncStorage.getItem(librariesKey), offlineWorks()]);
+  const scope = activeStorageScope();
+  const [raw, works] = await Promise.all([
+    AsyncStorage.getItem(librariesKey(scope)),
+    offlineWorks(),
+  ]);
   const saved = parseStoredJSON<Library[]>(raw) ?? [];
   const ids = new Set(works.map((item) => item.work.library_id));
   const libraries = new Map(
@@ -99,12 +109,15 @@ export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSumm
     });
 }
 
-export async function offlineWork(workID: string): Promise<OfflineWork | null> {
-  const raw = await AsyncStorage.getItem(key(workID));
+export async function offlineWork(
+  workID: string,
+  scope = activeStorageScope(),
+): Promise<OfflineWork | null> {
+  const raw = await AsyncStorage.getItem(key(scope, workID));
   if (!raw) return null;
   const value = parseStoredJSON<OfflineWork>(raw);
   if (!value) {
-    await AsyncStorage.removeItem(key(workID));
+    await AsyncStorage.removeItem(key(scope, workID));
     return null;
   }
   value.audio_chapters = offlineAudioChapters(value.audio_chapters);
@@ -113,42 +126,45 @@ export async function offlineWork(workID: string): Promise<OfflineWork | null> {
     media.some((item) => {
       const file = new File(
         Paths.document,
-        `aldus-${item.id}.${item.representation.kind === 'epub' ? 'epub' : 'audio'}`,
+        scopedMediaFileName(item.id, item.representation.kind === 'epub' ? 'epub' : 'audio', scope),
       );
       return !file.exists || file.size !== item.size_bytes;
     })
   ) {
-    await AsyncStorage.removeItem(key(workID));
+    await AsyncStorage.removeItem(key(scope, workID));
     return null;
   }
   return value;
 }
 
 export async function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_at'>) {
+  const scope = activeStorageScope();
   await Promise.all([
     ...value.epubs.map((item) => productEPUBSource(item.id, item.size_bytes)),
     ...value.audio.map((item) => productAudioSource(item.id, item.size_bytes)),
   ]);
   const stored = { ...value, downloaded_at: new Date().toISOString() };
-  await AsyncStorage.setItem(key(value.work.id), JSON.stringify(stored));
+  await AsyncStorage.setItem(key(scope, value.work.id), JSON.stringify(stored));
   return stored;
 }
 
 export async function removeOfflineWork(workID: string) {
+  const scope = activeStorageScope();
   if (await pendingProgress(workID))
     throw new Error('Sync this device before removing the download.');
   const value = await offlineWork(workID);
   for (const item of [...(value?.epubs ?? []), ...(value?.audio ?? [])]) {
     const file = new File(
       Paths.document,
-      `aldus-${item.id}.${item.representation.kind === 'epub' ? 'epub' : 'audio'}`,
+      scopedMediaFileName(item.id, item.representation.kind === 'epub' ? 'epub' : 'audio', scope),
     );
     if (file.exists) file.delete();
   }
-  await AsyncStorage.removeItem(key(workID));
+  await AsyncStorage.removeItem(key(scope, workID));
 }
 
 export async function updateOfflineProgress(workID: string, progress: CanonicalPosition) {
+  const scope = activeStorageScope();
   const value = await offlineWork(workID);
-  if (value) await AsyncStorage.setItem(key(workID), JSON.stringify({ ...value, progress }));
+  if (value) await AsyncStorage.setItem(key(scope, workID), JSON.stringify({ ...value, progress }));
 }

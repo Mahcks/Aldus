@@ -18,7 +18,8 @@
       }
     },
     "android": {
-      "package": "com.mahcks.aldus"
+      "package": "com.mahcks.aldus",
+      "usesCleartextTraffic": true
     },
     "web": {
       "bundler": "metro",

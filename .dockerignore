@@ -1,6 +1,13 @@
 .git
 .github
+.tools
+artifacts
 app/.expo
 app/dist
 app/node_modules
 data
+demo/backups
+demo/data
+demo/media
+library-media
+test-fixtures/alice/media
