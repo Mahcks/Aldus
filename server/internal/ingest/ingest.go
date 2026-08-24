@@ -283,7 +283,7 @@ func (s *Store) Media(ctx context.Context, actor auth.User, libraryID, represent
 func (s *Store) Open(ctx context.Context, actor auth.User, id string) (*os.File, Media, error) {
 	var m Media
 	var created string
-	err := s.db.QueryRowContext(ctx, `SELECT md.id,md.representation_id,md.kind,md.sha256,md.original_filename,md.size_bytes,md.created_at FROM media md JOIN representations r ON r.id=md.representation_id JOIN works w ON w.id=r.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE md.id=? AND (? OR lm.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&m.ID, &m.RepresentationID, &m.Kind, &m.SHA256, &m.OriginalFilename, &m.SizeBytes, &created)
+	err := s.db.QueryRowContext(ctx, `SELECT md.id,md.representation_id,md.kind,md.sha256,md.original_filename,md.size_bytes,md.created_at FROM media md JOIN representations r ON r.id=md.representation_id JOIN works w ON w.id=r.work_id WHERE md.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), append([]any{id}, auth.LibraryAccessArgs(actor)...)...).Scan(&m.ID, &m.RepresentationID, &m.Kind, &m.SHA256, &m.OriginalFilename, &m.SizeBytes, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, Media{}, ErrNotFound
 	}
@@ -414,7 +414,9 @@ func (s *Store) editableRepresentation(ctx context.Context, actor auth.User, lib
 }
 func (s *Store) readableRepresentation(ctx context.Context, actor auth.User, libraryID, id string) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE r.id=? AND w.library_id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, libraryID, actor.Admin).Scan(&n)
+	args := []any{id, libraryID}
+	args = append(args, auth.LibraryAccessArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM representations r JOIN works w ON w.id=r.work_id WHERE r.id=? AND w.library_id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), args...).Scan(&n)
 	return n == 1, err
 }
 func (s *Store) existing(ctx context.Context, representationID, hash string) (Media, bool, error) {

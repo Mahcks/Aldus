@@ -116,6 +116,7 @@ export default function LibraryScreen() {
   const [canRequestAcquisitions, setCanRequestAcquisitions] = useState(false);
   const [canBypassAcquisitionApproval, setCanBypassAcquisitionApproval] = useState(false);
   const [canAdvancedAcquisitionRequest, setCanAdvancedAcquisitionRequest] = useState(false);
+  const [exclusive, setExclusive] = useState(false);
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [policy, setPolicy] = useState<AcquisitionPolicy>();
   const [ebookSourceID, setEbookSourceID] = useState('');
@@ -136,20 +137,24 @@ export default function LibraryScreen() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingLibrary, setDeletingLibrary] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [libraryCount, setLibraryCount] = useState(1);
 
   async function load() {
     if (!id) return;
     try {
-      const [nextLibrary, nextMembers, nextUsers] = await Promise.all([
+      const [nextLibrary, nextMembers, nextUsers, nextLibraries] = await Promise.all([
         api.library(id),
         api.members(id),
         auth.user?.admin ? api.users() : Promise.resolve([]),
+        api.libraries(),
       ]);
       setLibrary(nextLibrary);
       await rememberOfflineLibraries([nextLibrary]).catch(() => {});
       setName(nextLibrary.name);
       setMembers(nextMembers);
       setUsers(nextUsers);
+      setLibraryCount(nextLibraries.length);
+      if (nextLibraries.length < 2) setExclusive(false);
     } catch (value) {
       if (!(value instanceof APIError && value.status === 0)) {
         setError(errorMessage(value));
@@ -321,11 +326,13 @@ export default function LibraryScreen() {
         canRequestAcquisitions,
         canBypassAcquisitionApproval,
         canAdvancedAcquisitionRequest,
+        exclusive,
       );
       setMemberID('');
       setCanRequestAcquisitions(false);
       setCanBypassAcquisitionApproval(false);
       setCanAdvancedAcquisitionRequest(false);
+      setExclusive(false);
       await load();
     } catch (value) {
       setError(errorMessage(value));
@@ -341,6 +348,7 @@ export default function LibraryScreen() {
         member.can_request_acquisitions,
         member.can_bypass_acquisition_approval,
         member.can_advanced_acquisition_request,
+        member.exclusive,
       );
       await load();
     } catch (value) {
@@ -366,6 +374,24 @@ export default function LibraryScreen() {
         permission === 'advanced'
           ? !member.can_advanced_acquisition_request
           : member.can_advanced_acquisition_request,
+        member.exclusive,
+      );
+      await load();
+    } catch (value) {
+      setError(errorMessage(value));
+    }
+  }
+
+  async function toggleExclusive(member: Membership) {
+    try {
+      await api.setMember(
+        id,
+        member.user_id,
+        member.role,
+        member.can_request_acquisitions,
+        member.can_bypass_acquisition_approval,
+        member.can_advanced_acquisition_request,
+        !member.exclusive,
       );
       await load();
     } catch (value) {
@@ -620,6 +646,12 @@ export default function LibraryScreen() {
             Guided requests always follow the owner’s download rules. Skip approval starts a guided
             request automatically. Advanced release choice may bypass those rules.
           </Notice>
+          {libraryCount > 1 ? (
+            <Notice>
+              Access is normally additive. An exclusive grant limits that account to the union of
+              libraries where its membership is also exclusive.
+            </Notice>
+          ) : null}
           {members.map((member) => (
             <View
               key={member.user_id}
@@ -633,6 +665,15 @@ export default function LibraryScreen() {
                 value={member.role as Role}
                 onChange={(next) => void changeMemberRole(member, next)}
               />
+              {libraryCount > 1 ? (
+                <View className="min-w-[220px]">
+                  <Checkbox
+                    label="Exclusive access grant"
+                    checked={member.exclusive}
+                    onPress={() => void toggleExclusive(member)}
+                  />
+                </View>
+              ) : null}
               {member.role === 'reader' ? (
                 <View className="min-w-[220px] gap-1">
                   <Checkbox
@@ -671,6 +712,13 @@ export default function LibraryScreen() {
                 ))}
               </View>
               <RoleControl value={role} onChange={setRole} />
+              {libraryCount > 1 ? (
+                <Checkbox
+                  label="Exclusive access grant"
+                  checked={exclusive}
+                  onPress={() => setExclusive((current) => !current)}
+                />
+              ) : null}
               {role === 'reader' ? (
                 <View className="gap-1">
                   <Checkbox

@@ -91,3 +91,50 @@ func TestPersonalCollectionCRUDOrderingAndVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExclusiveMembershipHidesAdditiveCollectionWorks(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('owner','owner','owner','Owner','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	owner, reader := auth.User{ID: "owner"}, auth.User{ID: "reader"}
+	catalogStore := catalog.New(db)
+	additive, _ := catalogStore.CreateLibrary(ctx, owner, "Family")
+	exclusive, _ := catalogStore.CreateLibrary(ctx, owner, "Kids")
+	if err := catalogStore.SetMember(ctx, owner, additive.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalogStore.SetMember(ctx, owner, exclusive.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	additiveWork, _ := catalogStore.CreateWork(ctx, owner, additive.ID, "Parent book", "Author")
+	exclusiveWork, _ := catalogStore.CreateWork(ctx, owner, exclusive.ID, "Kids book", "Author")
+	store := New(db)
+	collection, _ := store.Create(ctx, reader, "Shelf", "")
+	if err := store.AddWork(ctx, reader, collection.ID, additiveWork.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddWork(ctx, reader, collection.ID, exclusiveWork.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalogStore.SetMember(ctx, owner, exclusive.ID, reader.ID, "reader", false, false, false, true); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := store.Get(ctx, reader, collection.ID)
+	if err != nil || loaded.WorkCount != 1 || loaded.Works[0].ID != exclusiveWork.ID {
+		t.Fatalf("exclusive collection = %#v, %v", loaded, err)
+	}
+	listed, err := store.List(ctx, reader)
+	if err != nil || len(listed) != 1 || listed[0].WorkCount != 1 {
+		t.Fatalf("exclusive collection count = %#v, %v", listed, err)
+	}
+	if err := store.AddWork(ctx, reader, collection.ID, additiveWork.ID); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("re-add hidden work = %v", err)
+	}
+}

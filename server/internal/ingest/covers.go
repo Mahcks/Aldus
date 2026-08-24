@@ -19,7 +19,7 @@ type Cover struct {
 }
 
 func (s *Store) Covers(ctx context.Context, actor auth.User, workID string) ([]Cover, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.kind,r.label FROM media m JOIN representations r ON r.id=m.representation_id JOIN works w ON w.id=r.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE w.id=? AND (? OR lm.user_id IS NOT NULL) ORDER BY m.created_at DESC,m.id`, actor.ID, workID, actor.Admin)
+	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.kind,r.label FROM media m JOIN representations r ON r.id=m.representation_id JOIN works w ON w.id=r.work_id WHERE w.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+` ORDER BY m.created_at DESC,m.id`, append([]any{workID}, auth.LibraryAccessArgs(actor)...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (s *Store) Covers(ctx context.Context, actor auth.User, workID string) ([]C
 	}
 	if covers == nil {
 		var exists int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM works w LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE w.id=? AND (? OR lm.user_id IS NOT NULL)`, actor.ID, workID, actor.Admin).Scan(&exists); err != nil || exists == 0 {
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM works w WHERE w.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), append([]any{workID}, auth.LibraryAccessArgs(actor)...)...).Scan(&exists); err != nil || exists == 0 {
 			return nil, ErrNotFound
 		}
 	}

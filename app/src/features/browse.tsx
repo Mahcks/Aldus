@@ -33,7 +33,7 @@ export const browseFilters = [
  * screens, where `Select`'s wrapping button grid consumes too much vertical
  * space. Same radiogroup semantics and `Button` primitive underneath.
  */
-function CompactFilterRow({
+export function BrowseFacet({
   label,
   options,
   value,
@@ -93,13 +93,8 @@ export function BrowseControls({
 
   return (
     <View className="flex-row flex-wrap gap-x-6 gap-y-2.5">
-      <CompactFilterRow
-        label="Sort by"
-        options={sortOptions}
-        value={sort}
-        onChange={onSortChange}
-      />
-      <CompactFilterRow
+      <BrowseFacet label="Sort by" options={sortOptions} value={sort} onChange={onSortChange} />
+      <BrowseFacet
         label="Availability"
         options={availabilityOptions}
         value={availability}

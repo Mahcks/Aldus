@@ -311,3 +311,56 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 		}
 	}
 }
+
+func TestExclusiveMembershipOverridesAdditiveCatalogAccess(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	reader := createUser(t, accounts, admin, "exclusive-reader")
+	additive, err := store.CreateLibrary(ctx, admin, "Family")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exclusive, err := store.CreateLibrary(ctx, admin, "Kids")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, additive.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, exclusive.ID, reader.ID, "reader", false, false, false, true); err != nil {
+		t.Fatal(err)
+	}
+	additiveWork, _ := store.CreateWork(ctx, admin, additive.ID, "Parent book", "Author")
+	exclusiveWork, _ := store.CreateWork(ctx, admin, exclusive.ID, "Kids book", "Author")
+
+	works, _, err := store.BrowseWorks(ctx, reader, BrowseOptions{Sort: "title"})
+	if err != nil || len(works) != 1 || works[0].ID != exclusiveWork.ID {
+		t.Fatalf("exclusive browse = %#v, %v", works, err)
+	}
+	works, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{LibraryID: additive.ID})
+	if err != nil || len(works) != 0 {
+		t.Fatalf("additive filter bypassed override = %#v, %v", works, err)
+	}
+	if _, err := store.Work(ctx, reader, additiveWork.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("direct additive work access = %v", err)
+	}
+	if _, err := store.Works(ctx, reader, additive.ID, 50, 0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("additive library listing access = %v", err)
+	}
+
+	libraries, err := store.Libraries(ctx, reader, 50, 0)
+	if err != nil || len(libraries) != 2 || libraries[0].Effective || !libraries[1].Effective || !libraries[1].Exclusive {
+		t.Fatalf("effective libraries = %#v, %v", libraries, err)
+	}
+	adminWorks, _, err := store.BrowseWorks(ctx, admin, BrowseOptions{Sort: "title"})
+	if err != nil || len(adminWorks) != 2 {
+		t.Fatalf("additive admin browse = %#v, %v", adminWorks, err)
+	}
+	if err := store.SetMember(ctx, admin, exclusive.ID, admin.ID, "owner", true, true, true, true); err != nil {
+		t.Fatal(err)
+	}
+	adminWorks, _, err = store.BrowseWorks(ctx, admin, BrowseOptions{Sort: "title"})
+	if err != nil || len(adminWorks) != 1 || adminWorks[0].ID != exclusiveWork.ID {
+		t.Fatalf("exclusive admin grant = %#v, %v", adminWorks, err)
+	}
+}

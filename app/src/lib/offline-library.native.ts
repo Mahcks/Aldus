@@ -62,6 +62,8 @@ export async function offlineLibraries(): Promise<Library[]> {
     libraries.set(item.work.library_id, {
       id: item.work.library_id,
       name: 'Offline downloads',
+      exclusive: false,
+      effective: true,
       can_request_acquisitions: false,
       can_bypass_acquisition_approval: false,
       can_advanced_acquisition_request: false,

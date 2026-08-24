@@ -12,6 +12,8 @@ const library = (role: string): Library => ({
   id: 'library',
   name: 'Library',
   role,
+  exclusive: false,
+  effective: true,
   can_request_acquisitions: role === 'owner' || role === 'editor',
   can_bypass_acquisition_approval: role === 'owner' || role === 'editor',
   can_advanced_acquisition_request: role === 'owner' || role === 'editor',

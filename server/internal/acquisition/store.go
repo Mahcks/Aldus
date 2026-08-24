@@ -278,7 +278,8 @@ func (s *Store) Available(ctx context.Context) (bool, error) {
 }
 
 func (s *Store) Destinations(ctx context.Context, actor auth.User) ([]Destination, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,ls.id,ls.name FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE ? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1 ORDER BY l.name,ls.name`, actor.ID, actor.Admin)
+	args := append([]any{actor.ID}, auth.LibraryAccessArgs(actor)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,ls.id,ls.name FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1) ORDER BY l.name,ls.name`, append(args, actor.Admin)...)
 	if err != nil {
 		return nil, fmt.Errorf("list acquisition destinations: %w", err)
 	}
@@ -717,13 +718,15 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, sourceID
 	}
 	now := time.Now().UTC()
 	stamp := now.Format(time.RFC3339Nano)
+	args := []any{id, actor.ID, query, stamp, stamp, sourceID, actor.ID, libraryID}
+	args = append(args, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin)
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,created_at,updated_at)
 		SELECT ?,l.id,?,ls.id,?,'requested',?,?
 		FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.id=? AND ls.enabled=1 AND ls.deleted_at IS NULL
 		LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=?
-		WHERE l.id=? AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1)`,
-		id, actor.ID, query, stamp, stamp, sourceID, actor.ID, libraryID, actor.Admin)
+		WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1)`, args...)
 	if err != nil {
 		return Request{}, fmt.Errorf("create acquisition request: %w", err)
 	}
@@ -893,6 +896,9 @@ func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, librar
 	if len(resultIDs) != 2 || resultIDs[0] == resultIDs[1] {
 		return Pair{}, ErrInvalid
 	}
+	if err := s.authorizeLibrary(ctx, actor, libraryID); err != nil {
+		return Pair{}, err
+	}
 	s.discoveryMu.Lock()
 	discovery, ok := s.discoveries[discoveryID]
 	first, firstOK := discovery.Results[resultIDs[0]]
@@ -932,7 +938,10 @@ func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, librar
 			return Pair{}, err
 		}
 		requestIDs[index] = requestID
-		result, err := tx.ExecContext(ctx, `INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,pair_id,advisory_title,advisory_author,advisory_isbn,advisory_year,advisory_cover_id,advisory_cover_url,advisory_description,advisory_source,created_at,updated_at) SELECT ?,l.id,?,ls.id,?,'requested',?,?,?,?,?,?,?,?,?,?,? FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.id=? AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1)`, requestID, actor.ID, discovery.Query, pairID, selected.Metadata.CanonicalTitle, selected.Metadata.Author, selected.Metadata.ISBN, max(0, selected.Metadata.Year), selected.Metadata.CoverID, selected.Metadata.CoverURL, selected.Metadata.Description, "open_library", now, now, discovery.SourceID, actor.ID, libraryID, actor.Admin)
+		args := []any{requestID, actor.ID, discovery.Query, pairID, selected.Metadata.CanonicalTitle, selected.Metadata.Author, selected.Metadata.ISBN, max(0, selected.Metadata.Year), selected.Metadata.CoverID, selected.Metadata.CoverURL, selected.Metadata.Description, "open_library", now, now, discovery.SourceID, actor.ID, libraryID}
+		args = append(args, auth.LibraryAccessArgs(actor)...)
+		args = append(args, actor.Admin)
+		result, err := tx.ExecContext(ctx, `INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,pair_id,advisory_title,advisory_author,advisory_isbn,advisory_year,advisory_cover_id,advisory_cover_url,advisory_description,advisory_source,created_at,updated_at) SELECT ?,l.id,?,ls.id,?,'requested',?,?,?,?,?,?,?,?,?,?,? FROM libraries l JOIN library_sources ls ON ls.library_id=l.id AND ls.id=? AND ls.enabled=1 AND ls.deleted_at IS NULL LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1)`, args...)
 		if err != nil {
 			return Pair{}, fmt.Errorf("create paired acquisition request: %w", err)
 		}
@@ -1077,7 +1086,10 @@ func (s *Store) authorizedSelectableQuery(ctx context.Context, actor auth.User, 
 
 func (s *Store) authorizeLibrary(ctx context.Context, actor auth.User, libraryID string) error {
 	var allowed bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1))`, actor.ID, libraryID, actor.Admin).Scan(&allowed)
+	args := []any{actor.ID, libraryID}
+	args = append(args, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin)
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR m.can_request_acquisitions=1))`, args...).Scan(&allowed)
 	if err != nil {
 		return fmt.Errorf("authorize acquisition library: %w", err)
 	}

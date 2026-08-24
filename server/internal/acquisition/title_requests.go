@@ -473,7 +473,9 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 
 	var role string
 	var canRequest, bypass bool
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),COALESCE(m.can_bypass_acquisition_approval,0) FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=?`, actor.ID, input.LibraryID).Scan(&role, &canRequest, &bypass)
+	args := []any{actor.ID, input.LibraryID}
+	args = append(args, auth.LibraryAccessArgs(actor)...)
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(m.role,''),COALESCE(m.can_request_acquisitions,0),COALESCE(m.can_bypass_acquisition_approval,0) FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id"), args...).Scan(&role, &canRequest, &bypass)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TitleRequest{}, ErrNotFound
 	}

@@ -15,7 +15,7 @@ func (s *Store) SetWorkStatus(ctx context.Context, actor auth.User, workID, stat
 		return ErrInvalid
 	}
 	var accessible bool
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND (? OR m.user_id IS NOT NULL))`, actor.ID, workID, actor.Admin).Scan(&accessible); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w WHERE w.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+`)`, append([]any{workID}, auth.LibraryAccessArgs(actor)...)...).Scan(&accessible); err != nil {
 		return fmt.Errorf("authorize work status: %w", err)
 	}
 	if !accessible {

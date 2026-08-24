@@ -212,6 +212,8 @@ export interface Library {
   id: string;
   name: string;
   role?: string;
+  exclusive: boolean;
+  effective: boolean;
   can_request_acquisitions: boolean;
   can_bypass_acquisition_approval: boolean;
   can_advanced_acquisition_request: boolean;
@@ -223,6 +225,7 @@ export interface Membership {
   username: string;
   display_name: string;
   role: string;
+  exclusive: boolean;
   can_request_acquisitions: boolean;
   can_bypass_acquisition_approval: boolean;
   can_advanced_acquisition_request: boolean;
@@ -302,6 +305,7 @@ export interface UpdateLibraryRequest {
 }
 export interface SetMembershipRequest {
   role: string;
+  exclusive: boolean;
   can_request_acquisitions: boolean;
   can_bypass_acquisition_approval: boolean;
   can_advanced_acquisition_request: boolean;

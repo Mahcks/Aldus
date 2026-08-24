@@ -35,7 +35,8 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) List(ctx context.Context, actor auth.User) ([]Collection, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.title,c.description,COUNT(CASE WHEN ? OR m.user_id IS NOT NULL THEN cw.work_id END),c.created_at,c.updated_at FROM collections c LEFT JOIN collection_works cw ON cw.collection_id=c.id LEFT JOIN works w ON w.id=cw.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE c.user_id=? GROUP BY c.id ORDER BY c.updated_at DESC,c.id`, actor.Admin, actor.ID, actor.ID)
+	args := append(auth.LibraryAccessArgs(actor), actor.ID)
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.title,c.description,COUNT(CASE WHEN `+auth.EffectiveLibraryAccessSQL("w.library_id")+` THEN cw.work_id END),c.created_at,c.updated_at FROM collections c LEFT JOIN collection_works cw ON cw.collection_id=c.id LEFT JOIN works w ON w.id=cw.work_id WHERE c.user_id=? GROUP BY c.id ORDER BY c.updated_at DESC,c.id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list collections: %w", err)
 	}
@@ -66,7 +67,7 @@ func (s *Store) Get(ctx context.Context, actor auth.User, id string) (Collection
 	}
 	value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-	rows, err := s.db.QueryContext(ctx, `SELECT w.id,w.title,COALESCE(w.author,''),COALESCE(wc.image_url,''),cw.position FROM collection_works cw JOIN works w ON w.id=cw.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN work_covers wc ON wc.id=w.selected_cover_id WHERE cw.collection_id=? AND (? OR m.user_id IS NOT NULL) ORDER BY cw.position`, actor.ID, id, actor.Admin)
+	rows, err := s.db.QueryContext(ctx, `SELECT w.id,w.title,COALESCE(w.author,''),COALESCE(wc.image_url,''),cw.position FROM collection_works cw JOIN works w ON w.id=cw.work_id LEFT JOIN work_covers wc ON wc.id=w.selected_cover_id WHERE cw.collection_id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+` ORDER BY cw.position`, append([]any{id}, auth.LibraryAccessArgs(actor)...)...)
 	if err != nil {
 		return Collection{}, fmt.Errorf("list collection works: %w", err)
 	}
@@ -137,7 +138,7 @@ func (s *Store) AddWork(ctx context.Context, actor auth.User, collectionID, work
 		return ErrNotFound
 	}
 	var visible bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND (? OR m.user_id IS NOT NULL))`, actor.ID, workID, actor.Admin).Scan(&visible); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w WHERE w.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+`)`, append([]any{workID}, auth.LibraryAccessArgs(actor)...)...).Scan(&visible); err != nil {
 		return fmt.Errorf("authorize collection work: %w", err)
 	}
 	if !visible {
@@ -192,7 +193,7 @@ func (s *Store) Reorder(ctx context.Context, actor auth.User, collectionID strin
 	} else if !ok {
 		return ErrNotFound
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT cw.work_id FROM collection_works cw JOIN works w ON w.id=cw.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE cw.collection_id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, collectionID, actor.Admin)
+	rows, err := tx.QueryContext(ctx, `SELECT cw.work_id FROM collection_works cw JOIN works w ON w.id=cw.work_id WHERE cw.collection_id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), append([]any{collectionID}, auth.LibraryAccessArgs(actor)...)...)
 	if err != nil {
 		return fmt.Errorf("read collection order: %w", err)
 	}

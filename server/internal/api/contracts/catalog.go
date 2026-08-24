@@ -6,6 +6,8 @@ type Library struct {
 	ID                            string    `json:"id"`
 	Name                          string    `json:"name"`
 	Role                          string    `json:"role,omitempty"`
+	Exclusive                     bool      `json:"exclusive"`
+	Effective                     bool      `json:"effective"`
 	CanRequestAcquisitions        bool      `json:"can_request_acquisitions"`
 	CanBypassAcquisitionApproval  bool      `json:"can_bypass_acquisition_approval"`
 	CanAdvancedAcquisitionRequest bool      `json:"can_advanced_acquisition_request"`
@@ -17,6 +19,7 @@ type Membership struct {
 	Username                      string `json:"username"`
 	DisplayName                   string `json:"display_name"`
 	Role                          string `json:"role"`
+	Exclusive                     bool   `json:"exclusive"`
 	CanRequestAcquisitions        bool   `json:"can_request_acquisitions"`
 	CanBypassAcquisitionApproval  bool   `json:"can_bypass_acquisition_approval"`
 	CanAdvancedAcquisitionRequest bool   `json:"can_advanced_acquisition_request"`
@@ -97,6 +100,7 @@ type UpdateLibraryRequest struct {
 }
 type SetMembershipRequest struct {
 	Role                          string `json:"role"`
+	Exclusive                     bool   `json:"exclusive"`
 	CanRequestAcquisitions        bool   `json:"can_request_acquisitions"`
 	CanBypassAcquisitionApproval  bool   `json:"can_bypass_acquisition_approval"`
 	CanAdvancedAcquisitionRequest bool   `json:"can_advanced_acquisition_request"`

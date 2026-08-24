@@ -378,7 +378,7 @@ func (s *Store) UploadCover(ctx context.Context, actor auth.User, workID string,
 func (s *Store) Cover(ctx context.Context, actor auth.User, id string) ([]byte, string, error) {
 	var data []byte
 	var contentType string
-	err := s.db.QueryRowContext(ctx, `SELECT c.image_data,c.image_type FROM work_covers c JOIN works w ON w.id=c.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE c.id=? AND c.image_data IS NOT NULL AND (? OR m.user_id IS NOT NULL)`, actor.ID, id, actor.Admin).Scan(&data, &contentType)
+	err := s.db.QueryRowContext(ctx, `SELECT c.image_data,c.image_type FROM work_covers c JOIN works w ON w.id=c.work_id WHERE c.id=? AND c.image_data IS NOT NULL AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), append([]any{id}, auth.LibraryAccessArgs(actor)...)...).Scan(&data, &contentType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, "", ErrNotFound
 	}

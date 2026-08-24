@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { groupAcquisitionResults } from '../../features/acquisition';
 import { BookCover } from '../../features/bookshelf';
-import { AcquisitionGroupRow } from '../../features/browse';
+import { AcquisitionGroupRow, BrowseFacet } from '../../features/browse';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { titleRequestPresentation } from '../../features/title-search';
 import { Text, View } from '../../features/tw';
@@ -40,7 +40,11 @@ function resultKey(result: TitleSearchResult) {
 function destinationFor(
   result: TitleSearchResult,
   destinations: AcquisitionDestination[],
+  libraryID = '',
 ): AcquisitionDestination | undefined {
+  if (libraryID) {
+    return destinations.find((destination) => destination.library_id === libraryID);
+  }
   if (result.library_id) {
     return destinations.find((destination) => destination.library_id === result.library_id);
   }
@@ -190,6 +194,7 @@ export default function SearchScreen() {
   const [error, setError] = useState('');
   const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [libraryID, setLibraryID] = useState('');
   const [acquisitionEnabled, setAcquisitionEnabled] = useState(false);
   const [requestBusy, setRequestBusy] = useState<Record<string, string>>({});
   const [requestErrors, setRequestErrors] = useState<Record<string, string>>({});
@@ -203,6 +208,7 @@ export default function SearchScreen() {
   const searchSequence = useRef(0);
 
   const trimmedQuery = query.trim();
+  const effectiveLibraries = libraries.filter((library) => library.effective);
   const canAdvanced =
     Boolean(auth.user?.admin) ||
     libraries.some((library) => library.can_advanced_acquisition_request);
@@ -238,7 +244,7 @@ export default function SearchScreen() {
       setLoading(true);
       setError('');
       api
-        .searchTitles(trimmedQuery)
+        .searchTitles(trimmedQuery, libraryID)
         .then((values) => {
           if (sequence !== searchSequence.current) return;
           setResults(values);
@@ -253,6 +259,7 @@ export default function SearchScreen() {
           }
           const normalized = trimmedQuery.toLocaleLowerCase();
           const saved = (await offlineWorkSummaries())
+            .filter((work) => !libraryID || work.library_id === libraryID)
             .filter((work) =>
               `${work.title} ${work.author ?? ''}`.toLocaleLowerCase().includes(normalized),
             )
@@ -267,10 +274,10 @@ export default function SearchScreen() {
         });
     }, 300);
     return () => clearTimeout(timer);
-  }, [trimmedQuery]);
+  }, [trimmedQuery, libraryID]);
 
   async function requestFormat(result: TitleSearchResult, format: BookFormat) {
-    const destination = destinationFor(result, destinations);
+    const destination = destinationFor(result, destinations, libraryID);
     const key = resultKey(result);
     if (!destination) {
       setRequestErrors((current) => ({
@@ -314,7 +321,7 @@ export default function SearchScreen() {
   }
 
   async function openAdvanced(result: TitleSearchResult) {
-    const destination = destinationFor(result, destinations);
+    const destination = destinationFor(result, destinations, libraryID);
     setAdvancedTarget(result);
     setAdvancedResults([]);
     setAdvancedError('');
@@ -342,7 +349,7 @@ export default function SearchScreen() {
 
   async function chooseRelease(result: AcquisitionResult) {
     if (!advancedTarget || !discoveryID) return;
-    const destination = destinationFor(advancedTarget, destinations);
+    const destination = destinationFor(advancedTarget, destinations, libraryID);
     if (!destination) return;
     setReleaseStatuses((current) => ({ ...current, [result.id]: 'sending' }));
     setReleaseErrors((current) => ({ ...current, [result.id]: '' }));
@@ -359,7 +366,7 @@ export default function SearchScreen() {
 
   async function choosePair(first: AcquisitionResult, second: AcquisitionResult) {
     if (!advancedTarget || !discoveryID) return;
-    const destination = destinationFor(advancedTarget, destinations);
+    const destination = destinationFor(advancedTarget, destinations, libraryID);
     if (!destination) return;
     setReleaseStatuses((current) => ({
       ...current,
@@ -400,6 +407,17 @@ export default function SearchScreen() {
           placeholder="What do you want to read or listen to?"
         />
       </View>
+      {effectiveLibraries.length > 1 ? (
+        <BrowseFacet
+          label="Library"
+          options={[
+            { value: '', label: 'All libraries' },
+            ...effectiveLibraries.map((library) => ({ value: library.id, label: library.name })),
+          ]}
+          value={libraryID}
+          onChange={setLibraryID}
+        />
+      ) : null}
       {offline ? <Notice>Offline · searching books downloaded to this device.</Notice> : null}
       {!acquisitionEnabled && trimmedQuery && !offline ? (
         <Notice tone="warning">
@@ -426,7 +444,7 @@ export default function SearchScreen() {
           <View className="max-w-[900px]">
             {results.map((result) => {
               const key = resultKey(result);
-              const destination = destinationFor(result, destinations);
+              const destination = destinationFor(result, destinations, libraryID);
               const advancedForDestination =
                 canAdvanced &&
                 Boolean(destination) &&

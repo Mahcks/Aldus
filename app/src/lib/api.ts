@@ -205,8 +205,11 @@ export const api = {
   markNotificationRead: (id: string) =>
     request<void>(`/me/notifications/${id}/read`, { method: 'POST' }),
   markAllNotificationsRead: () => request<void>('/me/notifications/read-all', { method: 'POST' }),
-  searchTitles: (query: string) =>
-    request<TitleSearchResult[]>(`/search/titles?q=${encodeURIComponent(query)}`),
+  searchTitles: (query: string, libraryID = '') => {
+    const params = new URLSearchParams({ q: query });
+    if (libraryID) params.set('library_id', libraryID);
+    return request<TitleSearchResult[]>(`/search/titles?${params}`);
+  },
   createTitleRequest: (libraryID: string, body: CreateTitleRequest) =>
     request<TitleRequest>(`/libraries/${libraryID}/title-requests`, {
       method: 'POST',
@@ -253,6 +256,7 @@ export const api = {
     canRequestAcquisitions = false,
     canBypassAcquisitionApproval = false,
     canAdvancedAcquisitionRequest = false,
+    exclusive = false,
   ) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, {
       method: 'PUT',
@@ -261,6 +265,7 @@ export const api = {
         can_request_acquisitions: canRequestAcquisitions,
         can_bypass_acquisition_approval: canBypassAcquisitionApproval,
         can_advanced_acquisition_request: canAdvancedAcquisitionRequest,
+        exclusive,
       }),
     }),
   removeMember: (libraryID: string, userID: string) =>

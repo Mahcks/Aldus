@@ -122,6 +122,16 @@ describe('API transport', () => {
     );
   });
 
+  it('narrows title search with an optional library facet', async () => {
+    let url = '';
+    globalThis.fetch = (async (input) => {
+      url = String(input);
+      return Response.json([]);
+    }) as typeof fetch;
+    await api.searchTitles('Alice & Bob', 'kids');
+    expect(url).toEndWith('/api/search/titles?q=Alice+%26+Bob&library_id=kids');
+  });
+
   it('browses only configured server source roots', async () => {
     const urls: string[] = [];
     globalThis.fetch = (async (input) => {

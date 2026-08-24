@@ -22,7 +22,7 @@ type titleRequestProjection struct {
 	WorkID, ExternalSource, ExternalID, Title, Author, CoverURL, Format, State string
 }
 
-func (s *Store) SearchTitles(ctx context.Context, actor auth.User, query string) ([]TitleSearchResult, error) {
+func (s *Store) SearchTitles(ctx context.Context, actor auth.User, query string, libraryID ...string) ([]TitleSearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" || len(query) > 200 {
 		return nil, ErrInvalid
@@ -31,15 +31,19 @@ func (s *Store) SearchTitles(ctx context.Context, actor auth.User, query string)
 	if s.client != nil {
 		metadata = s.searchMetadata(ctx, s.client, query)
 	}
-	return s.searchTitles(ctx, actor, query, metadata)
+	return s.searchTitles(ctx, actor, query, metadata, libraryID...)
 }
 
-func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string, metadata []Metadata) ([]TitleSearchResult, error) {
-	works, _, err := catalog.New(s.db).BrowseWorks(ctx, actor, catalog.BrowseOptions{Query: query, Sort: "title", Limit: 50})
+func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string, metadata []Metadata, libraryID ...string) ([]TitleSearchResult, error) {
+	selectedLibrary := ""
+	if len(libraryID) > 0 {
+		selectedLibrary = strings.TrimSpace(libraryID[0])
+	}
+	works, _, err := catalog.New(s.db).BrowseWorks(ctx, actor, catalog.BrowseOptions{LibraryID: selectedLibrary, Query: query, Sort: "title", Limit: 50})
 	if err != nil {
 		return nil, fmt.Errorf("search local titles: %w", err)
 	}
-	requests, err := s.searchTitleRequestStates(ctx, actor, query)
+	requests, err := s.searchTitleRequestStates(ctx, actor, query, selectedLibrary)
 	if err != nil {
 		return nil, err
 	}
@@ -145,9 +149,12 @@ func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string,
 	return results, nil
 }
 
-func (s *Store) searchTitleRequestStates(ctx context.Context, actor auth.User, query string) ([]titleRequestProjection, error) {
+func (s *Store) searchTitleRequestStates(ctx context.Context, actor auth.User, query, libraryID string) ([]titleRequestProjection, error) {
 	pattern := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(query)) + "%"
-	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(r.work_id,''),r.external_source,r.external_id,r.title,r.author,r.cover_url,f.format,f.state FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE (r.requested_by=? OR ? OR m.role IN ('owner','editor')) AND (lower(r.title) LIKE ? ESCAPE '\' OR lower(r.author) LIKE ? ESCAPE '\') ORDER BY r.updated_at DESC,r.id,f.format`, actor.ID, actor.ID, actor.Admin, pattern, pattern)
+	args := []any{actor.ID}
+	args = append(args, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.ID, actor.Admin, libraryID, libraryID, pattern, pattern)
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(r.work_id,''),r.external_source,r.external_id,r.title,r.author,r.cover_url,f.format,f.state FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id JOIN libraries l ON l.id=r.library_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) AND (?='' OR r.library_id=?) AND (lower(r.title) LIKE ? ESCAPE '\' OR lower(r.author) LIKE ? ESCAPE '\') ORDER BY r.updated_at DESC,r.id,f.format`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("search title request states: %w", err)
 	}

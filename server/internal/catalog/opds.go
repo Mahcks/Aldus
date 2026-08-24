@@ -20,10 +20,9 @@ func (s *Store) OPDSPublications(ctx context.Context, actor auth.User) ([]OPDSPu
 		JOIN representations r ON r.id=m.representation_id
 		JOIN works w ON w.id=r.work_id
 		JOIN libraries l ON l.id=w.library_id
-		LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=?
-		WHERE m.kind='epub' AND (? OR lm.user_id IS NOT NULL)
+		WHERE m.kind='epub' AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+`
 		AND NOT EXISTS (SELECT 1 FROM media newer WHERE newer.representation_id=m.representation_id AND (newer.created_at>m.created_at OR (newer.created_at=m.created_at AND newer.id>m.id)))
-		ORDER BY w.title COLLATE NOCASE,w.author COLLATE NOCASE,m.id`, actor.ID, actor.Admin)
+		ORDER BY w.title COLLATE NOCASE,w.author COLLATE NOCASE,m.id`, auth.LibraryAccessArgs(actor)...)
 	if err != nil {
 		return nil, fmt.Errorf("list OPDS publications: %w", err)
 	}

@@ -75,7 +75,7 @@ func setMember(s *catalog.Store) http.HandlerFunc {
 		if !decode(w, r, &b) {
 			return
 		}
-		e := s.SetMember(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "userID"), b.Role, b.CanRequestAcquisitions, b.CanBypassAcquisitionApproval, b.CanAdvancedAcquisitionRequest)
+		e := s.SetMember(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "userID"), b.Role, b.CanRequestAcquisitions, b.CanBypassAcquisitionApproval, b.CanAdvancedAcquisitionRequest, b.Exclusive)
 		if e == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return

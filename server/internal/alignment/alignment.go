@@ -340,7 +340,7 @@ func (m *Manager) findDuplicate(ctx context.Context, r Request) (Job, bool, erro
 	return job, err == nil, err
 }
 func (m *Manager) Job(ctx context.Context, actor auth.User, id string) (Job, error) {
-	row := m.db.QueryRowContext(ctx, `SELECT j.id,COALESCE(j.alignment_id,''),j.epub_media_id,j.audio_media_id,j.state,j.attempts,j.worker_version,j.model,COALESCE(j.artifact_id,''),j.error_summary,j.created_at,j.started_at,j.finished_at FROM alignment_jobs j JOIN media md ON md.id=j.epub_media_id JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE j.id=? AND (? OR lm.user_id IS NOT NULL)`, actor.ID, id, actor.Admin)
+	row := m.db.QueryRowContext(ctx, `SELECT j.id,COALESCE(j.alignment_id,''),j.epub_media_id,j.audio_media_id,j.state,j.attempts,j.worker_version,j.model,COALESCE(j.artifact_id,''),j.error_summary,j.created_at,j.started_at,j.finished_at FROM alignment_jobs j JOIN media md ON md.id=j.epub_media_id JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id WHERE j.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), append([]any{id}, auth.LibraryAccessArgs(actor)...)...)
 	job, err := m.scanJob(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
