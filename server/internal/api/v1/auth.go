@@ -57,6 +57,7 @@ func demoLogin(store *auth.Store) http.HandlerFunc {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-store")
 		store.SetCookie(w, session)
 		writeJSON(w, http.StatusCreated, sessionDTO(session))
 	}

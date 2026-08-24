@@ -27,6 +27,7 @@ import type {
   CreateRepresentationRequest,
   CreateUserRequest,
   CreateWorkRequest,
+  DemoCredentials,
   EPUBLocator,
   Library,
   LibrarySource,
@@ -170,9 +171,13 @@ export const api = {
   },
   demoLogin: () => {
     const origin = getAPIBaseURL();
-    return request<Session>('/auth/demo', { method: 'POST' }).then((session) =>
-      acceptSession(session, origin),
-    );
+    return request<Session>('/auth/demo', { method: 'POST' }).then(async (session) => {
+      if (!session.demo_credentials) throw new APIError(500, 'Demo sign-in details are missing.');
+      return {
+        user: await acceptSession(session, origin),
+        credentials: session.demo_credentials as DemoCredentials,
+      };
+    });
   },
   me: () => request<User>('/auth/me'),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),

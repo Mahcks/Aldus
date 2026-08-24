@@ -48,9 +48,10 @@ type User struct {
 }
 
 type Session struct {
-	Token     string    `json:"token,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
-	User      User      `json:"user"`
+	Token        string    `json:"token,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	User         User      `json:"user"`
+	DemoPassword string    `json:"-"`
 }
 
 type Credentials struct {

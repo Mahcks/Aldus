@@ -13,7 +13,11 @@ func userDTO(v auth.User) contracts.User {
 	return contracts.User{ID: v.ID, Username: v.Username, DisplayName: v.DisplayName, Admin: v.Admin, Disabled: v.Disabled, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, DemoExpiresAt: v.DemoExpiresAt}
 }
 func sessionDTO(v auth.Session) contracts.Session {
-	return contracts.Session{Token: v.Token, ExpiresAt: v.ExpiresAt, User: userDTO(v.User)}
+	result := contracts.Session{Token: v.Token, ExpiresAt: v.ExpiresAt, User: userDTO(v.User)}
+	if v.DemoPassword != "" {
+		result.DemoCredentials = &contracts.DemoCredentials{Username: v.User.Username, Password: v.DemoPassword}
+	}
+	return result
 }
 func libraryDTO(v catalog.Library) contracts.Library {
 	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, Exclusive: v.Exclusive, Effective: v.Effective, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}

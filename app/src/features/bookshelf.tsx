@@ -115,7 +115,7 @@ export function BookCover({
   const titleFit = {
     hero: { threshold: 20, base: 'text-2xl leading-7', long: 'text-xl leading-6' },
     tile: { threshold: 18, base: 'text-xl leading-6', long: 'text-lg leading-5' },
-    small: { threshold: 14, base: 'text-lg leading-5', long: 'text-base leading-4' },
+    small: { threshold: 10, base: 'text-lg leading-5', long: 'text-base leading-4' },
     continue: { threshold: 12, base: 'text-base leading-5', long: 'text-sm leading-4' },
     mini: { threshold: Infinity, base: 'text-[10px] leading-3', long: 'text-[10px] leading-3' },
   }[resolvedSize];

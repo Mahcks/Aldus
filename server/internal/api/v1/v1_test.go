@@ -371,12 +371,18 @@ func TestDemoAuthenticationContract(t *testing.T) {
 	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"demo_expires_at":`) {
 		t.Fatalf("demo login = %d %s", created.Code, created.Body.String())
 	}
+	if created.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("demo cache control = %q", created.Header().Get("Cache-Control"))
+	}
 	var session contracts.Session
 	if err := json.Unmarshal(created.Body.Bytes(), &session); err != nil {
 		t.Fatal(err)
 	}
+	if session.DemoCredentials == nil || session.DemoCredentials.Username != session.User.Username || session.DemoCredentials.Password == "" {
+		t.Fatalf("demo credentials = %#v", session.DemoCredentials)
+	}
 	me := request(t, handler, session.Token, http.MethodGet, "/auth/me", "")
-	if me.Code != http.StatusOK || !strings.Contains(me.Body.String(), `"username":"guest-`) {
+	if me.Code != http.StatusOK || !strings.Contains(me.Body.String(), `"username":"guest-`) || strings.Contains(me.Body.String(), session.DemoCredentials.Password) {
 		t.Fatalf("demo session = %d %s", me.Code, me.Body.String())
 	}
 }

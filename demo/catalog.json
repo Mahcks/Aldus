@@ -19,11 +19,11 @@
         },
         {
           "kind": "audiobook",
-          "edition": "LibriVox collaborative recording",
-          "narrator": "LibriVox volunteers",
-          "source": "https://librivox.org/alices-adventures-in-wonderland-by-lewis-carroll/",
+          "edition": "LibriVox version 8",
+          "narrator": "Vin Cramer",
+          "source": "https://librivox.org/16702",
           "public_domain_evidence": "librivox",
-          "files": [{ "path": "alice/alice.m4b", "format": "M4B", "url": "https://archive.org/download/alice_in_wonderland_librivox/AliceInWonderland_librivox.m4b", "bytes": 87525736, "sha256": "1ba22e284ee80e8cf25077bc8f10b81f0fadef6b8e61ac7964f059402e8ee1d3" }]
+          "files": [{ "path": "alice/alices-adventures-in-wonderland-librivox-v8.m4b", "format": "M4B", "url": "https://archive.org/download/aliceinwonderland_2106_librivox/AliceWonderland8_librivox.m4b", "bytes": 102629329, "sha256": "a74d661f909a8c11f0a04dbbab387ba00c66464753bba93a3d0393b1195c7e81" }]
         }
       ]
     },

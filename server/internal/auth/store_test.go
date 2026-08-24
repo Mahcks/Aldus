@@ -194,6 +194,12 @@ func TestDemoSessionLifecycle(t *testing.T) {
 	if guest.User.Admin || guest.User.DemoExpiresAt == nil || guest.User.Username == admin.User.Username {
 		t.Fatalf("demo user = %#v", guest.User)
 	}
+	if guest.DemoPassword == "" {
+		t.Fatal("demo password is empty")
+	}
+	if _, err := store.Login(ctx, Credentials{Username: guest.User.Username, Password: guest.DemoPassword}); err != nil {
+		t.Fatalf("demo login = %v", err)
+	}
 	users, err := store.Users(ctx, admin.User, 50, 0)
 	if err != nil || len(users) != 1 || users[0].ID != admin.User.ID {
 		t.Fatalf("admin users = %#v, %v", users, err)

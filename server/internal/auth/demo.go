@@ -68,6 +68,7 @@ func (s *Store) CreateDemoSession(ctx context.Context) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	session.DemoPassword = password
 	if err := tx.Commit(); err != nil {
 		return Session{}, fmt.Errorf("commit demo session: %w", err)
 	}

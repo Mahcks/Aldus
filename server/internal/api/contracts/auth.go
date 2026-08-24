@@ -13,9 +13,14 @@ type User struct {
 	DemoExpiresAt *time.Time `json:"demo_expires_at,omitempty"`
 }
 type Session struct {
-	Token     string    `json:"token,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
-	User      User      `json:"user"`
+	Token           string           `json:"token,omitempty"`
+	ExpiresAt       time.Time        `json:"expires_at"`
+	User            User             `json:"user"`
+	DemoCredentials *DemoCredentials `json:"demo_credentials,omitempty"`
+}
+type DemoCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 type LoginRequest struct {
 	Username    string `json:"username"`

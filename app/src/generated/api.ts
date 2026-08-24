@@ -181,6 +181,11 @@ export interface Session {
   token?: string;
   expires_at: string;
   user: User;
+  demo_credentials?: DemoCredentials;
+}
+export interface DemoCredentials {
+  username: string;
+  password: string;
 }
 export interface LoginRequest {
   username: string;

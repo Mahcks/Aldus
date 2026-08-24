@@ -38,6 +38,7 @@ const names = {
   import: 'tray-arrow-down',
   acquire: 'download-box-outline',
   bookmark: 'bookmark-outline',
+  copy: 'content-copy',
   filter: 'filter-variant',
   send: 'send-outline',
   upload: 'tray-arrow-up',
