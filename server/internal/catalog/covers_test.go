@@ -41,6 +41,16 @@ func TestRefreshOpenLibraryMetadataUsesExactTitleAndAuthor(t *testing.T) {
 	}
 }
 
+func TestParseOpenLibraryCoversDropsNamespacedFacetKeys(t *testing.T) {
+	values, err := parseOpenLibraryCovers(strings.NewReader(`{"docs":[{"cover_i":7,"title":"New Moon","subject":["series:Twilight","New York Times bestseller","nyt:series_books=2008-03-15","School & Education","Fiction","Vampires","Werewolves"]}]}`))
+	if err != nil || len(values) != 1 {
+		t.Fatalf("covers = %#v, %v", values, err)
+	}
+	if got, want := values[0].Subjects, "New York Times bestseller,School & Education,Fiction,Vampires,Werewolves"; got != want {
+		t.Fatalf("subjects = %q, want %q", got, want)
+	}
+}
+
 func TestRefreshOpenLibraryMetadataPrefersNonForeignEdition(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

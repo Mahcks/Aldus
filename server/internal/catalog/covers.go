@@ -54,6 +54,25 @@ type openLibraryResult struct {
 
 const maxWorkSubjects = 5
 
+// Open Library's `subject` field mixes real subject/genre tags ("Fiction",
+// "New York Times bestseller") with internal facet keys used for their own
+// browse UI ("series:Twilight", "nyt:series_books=2008-03-15", "person:...",
+// "place:...", "time:..."). Every one of those facet keys is namespaced with
+// a colon; genuine subjects never contain one, so that's the reliable tell.
+func cleanOpenLibrarySubjects(subjects []string) []string {
+	cleaned := make([]string, 0, min(len(subjects), maxWorkSubjects))
+	for _, subject := range subjects {
+		if strings.Contains(subject, ":") {
+			continue
+		}
+		cleaned = append(cleaned, subject)
+		if len(cleaned) == maxWorkSubjects {
+			break
+		}
+	}
+	return cleaned
+}
+
 const maxWorkDescriptionRunes = 4000
 
 type refreshedMetadata struct {
@@ -341,9 +360,8 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 		if len(doc.Languages) > 0 {
 			candidate.Language = doc.Languages[0]
 		}
-		if len(doc.Subjects) > 0 {
-			limit := min(len(doc.Subjects), maxWorkSubjects)
-			candidate.Subjects = strings.Join(doc.Subjects[:limit], ",")
+		if subjects := cleanOpenLibrarySubjects(doc.Subjects); len(subjects) > 0 {
+			candidate.Subjects = strings.Join(subjects, ",")
 		}
 		candidates = append(candidates, candidate)
 	}
