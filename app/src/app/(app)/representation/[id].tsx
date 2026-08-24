@@ -1,4 +1,4 @@
-import type { Media, Representation } from '../../../generated/api';
+import type { Library, Media, Representation } from '../../../generated/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -23,13 +23,10 @@ import { api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 
 export default function RepresentationScreen() {
-  const {
-    id,
-    libraryId,
-    role = '',
-  } = useLocalSearchParams<{ id: string; libraryId: string; role?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const auth = useAuth();
   const [representation, setRepresentation] = useState<Representation>();
+  const [library, setLibrary] = useState<Library>();
   const [media, setMedia] = useState<Media[]>([]);
   const [kind, setKind] = useState('');
   const [label, setLabel] = useState('');
@@ -40,13 +37,16 @@ export default function RepresentationScreen() {
   const [deleting, setDeleting] = useState(false);
 
   async function load() {
-    if (!id || !libraryId) return;
+    if (!id) return;
     try {
-      const [next, revisions] = await Promise.all([
-        api.representation(id),
-        api.media(libraryId, id),
+      const next = await api.representation(id);
+      const work = await api.work(next.work_id);
+      const [nextLibrary, revisions] = await Promise.all([
+        api.library(work.library_id),
+        api.media(work.library_id, id),
       ]);
       setRepresentation(next);
+      setLibrary(nextLibrary);
       setKind(next.kind);
       setLabel(next.label);
       setMedia(revisions);
@@ -61,7 +61,7 @@ export default function RepresentationScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, libraryId]);
+  }, [id]);
 
   if (loading)
     return (
@@ -76,7 +76,9 @@ export default function RepresentationScreen() {
       </Page>
     );
 
-  const canEdit = Boolean(auth.user?.admin || role === 'owner' || role === 'editor');
+  const canEdit = Boolean(
+    auth.user?.admin || library?.role === 'owner' || library?.role === 'editor',
+  );
 
   async function upload() {
     const result = await DocumentPicker.getDocumentAsync({
@@ -89,7 +91,8 @@ export default function RepresentationScreen() {
     try {
       const asset = result.assets[0];
       const blob = await fetch(asset.uri).then((response) => response.blob());
-      await api.uploadMedia(libraryId, id, blob, asset.name);
+      if (!library) throw new Error('Library unavailable.');
+      await api.uploadMedia(library.id, id, blob, asset.name);
       await load();
     } catch (value) {
       setError(errorMessage(value));

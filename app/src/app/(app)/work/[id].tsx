@@ -1,6 +1,7 @@
 import type {
   AlignmentJob,
   Collection,
+  Library,
   Media,
   Representation,
   WorkDetail,
@@ -10,7 +11,12 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../../features/auth/AuthProvider';
-import { AvailabilityIcons, BookCover, coverPresentation } from '../../../features/bookshelf';
+import {
+  AvailabilityIcons,
+  Badge,
+  BookCover,
+  coverPresentation,
+} from '../../../features/bookshelf';
 import {
   choices,
   defaultPair,
@@ -44,6 +50,34 @@ import { APIError, api, errorMessage } from '../../../lib/api';
 import { goBackOr } from '../../../lib/navigation';
 import { downloadOfflineWork, offlineWork, removeOfflineWork } from '../../../lib/offline-library';
 
+/** Open Library reports language as an ISO 639-2 code (e.g. "eng"); shown to readers as a name. */
+const languageNames: Record<string, string> = {
+  eng: 'English',
+  fre: 'French',
+  fra: 'French',
+  ger: 'German',
+  deu: 'German',
+  spa: 'Spanish',
+  ita: 'Italian',
+  por: 'Portuguese',
+  rus: 'Russian',
+  jpn: 'Japanese',
+  chi: 'Chinese',
+  zho: 'Chinese',
+  ara: 'Arabic',
+  lat: 'Latin',
+  gre: 'Greek',
+  grc: 'Ancient Greek',
+  dut: 'Dutch',
+  nld: 'Dutch',
+  swe: 'Swedish',
+  pol: 'Polish',
+  kor: 'Korean',
+};
+function languageName(code: string) {
+  return languageNames[code.toLowerCase()] || code.toUpperCase();
+}
+
 /** Translates the exact job-matching result from `consumption.ts` into warm, jargon-free copy. Returns nothing when there's no meaningful sync state to explain (a single-format work, or a pairing that was never attempted). */
 function syncNote(label: ReturnType<typeof synchronizationLabel>): string | undefined {
   switch (label) {
@@ -60,13 +94,10 @@ function syncNote(label: ReturnType<typeof synchronizationLabel>): string | unde
 
 export default function WorkScreen() {
   const narrow = useWindowDimensions().width < 600;
-  const {
-    id,
-    libraryId,
-    role = '',
-  } = useLocalSearchParams<{ id: string; libraryId: string; role?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const auth = useAuth();
   const [work, setWork] = useState<WorkDetail>();
+  const [library, setLibrary] = useState<Library>();
   const [media, setMedia] = useState<MediaChoice[]>([]);
   const [jobs, setJobs] = useState<AlignmentJob[]>([]);
   const [hasProgress, setHasProgress] = useState(false);
@@ -92,15 +123,15 @@ export default function WorkScreen() {
   async function load() {
     if (!id) return;
     try {
-      if (!libraryId) throw new Error('Library unavailable.');
-      const [nextWork, nextRepresentations, nextJobs, progress, preference] = await Promise.all([
-        api.work(id),
+      const nextWork = await api.work(id);
+      const [nextLibrary, nextRepresentations, nextJobs, progress, preference] = await Promise.all([
+        api.library(nextWork.library_id),
         api.representations(id),
         api.alignmentJobs(id),
         api.workProgress(id),
         api.workPreference(id),
       ]);
-      const revisions = await loadRevisions(libraryId, nextRepresentations);
+      const revisions = await loadRevisions(nextWork.library_id, nextRepresentations);
       const pair = defaultPair(
         nextJobs,
         choices(nextRepresentations, revisions, ['epub']),
@@ -108,6 +139,7 @@ export default function WorkScreen() {
         preference?.alignment_id ?? progress?.alignment_id,
       );
       setWork(nextWork);
+      setLibrary(nextLibrary);
       setMedia(revisions);
       setJobs(nextJobs);
       setHasProgress(Boolean(progress));
@@ -120,7 +152,7 @@ export default function WorkScreen() {
       setDownloaded(Boolean(await offlineWork(id)));
     } catch (value) {
       const saved = await offlineWork(id);
-      if (saved && (!libraryId || (value instanceof APIError && value.status === 0))) {
+      if (saved && value instanceof APIError && value.status === 0) {
         setWork(saved.work);
         setMedia([...saved.epubs, ...saved.audio]);
         setJobs(saved.jobs);
@@ -144,7 +176,7 @@ export default function WorkScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, libraryId]);
+  }, [id]);
 
   if (loading)
     return (
@@ -167,7 +199,9 @@ export default function WorkScreen() {
       </Page>
     );
 
-  const canEdit = !offline && Boolean(auth.user?.admin || role === 'owner' || role === 'editor');
+  const canEdit =
+    !offline &&
+    Boolean(auth.user?.admin || library?.role === 'owner' || library?.role === 'editor');
   const epubs = media.filter((item) => item.kind === 'epub');
   const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
   const selectedEPUB = epubs.find((item) => item.id === epubID);
@@ -187,6 +221,16 @@ export default function WorkScreen() {
   const secondaryAvailable =
     secondaryMode === 'read' ? Boolean(selectedEPUB) : Boolean(selectedAudio);
   const description = work.description?.trim();
+  const details = [
+    work.first_publish_year ? `First published ${work.first_publish_year}` : '',
+    work.publisher ? work.publisher : '',
+    work.language ? languageName(work.language) : '',
+    work.isbn ? `ISBN ${work.isbn}` : '',
+  ].filter(Boolean);
+  const subjects = (work.subjects || '')
+    .split(',')
+    .map((subject) => subject.trim())
+    .filter(Boolean);
   const formatLabel = selectedEPUB
     ? selectedAudio
       ? 'Ebook and audiobook'
@@ -225,7 +269,7 @@ export default function WorkScreen() {
   }
 
   function openManage() {
-    router.push(`/work/${id}/manage?libraryId=${libraryId}&role=${role}`);
+    router.push(`/work/${id}/manage`);
   }
 
   async function changeReadingStatus(status: ReadingStatus) {
@@ -344,7 +388,7 @@ export default function WorkScreen() {
           label="Library"
           icon="back"
           kind="quiet"
-          onPress={() => goBackOr(`/library/${libraryId}`)}
+          onPress={() => goBackOr(`/library/${work.library_id}`)}
         />
         {canEdit ? (
           narrow ? (
@@ -405,26 +449,19 @@ export default function WorkScreen() {
               {work.author || 'Unknown author'}
             </Text>
 
-            <View
-              className={`flex-row flex-wrap items-center gap-3 ${narrow ? 'justify-center' : ''}`}
-            >
-              <AvailabilityIcons
-                value={{
-                  readable: Boolean(selectedEPUB),
-                  listenable: Boolean(selectedAudio),
-                  synchronized: Boolean(readyJob(jobs, epubID, audioID)),
-                }}
-              />
-              <Text className="text-sm text-muted">
-                {selectedEPUB && selectedAudio
-                  ? 'Read or listen'
-                  : selectedEPUB
-                    ? 'Ready to read'
-                    : selectedAudio
-                      ? 'Ready to listen'
-                      : 'Not yet available'}
-              </Text>
-            </View>
+            {selectedEPUB || selectedAudio ? (
+              <View
+                className={`flex-row flex-wrap items-center gap-3 ${narrow ? 'justify-center' : ''}`}
+              >
+                <AvailabilityIcons
+                  value={{
+                    readable: Boolean(selectedEPUB),
+                    listenable: Boolean(selectedAudio),
+                    synchronized: Boolean(readyJob(jobs, epubID, audioID)),
+                  }}
+                />
+              </View>
+            ) : null}
 
             {work.in_progress ? (
               <View className="w-full max-w-md gap-1.5 py-0.5">
@@ -487,8 +524,16 @@ export default function WorkScreen() {
             <View
               className={`w-full flex-row flex-wrap items-center gap-2 border-t border-line pt-4 ${narrow ? 'justify-center' : ''}`}
             >
-              <ReadingStatusTrigger
-                status={work.reading_status}
+              <Button
+                label={readingStatusLabel(work.reading_status)}
+                icon={
+                  work.reading_status === 'finished'
+                    ? 'check'
+                    : work.reading_status === 'reading'
+                      ? 'read'
+                      : 'add'
+                }
+                kind="quiet"
                 disabled={offline}
                 onPress={() => setStatusOpen(true)}
               />
@@ -519,21 +564,50 @@ export default function WorkScreen() {
         </View>
       </Animated.View>
 
-      {description ? (
+      {description || details.length || canEdit ? (
         <View className="mx-auto w-full max-w-[1000px] gap-3 border-t border-line py-6 sm:py-8">
           <Text className="font-editorial-bold text-2xl text-ink">About this book</Text>
-          <Text
-            numberOfLines={descriptionExpanded ? undefined : 5}
-            className="max-w-[70ch] text-base leading-7 text-muted"
-          >
-            {description}
-          </Text>
-          {description.length > 360 ? (
-            <Button
-              label={descriptionExpanded ? 'Show less' : 'Show more'}
-              kind="quiet"
-              onPress={() => setDescriptionExpanded((current) => !current)}
-            />
+          {description ? (
+            <>
+              <Text
+                numberOfLines={descriptionExpanded ? undefined : 5}
+                className="max-w-[70ch] text-base leading-7 text-muted"
+              >
+                {description}
+              </Text>
+              {description.length > 360 ? (
+                <Button
+                  label={descriptionExpanded ? 'Show less' : 'Show more'}
+                  kind="quiet"
+                  onPress={() => setDescriptionExpanded((current) => !current)}
+                />
+              ) : null}
+            </>
+          ) : canEdit ? (
+            <View className="gap-2">
+              <Text className="max-w-[70ch] text-base text-muted">
+                No description yet — Aldus can pull a description, publisher, language, and subjects
+                from Open Library, or you can write your own from Manage this work.
+              </Text>
+              <View className="self-start">
+                <Button
+                  label="Fill in details from Open Library"
+                  icon="scan"
+                  kind="secondary"
+                  onPress={() => router.push(`/work/${id}/manage?tab=cover`)}
+                />
+              </View>
+            </View>
+          ) : null}
+          {details.length ? (
+            <Text className="text-sm text-subtle">{details.join(' · ')}</Text>
+          ) : null}
+          {subjects.length ? (
+            <View className="flex-row flex-wrap gap-1.5 pt-1">
+              {subjects.map((subject) => (
+                <Badge key={subject}>{subject}</Badge>
+              ))}
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -603,43 +677,6 @@ export default function WorkScreen() {
         </View>
       </Dialog>
     </Page>
-  );
-}
-
-/** Compact reading-status trigger — kept out of the primary action row so "Continue" never has to compete with it for attention. */
-function ReadingStatusTrigger({
-  status,
-  disabled,
-  onPress,
-}: {
-  status: ReadingStatus;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const stateClass = resolvePressStateClass({ focused, pressed });
-  const icon = status === 'finished' ? 'check' : status === 'reading' ? 'read' : 'add';
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Reading status: ${readingStatusLabel(status)}`}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-1.5 rounded-control border border-line px-3 ${disabled ? 'opacity-50' : ''} ${stateClass}`}
-    >
-      <AppIcon name={icon} size={15} color={colors.muted} />
-      <Text className="text-xs font-sans-bold uppercase tracking-wide text-muted">
-        {readingStatusLabel(status)}
-      </Text>
-      <AppIcon name="chevron" size={15} color={colors.subtle} />
-    </Pressable>
   );
 }
 

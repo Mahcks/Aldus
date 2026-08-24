@@ -5,11 +5,11 @@ import type {
   TitleSearchResult,
   WorkSummary,
 } from '../../generated/api';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { groupAcquisitionResults } from '../../features/acquisition';
 import { BookCover } from '../../features/bookshelf';
-import { AcquisitionGroupRow, BrowseFacet } from '../../features/browse';
+import { AcquisitionGroupRow, BrowseControls, BrowseFacet, WorkGrid } from '../../features/browse';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { titleRequestPresentation } from '../../features/title-search';
 import { Text, View } from '../../features/tw';
@@ -26,6 +26,11 @@ import {
 } from '../../features/ui';
 import { APIError, api, errorMessage } from '../../lib/api';
 import { offlineWorkSummaries } from '../../lib/offline-library';
+
+const statusTitles: Record<string, string> = {
+  want_to_read: 'Want to read or listen',
+  finished: 'Finished',
+};
 
 type BookFormat = 'ebook' | 'audiobook';
 type ReleaseStatus = 'idle' | 'sending' | 'queued' | 'error';
@@ -187,7 +192,14 @@ function TitleRow({
 
 export default function SearchScreen() {
   const auth = useAuth();
+  const params = useLocalSearchParams<{ status?: string }>();
+  const status = params.status || '';
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('recent');
+  const [availability, setAvailability] = useState('all');
+  const [browseWorks, setBrowseWorks] = useState<WorkSummary[]>([]);
+  const [browseHasMore, setBrowseHasMore] = useState(false);
+  const [browseLoadingMore, setBrowseLoadingMore] = useState(false);
   const [results, setResults] = useState<TitleSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -231,13 +243,49 @@ export default function SearchScreen() {
     };
   }, []);
 
+  async function loadBrowse(offset = 0) {
+    const sequence = ++searchSequence.current;
+    if (offset === 0) setLoading(true);
+    else setBrowseLoadingMore(true);
+    setError('');
+    try {
+      const page = await api.browseWorks({
+        libraryID,
+        sort,
+        availability,
+        status,
+        limit: 24,
+        offset,
+      });
+      if (sequence !== searchSequence.current) return;
+      setBrowseWorks((current) => (offset ? [...current, ...page.items] : page.items));
+      setBrowseHasMore(page.has_more);
+      setOffline(false);
+    } catch (value) {
+      if (sequence !== searchSequence.current) return;
+      if (!(value instanceof APIError && value.status === 0)) {
+        setError(errorMessage(value));
+        return;
+      }
+      const saved = await offlineWorkSummaries(libraryID || undefined);
+      if (sequence !== searchSequence.current) return;
+      setBrowseWorks(saved);
+      setBrowseHasMore(false);
+      setOffline(true);
+      if (!saved.length) setError(errorMessage(value));
+    } finally {
+      if (sequence === searchSequence.current) {
+        setLoading(false);
+        setBrowseLoadingMore(false);
+      }
+    }
+  }
+
   useEffect(() => {
     const sequence = ++searchSequence.current;
     if (!trimmedQuery) {
       setResults([]);
-      setLoading(false);
-      setError('');
-      setOffline(false);
+      void loadBrowse();
       return;
     }
     const timer = setTimeout(() => {
@@ -274,7 +322,8 @@ export default function SearchScreen() {
         });
     }, 300);
     return () => clearTimeout(timer);
-  }, [trimmedQuery, libraryID]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedQuery, libraryID, sort, availability, status]);
 
   async function requestFormat(result: TitleSearchResult, format: BookFormat) {
     const destination = destinationFor(result, destinations, libraryID);
@@ -398,7 +447,7 @@ export default function SearchScreen() {
   }
 
   return (
-    <Page title="Search" hideHeader>
+    <Page title={statusTitles[status] || 'Discover'} hideHeader>
       <View className="max-w-[760px]">
         <SearchField
           label="Search title, author, or ISBN"
@@ -418,26 +467,57 @@ export default function SearchScreen() {
           onChange={setLibraryID}
         />
       ) : null}
-      {offline ? <Notice>Offline · searching books downloaded to this device.</Notice> : null}
+      {!trimmedQuery ? (
+        <BrowseControls
+          sort={sort}
+          availability={availability}
+          onSortChange={setSort}
+          onAvailabilityChange={setAvailability}
+        />
+      ) : null}
+      {offline ? (
+        <Notice>
+          Offline · {trimmedQuery ? 'searching' : 'showing'} books downloaded to this device.
+        </Notice>
+      ) : null}
       {!acquisitionEnabled && trimmedQuery && !offline ? (
         <Notice tone="warning">
           Missing formats cannot be requested until an owner finishes download setup.
         </Notice>
       ) : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      {!trimmedQuery || (loading && results.length === 0) || results.length === 0 ? (
+      {!trimmedQuery ? (
+        loading && browseWorks.length === 0 ? (
+          <LoadingState label="Finding books…" />
+        ) : browseWorks.length === 0 ? (
+          <EmptyState icon="read" title="Nothing here yet">
+            {"Books you have access to will show up here once they're added."}
+          </EmptyState>
+        ) : (
+          <View className="items-start gap-6">
+            <WorkGrid
+              works={browseWorks}
+              showLibrary
+              onOpen={(work) => router.push(`/work/${work.id}`)}
+            />
+            {browseHasMore ? (
+              <Button
+                label={browseLoadingMore ? 'Loading…' : 'Load more'}
+                disabled={browseLoadingMore}
+                onPress={() => void loadBrowse(browseWorks.length)}
+              />
+            ) : null}
+          </View>
+        )
+      ) : loading && results.length === 0 ? (
         <View className="flex-1 items-center justify-center">
-          {!trimmedQuery ? (
-            <EmptyState icon="search" title="Find your next book">
-              Search once to see what you can read, listen to, or request.
-            </EmptyState>
-          ) : loading ? (
-            <LoadingState label="Searching titles…" />
-          ) : (
-            <EmptyState icon="search" title="No matching titles">
-              Check the title or author and try again.
-            </EmptyState>
-          )}
+          <LoadingState label="Searching titles…" />
+        </View>
+      ) : results.length === 0 ? (
+        <View className="flex-1 items-center justify-center">
+          <EmptyState icon="search" title="No matching titles">
+            Check the title or author and try again.
+          </EmptyState>
         </View>
       ) : (
         <Section title={`${results.length} ${results.length === 1 ? 'title' : 'titles'}`}>

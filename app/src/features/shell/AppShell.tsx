@@ -48,7 +48,7 @@ function AppShellChrome() {
 
   const consumerLinks: NavItem[] = [
     { label: 'Home', href: '/home', icon: 'home' },
-    { label: 'Search', href: '/search', icon: 'search' },
+    { label: 'Discover', href: '/search', icon: 'discover' },
     { label: 'Collections', href: '/collections', icon: 'collections' },
     { label: 'Activity', href: '/activity', icon: 'activity', badge: unreadNotifications },
     { label: 'Account', href: '/account', icon: 'account' },

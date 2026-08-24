@@ -2,6 +2,7 @@ import type {
   AlignmentJob,
   CoverAsset,
   CoverCandidate,
+  Library,
   Representation,
   Work,
 } from '../../../../generated/api';
@@ -61,12 +62,10 @@ function alignmentJobHint(state: string) {
 }
 
 export default function ManageWorkScreen() {
-  const {
-    id,
-    libraryId,
-    role = '',
-    tab: tabParam,
-  } = useLocalSearchParams<{ id: string; libraryId: string; role?: string; tab?: string }>();
+  const { id, tab: tabParam } = useLocalSearchParams<{
+    id: string;
+    tab?: string;
+  }>();
   const auth = useAuth();
   const initialTab: ManageTab = manageTabs.some((entry) => entry.value === tabParam)
     ? (tabParam as ManageTab)
@@ -74,6 +73,7 @@ export default function ManageWorkScreen() {
   const [activeTab, setActiveTab] = useState(initialTab);
   const tabHistory = useRef<ManageTab[]>([initialTab]);
   const [work, setWork] = useState<Work>();
+  const [library, setLibrary] = useState<Library>();
   const [representations, setRepresentations] = useState<Representation[]>([]);
   const [media, setMedia] = useState<MediaChoice[]>([]);
   const [jobs, setJobs] = useState<AlignmentJob[]>([]);
@@ -102,16 +102,18 @@ export default function ManageWorkScreen() {
   const [generatedLayout, setGeneratedLayout] = useState<'top' | 'center' | 'bottom'>('center');
 
   async function load() {
-    if (!id || !libraryId) return;
+    if (!id) return;
     try {
-      const [nextWork, nextRepresentations, nextJobs, nextCovers] = await Promise.all([
-        api.work(id),
+      const nextWork = await api.work(id);
+      const [nextLibrary, nextRepresentations, nextJobs, nextCovers] = await Promise.all([
+        api.library(nextWork.library_id),
         api.representations(id),
         api.alignmentJobs(id),
         api.covers(id),
       ]);
-      const revisions = await loadRevisions(libraryId, nextRepresentations);
+      const revisions = await loadRevisions(nextWork.library_id, nextRepresentations);
       setWork(nextWork);
+      setLibrary(nextLibrary);
       setTitle(nextWork.title);
       setAuthor(nextWork.author || '');
       setCoverQuery((current) => current || `${nextWork.title} ${nextWork.author || ''}`.trim());
@@ -145,7 +147,7 @@ export default function ManageWorkScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, libraryId]);
+  }, [id]);
 
   useEffect(() => {
     const active = jobs.filter((job) => !terminal.has(job.state));
@@ -181,7 +183,9 @@ export default function ManageWorkScreen() {
       </Page>
     );
 
-  const canEdit = Boolean(auth.user?.admin || role === 'owner' || role === 'editor');
+  const canEdit = Boolean(
+    auth.user?.admin || library?.role === 'owner' || library?.role === 'editor',
+  );
   const epubs = media.filter((item) => item.kind === 'epub');
   const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
   const selectedEPUB = epubs.find((item) => item.id === epubID);
@@ -193,7 +197,7 @@ export default function ManageWorkScreen() {
       setActiveTab(tabHistory.current.at(-1) ?? 'cover');
       return;
     }
-    goBackOr(`/work/${id}?libraryId=${libraryId}&role=${role}`);
+    goBackOr(`/work/${id}`);
   }
 
   function selectTab(next: ManageTab) {
@@ -353,10 +357,11 @@ export default function ManageWorkScreen() {
   }
 
   async function deleteWork() {
+    if (!work) return;
     setDeletingWork(true);
     try {
       await api.deleteWork(id);
-      goBackOr(`/library/${libraryId}`);
+      goBackOr(`/library/${work.library_id}`);
     } catch (value) {
       setError(errorMessage(value));
       setDeletingWork(false);
@@ -399,11 +404,12 @@ export default function ManageWorkScreen() {
 
       {activeTab === 'cover' ? (
         <View className="gap-8">
-          <Section title="Presentation">
+          <Section title="Cover">
             <View className="gap-2">
               <Text className={shared.itemMeta}>
-                Missing artwork or a description? Aldus can match this title and author with Open
-                Library without replacing details you selected yourself.
+                Missing artwork, a description, publisher, language, or subjects? Aldus can match
+                this title and author with Open Library without replacing details you selected
+                yourself.
               </Text>
               <View className="self-start">
                 <Button
@@ -432,97 +438,99 @@ export default function ManageWorkScreen() {
               <View className="min-w-[280px] max-w-[680px] flex-1 gap-5">
                 <Text className={shared.itemMeta}>
                   {work.cover_url
-                    ? 'Custom artwork is selected.'
-                    : 'Using the Aldus-generated cover.'}{' '}
+                    ? 'Using custom artwork.'
+                    : 'Using the Aldus-generated cover — no artwork is selected.'}{' '}
                   One cover is shared by reading and listening; source files are never modified.
                 </Text>
+
+                {work.cover_url ? (
+                  <View className="gap-5">
+                    <Select
+                      label="Image fit"
+                      value={coverFit}
+                      options={[
+                        { value: 'cover', label: 'Fill frame' },
+                        { value: 'contain', label: 'Show full image' },
+                      ]}
+                      onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
+                    />
+                    <Select
+                      label="Image focus"
+                      value={coverFocalPoint}
+                      options={[
+                        { value: '50:0', label: 'Top' },
+                        { value: '50:50', label: 'Center' },
+                        { value: '50:100', label: 'Bottom' },
+                        { value: '0:50', label: 'Left' },
+                        { value: '100:50', label: 'Right' },
+                      ]}
+                      onChange={setCoverFocalPoint}
+                    />
+                  </View>
+                ) : null}
+
+                <View className="gap-1">
+                  <Text className={shared.itemTitle}>Generated cover design</Text>
+                  <Text className={shared.itemMeta}>
+                    {work.cover_url
+                      ? 'Used automatically if the custom artwork above is ever removed — worth setting up now.'
+                      : 'This is what readers see for this Work today.'}
+                  </Text>
+                </View>
                 <Select
-                  label="Image fit"
-                  value={coverFit}
+                  label="Design"
+                  value={generatedStyle}
                   options={[
-                    { value: 'cover', label: 'Fill frame' },
-                    { value: 'contain', label: 'Show full image' },
+                    { value: 'classic', label: 'Classic' },
+                    { value: 'minimal', label: 'Minimal' },
+                    { value: 'framed', label: 'Framed' },
                   ]}
-                  onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
+                  onChange={(value) => setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')}
                 />
                 <Select
-                  label="Image focus"
-                  value={coverFocalPoint}
+                  label="Title position"
+                  value={generatedLayout}
                   options={[
-                    { value: '50:0', label: 'Top' },
-                    { value: '50:50', label: 'Center' },
-                    { value: '50:100', label: 'Bottom' },
-                    { value: '0:50', label: 'Left' },
-                    { value: '100:50', label: 'Right' },
+                    { value: 'top', label: 'Top' },
+                    { value: 'center', label: 'Center' },
+                    { value: 'bottom', label: 'Bottom' },
                   ]}
-                  onChange={setCoverFocalPoint}
+                  onChange={(value) => setGeneratedLayout(value as 'top' | 'center' | 'bottom')}
                 />
-                <View className="self-start">
+                <Select
+                  label="Cloth color"
+                  value={generatedTone}
+                  options={[
+                    { value: '-1', label: 'Automatic' },
+                    { value: '0', label: 'Ink' },
+                    { value: '1', label: 'Umber' },
+                    { value: '2', label: 'Terracotta' },
+                    { value: '3', label: 'Slate' },
+                    { value: '4', label: 'Sage' },
+                  ]}
+                  onChange={setGeneratedTone}
+                />
+
+                <Row>
+                  {work.cover_url ? (
+                    <Button
+                      label="Remove artwork, use generated cover"
+                      kind="secondary"
+                      loading={savingCover === 'restore'}
+                      disabled={Boolean(savingCover)}
+                      onPress={() => void restoreCover()}
+                    />
+                  ) : null}
                   <Button
-                    label="Save presentation"
+                    label="Save cover settings"
                     kind="primary"
                     loading={savingCover === 'settings'}
                     disabled={Boolean(savingCover)}
                     onPress={() => void saveCoverSettings()}
                   />
-                </View>
+                </Row>
               </View>
             </View>
-          </Section>
-
-          <Section title="Generated cover">
-            <Text className={shared.itemMeta}>
-              Keep a dependable library-made option even when artwork is missing.
-            </Text>
-            <Select
-              label="Design"
-              value={generatedStyle}
-              options={[
-                { value: 'classic', label: 'Classic' },
-                { value: 'minimal', label: 'Minimal' },
-                { value: 'framed', label: 'Framed' },
-              ]}
-              onChange={(value) => setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')}
-            />
-            <Select
-              label="Title position"
-              value={generatedLayout}
-              options={[
-                { value: 'top', label: 'Top' },
-                { value: 'center', label: 'Center' },
-                { value: 'bottom', label: 'Bottom' },
-              ]}
-              onChange={(value) => setGeneratedLayout(value as 'top' | 'center' | 'bottom')}
-            />
-            <Select
-              label="Cloth color"
-              value={generatedTone}
-              options={[
-                { value: '-1', label: 'Automatic' },
-                { value: '0', label: 'Ink' },
-                { value: '1', label: 'Umber' },
-                { value: '2', label: 'Terracotta' },
-                { value: '3', label: 'Slate' },
-                { value: '4', label: 'Sage' },
-              ]}
-              onChange={setGeneratedTone}
-            />
-            <Row>
-              <Button
-                label={work.cover_url ? 'Use generated cover' : 'Generated cover selected'}
-                kind="secondary"
-                selected={!work.cover_url}
-                disabled={Boolean(savingCover) || !work.cover_url}
-                onPress={() => void restoreCover()}
-              />
-              <Button
-                label="Save generated design"
-                kind="secondary"
-                loading={savingCover === 'settings'}
-                disabled={Boolean(savingCover)}
-                onPress={() => void saveCoverSettings()}
-              />
-            </Row>
           </Section>
 
           <Section title="Cover library">
@@ -619,9 +627,7 @@ export default function ManageWorkScreen() {
                     accessibilityRole="link"
                     key={item.id}
                     className={shared.listItem}
-                    onPress={() =>
-                      router.push(`/representation/${item.id}?libraryId=${libraryId}&role=${role}`)
-                    }
+                    onPress={() => router.push(`/representation/${item.id}`)}
                   >
                     <Text className={shared.itemTitle}>{item.label}</Text>
                     <Text className={shared.itemMeta}>

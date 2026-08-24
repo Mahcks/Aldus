@@ -41,6 +41,30 @@ export function coverPresentation(work: {
   };
 }
 
+/**
+ * Cover records are stored at Open Library's "-L" size (large, often 500px+
+ * on the long edge) regardless of where they render. Squeezed straight into
+ * a ~150-300px card, that oversized source causes visible moire/aliasing on
+ * detailed cover art. "-M" is close to our largest card (hero, 204px wide)
+ * and sharper at our sizes without a size-specific request per card.
+ */
+function resolveCoverSrc(url: string) {
+  return url.replace(/(covers\.openlibrary\.org\/b\/id\/\d+)-L\.jpg/, '$1-M.jpg');
+}
+
+/**
+ * Generated covers show one clean title, not the catalog's full title —
+ * classic-lit subtitles ("; or, the Modern Prometheus") read fine in the
+ * caption below the cover but mid-word-truncate badly at cover scale. Real
+ * covers drop the subtitle on the face and keep it on the spine; this does
+ * the same, only when there's a subtitle to drop and it actually shortens
+ * things.
+ */
+function coverDisplayTitle(title: string) {
+  const main = title.split(/\s*[:;]\s+/)[0]?.trim();
+  return main && main.length >= 3 && main.length < title.length ? main : title;
+}
+
 function hash(value: string) {
   let result = 0;
   for (const character of value) result = (result * 31 + character.charCodeAt(0)) >>> 0;
@@ -76,19 +100,26 @@ export function BookCover({
     continue: 'h-[156px] w-[106px]',
     hero: 'h-[300px] w-[204px]',
   }[resolvedSize];
-  const titleSizeClass =
-    resolvedSize === 'hero'
-      ? 'text-2xl leading-7'
-      : resolvedSize === 'mini'
-        ? 'text-[10px] leading-3'
-        : resolvedSize === 'continue'
-          ? 'text-base leading-5'
-          : 'text-xl leading-6';
   const coverToneIndex =
     generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length;
   const coverTone = coverTones[coverToneIndex];
   const outerPaddingClass = resolvedSize === 'mini' ? 'p-1' : 'p-3';
   const innerPaddingClass = resolvedSize === 'mini' ? 'px-1 py-2' : 'px-3 py-5';
+  const displayTitle = coverDisplayTitle(title);
+  /**
+   * Threshold and type scale both track the cover's own width — a "small"
+   * cover (148px) has meaningfully less line width than "tile" (184px), so
+   * sharing one long-title cutoff between them left small covers truncating
+   * titles that fit fine on tile.
+   */
+  const titleFit = {
+    hero: { threshold: 20, base: 'text-2xl leading-7', long: 'text-xl leading-6' },
+    tile: { threshold: 18, base: 'text-xl leading-6', long: 'text-lg leading-5' },
+    small: { threshold: 14, base: 'text-lg leading-5', long: 'text-base leading-4' },
+    continue: { threshold: 12, base: 'text-base leading-5', long: 'text-sm leading-4' },
+    mini: { threshold: Infinity, base: 'text-[10px] leading-3', long: 'text-[10px] leading-3' },
+  }[resolvedSize];
+  const isLongTitle = displayTitle.length > titleFit.threshold;
   const coverTitle =
     resolvedSize === 'mini'
       ? title
@@ -97,7 +128,8 @@ export function BookCover({
           .map((word) => word[0])
           .join('')
           .toUpperCase()
-      : title;
+      : displayTitle;
+  const titleSizeClass = isLongTitle ? titleFit.long : titleFit.base;
 
   const layoutClass = {
     top: 'justify-start',
@@ -113,7 +145,11 @@ export function BookCover({
     >
       {showImage ? (
         <ExpoImage
-          source={{ uri: coverURL?.startsWith('/') ? `${apiBaseURL}${coverURL}` : coverURL }}
+          source={{
+            uri: coverURL?.startsWith('/')
+              ? `${apiBaseURL}${coverURL}`
+              : resolveCoverSrc(coverURL || ''),
+          }}
           contentFit={coverFit}
           contentPosition={{ left: `${coverFocalX}%`, top: `${coverFocalY}%` }}
           accessibilityIgnoresInvertColors
@@ -144,7 +180,7 @@ export function BookCover({
               <View />
             )}
             <Text
-              numberOfLines={3}
+              numberOfLines={resolvedSize === 'mini' ? 2 : isLongTitle ? 4 : 3}
               className={`text-center font-editorial-bold text-paper ${titleSizeClass}`}
             >
               {coverTitle}
@@ -417,6 +453,11 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
  * Switching read/listen mid-book is a detail-page action now — this tile
  * only shows what's needed to recognize the book and resume it.
  */
+const continueSizeClass = {
+  continue: { width: 'w-[106px]', title: 'text-sm leading-4 min-h-[32px]', titleLines: 2 },
+  hero: { width: 'w-[204px]', title: 'text-lg leading-6 min-h-[48px]', titleLines: 3 },
+} as const;
+
 export function ContinueCard({
   title,
   author,
@@ -424,6 +465,7 @@ export function ContinueCard({
   coverPresentation,
   progress,
   continueMode,
+  size = 'continue',
   onOpen,
   onContinue,
 }: {
@@ -435,6 +477,8 @@ export function ContinueCard({
   availability: WorkAvailability;
   progress?: string;
   continueMode: 'read' | 'listen';
+  /** `hero` gives the cover and title room to breathe — use it where Continue is the star of the screen (Home). */
+  size?: keyof typeof continueSizeClass;
   onOpen: () => void;
   onContinue: () => void;
   onRead?: () => void;
@@ -446,9 +490,10 @@ export function ContinueCard({
   const [titlePressed, setTitlePressed] = useState(false);
   const coverStateClass = resolvePressStateClass({ focused: coverFocused, pressed: coverPressed });
   const titleStateClass = resolvePressStateClass({ focused: titleFocused, pressed: titlePressed });
+  const dimensions = continueSizeClass[size];
 
   return (
-    <View className="w-[106px] gap-1.5">
+    <View className={`${dimensions.width} gap-1.5`}>
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`Continue ${continueMode === 'read' ? 'reading' : 'listening to'} ${title}`}
@@ -463,7 +508,7 @@ export function ContinueCard({
           title={title}
           author={author}
           coverURL={coverURL}
-          size="continue"
+          size={size}
           {...coverPresentation}
         />
         {progress ? (
@@ -495,8 +540,8 @@ export function ContinueCard({
         className={`gap-0.5 rounded-control px-0.5 ${titleStateClass}`}
       >
         <Text
-          numberOfLines={2}
-          className="min-h-[32px] font-editorial-bold text-sm leading-4 text-ink"
+          numberOfLines={dimensions.titleLines}
+          className={`font-editorial-bold text-ink ${dimensions.title}`}
         >
           {title}
         </Text>

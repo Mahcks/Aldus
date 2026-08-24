@@ -10,6 +10,7 @@ const names = {
   collections: 'bookmark-multiple-outline',
   activity: 'bell-outline',
   search: 'magnify',
+  discover: 'compass-outline',
   read: 'book-open-page-variant-outline',
   listen: 'headphones',
   synced: 'link-variant',

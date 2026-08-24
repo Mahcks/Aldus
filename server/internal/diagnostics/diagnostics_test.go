@@ -26,7 +26,7 @@ func TestReportIsAdminOnlyAndChecksRuntimeState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Version != "v1.2.3" || report.Environment != "test" || report.DatabaseStatus != "ok" || report.StorageStatus != "ok" || report.SchemaVersion != 36 || report.SourceRootsConfigured != 2 || report.SourceRootsReachable != 1 {
+	if report.Version != "v1.2.3" || report.Environment != "test" || report.DatabaseStatus != "ok" || report.StorageStatus != "ok" || report.SchemaVersion != 37 || report.SourceRootsConfigured != 2 || report.SourceRootsReachable != 1 {
 		t.Fatalf("report = %#v", report)
 	}
 }

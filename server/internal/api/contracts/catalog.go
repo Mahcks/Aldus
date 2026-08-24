@@ -42,6 +42,11 @@ type Work struct {
 type WorkDetail struct {
 	Work              `tstype:",extends,required"`
 	Description       string    `json:"description,omitempty"`
+	ISBN              string    `json:"isbn,omitempty"`
+	FirstPublishYear  int       `json:"first_publish_year,omitempty"`
+	Publisher         string    `json:"publisher,omitempty"`
+	Language          string    `json:"language,omitempty"`
+	Subjects          string    `json:"subjects,omitempty"`
 	InProgress        bool      `json:"in_progress"`
 	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
 	CompletionPercent int       `json:"completion_percent"`
@@ -55,7 +60,6 @@ type WorkSummary struct {
 	ID                   string    `json:"id"`
 	LibraryID            string    `json:"library_id"`
 	LibraryName          string    `json:"library_name"`
-	LibraryRole          string    `json:"library_role,omitempty"`
 	Title                string    `json:"title"`
 	Author               string    `json:"author,omitempty"`
 	CoverURL             string    `json:"cover_url,omitempty"`

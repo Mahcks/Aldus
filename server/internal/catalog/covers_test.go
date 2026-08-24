@@ -33,9 +33,37 @@ func TestRefreshOpenLibraryMetadataUsesExactTitleAndAuthor(t *testing.T) {
 
 	value, err := refreshOpenLibraryMetadata(context.Background(), server.Client(), server.URL+"/search", "Astrophysics for People in a Hurry", "Neil deGrasse Tyson", func(id string) string {
 		return server.URL + "/works/" + id
+	}, func(id string) string {
+		return server.URL + "/works/" + id + "/editions"
 	})
 	if err != nil || value.CoverID != "42" || value.Description != "A short tour of the universe." {
 		t.Fatalf("metadata = %#v, %v", value, err)
+	}
+}
+
+func TestRefreshOpenLibraryMetadataPrefersNonForeignEdition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/search":
+			_, _ = w.Write([]byte(`{"docs":[{"key":"/works/OL27W","cover_i":27,"title":"Treasure Island","author_name":["Robert Louis Stevenson"],"publisher":["Destino"],"isbn":["9798657281057"],"language":["spa"],"first_publish_year":1883}]}`))
+		case r.URL.Path == "/works/OL27W/editions":
+			_, _ = w.Write([]byte(`{"entries":[{"publishers":["Destino"],"isbn_13":["9798657281057"],"languages":[{"key":"/languages/spa"}]},{"publishers":["Cassell & Company"],"isbn_13":["9780451530549"],"languages":[{"key":"/languages/eng"}]}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"description":{"value":"A tale of pirates and treasure."}}`))
+		}
+	}))
+	defer server.Close()
+
+	value, err := refreshOpenLibraryMetadata(context.Background(), server.Client(), server.URL+"/search", "Treasure Island", "Robert Louis Stevenson", func(id string) string {
+		return server.URL + "/works/" + id
+	}, func(id string) string {
+		return server.URL + "/works/" + id + "/editions"
+	})
+	if err != nil {
+		t.Fatalf("refresh metadata: %v", err)
+	}
+	if value.Language != "eng" || value.Publisher != "Cassell & Company" || value.ISBN != "9780451530549" {
+		t.Fatalf("metadata = %#v, want the English edition, not the Spanish search-doc default", value)
 	}
 }
 

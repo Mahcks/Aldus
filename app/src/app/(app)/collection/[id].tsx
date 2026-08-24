@@ -136,7 +136,7 @@ export default function CollectionDetailScreen() {
   async function openWork(workID: string) {
     try {
       const work = await api.work(workID);
-      router.push(`/work/${work.id}?libraryId=${work.library_id}`);
+      router.push(`/work/${work.id}`);
     } catch (value) {
       setError(errorMessage(value));
     }

@@ -24,6 +24,7 @@ type CoverCandidate struct {
 	Source, SourceID, ImageURL, Title, Author, Publisher, ISBN string
 	WorkID                                                     string
 	FirstPublishYear                                           int
+	Language, Subjects                                         string
 }
 
 type CoverAsset struct {
@@ -46,13 +47,18 @@ type openLibraryResult struct {
 		FirstPublishYear int      `json:"first_publish_year"`
 		Publishers       []string `json:"publisher"`
 		ISBNs            []string `json:"isbn"`
+		Languages        []string `json:"language"`
+		Subjects         []string `json:"subject"`
 	} `json:"docs"`
 }
+
+const maxWorkSubjects = 5
 
 const maxWorkDescriptionRunes = 4000
 
 type refreshedMetadata struct {
-	CoverID, Description string
+	CoverID, Description, ISBN, Publisher, Language, Subjects string
+	FirstPublishYear                                          int
 }
 
 func (s *Store) RefreshMetadata(ctx context.Context, actor auth.User, workID string) (WorkDetail, error) {
@@ -61,9 +67,11 @@ func (s *Store) RefreshMetadata(ctx context.Context, actor auth.User, workID str
 		return WorkDetail{}, err
 	}
 	query := strings.TrimSpace(work.Title + " " + work.Author)
-	endpoint := "https://openlibrary.org/search.json?limit=12&fields=key,cover_i,title,author_name&q=" + url.QueryEscape(query)
+	endpoint := "https://openlibrary.org/search.json?limit=12&fields=key,cover_i,title,author_name,first_publish_year,publisher,isbn,language,subject&q=" + url.QueryEscape(query)
 	metadata, err := refreshOpenLibraryMetadata(ctx, &http.Client{Timeout: 10 * time.Second}, endpoint, work.Title, work.Author, func(id string) string {
 		return "https://openlibrary.org/works/" + url.PathEscape(id) + ".json"
+	}, func(id string) string {
+		return "https://openlibrary.org/works/" + url.PathEscape(id) + "/editions.json?limit=50"
 	})
 	if err != nil {
 		return WorkDetail{}, err
@@ -81,7 +89,17 @@ func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metada
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO work_metadata(work_id,cover_url,source,description,updated_at) VALUES(?,?,'open_library',?,?) ON CONFLICT(work_id) DO UPDATE SET cover_url=CASE WHEN work_metadata.cover_url='' THEN excluded.cover_url ELSE work_metadata.cover_url END,description=CASE WHEN work_metadata.description='' THEN excluded.description ELSE work_metadata.description END,updated_at=excluded.updated_at`, workID, openLibraryCoverURL(metadata.CoverID), metadata.Description, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO work_metadata(work_id,cover_url,source,description,isbn,first_publish_year,publisher,language,subjects,updated_at) VALUES(?,?,'open_library',?,?,?,?,?,?,?)
+		ON CONFLICT(work_id) DO UPDATE SET
+			cover_url=CASE WHEN work_metadata.cover_url='' THEN excluded.cover_url ELSE work_metadata.cover_url END,
+			description=CASE WHEN work_metadata.description='' THEN excluded.description ELSE work_metadata.description END,
+			isbn=CASE WHEN work_metadata.isbn='' THEN excluded.isbn ELSE work_metadata.isbn END,
+			first_publish_year=CASE WHEN work_metadata.first_publish_year=0 THEN excluded.first_publish_year ELSE work_metadata.first_publish_year END,
+			publisher=CASE WHEN work_metadata.publisher='' THEN excluded.publisher ELSE work_metadata.publisher END,
+			language=CASE WHEN work_metadata.language='' THEN excluded.language ELSE work_metadata.language END,
+			subjects=CASE WHEN work_metadata.subjects='' THEN excluded.subjects ELSE work_metadata.subjects END,
+			updated_at=excluded.updated_at`,
+		workID, openLibraryCoverURL(metadata.CoverID), metadata.Description, metadata.ISBN, metadata.FirstPublishYear, metadata.Publisher, metadata.Language, metadata.Subjects, now); err != nil {
 		return fmt.Errorf("save refreshed metadata: %w", err)
 	}
 	coverRecordID, err := randomID()
@@ -100,7 +118,7 @@ func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metada
 	return nil
 }
 
-func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, searchEndpoint, title, author string, workEndpoint func(string) string) (refreshedMetadata, error) {
+func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, searchEndpoint, title, author string, workEndpoint, editionsEndpoint func(string) string) (refreshedMetadata, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, searchEndpoint, nil)
 	if err != nil {
 		return refreshedMetadata{}, err
@@ -132,7 +150,91 @@ func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, search
 	if err != nil {
 		return refreshedMetadata{}, err
 	}
-	return refreshedMetadata{CoverID: selected.SourceID, Description: description}, nil
+	// The search doc aggregates every edition of the work into flat arrays —
+	// language[0], publisher[0], and isbn[0] can each come from a different
+	// translation, so used together they can describe an edition that never
+	// existed (e.g. a Spanish publisher paired with an English printing).
+	// The editions endpoint returns one record per real edition; use it to
+	// pull correlated fields for a same-language, preferably English, one.
+	if edition, ok := openLibraryEnglishEdition(ctx, client, editionsEndpoint(selected.WorkID)); ok {
+		selected.Language = edition.Language
+		selected.Publisher = edition.Publisher
+		selected.ISBN = edition.ISBN
+	}
+	return refreshedMetadata{
+		CoverID:          selected.SourceID,
+		Description:      description,
+		ISBN:             selected.ISBN,
+		FirstPublishYear: selected.FirstPublishYear,
+		Publisher:        selected.Publisher,
+		Language:         selected.Language,
+		Subjects:         selected.Subjects,
+	}, nil
+}
+
+type openLibraryEdition struct {
+	Language, Publisher, ISBN string
+}
+
+// openLibraryEnglishEdition picks the first edition that isn't explicitly
+// tagged with a non-English language — many pre-1923 English originals in
+// Open Library have no language tag at all, so "not explicitly foreign" is
+// the reliable signal here, not "explicitly English."
+func openLibraryEnglishEdition(ctx context.Context, client *http.Client, endpoint string) (openLibraryEdition, bool) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return openLibraryEdition{}, false
+	}
+	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
+	response, err := client.Do(request)
+	if err != nil || response.StatusCode != http.StatusOK {
+		if response != nil {
+			response.Body.Close()
+		}
+		return openLibraryEdition{}, false
+	}
+	defer response.Body.Close()
+	var payload struct {
+		Entries []struct {
+			Publishers []string `json:"publishers"`
+			ISBN13     []string `json:"isbn_13"`
+			ISBN10     []string `json:"isbn_10"`
+			Languages  []struct {
+				Key string `json:"key"`
+			} `json:"languages"`
+		} `json:"entries"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(&payload); err != nil {
+		return openLibraryEdition{}, false
+	}
+	for _, entry := range payload.Entries {
+		language := ""
+		foreign := false
+		for _, tag := range entry.Languages {
+			code := strings.TrimPrefix(tag.Key, "/languages/")
+			if code == "eng" {
+				language = code
+			} else if code != "" {
+				foreign = true
+			}
+		}
+		if foreign {
+			continue
+		}
+		edition := openLibraryEdition{Language: language}
+		if len(entry.Publishers) > 0 {
+			edition.Publisher = entry.Publishers[0]
+		}
+		if len(entry.ISBN13) > 0 {
+			edition.ISBN = entry.ISBN13[0]
+		} else if len(entry.ISBN10) > 0 {
+			edition.ISBN = entry.ISBN10[0]
+		}
+		if edition.Publisher != "" || edition.ISBN != "" || edition.Language != "" {
+			return edition, true
+		}
+	}
+	return openLibraryEdition{}, false
 }
 
 func openLibraryDescription(ctx context.Context, client *http.Client, endpoint string) (string, error) {
@@ -235,6 +337,13 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 		}
 		if len(doc.ISBNs) > 0 {
 			candidate.ISBN = doc.ISBNs[0]
+		}
+		if len(doc.Languages) > 0 {
+			candidate.Language = doc.Languages[0]
+		}
+		if len(doc.Subjects) > 0 {
+			limit := min(len(doc.Subjects), maxWorkSubjects)
+			candidate.Subjects = strings.Join(doc.Subjects[:limit], ",")
 		}
 		candidates = append(candidates, candidate)
 	}

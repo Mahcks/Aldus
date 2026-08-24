@@ -247,6 +247,11 @@ export interface Work {
 }
 export interface WorkDetail extends Work {
   description?: string;
+  isbn?: string;
+  first_publish_year?: number /* int */;
+  publisher?: string;
+  language?: string;
+  subjects?: string;
   in_progress: boolean;
   progress_updated_at?: string;
   completion_percent: number /* int */;
@@ -260,7 +265,6 @@ export interface WorkSummary {
   id: string;
   library_id: string;
   library_name: string;
-  library_role?: string;
   title: string;
   author?: string;
   cover_url?: string;

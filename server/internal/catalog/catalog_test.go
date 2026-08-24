@@ -125,12 +125,24 @@ func TestLibrariesRolesAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := store.UpdateWork(ctx, reader, work.ID, "Tampered", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reader update = %v", err)
+	}
+	if _, err := store.CreateRepresentation(ctx, reader, work.ID, "epub", "Tampered"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reader representation create = %v", err)
+	}
 	if _, err := store.Work(ctx, outsider, work.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-library work = %v", err)
 	}
 	epub, err := store.CreateRepresentation(ctx, editor, work.ID, "epub", "First edition")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := store.UpdateRepresentation(ctx, reader, epub.ID, "epub", "Tampered"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reader representation update = %v", err)
+	}
+	if err := store.DeleteRepresentation(ctx, reader, epub.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reader representation delete = %v", err)
 	}
 	audio, err := store.CreateRepresentation(ctx, editor, work.ID, "audio", "Narrated edition")
 	if err != nil {

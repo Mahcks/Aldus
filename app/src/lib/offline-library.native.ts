@@ -84,7 +84,6 @@ export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSumm
       return {
         ...item.work,
         library_name: library?.name ?? 'Offline downloads',
-        library_role: library?.role,
         readable: item.epubs.length > 0,
         listenable: item.audio.length > 0,
         synchronized: Boolean(item.alignment),

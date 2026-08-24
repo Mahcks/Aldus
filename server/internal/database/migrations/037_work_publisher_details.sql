@@ -1,0 +1,3 @@
+ALTER TABLE work_metadata ADD COLUMN publisher TEXT NOT NULL DEFAULT '';
+ALTER TABLE work_metadata ADD COLUMN language TEXT NOT NULL DEFAULT '';
+ALTER TABLE work_metadata ADD COLUMN subjects TEXT NOT NULL DEFAULT '';

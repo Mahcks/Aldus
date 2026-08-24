@@ -63,6 +63,9 @@ type Work struct {
 type WorkDetail struct {
 	Work
 	Description                                                        string
+	ISBN                                                               string
+	FirstPublishYear                                                   int
+	Publisher, Language, Subjects                                      string
 	InProgress                                                         bool
 	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
 	LastMode                                                           string
@@ -71,7 +74,7 @@ type WorkDetail struct {
 }
 
 type WorkSummary struct {
-	ID, LibraryID, LibraryName, LibraryRole, Title, Author, CoverURL   string
+	ID, LibraryID, LibraryName, Title, Author, CoverURL                string
 	CoverFit, GeneratedCoverStyle, GeneratedCoverLayout                string
 	LastMode                                                           string
 	ReadingStatus                                                      string
@@ -333,7 +336,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	limit, offset := page(options.Limit, options.Offset)
 	pattern := "%" + escapeLike(strings.ToLower(options.Query)) + "%"
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id,w.library_id,l.name,COALESCE(lm.role,''),w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.cover_fit,w.cover_focal_x,w.cover_focal_y,w.generated_cover_style,w.generated_cover_tone,w.generated_cover_layout,w.created_at,w.updated_at,
+		SELECT w.id,w.library_id,l.name,w.title,COALESCE(w.author,''),COALESCE(c.image_url,''),w.cover_fit,w.cover_focal_x,w.cover_focal_y,w.generated_cover_style,w.generated_cover_tone,w.generated_cover_layout,w.created_at,w.updated_at,
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`),
@@ -348,7 +351,6 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 		FROM works w
 		JOIN libraries l ON l.id=w.library_id
 		LEFT JOIN work_covers c ON c.id=w.selected_cover_id
-		LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=?
 		WHERE `+auth.EffectiveLibraryAccessSQL("w.library_id")+`
 			AND (?='' OR w.library_id=?)
 			AND (?='%%' OR lower(w.title) LIKE ? ESCAPE '\' OR lower(COALESCE(w.author,'')) LIKE ? ESCAPE '\')
@@ -365,7 +367,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			CASE WHEN ?='recent' THEN w.created_at END DESC,
 			CASE WHEN ?='progress' THEN (SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id) END DESC,
 		w.id ASC
-		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID,
+		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID,
 		actor.ID, actor.ID, actor.Admin, actor.ID,
 		options.LibraryID, options.LibraryID, pattern, pattern, pattern,
 		options.Availability, options.Availability, options.Availability, options.Availability, options.Availability, actor.ID,
@@ -379,7 +381,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	for rows.Next() {
 		var value WorkSummary
 		var created, updated, progress string
-		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.LibraryRole, &value.Title, &value.Author, &value.CoverURL, &value.CoverFit, &value.CoverFocalX, &value.CoverFocalY, &value.GeneratedCoverStyle, &value.GeneratedCoverTone, &value.GeneratedCoverLayout, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode, &value.ReadingStatus); err != nil {
+		if err := rows.Scan(&value.ID, &value.LibraryID, &value.LibraryName, &value.Title, &value.Author, &value.CoverURL, &value.CoverFit, &value.CoverFocalX, &value.CoverFocalY, &value.GeneratedCoverStyle, &value.GeneratedCoverTone, &value.GeneratedCoverLayout, &created, &updated, &value.Readable, &value.Listenable, &value.Synchronized, &value.InProgress, &progress, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode, &value.ReadingStatus); err != nil {
 			return nil, false, err
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -418,7 +420,7 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 		return WorkDetail{}, err
 	}
 	value := WorkDetail{Work: work}
-	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(description,'') FROM work_metadata WHERE work_id=?`, id).Scan(&value.Description)
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(description,''),COALESCE(isbn,''),COALESCE(first_publish_year,0),COALESCE(publisher,''),COALESCE(language,''),COALESCE(subjects,'') FROM work_metadata WHERE work_id=?`, id).Scan(&value.Description, &value.ISBN, &value.FirstPublishYear, &value.Publisher, &value.Language, &value.Subjects)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return WorkDetail{}, fmt.Errorf("get work metadata: %w", err)
 	}

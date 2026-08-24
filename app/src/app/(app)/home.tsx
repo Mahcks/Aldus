@@ -1,14 +1,16 @@
 import type { Collection, Notification, WorkSummary } from '../../generated/api';
 import type { Href } from 'expo-router';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { BookCover, coverPresentation, WorkRow } from '../../features/bookshelf';
+import { useEffect, useState, type PropsWithChildren } from 'react';
+import Animated from 'react-native-reanimated';
+import { BookCover, ContinueCard, coverPresentation, WorkCard } from '../../features/bookshelf';
 import { requestNotification } from '../../features/activity-presentation';
 import { collectionCount } from '../../features/collection-presentation';
 import { AppIcon } from '../../features/icons';
+import { listItemEnter } from '../../features/motion';
 import { notificationHref } from '../../features/notification-presentation';
 import { colors } from '../../features/theme';
-import { Pressable, Text, View } from '../../features/tw';
+import { Pressable, ScrollView, Text, View } from '../../features/tw';
 import {
   Button,
   EmptyState,
@@ -21,38 +23,71 @@ import {
 import { APIError, api, errorMessage } from '../../lib/api';
 import { offlineWorkSummaries } from '../../lib/offline-library';
 
-function WorkList({ works, continuing }: { works: WorkSummary[]; continuing?: boolean }) {
+function workHref(work: WorkSummary): Href {
+  return `/work/${work.id}` as Href;
+}
+
+/**
+ * Horizontal shelf, like books standing side by side — home's sections
+ * browse the same way a real shelf does (scan left to right) rather than
+ * the vertical scan of a list, which is reserved here for the two
+ * notification-shaped sections (Ready for you, Collections).
+ */
+function Shelf({ children }: PropsWithChildren) {
   return (
-    <View className="max-w-[900px]">
-      {works.map((work) => {
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="flex-row items-start gap-4 pr-4"
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+function ContinueShelf({ works }: { works: WorkSummary[] }) {
+  return (
+    <Shelf>
+      {works.map((work, index) => {
         const mode = work.last_mode || (work.readable ? 'read' : 'listen');
         return (
-          <WorkRow
-            key={work.id}
+          <Animated.View key={work.id} entering={listItemEnter(index)}>
+            <ContinueCard
+              title={work.title}
+              author={work.author}
+              coverURL={work.cover_url}
+              coverPresentation={coverPresentation(work)}
+              availability={work}
+              progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
+              continueMode={mode}
+              size="hero"
+              onOpen={() => router.push(workHref(work))}
+              onContinue={() => router.push(`/consume/${work.id}?mode=${mode}`)}
+            />
+          </Animated.View>
+        );
+      })}
+    </Shelf>
+  );
+}
+
+function WorkShelf({ works }: { works: WorkSummary[] }) {
+  return (
+    <Shelf>
+      {works.map((work, index) => (
+        <Animated.View key={work.id} entering={listItemEnter(index)}>
+          <WorkCard
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
             coverPresentation={coverPresentation(work)}
             availability={work}
             progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
-            onPress={() =>
-              router.push(
-                `/work/${work.id}?libraryId=${work.library_id}&role=${work.library_role ?? ''}`,
-              )
-            }
-            action={
-              continuing ? (
-                <Button
-                  label={mode === 'read' ? 'Continue reading' : 'Continue listening'}
-                  kind="quiet"
-                  onPress={() => router.push(`/consume/${work.id}?mode=${mode}`)}
-                />
-              ) : undefined
-            }
+            onPress={() => router.push(workHref(work))}
           />
-        );
-      })}
-    </View>
+        </Animated.View>
+      ))}
+    </Shelf>
   );
 }
 
@@ -230,7 +265,7 @@ export default function HomeScreen() {
         <View className="gap-9">
           {continuing.length ? (
             <Section title="Continue">
-              <WorkList works={continuing} continuing />
+              <ContinueShelf works={continuing} />
             </Section>
           ) : null}
           {ready.length ? (
@@ -255,20 +290,38 @@ export default function HomeScreen() {
             <Section
               title="Recently added"
               action={
-                <Button label="Search all" kind="quiet" onPress={() => router.push('/search')} />
+                <Button label="Browse all" kind="quiet" onPress={() => router.push('/search')} />
               }
             >
-              <WorkList works={recent} />
+              <WorkShelf works={recent} />
             </Section>
           ) : null}
           {wantToRead.length ? (
-            <Section title="Want to read or listen">
-              <WorkList works={wantToRead} />
+            <Section
+              title="Want to read or listen"
+              action={
+                <Button
+                  label="Browse all"
+                  kind="quiet"
+                  onPress={() => router.push('/search?status=want_to_read')}
+                />
+              }
+            >
+              <WorkShelf works={wantToRead} />
             </Section>
           ) : null}
           {finished.length ? (
-            <Section title="Finished">
-              <WorkList works={finished} />
+            <Section
+              title="Finished"
+              action={
+                <Button
+                  label="Browse all"
+                  kind="quiet"
+                  onPress={() => router.push('/search?status=finished')}
+                />
+              }
+            >
+              <WorkShelf works={finished} />
             </Section>
           ) : null}
           {collections.length ? (

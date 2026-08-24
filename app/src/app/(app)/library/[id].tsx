@@ -301,7 +301,7 @@ export default function LibraryScreen() {
       setPanel(null);
       setTitle('');
       setAuthor('');
-      router.push(`/work/${work.id}?libraryId=${id}&role=${library?.role || ''}`);
+      router.push(`/work/${work.id}`);
     } catch (value) {
       setError(errorMessage(value));
     }
@@ -573,12 +573,7 @@ export default function LibraryScreen() {
             </EmptyState>
           ) : (
             <View className="items-start gap-6">
-              <WorkGrid
-                works={works}
-                onOpen={(work) =>
-                  router.push(`/work/${work.id}?libraryId=${id}&role=${library.role}`)
-                }
-              />
+              <WorkGrid works={works} onOpen={(work) => router.push(`/work/${work.id}`)} />
               {hasMore ? (
                 <Button
                   label={loadingWorks ? 'Loading…' : 'Load more'}
