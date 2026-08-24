@@ -777,8 +777,8 @@ func (s *TitleRequestStore) notifyRequesterTx(ctx context.Context, tx *sql.Tx, r
 	}
 	created, _ := time.Parse(time.RFC3339Nano, stamp)
 	actionURL := "/activity"
+	var workID string
 	if transition == "available" {
-		var workID string
 		_ = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(r.work_id,''),(SELECT COALESCE(a.work_id,'') FROM title_request_formats f JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=r.id AND f.format=?)) FROM title_requests r WHERE r.id=?`, format, requestID).Scan(&workID)
 		if workID != "" {
 			mode := "read"
@@ -788,7 +788,7 @@ func (s *TitleRequestStore) notifyRequesterTx(ctx context.Context, tx *sql.Tx, r
 			actionURL = "/consume/" + workID + "?mode=" + mode
 		}
 	}
-	event := notification.Event{ID: "title-request:" + requestID + ":" + format + ":" + transition, Kind: kind, Title: heading, Body: title + " · " + formatLabel(format), ActionURL: actionURL, CreatedAt: created}
+	event := notification.Event{ID: "title-request:" + requestID + ":" + format + ":" + transition, Kind: kind, Title: heading, Body: title + " · " + formatLabel(format), ActionURL: actionURL, WorkID: workID, CreatedAt: created}
 	return s.notifications.PublishTx(ctx, tx, event, []string{requestedBy})
 }
 

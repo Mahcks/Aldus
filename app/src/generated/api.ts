@@ -442,6 +442,7 @@ export interface Notification {
   title: string;
   body?: string;
   action_url?: string;
+  work_id?: string;
   created_at: string;
   read_at?: string;
 }

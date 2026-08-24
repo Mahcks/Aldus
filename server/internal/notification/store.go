@@ -22,6 +22,7 @@ type Event struct {
 	Title     string
 	Body      string
 	ActionURL string
+	WorkID    string
 	CreatedAt time.Time
 	ReadAt    *time.Time
 }
@@ -56,7 +57,7 @@ func (s *Store) PublishTx(ctx context.Context, tx *sql.Tx, event Event, userIDs 
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO notification_events(id,kind,title,body,action_url,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, event.ID, event.Kind, event.Title, event.Body, event.ActionURL, event.CreatedAt.Format(time.RFC3339Nano)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO notification_events(id,kind,title,body,action_url,work_id,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, event.ID, event.Kind, event.Title, event.Body, event.ActionURL, event.WorkID, event.CreatedAt.Format(time.RFC3339Nano)); err != nil {
 		return fmt.Errorf("insert notification event: %w", err)
 	}
 	for _, userID := range userIDs {
@@ -100,7 +101,7 @@ func prepareEvent(event Event, userIDs []string) (Event, error) {
 func (s *Store) List(ctx context.Context, userID string, limit, offset int) ([]Event, error) {
 	limit, offset = page(limit, offset)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT e.id,e.kind,e.title,e.body,e.action_url,e.created_at,r.read_at
+		SELECT e.id,e.kind,e.title,e.body,e.action_url,e.work_id,e.created_at,r.read_at
 		FROM notification_recipients r
 		JOIN notification_events e ON e.id=r.event_id
 		WHERE r.user_id=?
@@ -115,7 +116,7 @@ func (s *Store) List(ctx context.Context, userID string, limit, offset int) ([]E
 		var item Event
 		var createdAt string
 		var readAt sql.NullString
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Body, &item.ActionURL, &createdAt, &readAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Body, &item.ActionURL, &item.WorkID, &createdAt, &readAt); err != nil {
 			return nil, fmt.Errorf("scan notification: %w", err)
 		}
 		item.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)

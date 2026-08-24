@@ -70,7 +70,7 @@ func markAllNotificationsRead(store *notification.Store) http.HandlerFunc {
 }
 
 func notificationDTO(value notification.Event) contracts.Notification {
-	return contracts.Notification{ID: value.ID, Kind: value.Kind, Title: value.Title, Body: value.Body, ActionURL: value.ActionURL, CreatedAt: value.CreatedAt, ReadAt: value.ReadAt}
+	return contracts.Notification{ID: value.ID, Kind: value.Kind, Title: value.Title, Body: value.Body, ActionURL: value.ActionURL, WorkID: value.WorkID, CreatedAt: value.CreatedAt, ReadAt: value.ReadAt}
 }
 
 func writeNotificationError(w http.ResponseWriter, err error) {

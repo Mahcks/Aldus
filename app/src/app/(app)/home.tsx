@@ -1,4 +1,4 @@
-import type { Collection, Notification, WorkSummary } from '../../generated/api';
+import type { Collection, Notification, Work, WorkSummary } from '../../generated/api';
 import type { Href } from 'expo-router';
 import { router } from 'expo-router';
 import { useEffect, useState, type PropsWithChildren } from 'react';
@@ -91,7 +91,7 @@ function WorkShelf({ works }: { works: WorkSummary[] }) {
   );
 }
 
-function ReadyRow({ item }: { item: Notification }) {
+function ReadyRow({ item, work }: { item: Notification; work?: Work }) {
   const href = notificationHref(item.action_url);
   const request = requestNotification(item);
   const title = request?.title ?? item.body ?? item.title;
@@ -104,25 +104,23 @@ function ReadyRow({ item }: { item: Notification }) {
   }
 
   return (
-    <View className="flex-row items-center gap-4 border-b border-line py-4">
-      <BookCover title={title} size="mini" />
+    <View className="flex-row items-center gap-3 border-b border-line py-3">
+      <BookCover
+        title={title}
+        coverURL={work?.cover_url}
+        {...(work ? coverPresentation(work) : {})}
+        size="mini"
+      />
       <View className="min-w-0 flex-1 gap-1">
-        <Text numberOfLines={2} className="font-editorial-bold text-lg text-ink">
+        <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
           {title}
         </Text>
-        <View className="flex-row items-center gap-2">
-          <AppIcon name="check" size={17} color={colors.success} />
-          <Text className="text-sm font-sans-semibold text-success">
-            {format === 'audiobook' ? 'Your audiobook is ready' : 'Your ebook is ready'}
+        <View className="flex-row items-center gap-1.5">
+          <AppIcon name="check" size={15} color={colors.success} />
+          <Text className="text-xs font-sans-semibold text-success">
+            {format === 'audiobook' ? 'Audiobook ready' : 'Ebook ready'}
           </Text>
         </View>
-        <Text className="text-sm text-muted">
-          {canConsume
-            ? format === 'audiobook'
-              ? 'Start listening whenever you’re ready.'
-              : 'Start reading whenever you’re ready.'
-            : 'A book you requested is now in Aldus.'}
-        </Text>
       </View>
       {href ? (
         <Button
@@ -170,6 +168,7 @@ export default function HomeScreen() {
   const [wantToRead, setWantToRead] = useState<WorkSummary[]>([]);
   const [finished, setFinished] = useState<WorkSummary[]>([]);
   const [ready, setReady] = useState<Notification[]>([]);
+  const [readyWorks, setReadyWorks] = useState<Record<string, Work>>({});
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -193,14 +192,24 @@ export default function HomeScreen() {
         setRecent(recentPage.items);
         setWantToRead(wantPage.items);
         setFinished(finishedPage.items);
-        setReady(
-          inbox.items
-            .filter(
-              (item) => /ready|available/.test(item.kind) && notificationHref(item.action_url),
-            )
-            .slice(0, 5),
-        );
+        const readyItems = inbox.items
+          .filter((item) => /ready|available/.test(item.kind) && notificationHref(item.action_url))
+          .slice(0, 5);
+        setReady(readyItems);
         setCollections(savedCollections.slice(0, 5));
+
+        const workIDs = [...new Set(readyItems.map((item) => item.work_id).filter(Boolean))] as string[];
+        if (workIDs.length) {
+          const works = await Promise.all(
+            workIDs.map((workID) => api.work(workID).catch(() => undefined)),
+          );
+          if (canceled) return;
+          setReadyWorks(
+            Object.fromEntries(
+              works.filter((value): value is NonNullable<typeof value> => Boolean(value)).map((value) => [value.id, value]),
+            ),
+          );
+        }
       } catch (value) {
         if (!(value instanceof APIError && value.status === 0)) {
           if (!canceled) setError(errorMessage(value));
@@ -281,7 +290,7 @@ export default function HomeScreen() {
             >
               <View className="max-w-[900px]">
                 {ready.map((item) => (
-                  <ReadyRow key={item.id} item={item} />
+                  <ReadyRow key={item.id} item={item} work={readyWorks[item.work_id ?? '']} />
                 ))}
               </View>
             </Section>
