@@ -134,7 +134,7 @@ export default function UsersScreen() {
                 className="min-h-16 flex-row flex-wrap items-center justify-between gap-3 border-b border-line py-3"
               >
                 <View className="min-w-0 flex-1">
-                  <Text numberOfLines={1} className="font-bold text-ink">
+                  <Text numberOfLines={1} className="font-sans-bold text-ink">
                     {user.display_name || user.username}
                   </Text>
                   <Text numberOfLines={1} className="text-sm text-muted">
@@ -217,7 +217,7 @@ export default function UsersScreen() {
         {selected ? (
           <View className="gap-5">
             <View>
-              <Text numberOfLines={2} className="text-lg font-bold text-ink">
+              <Text numberOfLines={2} className="text-lg font-sans-bold text-ink">
                 {selected.display_name || selected.username}
               </Text>
               <Text className="text-sm text-muted">@{selected.username}</Text>
@@ -257,7 +257,7 @@ export default function UsersScreen() {
             </View>
             {technicalOpen ? (
               <View className="rounded-control bg-panel p-3">
-                <Text className="text-xs font-semibold text-muted">Account ID</Text>
+                <Text className="text-xs font-sans-semibold text-muted">Account ID</Text>
                 <Text selectable className="font-mono text-xs text-ink">
                   {selected.id}
                 </Text>

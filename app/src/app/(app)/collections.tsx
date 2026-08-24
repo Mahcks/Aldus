@@ -42,7 +42,7 @@ function CollectionRow({ item }: { item: Collection }) {
         <AppIcon name="collections" size={22} color={colors.accent} />
       </View>
       <View className="min-w-0 flex-1 gap-1">
-        <Text numberOfLines={1} className="font-editorial text-lg font-bold text-ink">
+        <Text numberOfLines={1} className="font-editorial-bold text-lg text-ink">
           {item.title}
         </Text>
         <Text numberOfLines={2} className="text-sm leading-5 text-muted">

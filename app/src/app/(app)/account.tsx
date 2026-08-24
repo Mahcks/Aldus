@@ -116,7 +116,7 @@ export default function AccountScreen() {
                 <AppIcon name="account" size={26} color={colors.accent} />
               </View>
               <View className="min-w-0 flex-1">
-                <Text numberOfLines={1} className="text-lg font-bold text-ink">
+                <Text numberOfLines={1} className="text-lg font-sans-bold text-ink">
                   {auth.user?.display_name || auth.user?.username}
                 </Text>
                 <Text numberOfLines={1} className="text-sm text-muted">
@@ -136,7 +136,7 @@ export default function AccountScreen() {
                 <ActivityStat label="Reading" seconds={readingSeconds} />
                 <ActivityStat label="Listening" seconds={listeningSeconds} />
                 <View>
-                  <Text className="text-2xl font-bold text-ink">{activity.length}</Text>
+                  <Text className="text-2xl font-sans-bold text-ink">{activity.length}</Text>
                   <Text className="text-xs text-muted">In progress</Text>
                 </View>
               </View>
@@ -239,7 +239,7 @@ export default function AccountScreen() {
                     className="min-h-14 flex-row items-center gap-4 border-b border-line py-3"
                   >
                     <View className="min-w-0 flex-1">
-                      <Text className="text-base font-bold text-ink">{credential.label}</Text>
+                      <Text className="text-base font-sans-bold text-ink">{credential.label}</Text>
                       <Text className="text-sm text-muted">
                         {credential.last_used_at
                           ? `Last used ${new Date(credential.last_used_at).toLocaleDateString()}`
@@ -281,7 +281,7 @@ export default function AccountScreen() {
 function CredentialValue({ label, value }: { label: string; value: string }) {
   return (
     <View className="gap-1">
-      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
       <Text
         selectable
         className="rounded-control border border-line bg-panel px-3 py-2 text-sm text-ink"
@@ -295,7 +295,7 @@ function CredentialValue({ label, value }: { label: string; value: string }) {
 function ActivityStat({ label, seconds }: { label: string; seconds: number }) {
   return (
     <View>
-      <Text className="text-2xl font-bold text-ink">{formatDuration(seconds)}</Text>
+      <Text className="text-2xl font-sans-bold text-ink">{formatDuration(seconds)}</Text>
       <Text className="text-xs text-muted">{label}</Text>
     </View>
   );

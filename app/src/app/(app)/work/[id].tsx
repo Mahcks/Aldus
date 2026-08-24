@@ -388,13 +388,13 @@ export default function WorkScreen() {
             }
           >
             <Text
-              className={`text-xs font-bold uppercase tracking-wide text-accent ${narrow ? 'text-center' : ''}`}
+              className={`text-xs font-sans-bold uppercase tracking-wide text-accent ${narrow ? 'text-center' : ''}`}
             >
               {formatLabel}
             </Text>
             <Text
               numberOfLines={3}
-              className={`${narrow ? 'text-center text-3xl leading-9' : 'text-4xl leading-[44px]'} font-editorial font-extrabold text-ink`}
+              className={`${narrow ? 'text-center text-3xl leading-9' : 'text-4xl leading-[44px]'} font-editorial-bold text-ink`}
             >
               {work.title}
             </Text>
@@ -521,7 +521,7 @@ export default function WorkScreen() {
 
       {description ? (
         <View className="mx-auto w-full max-w-[1000px] gap-3 border-t border-line py-6 sm:py-8">
-          <Text className="font-editorial text-2xl font-bold text-ink">About this book</Text>
+          <Text className="font-editorial-bold text-2xl text-ink">About this book</Text>
           <Text
             numberOfLines={descriptionExpanded ? undefined : 5}
             className="max-w-[70ch] text-base leading-7 text-muted"
@@ -635,7 +635,7 @@ function ReadingStatusTrigger({
       className={`min-h-11 flex-row items-center gap-1.5 rounded-control border border-line px-3 ${disabled ? 'opacity-50' : ''} ${stateClass}`}
     >
       <AppIcon name={icon} size={15} color={colors.muted} />
-      <Text className="text-xs font-bold uppercase tracking-wide text-muted">
+      <Text className="text-xs font-sans-bold uppercase tracking-wide text-muted">
         {readingStatusLabel(status)}
       </Text>
       <AppIcon name="chevron" size={15} color={colors.subtle} />
@@ -702,7 +702,7 @@ function EditionGroup({
     <View className="min-w-[240px] flex-1 gap-1">
       <View className="flex-row items-center gap-1.5 pb-1">
         <AppIcon name={icon} size={15} color={colors.subtle} />
-        <Text className="text-xs font-bold uppercase tracking-wide text-subtle">{label}</Text>
+        <Text className="text-xs font-sans-bold uppercase tracking-wide text-subtle">{label}</Text>
       </View>
       <View accessibilityRole="radiogroup" accessibilityLabel={label}>
         {items.map((item, index) => (
@@ -754,7 +754,7 @@ function EditionOption({
         {selected ? <View className="h-2.5 w-2.5 rounded-full bg-accent" /> : null}
       </View>
       <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-sm font-semibold text-ink">
+        <Text numberOfLines={1} className="text-sm font-sans-semibold text-ink">
           {label}
         </Text>
         <Text className="text-xs text-subtle">{detail}</Text>

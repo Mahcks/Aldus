@@ -19,6 +19,9 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/lora": "^0.4.2",
+    "@expo-google-fonts/source-serif-4": "^0.4.1",
     "@expo/metro-runtime": "~57.0.9",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",

@@ -9,7 +9,7 @@ export function ScanHistory({ scans }: { scans: SourceScan[] }) {
 
   return (
     <View className="gap-2 border-t border-line pt-3">
-      <Text className="text-sm font-extrabold text-ink">Recent scans</Text>
+      <Text className="text-sm font-sans-bold text-ink">Recent scans</Text>
       {scans.map((scan) => (
         <View className="flex-row flex-wrap items-center gap-2" key={scan.id}>
           <StatusBadge {...scanStatus(scan.state)} />

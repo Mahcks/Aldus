@@ -375,7 +375,7 @@ export default function SourcesAdministration() {
           <View className="max-w-[760px] gap-1">
             <Text className="text-sm text-muted">
               You&rsquo;re viewing sources for{' '}
-              <Text className="font-extrabold text-ink">{selectedLibrary.name}</Text>
+              <Text className="font-sans-bold text-ink">{selectedLibrary.name}</Text>
             </Text>
             <Text className="text-sm text-muted">
               Sources supply externally owned files. Imported Works remain part of the Library, even
@@ -509,7 +509,7 @@ function LibraryTabs({
               selected ? 'border-ink bg-ink' : 'border-line bg-paper'
             }`}
           >
-            <Text className={`text-sm font-extrabold ${selected ? 'text-paper' : 'text-ink'}`}>
+            <Text className={`text-sm font-sans-bold ${selected ? 'text-paper' : 'text-ink'}`}>
               {library.name}
             </Text>
           </Pressable>

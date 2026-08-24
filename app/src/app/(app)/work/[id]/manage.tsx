@@ -744,7 +744,7 @@ export default function ManageWorkScreen() {
               <Button label="Save" kind="primary" onPress={() => void saveWorkSettings()} />
             </View>
             <View className="mt-4 gap-2 border-t border-line pt-4">
-              <Text className="text-sm font-extrabold text-ink">Delete work</Text>
+              <Text className="text-sm font-sans-bold text-ink">Delete work</Text>
               <Text className={shared.itemMeta}>
                 The work must have no representations before it can be deleted.
               </Text>
@@ -814,7 +814,7 @@ function ManageTabItem({
       onPress={onPress}
       className={`min-h-11 items-center justify-center border-b-2 px-1 pb-3 ${borderClass} ${opacityClass}`}
     >
-      <Text className={`text-sm font-bold ${textClass}`}>{label}</Text>
+      <Text className={`text-sm font-sans-bold ${textClass}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -844,7 +844,7 @@ function CoverAssetCard({
         size="small"
         {...coverPresentation(work)}
       />
-      <Text numberOfLines={1} className="text-sm font-bold text-ink">
+      <Text numberOfLines={1} className="text-sm font-sans-bold text-ink">
         {asset.label}
       </Text>
       <Text numberOfLines={1} className="text-xs text-muted">
@@ -911,13 +911,13 @@ function CoverCandidateCard({
         size="small"
         coverFit="cover"
       />
-      <Text numberOfLines={2} className="font-editorial text-sm font-bold text-ink">
+      <Text numberOfLines={2} className="font-editorial-bold text-sm text-ink">
         {title}
       </Text>
       <Text numberOfLines={1} className="text-xs text-muted">
         {meta}
       </Text>
-      <Text className="text-xs font-bold text-accent">
+      <Text className="text-xs font-sans-bold text-accent">
         {selecting ? 'Selecting…' : 'Use this cover'}
       </Text>
     </Pressable>

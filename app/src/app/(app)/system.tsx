@@ -187,7 +187,7 @@ function DiagnosticRow({
   return (
     <View className="min-h-14 flex-row flex-wrap items-center justify-between gap-3 border-b border-line-subtle py-3">
       <View className="min-w-0 flex-1 gap-1">
-        <Text className="font-semibold text-ink">{label}</Text>
+        <Text className="font-sans-semibold text-ink">{label}</Text>
         <Text className="text-sm text-muted">{detail}</Text>
       </View>
       <StatusBadge
@@ -202,7 +202,7 @@ function DiagnosticRow({
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <View className="gap-1">
-      <Text className="text-xs font-bold uppercase tracking-wide text-subtle">{label}</Text>
+      <Text className="text-xs font-sans-bold uppercase tracking-wide text-subtle">{label}</Text>
       <Text selectable className="text-sm text-ink">
         {value}
       </Text>

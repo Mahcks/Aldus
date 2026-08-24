@@ -23,7 +23,7 @@ export { colors } from './theme';
  */
 export const shared = {
   listItem: 'min-h-11 border-b border-line py-3.5 gap-1',
-  itemTitle: 'text-base font-bold text-ink',
+  itemTitle: 'text-base font-sans-bold text-ink',
   itemMeta: 'text-sm text-muted',
   form: 'max-w-[560px] gap-3',
   split: 'flex-row flex-wrap gap-6',
@@ -222,7 +222,7 @@ export function Button({
       ) : (
         <>
           {icon ? <AppIcon name={icon} size={18} color={iconColor} /> : null}
-          {iconOnly ? null : <Text className={`text-sm font-extrabold ${textClass}`}>{label}</Text>}
+          {iconOnly ? null : <Text className={`text-sm font-sans-bold ${textClass}`}>{label}</Text>}
         </>
       )}
     </Pressable>
@@ -317,7 +317,7 @@ export function Select({
 }) {
   return (
     <View className="gap-1.5">
-      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={label}
@@ -341,7 +341,7 @@ export function Select({
 function resolveFieldBorderClass({ focused, error }: { focused: boolean; error: boolean }) {
   if (focused) return 'border-2 border-focus';
   if (error) return 'border-2 border-danger';
-  return 'border border-line';
+  return 'border-2 border-line';
 }
 
 /** Inputs are inset — darker than their surroundings until focused, when they lift to paper. */
@@ -372,14 +372,14 @@ export function Field({
 
   return (
     <View className="gap-1.5">
-      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
       <TextInput
         {...props}
         accessibilityLabel={label}
         onBlur={handleBlur}
         onFocus={handleFocus}
         placeholderTextColor={colors.subtle}
-        className={`min-h-11 rounded-control px-3 py-2 text-base text-ink ${backgroundClass} ${borderClass}`}
+        className={`min-h-11 rounded-control px-3 py-2 text-base text-ink outline-none ${backgroundClass} ${borderClass}`}
       />
       {error || help ? (
         <Text
@@ -418,7 +418,7 @@ export function SearchField({
 
   return (
     <View className="gap-1.5">
-      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
       <View
         className={`min-h-11 flex-row items-center gap-2 rounded-control px-3 ${backgroundClass} ${borderClass}`}
       >
@@ -432,7 +432,7 @@ export function SearchField({
           placeholderTextColor={colors.subtle}
           accessibilityLabel={label}
           returnKeyType="search"
-          className="min-h-11 flex-1 py-2 text-base text-ink"
+          className="min-h-11 flex-1 py-2 text-base text-ink outline-none"
         />
       </View>
     </View>
@@ -612,7 +612,7 @@ export function Dialog({
                 <Text
                   nativeID={titleId}
                   accessibilityRole="header"
-                  className="flex-shrink text-lg font-bold text-ink"
+                  className="flex-shrink text-lg font-sans-bold text-ink"
                 >
                   {title}
                 </Text>
@@ -732,12 +732,14 @@ function StateBlock({
       accessibilityLiveRegion="polite"
       className="min-h-[180px] max-w-[420px] items-center justify-center gap-3 self-center py-4"
     >
-      <View className={`h-14 w-14 items-center justify-center rounded-full ${iconBackgroundClass}`}>
+      <View
+        className={`h-14 w-14 items-center justify-center rounded-full shadow-xs ${iconBackgroundClass}`}
+      >
         <AppIcon name={icon} size={28} color={iconColor} />
       </View>
       <Text
         accessibilityRole={titleIsHeader ? 'header' : undefined}
-        className="text-center text-lg font-bold text-ink"
+        className="text-center text-lg font-sans-bold text-ink"
       >
         {title}
       </Text>
@@ -831,7 +833,7 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
 export function AppBootState() {
   return (
     <View className="min-h-full flex-1 items-center justify-center gap-3 bg-canvas">
-      <Text className="font-editorial text-2xl font-bold text-accent">Aldus</Text>
+      <Text className="font-editorial-bold text-2xl text-accent">Aldus</Text>
       <ActivityIndicator color={colors.accent} />
     </View>
   );
@@ -885,7 +887,7 @@ export function StatusBadge({
       <View className={`w-[3px] ${toneClass.spine}`} />
       <View className="flex-row items-center gap-1.5 py-1 pl-1.5 pr-2">
         {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
-        <Text className={`text-[11px] font-bold uppercase tracking-wide ${toneClass.text}`}>
+        <Text className={`text-[11px] font-sans-bold uppercase tracking-wide ${toneClass.text}`}>
           {label}
         </Text>
       </View>
@@ -936,7 +938,7 @@ export function IconRow({
           <AppIcon name={icon} size={18} color={colors.accent} />
         </View>
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text numberOfLines={1} className="text-base font-bold text-ink">
+          <Text numberOfLines={1} className="text-base font-sans-bold text-ink">
             {title}
           </Text>
           {subtitle ? (
@@ -974,7 +976,7 @@ export function PageHeader({
   const layoutClass = compact ? 'items-stretch' : 'items-center';
   const titleSizeClass = compact ? 'text-2xl leading-7' : 'text-[26px] leading-8';
   const actionsWidthClass = compact ? 'w-full' : '';
-  const titleFontClass = editorial ? 'font-editorial' : 'font-sans';
+  const titleFontClass = editorial ? 'font-editorial-bold' : 'font-sans-bold';
 
   return (
     <View
@@ -984,7 +986,7 @@ export function PageHeader({
         {back}
         <Text
           accessibilityRole="header"
-          className={`flex-shrink font-bold text-ink ${titleFontClass} ${titleSizeClass}`}
+          className={`flex-shrink text-ink ${titleFontClass} ${titleSizeClass}`}
         >
           {title}
         </Text>
@@ -1036,7 +1038,7 @@ export function Page({
         <ScrollView
           role="main"
           className="flex-1"
-          contentContainerClassName={`w-full max-w-[1240px] ${contentPaddingClass}`}
+          contentContainerClassName={`w-full max-w-[1240px] flex-grow ${contentPaddingClass}`}
         >
           {children}
         </ScrollView>
@@ -1048,7 +1050,7 @@ export function Page({
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <View className="min-h-[42px] flex-row items-center justify-between gap-3 border-b border-line">
-      <Text accessibilityRole="header" className="text-lg font-extrabold text-ink">
+      <Text accessibilityRole="header" className="text-lg font-sans-bold text-ink">
         {title}
       </Text>
       {action}

@@ -27,14 +27,14 @@ export function ProposalCard({
     >
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text className="text-lg font-extrabold leading-[23px] text-ink">
+          <Text className="text-lg font-sans-bold leading-[23px] text-ink">
             {proposal.title || 'Untitled discovery'}
           </Text>
           <Text className="text-sm text-muted">{proposal.author || 'Unknown author'}</Text>
         </View>
         <StatusBadge {...status} />
       </View>
-      <Text className="text-sm font-bold capitalize text-ink">
+      <Text className="text-sm font-sans-bold capitalize text-ink">
         {proposal.confidence} confidence · {proposal.items.length}{' '}
         {proposal.items.length === 1 ? 'file' : 'files'} · {kinds || 'Unknown format'}
       </Text>
@@ -44,7 +44,7 @@ export function ProposalCard({
         </Text>
       ))}
       {suggestedWork ? (
-        <Text className="text-sm font-bold text-success">
+        <Text className="text-sm font-sans-bold text-success">
           Suggested existing Work: {suggestedWork.title}
         </Text>
       ) : null}

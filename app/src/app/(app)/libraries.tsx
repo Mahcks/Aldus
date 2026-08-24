@@ -56,7 +56,7 @@ function FirstLibraryHero(props: CreateLibraryFormProps) {
         <AppIcon name="libraries" size={28} color={colors.accent} />
       </View>
       <View className="gap-2">
-        <Text accessibilityRole="header" className="text-center text-lg font-bold text-ink">
+        <Text accessibilityRole="header" className="text-center text-lg font-sans-bold text-ink">
           Create your first library
         </Text>
         <Text className="text-center text-base leading-6 text-muted">

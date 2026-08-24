@@ -85,7 +85,7 @@ function ManagementRow({
       <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
         <AppIcon name={icon} size={18} color={colors.accent} />
       </View>
-      <Text className="flex-1 text-base font-semibold text-ink">{label}</Text>
+      <Text className="flex-1 text-base font-sans-semibold text-ink">{label}</Text>
       <AppIcon name="chevron" size={18} color={colors.subtle} />
     </Pressable>
   );
@@ -659,7 +659,7 @@ export default function LibraryScreen() {
           ))}
           {auth.user?.admin ? (
             <View className="gap-3 pt-6">
-              <Text className="text-sm font-extrabold text-ink">Add member</Text>
+              <Text className="text-sm font-sans-bold text-ink">Add member</Text>
               <View className="gap-1">
                 {availableUsers.map((user) => (
                   <Radio
@@ -851,7 +851,7 @@ export default function LibraryScreen() {
             />
           </View>
           <View className="mt-4 gap-2 border-t border-line pt-4">
-            <Text className="text-sm font-extrabold text-ink">Delete library</Text>
+            <Text className="text-sm font-sans-bold text-ink">Delete library</Text>
             <Text className={shared.itemMeta}>
               The library must contain no works before it can be deleted.
             </Text>
@@ -933,7 +933,7 @@ function RolePill({
       onPress={onPress}
       className={`min-h-11 items-center justify-center rounded-control border px-2.5 py-1.5 ${borderClass} ${stateClass}`}
     >
-      <Text className={`text-xs font-bold capitalize ${textClass}`}>{label}</Text>
+      <Text className={`text-xs font-sans-bold capitalize ${textClass}`}>{label}</Text>
     </Pressable>
   );
 }

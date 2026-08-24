@@ -10,7 +10,7 @@ export function EntryList({ entries }: { entries: SourceEntry[] }) {
 
   return (
     <View className="border-t border-line pt-2">
-      <Text className="pb-2 text-sm font-extrabold text-ink">Discovered files</Text>
+      <Text className="pb-2 text-sm font-sans-bold text-ink">Discovered files</Text>
       {entries.map((entry) => (
         <EntryRow entry={entry} key={entry.id} />
       ))}

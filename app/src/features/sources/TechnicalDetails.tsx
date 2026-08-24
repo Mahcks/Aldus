@@ -50,7 +50,7 @@ function DetailRowView({ row }: { row: DetailRow }) {
 
   return (
     <View className="gap-1">
-      <Text className="text-xs font-bold text-muted">{row.label}</Text>
+      <Text className="text-xs font-sans-bold text-muted">{row.label}</Text>
       <View className="flex-row flex-wrap items-center gap-2">
         <Text selectable className="flex-shrink font-mono text-xs text-ink">
           {row.value}

@@ -93,7 +93,7 @@ function ChoiceGroup<T extends string | number>({
 }) {
   return (
     <View className="gap-1.5">
-      <Text className="text-sm font-semibold text-ink">{label}</Text>
+      <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={label}

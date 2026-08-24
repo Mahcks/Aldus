@@ -72,12 +72,12 @@ function ReadyRow({ item }: { item: Notification }) {
     <View className="flex-row items-center gap-4 border-b border-line py-4">
       <BookCover title={title} size="mini" />
       <View className="min-w-0 flex-1 gap-1">
-        <Text numberOfLines={2} className="font-editorial text-lg font-bold text-ink">
+        <Text numberOfLines={2} className="font-editorial-bold text-lg text-ink">
           {title}
         </Text>
         <View className="flex-row items-center gap-2">
           <AppIcon name="check" size={17} color={colors.success} />
-          <Text className="text-sm font-semibold text-success">
+          <Text className="text-sm font-sans-semibold text-success">
             {format === 'audiobook' ? 'Your audiobook is ready' : 'Your ebook is ready'}
           </Text>
         </View>
@@ -119,7 +119,7 @@ function CollectionRow({ item }: { item: Collection }) {
         <AppIcon name="collections" size={20} color={colors.accent} />
       </View>
       <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+        <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
           {item.title}
         </Text>
         <Text className="text-sm text-muted">{collectionCount(item.work_count)}</Text>

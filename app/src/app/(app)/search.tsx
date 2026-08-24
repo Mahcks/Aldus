@@ -102,7 +102,7 @@ function FormatAction({
         />
       ) : (
         <View className="min-h-11 flex-row items-center gap-2 px-2">
-          <Text className="text-sm font-bold text-ink">{label}</Text>
+          <Text className="text-sm font-sans-bold text-ink">{label}</Text>
           <StatusBadge tone={state.tone} label={state.label} />
         </View>
       )}
@@ -137,7 +137,7 @@ function TitleRow({
           size="mini"
         />
         <View className="min-w-0 flex-1">
-          <Text numberOfLines={2} className="font-editorial text-lg font-bold leading-6 text-ink">
+          <Text numberOfLines={2} className="font-editorial-bold text-lg leading-6 text-ink">
             {result.title}
           </Text>
           <Text numberOfLines={1} className="mt-1 text-sm text-muted">
@@ -407,16 +407,20 @@ export default function SearchScreen() {
         </Notice>
       ) : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      {!trimmedQuery ? (
-        <EmptyState icon="search" title="Find your next book">
-          Search once to see what you can read, listen to, or request.
-        </EmptyState>
-      ) : loading && results.length === 0 ? (
-        <LoadingState label="Searching titles…" />
-      ) : results.length === 0 ? (
-        <EmptyState icon="search" title="No matching titles">
-          Check the title or author and try again.
-        </EmptyState>
+      {!trimmedQuery || (loading && results.length === 0) || results.length === 0 ? (
+        <View className="flex-1 items-center justify-center">
+          {!trimmedQuery ? (
+            <EmptyState icon="search" title="Find your next book">
+              Search once to see what you can read, listen to, or request.
+            </EmptyState>
+          ) : loading ? (
+            <LoadingState label="Searching titles…" />
+          ) : (
+            <EmptyState icon="search" title="No matching titles">
+              Check the title or author and try again.
+            </EmptyState>
+          )}
+        </View>
       ) : (
         <Section title={`${results.length} ${results.length === 1 ? 'title' : 'titles'}`}>
           <View className="max-w-[900px]">

@@ -137,7 +137,7 @@ export function BookCover({
             className={`flex-1 items-center gap-5 ${layoutClass} ${frameClass} ${innerPaddingClass}`}
           >
             {resolvedSize !== 'mini' && generatedCoverStyle !== 'minimal' ? (
-              <Text className="text-center text-[9px] font-bold uppercase tracking-[2px] text-paper/70">
+              <Text className="text-center text-[9px] font-sans-bold uppercase tracking-[2px] text-paper/70">
                 Aldus edition
               </Text>
             ) : (
@@ -145,7 +145,7 @@ export function BookCover({
             )}
             <Text
               numberOfLines={3}
-              className={`text-center font-editorial font-bold text-paper ${titleSizeClass}`}
+              className={`text-center font-editorial-bold text-paper ${titleSizeClass}`}
             >
               {coverTitle}
             </Text>
@@ -171,7 +171,7 @@ export function BookCover({
 export function Badge({ children }: PropsWithChildren) {
   return (
     <View className="rounded-control border border-line bg-panel px-1.5 py-0.5">
-      <Text className="text-[11px] font-bold text-muted">{children}</Text>
+      <Text className="text-[11px] font-sans-bold text-muted">{children}</Text>
     </View>
   );
 }
@@ -211,10 +211,10 @@ export function LibraryCard({
         <AppIcon name="libraries" size={20} color={colors.accent} />
       </View>
       <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+        <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
           {name}
         </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-xs font-semibold text-subtle">
+        <Text numberOfLines={1} className="mt-0.5 text-xs font-sans-semibold text-subtle">
           {role || 'Administrator access'}
         </Text>
       </View>
@@ -283,7 +283,7 @@ export function WorkCard({
             importantForAccessibility="no-hide-descendants"
             className="absolute left-2 top-2 max-w-[85%] rounded-pill bg-accent px-2 py-1 shadow-xs"
           >
-            <Text numberOfLines={1} className="text-[10px] font-bold text-on-accent">
+            <Text numberOfLines={1} className="text-[10px] font-sans-bold text-on-accent">
               {progress}
             </Text>
           </View>
@@ -291,14 +291,14 @@ export function WorkCard({
       </View>
       <Text
         numberOfLines={2}
-        className="mt-1 font-editorial text-base font-bold leading-5 text-ink"
+        className="mt-1 font-editorial-bold text-base leading-5 text-ink"
       >
         {title}
       </Text>
       <Text numberOfLines={1} className="text-sm leading-[18px] text-muted">
         {author || 'Unknown author'}
       </Text>
-      {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
+      {context ? <Text className="text-[11px] font-sans-bold text-muted">{context}</Text> : null}
       {availability ? <AvailabilityIcons value={availability} /> : null}
     </Pressable>
   );
@@ -352,15 +352,15 @@ export function WorkRow({
           />
         </View>
         <View className="min-w-0 flex-1 gap-1">
-          <Text numberOfLines={1} className="font-editorial text-base font-bold text-ink">
+          <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
             {title}
           </Text>
           <Text numberOfLines={1} className="text-sm text-muted">
             {author || 'Unknown author'}
           </Text>
-          {context ? <Text className="text-[11px] font-bold text-muted">{context}</Text> : null}
+          {context ? <Text className="text-[11px] font-sans-bold text-muted">{context}</Text> : null}
           {progress ? (
-            <Text numberOfLines={1} className="text-xs font-bold text-accent">
+            <Text numberOfLines={1} className="text-xs font-sans-bold text-accent">
               {progress}
             </Text>
           ) : null}
@@ -403,7 +403,7 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
       {available.map((item) => (
         <View key={item.label} className="flex-row items-center gap-1">
           <AppIcon name={item.icon} size={15} color={colors.muted} />
-          <Text className="text-[11px] font-semibold text-muted">{item.short}</Text>
+          <Text className="text-[11px] font-sans-semibold text-muted">{item.short}</Text>
         </View>
       ))}
     </View>
@@ -469,7 +469,7 @@ export function ContinueCard({
         />
         {progress ? (
           <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">
-            <Text numberOfLines={1} className="text-[10px] font-bold text-paper">
+            <Text numberOfLines={1} className="text-[10px] font-sans-bold text-paper">
               {progress}
             </Text>
           </View>
@@ -480,7 +480,7 @@ export function ContinueCard({
             size={12}
             color={colors.onAccent}
           />
-          <Text className="text-[10px] font-bold uppercase tracking-wide text-on-accent">
+          <Text className="text-[10px] font-sans-bold uppercase tracking-wide text-on-accent">
             Continue
           </Text>
         </View>
@@ -497,7 +497,7 @@ export function ContinueCard({
       >
         <Text
           numberOfLines={2}
-          className="min-h-[32px] font-editorial text-sm font-bold leading-4 text-ink"
+          className="min-h-[32px] font-editorial-bold text-sm leading-4 text-ink"
         >
           {title}
         </Text>

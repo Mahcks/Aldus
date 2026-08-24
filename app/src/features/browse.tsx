@@ -46,7 +46,7 @@ function CompactFilterRow({
 }) {
   return (
     <View className="gap-1">
-      <Text className="text-xs font-semibold uppercase tracking-wide text-subtle">{label}</Text>
+      <Text className="text-xs font-sans-semibold uppercase tracking-wide text-subtle">{label}</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -167,7 +167,7 @@ export function AcquisitionGroupRow({
             size="mini"
           />
           <View className="min-w-0 flex-1 gap-1">
-            <Text numberOfLines={2} className="font-editorial text-lg font-bold leading-6 text-ink">
+            <Text numberOfLines={2} className="font-editorial-bold text-lg leading-6 text-ink">
               {group.title}
             </Text>
             {group.author ? <Text className="text-sm text-muted">{group.author}</Text> : null}
@@ -178,7 +178,7 @@ export function AcquisitionGroupRow({
               <View className="mt-2 gap-1 border-t border-line pt-2">
                 <View className="flex-row items-center gap-1.5">
                   <AppIcon name="synced" size={15} color={colors.info} />
-                  <Text className="text-xs font-bold text-info">Likely counterpart</Text>
+                  <Text className="text-xs font-sans-bold text-info">Likely counterpart</Text>
                 </View>
                 <Text className="max-w-[560px] text-xs text-muted">
                   {counterpartLabel(singleCounterparts[0])}
@@ -236,7 +236,7 @@ export function AcquisitionGroupRow({
           {editionKinds.map((kind) => (
             <View key={kind}>
               {hasBothKinds ? (
-                <Text className="pt-3 text-[11px] font-bold uppercase tracking-wide text-subtle">
+                <Text className="pt-3 text-[11px] font-sans-bold uppercase tracking-wide text-subtle">
                   {kind === 'ebook' ? 'Ebooks' : 'Audiobooks'}
                 </Text>
               ) : null}
@@ -259,7 +259,7 @@ export function AcquisitionGroupRow({
                     >
                       <View className="min-w-0 flex-1">
                         <Text numberOfLines={1} className="text-sm text-ink">
-                          <Text className="font-semibold">{releaseLabel(release)}</Text>
+                          <Text className="font-sans-semibold">{releaseLabel(release)}</Text>
                           {metadata ? (
                             <Text className="text-xs text-subtle"> · {metadata}</Text>
                           ) : null}
@@ -322,7 +322,7 @@ export function DestinationPicker({
     return (
       <View className="flex-row items-center gap-1.5">
         <AppIcon name="acquire" size={14} color={colors.subtle} />
-        <Text className="text-xs font-bold text-subtle">Add to: {options[0].label}</Text>
+        <Text className="text-xs font-sans-bold text-subtle">Add to: {options[0].label}</Text>
       </View>
     );
   }

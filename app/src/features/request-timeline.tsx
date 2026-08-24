@@ -25,7 +25,7 @@ export function RequestTimeline({
           <View key={`${event.created_at}-${event.format}-${index}`} className="gap-1 py-2">
             <View className="flex-row flex-wrap items-center gap-2">
               {!format && event.format ? (
-                <Text className="text-sm font-bold text-ink">{formatLabel(event.format)}</Text>
+                <Text className="text-sm font-sans-bold text-ink">{formatLabel(event.format)}</Text>
               ) : null}
               <StatusBadge label={status.label} tone={status.tone} />
               <Text className="text-xs text-muted">{notificationTime(event.created_at)}</Text>

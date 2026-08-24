@@ -34,7 +34,7 @@ export default function Login() {
   return (
     <AuthLayout tagline="Your books and audiobooks, in one place.">
       <AuthCard>
-        <Text accessibilityRole="header" className="mb-1 text-2xl font-extrabold text-ink">
+        <Text accessibilityRole="header" className="mb-1 text-2xl font-sans-bold text-ink">
           Sign in
         </Text>
         {visibleError ? <Notice danger>{visibleError}</Notice> : null}

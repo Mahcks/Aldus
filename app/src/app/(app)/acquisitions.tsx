@@ -270,7 +270,7 @@ export default function AcquisitionsAdministration() {
             }`}
             onPress={() => setTab(value)}
           >
-            <Text className={`text-sm font-bold ${tab === value ? 'text-accent' : 'text-muted'}`}>
+            <Text className={`text-sm font-sans-bold ${tab === value ? 'text-accent' : 'text-muted'}`}>
               {value === 'settings' ? 'Connections' : `${value[0].toUpperCase()}${value.slice(1)}`}
             </Text>
           </Pressable>
@@ -304,7 +304,7 @@ export default function AcquisitionsAdministration() {
               {shownRequests.map((request) => (
                 <View key={request.id} className="gap-3 border-b border-line py-4">
                   <View className="gap-1">
-                    <Text className="font-editorial text-lg font-bold text-ink">
+                    <Text className="font-editorial-bold text-lg text-ink">
                       {request.title}
                     </Text>
                     <Text className="text-sm text-muted">
@@ -330,7 +330,7 @@ export default function AcquisitionsAdministration() {
                       >
                         <View className="min-w-0 flex-1 gap-1">
                           <View className="flex-row items-center gap-3">
-                            <Text className="w-24 text-sm font-bold text-ink">
+                            <Text className="w-24 text-sm font-sans-bold text-ink">
                               {formatLabel(format.format)}
                             </Text>
                             <StatusBadge tone={status.tone} label={status.label} />
@@ -540,7 +540,7 @@ export default function AcquisitionsAdministration() {
 
               {shownDownloads.length === 0 ? (
                 <View className="border-y border-line py-6">
-                  <Text className="text-base font-bold text-ink">No active downloads</Text>
+                  <Text className="text-base font-sans-bold text-ink">No active downloads</Text>
                   <Text className="mt-1 text-sm leading-5 text-muted">
                     New downloads will appear here. Open history to review earlier attempts.
                   </Text>
@@ -556,7 +556,7 @@ export default function AcquisitionsAdministration() {
                         className="min-h-[72px] gap-2 border-b border-line py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <View className="min-w-0 flex-1 gap-1.5">
-                          <Text className="text-sm font-bold text-ink">
+                          <Text className="text-sm font-sans-bold text-ink">
                             {request.selected_title || request.query}
                           </Text>
                           <Text className="text-xs text-muted">

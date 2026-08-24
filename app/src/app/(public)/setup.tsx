@@ -45,7 +45,7 @@ export default function Setup() {
   return (
     <AuthLayout>
       <AuthCard>
-        <Text accessibilityRole="header" className="text-2xl font-extrabold text-ink">
+        <Text accessibilityRole="header" className="text-2xl font-sans-bold text-ink">
           Create the first administrator
         </Text>
         <Text className="mb-1 leading-[21px] text-muted">

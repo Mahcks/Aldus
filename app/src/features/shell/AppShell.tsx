@@ -181,7 +181,7 @@ function DesktopNav({
         onPress={onBrandPress}
         className="min-h-11 justify-center"
       >
-        <Text className="font-editorial text-2xl font-bold text-accent">Aldus</Text>
+        <Text className="font-editorial-bold text-2xl text-accent">Aldus</Text>
       </Pressable>
       <View className="mt-7 gap-1">
         {consumerLinks
@@ -192,7 +192,7 @@ function DesktopNav({
       </View>
       {adminLinks.length > 0 ? (
         <View className="mt-7 gap-1 border-t border-line pt-5">
-          <Text className="px-[11px] text-[11px] font-bold uppercase tracking-widest text-muted">
+          <Text className="px-[11px] text-[11px] font-sans-bold uppercase tracking-widest text-muted">
             Administration
           </Text>
           {adminLinks.map((link) => (
@@ -212,7 +212,7 @@ function DesktopNav({
           onPress={onSignOut}
           className="min-h-11 flex-row items-center"
         >
-          <Text className="text-sm font-bold text-accent">Sign out</Text>
+          <Text className="text-sm font-sans-bold text-accent">Sign out</Text>
         </Pressable>
       </View>
     </View>
@@ -256,11 +256,11 @@ function NavLink({
         <AppIcon name={icon} size={20} color={iconColor} />
         {badge ? (
           <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
-            <Text className="text-[10px] font-bold text-on-accent">{Math.min(badge, 9)}</Text>
+            <Text className="text-[10px] font-sans-bold text-on-accent">{Math.min(badge, 9)}</Text>
           </View>
         ) : null}
       </View>
-      <Text className={`text-[15px] font-bold ${selected ? 'text-accent' : inactiveTextClass}`}>
+      <Text className={`text-[15px] font-sans-bold ${selected ? 'text-accent' : inactiveTextClass}`}>
         {label}
       </Text>
     </Pressable>
@@ -295,7 +295,7 @@ function MobileHeader({
         onPress={onBrandPress}
         className="min-h-11 flex-1 items-center justify-center"
       >
-        <Text className="font-editorial text-2xl font-bold text-accent">Aldus</Text>
+        <Text className="font-editorial-bold text-2xl text-accent">Aldus</Text>
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -392,11 +392,11 @@ function MobileTab({
         <AppIcon name={icon} size={20} color={color} />
         {badge ? (
           <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
-            <Text className="text-[10px] font-bold text-on-accent">{Math.min(badge, 9)}</Text>
+            <Text className="text-[10px] font-sans-bold text-on-accent">{Math.min(badge, 9)}</Text>
           </View>
         ) : null}
       </View>
-      <Text className={`text-[11px] font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
+      <Text className={`text-[11px] font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>
@@ -451,14 +451,14 @@ function MoreSheet({
             style={{ paddingBottom: bottomInset + 16 }}
           >
             <View className="mb-1 flex-row items-center justify-between gap-4 border-b border-line pb-3">
-              <Text accessibilityRole="header" className="text-lg font-bold text-ink">
+              <Text accessibilityRole="header" className="text-lg font-sans-bold text-ink">
                 More
               </Text>
               <IconButton icon="close" label="Close menu" kind="quiet" onPress={onClose} />
             </View>
             {adminLinks.length > 0 ? (
               <View className="gap-1 pb-2">
-                <Text className="px-[11px] pb-1 text-[11px] font-bold uppercase tracking-widest text-muted">
+                <Text className="px-[11px] pb-1 text-[11px] font-sans-bold uppercase tracking-widest text-muted">
                   Administration
                 </Text>
                 {adminLinks.map((link) => (
@@ -484,7 +484,7 @@ function MoreSheet({
                 onPress={onSignOut}
                 className="min-h-11 flex-row items-center px-[11px]"
               >
-                <Text className="text-sm font-bold text-accent">Sign out</Text>
+                <Text className="text-sm font-sans-bold text-accent">Sign out</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -518,7 +518,7 @@ function SheetLink({
       className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
       <AppIcon name={icon} size={18} color={iconColor} />
-      <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
+      <Text className={`text-sm font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>

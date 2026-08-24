@@ -208,7 +208,7 @@ function RootPicker({
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-bold text-ink">Choose a starting location</Text>
+      <Text className="text-sm font-sans-bold text-ink">Choose a starting location</Text>
       <View className="gap-2">
         {roots.map((root) => (
           <Pressable
@@ -220,7 +220,7 @@ function RootPicker({
           >
             <AppIcon name="folder" size={20} color={colors.accent} />
             <View className="flex-1 gap-0.5">
-              <Text className="text-sm font-bold text-ink">{root.label}</Text>
+              <Text className="text-sm font-sans-bold text-ink">{root.label}</Text>
               <Text className="font-mono text-xs text-muted">{root.path}</Text>
             </View>
             <AppIcon name="chevron" size={18} color={colors.subtle} />
@@ -258,7 +258,7 @@ function FolderBrowser({
       <View className="gap-1 rounded-control border border-accent bg-accent-soft p-3">
         <View className="flex-row items-center gap-2">
           <AppIcon name="check" size={18} color={colors.accent} />
-          <Text className="text-sm font-bold text-ink">Selected folder: {selectedName}</Text>
+          <Text className="text-sm font-sans-bold text-ink">Selected folder: {selectedName}</Text>
         </View>
         <Text className="text-sm text-muted">Everything inside this folder will be scanned.</Text>
         <Text selectable className="font-mono text-xs text-muted">
@@ -266,7 +266,7 @@ function FolderBrowser({
         </Text>
       </View>
       {directory.directories.length > 0 ? (
-        <Text className="text-sm font-semibold text-muted">Or choose a subfolder instead</Text>
+        <Text className="text-sm font-sans-semibold text-muted">Or choose a subfolder instead</Text>
       ) : null}
       <ScrollView className="max-h-[260px] rounded-control border border-line-strong">
         {directory.has_parent ? (
@@ -277,7 +277,7 @@ function FolderBrowser({
             className="min-h-11 flex-row items-center gap-2.5 border-b border-line bg-paper px-3"
           >
             <AppIcon name="back" size={18} color={colors.muted} />
-            <Text className="flex-1 text-sm font-semibold text-ink">Parent folder</Text>
+            <Text className="flex-1 text-sm font-sans-semibold text-ink">Parent folder</Text>
           </Pressable>
         ) : null}
         {directory.directories.map((folder) => (
@@ -289,7 +289,7 @@ function FolderBrowser({
             className="min-h-11 flex-row items-center gap-2.5 border-b border-line bg-paper px-3"
           >
             <AppIcon name="folder" size={20} color={colors.warning} />
-            <Text className="flex-1 text-sm font-semibold text-ink">{folder}</Text>
+            <Text className="flex-1 text-sm font-sans-semibold text-ink">{folder}</Text>
             <AppIcon name="chevron" size={18} color={colors.subtle} />
           </Pressable>
         ))}
@@ -329,14 +329,14 @@ function Breadcrumb({
           <View className="flex-row items-center gap-1" key={`${crumb.path}-${crumb.label}`}>
             {index > 0 ? <Text className="text-sm text-subtle">/</Text> : null}
             {isCurrent ? (
-              <Text className="text-sm font-extrabold text-ink">{crumb.label}</Text>
+              <Text className="text-sm font-sans-bold text-ink">{crumb.label}</Text>
             ) : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Go to ${crumb.label}`}
                 onPress={() => onNavigate(crumb.path)}
               >
-                <Text className="text-sm font-semibold text-accent">{crumb.label}</Text>
+                <Text className="text-sm font-sans-semibold text-accent">{crumb.label}</Text>
               </Pressable>
             )}
           </View>
@@ -354,7 +354,7 @@ function NoRootsSetup({ expanded, onToggle }: { expanded: boolean; onToggle: () 
           <AppIcon name="folder" size={22} color={colors.accent} />
         </View>
         <View className="flex-1 gap-0.5">
-          <Text className="text-base font-bold text-ink">
+          <Text className="text-base font-sans-bold text-ink">
             No media folders are available to Aldus yet
           </Text>
           <Text className="text-sm text-muted">

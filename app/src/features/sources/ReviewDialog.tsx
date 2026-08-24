@@ -43,7 +43,7 @@ export function ReviewDialog({
       <View className="gap-6 pb-1.5">
         {conflict ? <Notice danger>{conflict}</Notice> : null}
         <View>
-          <Text className="text-2xl font-bold text-ink">
+          <Text className="text-2xl font-sans-bold text-ink">
             {proposal.title || 'Untitled discovery'}
           </Text>
           <Text className="text-sm text-muted">
@@ -52,7 +52,7 @@ export function ReviewDialog({
         </View>
 
         <View className="gap-1.5 rounded-control bg-canvas p-3">
-          <Text className="text-sm font-extrabold text-ink">Why Aldus grouped these files</Text>
+          <Text className="text-sm font-sans-bold text-ink">Why Aldus grouped these files</Text>
           {proposal.reasons.map((reason) => (
             <Text className="text-sm text-muted" key={reason}>
               • {reason}
@@ -61,7 +61,7 @@ export function ReviewDialog({
         </View>
 
         <View className="gap-2.5">
-          <Text className="text-sm font-extrabold text-ink">Destination Work</Text>
+          <Text className="text-sm font-sans-bold text-ink">Destination Work</Text>
           <WorkChoice
             title="Create a new Work"
             description="Use the reviewed title and author below."
@@ -100,7 +100,7 @@ export function ReviewDialog({
         </View>
 
         <View className="gap-2.5">
-          <Text className="text-sm font-extrabold text-ink">Representations</Text>
+          <Text className="text-sm font-sans-bold text-ink">Representations</Text>
           {proposal.items.map((item) => (
             <ReviewItemRow
               draft={draft}
@@ -149,7 +149,7 @@ function WorkChoice({
         selected ? 'border-accent bg-accent-soft' : 'border-line'
       }`}
     >
-      <Text className="text-sm font-extrabold text-ink">{title}</Text>
+      <Text className="text-sm font-sans-bold text-ink">{title}</Text>
       <Text className="text-sm text-muted">{description}</Text>
     </Pressable>
   );

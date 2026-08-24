@@ -3,22 +3,16 @@
 @import 'tailwindcss/utilities.css';
 @import 'nativewind/theme';
 
-/* Platform-specific font families */
+/* Platform-specific monospace (used for paths, hashes, technical detail) */
 @media android {
   :root {
     --font-mono: monospace;
-    --font-rounded: normal;
-    --font-serif: serif;
-    --font-sans: normal;
   }
 }
 
 @media ios {
   :root {
     --font-mono: ui-monospace;
-    --font-serif: ui-serif;
-    --font-sans: system-ui;
-    --font-rounded: ui-rounded;
   }
 }
 
@@ -120,7 +114,19 @@
     --color-neutral: var(--color-neutral);
     --color-neutral-soft: var(--color-neutral-soft);
 
-    --font-editorial: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+    /* Aldine literary type system: Lora for headings/titles, Source Serif 4
+       for long-form reading passages, Inter as the app-wide UI face. Each
+       weight is a distinct registered font family (expo-google-fonts loads
+       static per-weight files, not a variable font), so weight-specific
+       tokens exist alongside the regular ones rather than relying on
+       font-weight utilities to select a face. */
+    --font-editorial: Lora_400Regular;
+    --font-editorial-bold: Lora_700Bold;
+    --font-reading: SourceSerif4_400Regular;
+    --font-sans: Inter_400Regular;
+    --font-sans-medium: Inter_500Medium;
+    --font-sans-semibold: Inter_600SemiBold;
+    --font-sans-bold: Inter_700Bold;
 
     --radius-control: var(--radius-control);
     --radius-card: var(--radius-card);

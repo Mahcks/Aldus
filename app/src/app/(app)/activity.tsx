@@ -64,9 +64,9 @@ function ActivityRow({
         ) : null}
       </View>
       <View className="min-w-0 flex-1 gap-1">
-        <Text className="font-editorial text-base font-bold leading-5 text-ink">{group.title}</Text>
+        <Text className="font-editorial-bold text-base leading-5 text-ink">{group.title}</Text>
         <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
-          <Text className={`text-sm leading-5 ${unread ? 'font-bold text-ink' : 'text-muted'}`}>
+          <Text className={`text-sm leading-5 ${unread ? 'font-sans-bold text-ink' : 'text-muted'}`}>
             {item.title}
           </Text>
           {group.format ? (
@@ -328,7 +328,7 @@ export default function ActivityScreen() {
                     <View className="gap-0.5">
                       <Text
                         numberOfLines={2}
-                        className="font-editorial text-lg font-bold leading-6 text-ink"
+                        className="font-editorial-bold text-lg leading-6 text-ink"
                       >
                         {request.title}
                       </Text>
@@ -353,7 +353,7 @@ export default function ActivityScreen() {
                           <View className="gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <View className="min-w-0 flex-1 gap-1">
                               <View className="flex-row flex-wrap items-center gap-2">
-                                <Text className="text-sm font-bold text-ink">
+                                <Text className="text-sm font-sans-bold text-ink">
                                   {formatLabel(format.format)}
                                 </Text>
                                 <StatusBadge tone={status.tone} label={status.label} />
@@ -517,7 +517,7 @@ function ActivityTab({
       }`}
       onPress={onPress}
     >
-      <Text className={`text-sm font-bold ${selected ? 'text-accent' : 'text-muted'}`}>
+      <Text className={`text-sm font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>
@@ -542,7 +542,7 @@ function FilterTab({
       }`}
       onPress={onPress}
     >
-      <Text className={`text-sm font-semibold ${selected ? 'text-accent' : 'text-muted'}`}>
+      <Text className={`text-sm font-sans-semibold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>

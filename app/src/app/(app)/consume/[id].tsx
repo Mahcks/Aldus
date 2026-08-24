@@ -1089,7 +1089,7 @@ export default function ConsumeWorkScreen() {
           onPress={() => goBackOr(`/work/${params.id}`)}
         />
         <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-base font-extrabold text-ink">
+          <Text numberOfLines={1} className="text-base font-sans-bold text-ink">
             {work.title}
           </Text>
           {!compact ? (
@@ -1148,7 +1148,7 @@ export default function ConsumeWorkScreen() {
       </View>
       {!compactNative ? (
         <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
-          <Text accessibilityLiveRegion="polite" className="text-xs font-semibold text-muted">
+          <Text accessibilityLiveRegion="polite" className="text-xs font-sans-semibold text-muted">
             {progressStatus ||
               (mode === 'read' && alignmentID
                 ? pageSyncLabel
@@ -1315,7 +1315,7 @@ export default function ConsumeWorkScreen() {
                 <View className="items-center gap-1.5 px-4">
                   <Text
                     numberOfLines={2}
-                    className="text-center font-editorial text-[26px] font-bold leading-8 text-ink"
+                    className="text-center font-editorial-bold text-[26px] leading-8 text-ink"
                   >
                     {work.title}
                   </Text>
@@ -1324,14 +1324,14 @@ export default function ConsumeWorkScreen() {
                   </Text>
                   <Text
                     numberOfLines={2}
-                    className="mt-1 text-center text-[11px] font-semibold uppercase tracking-[1.5px] text-subtle"
+                    className="mt-1 text-center text-[11px] font-sans-semibold uppercase tracking-[1.5px] text-subtle"
                   >
                     {selectedAudio.representation.label}
                   </Text>
                   {progressStatus ? (
                     <Text
                       accessibilityLiveRegion="polite"
-                      className="text-xs font-semibold text-muted"
+                      className="text-xs font-sans-semibold text-muted"
                     >
                       {progressStatus}
                     </Text>
@@ -1390,7 +1390,7 @@ export default function ConsumeWorkScreen() {
                 </Pressable>
                 <View className="flex-row justify-between">
                   <Text
-                    className="text-[13px] font-semibold text-ink"
+                    className="text-[13px] font-sans-semibold text-ink"
                     style={{ fontVariant: ['tabular-nums'] }}
                   >
                     {formatAudioTime(status.currentTime)}
@@ -1418,10 +1418,10 @@ export default function ConsumeWorkScreen() {
                     onPress={() => setChaptersOpen(true)}
                     className="min-h-11 min-w-0 flex-1 items-center justify-center gap-0.5 rounded-control px-2 focus-visible:border focus-visible:border-focus"
                   >
-                    <Text numberOfLines={1} className="text-center text-sm font-bold text-ink">
+                    <Text numberOfLines={1} className="text-center text-sm font-sans-bold text-ink">
                       {chapter.current.title}
                     </Text>
-                    <Text className="text-center text-[11px] font-semibold uppercase tracking-[1px] text-subtle">
+                    <Text className="text-center text-[11px] font-sans-semibold uppercase tracking-[1px] text-subtle">
                       Chapter {chapter.index + 1} of {audioChapters.length} · View all
                     </Text>
                   </Pressable>
@@ -1451,7 +1451,7 @@ export default function ConsumeWorkScreen() {
                     onPress={cyclePlaybackRate}
                     className={`h-11 min-w-14 items-center justify-center rounded-pill bg-panel px-3 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
                   >
-                    <Text className="text-sm font-bold text-ink">{currentPlaybackRate}×</Text>
+                    <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
                   </Pressable>
                 </View>
                 <View className="flex-1 flex-row items-center justify-center gap-7">
@@ -1499,7 +1499,7 @@ export default function ConsumeWorkScreen() {
               {sleepTimerRemaining != null ? (
                 <Text
                   accessibilityLiveRegion="polite"
-                  className="mt-3 text-center text-xs font-semibold text-muted"
+                  className="mt-3 text-center text-xs font-sans-semibold text-muted"
                   style={{ fontVariant: ['tabular-nums'] }}
                 >
                   Sleep timer · {formatAudioTime(sleepTimerRemaining)} remaining
@@ -1507,7 +1507,7 @@ export default function ConsumeWorkScreen() {
               ) : null}
               <View className="mt-9 w-full gap-3 border-t border-line-subtle pt-6">
                 <View className="flex-row items-center justify-between gap-3">
-                  <Text className="text-[11px] font-bold uppercase tracking-[1.5px] text-subtle">
+                  <Text className="text-[11px] font-sans-bold uppercase tracking-[1.5px] text-subtle">
                     Read Along
                   </Text>
                   <StatusBadge
@@ -1524,8 +1524,8 @@ export default function ConsumeWorkScreen() {
                         numberOfLines={6}
                         className={
                           passage.active
-                            ? 'font-editorial text-lg leading-7 text-ink'
-                            : 'font-editorial text-base leading-6 text-muted'
+                            ? 'font-reading text-lg leading-7 text-ink'
+                            : 'font-reading text-base leading-6 text-muted'
                         }
                       >
                         {passage.current.text}
@@ -1533,7 +1533,7 @@ export default function ConsumeWorkScreen() {
                     </Animated.View>
                     {passage.next || passage.following ? (
                       <View className="gap-2 border-t border-line-subtle pt-3">
-                        <Text className="text-[11px] font-semibold uppercase tracking-wide text-subtle">
+                        <Text className="text-[11px] font-sans-semibold uppercase tracking-wide text-subtle">
                           Coming next
                         </Text>
                         {[passage.next, passage.following].map((segment) =>
@@ -1541,7 +1541,7 @@ export default function ConsumeWorkScreen() {
                             <Text
                               key={segment.id}
                               numberOfLines={2}
-                              className="font-editorial text-sm leading-5 text-subtle"
+                              className="font-reading text-sm leading-5 text-subtle"
                             >
                               {segment.text}
                             </Text>
