@@ -125,6 +125,7 @@ export default function ConsumeWorkScreen() {
   const [loading, setLoading] = useState(true);
   const reader = useRef<EPUBReaderHandle>(null);
   const readerReady = useRef(false);
+  const restoredReaderTarget = useRef<unknown>(undefined);
   const restoredAudio = useRef('');
   const playAfterRestore = useRef(false);
   const lastAudioSave = useRef(-1);
@@ -350,6 +351,7 @@ export default function ConsumeWorkScreen() {
       setAudioReady(false);
       setAudioChapters([]);
       readerReady.current = false;
+      restoredReaderTarget.current = undefined;
       const stored = Platform.OS === 'web' || !params.id ? null : await offlineWork(params.id);
       if (stored && !canceled) {
         const selectedEPUBChoice = stored.epubs.find((item) => item.id === epubID);
@@ -448,7 +450,9 @@ export default function ConsumeWorkScreen() {
   }, [work, epubID, audioID, jobs, progress?.alignment_id, progress?.resolvable]);
 
   useEffect(() => {
-    if (!readerReady.current || !readerTarget) return;
+    if (!readerReady.current || !readerTarget || restoredReaderTarget.current === readerTarget)
+      return;
+    restoredReaderTarget.current = readerTarget;
     void reader.current?.restoreLocation(
       readerTarget,
       Boolean(progress?.resolvable && progress.alignment_id === alignmentID),
@@ -567,11 +571,13 @@ export default function ConsumeWorkScreen() {
   }, []);
   const onReaderReady = useCallback(() => {
     readerReady.current = true;
-    if (readerTarget)
+    if (readerTarget && restoredReaderTarget.current !== readerTarget) {
+      restoredReaderTarget.current = readerTarget;
       void reader.current?.restoreLocation(
         readerTarget,
         Boolean(progress?.resolvable && progress.alignment_id === alignmentID),
       );
+    }
   }, [readerTarget, progress?.resolvable, progress?.alignment_id, alignmentID]);
 
   useEffect(() => {

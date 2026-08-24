@@ -66,7 +66,9 @@ function ActivityRow({
       <View className="min-w-0 flex-1 gap-1">
         <Text className="font-editorial-bold text-base leading-5 text-ink">{group.title}</Text>
         <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
-          <Text className={`text-sm leading-5 ${unread ? 'font-sans-bold text-ink' : 'text-muted'}`}>
+          <Text
+            className={`text-sm leading-5 ${unread ? 'font-sans-bold text-ink' : 'text-muted'}`}
+          >
             {item.title}
           </Text>
           {group.format ? (

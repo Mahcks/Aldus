@@ -260,7 +260,9 @@ function NavLink({
           </View>
         ) : null}
       </View>
-      <Text className={`text-[15px] font-sans-bold ${selected ? 'text-accent' : inactiveTextClass}`}>
+      <Text
+        className={`text-[15px] font-sans-bold ${selected ? 'text-accent' : inactiveTextClass}`}
+      >
         {label}
       </Text>
     </Pressable>

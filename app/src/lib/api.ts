@@ -477,14 +477,7 @@ export const api = {
       throw error;
     }
   },
-  workPreference: async (id: string) => {
-    try {
-      return await request<WorkPreference>(`/works/${id}/preference`);
-    } catch (error) {
-      if (error instanceof APIError && error.status === 404) return null;
-      throw error;
-    }
-  },
+  workPreference: (id: string) => request<WorkPreference | null>(`/works/${id}/preference`),
   setWorkPreference: (id: string, body: SetWorkPreferenceRequest) =>
     request<WorkPreference>(`/works/${id}/preference`, {
       method: 'PUT',

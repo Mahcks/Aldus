@@ -137,6 +137,24 @@ describe('EPUB relocation', () => {
     expect(calls).toEqual(['dispose']);
   });
 
+  test('waits for active reader work before disposal and rejects new work', async () => {
+    const calls: string[] = [];
+    let finish!: () => void;
+    const active = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const disposal = deferredDisposal(() => calls.push('dispose'));
+
+    disposal.settle();
+    const operation = disposal.track(() => active);
+    disposal.request();
+    expect(calls).toEqual([]);
+    expect(disposal.track(async () => undefined)).toBeUndefined();
+    finish();
+    await operation;
+    expect(calls).toEqual(['dispose']);
+  });
+
   test('initializes Foliate at readable text after opening a new book', async () => {
     const calls: unknown[] = [];
     await initializeReaderView({

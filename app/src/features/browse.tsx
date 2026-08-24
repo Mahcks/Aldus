@@ -46,7 +46,9 @@ function CompactFilterRow({
 }) {
   return (
     <View className="gap-1">
-      <Text className="text-xs font-sans-semibold uppercase tracking-wide text-subtle">{label}</Text>
+      <Text className="text-xs font-sans-semibold uppercase tracking-wide text-subtle">
+        {label}
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

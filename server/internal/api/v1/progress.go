@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -22,7 +23,16 @@ func registerProgressRoutes(router chi.Router, store *position.Store, catalogSto
 
 func workPreference(store *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		value, err := store.WorkPreference(r.Context(), actor(r), chi.URLParam(r, "workID"))
+		workID := chi.URLParam(r, "workID")
+		if _, err := store.Work(r.Context(), actor(r), workID); err != nil {
+			writeCatalogResult(w, nil, err)
+			return
+		}
+		value, err := store.WorkPreference(r.Context(), actor(r), workID)
+		if errors.Is(err, catalog.ErrNotFound) {
+			writeJSON(w, http.StatusOK, nil)
+			return
+		}
 		writeCatalogResult(w, workPreferenceDTO(value), err)
 	}
 }

@@ -81,12 +81,24 @@ export function deferredDisposal(dispose: () => void) {
   let requested = false;
   let settled = false;
   let disposed = false;
+  let active = 0;
   const run = () => {
-    if (!requested || !settled || disposed) return;
+    if (!requested || !settled || active || disposed) return;
     disposed = true;
     dispose();
   };
   return {
+    track<T>(operation: () => Promise<T>) {
+      if (requested) return;
+      active += 1;
+      return operation().finally(() => {
+        active -= 1;
+        run();
+      });
+    },
+    requested() {
+      return requested;
+    },
     request() {
       requested = true;
       run();

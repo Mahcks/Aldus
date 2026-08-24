@@ -95,6 +95,19 @@ func TestProgressConflictContract(t *testing.T) {
 	}
 }
 
+func TestMissingWorkPreferenceIsEmptyForVisibleWork(t *testing.T) {
+	handler, token := testHandler(t)
+
+	empty := request(t, handler, token, http.MethodGet, "/works/fixture-work/preference", "")
+	if empty.Code != http.StatusOK || strings.TrimSpace(empty.Body.String()) != "null" {
+		t.Fatalf("empty preference = %d %s", empty.Code, empty.Body.String())
+	}
+	missing := request(t, handler, token, http.MethodGet, "/works/missing/preference", "")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing work preference = %d %s", missing.Code, missing.Body.String())
+	}
+}
+
 func TestWorkAlignmentJobListing(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))

@@ -91,6 +91,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const [ready, setReady] = useState(false);
   const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
+  const disposalRef = useRef<ReturnType<typeof deferredDisposal>>(null);
   const selection = useRef<{ index: number; range: Range } | undefined>(undefined);
   const cursor = useRef<ReaderLocation>(undefined);
   const page = useRef<{
@@ -129,24 +130,31 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
       },
       async restoreSelection(capture) {
         const view = reader.current;
+        const disposal = disposalRef.current;
+        if (!view || !disposal) throw new Error('The reader is no longer open.');
         const target = capture.cfi || capture.href;
-        const resolved = await view.resolveNavigation(target);
-        await view.goTo(target);
-        const content = view.renderer
-          .getContents()
-          .find(({ index }: { index: number }) => index === resolved.index);
-        const range = capture.cfi
-          ? (resolved.anchor(content.doc) as Range)
-          : restoreDOMRange(content.doc, capture);
-        const selected = content.doc.getSelection();
-        selected?.removeAllRanges();
-        selected?.addRange(range);
-        selection.current = { index: resolved.index, range: range.cloneRange() };
-        return range.toString();
+        const operation = disposal.track(async () => {
+          const resolved = await view.resolveNavigation(target);
+          await view.goTo(target);
+          const content = view.renderer
+            .getContents()
+            .find(({ index }: { index: number }) => index === resolved.index);
+          const range = capture.cfi
+            ? (resolved.anchor(content.doc) as Range)
+            : restoreDOMRange(content.doc, capture);
+          const selected = content.doc.getSelection();
+          selected?.removeAllRanges();
+          selected?.addRange(range);
+          selection.current = { index: resolved.index, range: range.cloneRange() };
+          return range.toString();
+        });
+        if (!operation) throw new Error('The reader is closing.');
+        return operation;
       },
       async restoreLocation(value, highlight = false) {
         const view = reader.current;
-        if (!view || !value || typeof value !== 'object') return false;
+        const disposal = disposalRef.current;
+        if (!view || !disposal || !value || typeof value !== 'object') return false;
         const location = value as {
           href?: string;
           cfi?: string;
@@ -159,10 +167,13 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             end?: RangeBoundary;
           };
         };
-        if (location.cfi) {
-          await view.goTo(location.cfi);
-          return true;
-        }
+        if (location.cfi)
+          return (
+            (await disposal.track(async () => {
+              await view.goTo(location.cfi);
+              return true;
+            })) ?? false
+          );
         if (
           !location.href ||
           location.locator?.type !== 'dom-element' ||
@@ -184,38 +195,42 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             },
             reason: 'restore',
           };
-        const resolved = await view.resolveNavigation(location.href);
-        await view.goTo(location.href);
-        const content = view.renderer
-          .getContents()
-          .find(({ index }: { index: number }) => index === resolved.index);
-        const element = resolveDOMPath(content.doc, location.locator.dom_path);
-        const range = content.doc.createRange();
-        if (location.locator.start && location.locator.end) {
-          range.setStart(
-            resolveDOMPath(content.doc, location.locator.start.dom_path),
-            location.locator.start.node_offset,
-          );
-          range.setEnd(
-            resolveDOMPath(content.doc, location.locator.end.dom_path),
-            location.locator.end.node_offset,
-          );
-        } else range.selectNodeContents(element);
-        const cfi = view.getCFI(resolved.index, range);
-        await view.goTo(cfi);
-        if (highlight) {
-          const selected = content.doc.getSelection();
-          selected?.removeAllRanges();
-          selected?.addRange(range);
-        }
-        if (cursor.current)
-          onLocationRef.current?.({
-            ...cursor.current,
-            cfi,
-            syncState: page.current?.state,
-            reason: 'restore',
-          });
-        return true;
+        return (
+          (await disposal.track(async () => {
+            const resolved = await view.resolveNavigation(location.href);
+            await view.goTo(location.href);
+            const content = view.renderer
+              .getContents()
+              .find(({ index }: { index: number }) => index === resolved.index);
+            const element = resolveDOMPath(content.doc, location.locator!.dom_path!);
+            const range = content.doc.createRange();
+            if (location.locator!.start && location.locator!.end) {
+              range.setStart(
+                resolveDOMPath(content.doc, location.locator!.start!.dom_path),
+                location.locator!.start!.node_offset,
+              );
+              range.setEnd(
+                resolveDOMPath(content.doc, location.locator!.end!.dom_path),
+                location.locator!.end!.node_offset,
+              );
+            } else range.selectNodeContents(element);
+            const cfi = view.getCFI(resolved.index, range);
+            await view.goTo(cfi);
+            if (highlight) {
+              const selected = content.doc.getSelection();
+              selected?.removeAllRanges();
+              selected?.addRange(range);
+            }
+            if (!disposal.requested() && cursor.current)
+              onLocationRef.current?.({
+                ...cursor.current,
+                cfi,
+                syncState: page.current?.state,
+                reason: 'restore',
+              });
+            return true;
+          })) ?? false
+        );
       },
     }),
     [],
@@ -225,6 +240,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     let disposed = false;
     let view: any;
     const disposal = deferredDisposal(() => disposeReaderView(view));
+    disposalRef.current = disposal;
     cursor.current = undefined;
     page.current = undefined;
     direction.current = 'initial';
@@ -238,16 +254,18 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         view.style.height = product ? 'calc(100vh - 238px)' : '65vh';
         (host.current as unknown as HTMLElement).append(view);
         view.addEventListener('load', ({ detail: { doc, index } }: CustomEvent) => {
+          if (disposed) return;
           if (product) {
             applyReaderStyles(doc, preferencesRef.current);
           }
           doc.addEventListener('selectionchange', () => {
+            if (disposed) return;
             const selected = doc.getSelection();
             if (selected?.rangeCount && !selected.isCollapsed)
               selection.current = { index, range: selected.getRangeAt(0).cloneRange() };
           });
           doc.addEventListener('click', (event: MouseEvent) => {
-            if (!product) return;
+            if (disposed || !product) return;
             const point = caretAt(doc, event.clientX, event.clientY);
             const href = view.book.sections[index]?.id;
             const current = page.current;
@@ -273,6 +291,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           });
         });
         view.addEventListener('relocate', ({ detail }: CustomEvent) => {
+          if (disposed) return;
           const range = detail.range as Range | undefined;
           const index = range ? activeContentIndex(range, view.renderer.getContents()) : undefined;
           if (!range || index == null) return;
@@ -341,6 +360,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     return () => {
       disposed = true;
       disposal.request();
+      if (disposalRef.current === disposal) disposalRef.current = null;
       if (reader.current === view) reader.current = null;
     };
   }, [source, product]);
@@ -361,8 +381,19 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             label="Previous page"
             kind="quiet"
             onPress={() => {
-              direction.current = 'backward';
-              reader.current?.goLeft();
+              const view = reader.current;
+              const disposal = disposalRef.current;
+              if (!view || !disposal) return;
+              const operation = disposal.track(() => Promise.resolve(view.goLeft()));
+              if (operation) {
+                direction.current = 'backward';
+                void operation.catch((error: unknown) => {
+                  if (!disposal.requested())
+                    onErrorRef.current?.(
+                      error instanceof Error ? error : new Error('The page could not be opened.'),
+                    );
+                });
+              }
             }}
           />
           <Text
@@ -383,8 +414,19 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             label="Next page"
             kind="quiet"
             onPress={() => {
-              direction.current = 'forward';
-              reader.current?.goRight();
+              const view = reader.current;
+              const disposal = disposalRef.current;
+              if (!view || !disposal) return;
+              const operation = disposal.track(() => Promise.resolve(view.goRight()));
+              if (operation) {
+                direction.current = 'forward';
+                void operation.catch((error: unknown) => {
+                  if (!disposal.requested())
+                    onErrorRef.current?.(
+                      error instanceof Error ? error : new Error('The page could not be opened.'),
+                    );
+                });
+              }
             }}
           />
         </View>

@@ -270,7 +270,9 @@ export default function AcquisitionsAdministration() {
             }`}
             onPress={() => setTab(value)}
           >
-            <Text className={`text-sm font-sans-bold ${tab === value ? 'text-accent' : 'text-muted'}`}>
+            <Text
+              className={`text-sm font-sans-bold ${tab === value ? 'text-accent' : 'text-muted'}`}
+            >
               {value === 'settings' ? 'Connections' : `${value[0].toUpperCase()}${value.slice(1)}`}
             </Text>
           </Pressable>
@@ -304,9 +306,7 @@ export default function AcquisitionsAdministration() {
               {shownRequests.map((request) => (
                 <View key={request.id} className="gap-3 border-b border-line py-4">
                   <View className="gap-1">
-                    <Text className="font-editorial-bold text-lg text-ink">
-                      {request.title}
-                    </Text>
+                    <Text className="font-editorial-bold text-lg text-ink">{request.title}</Text>
                     <Text className="text-sm text-muted">
                       {[
                         request.author,

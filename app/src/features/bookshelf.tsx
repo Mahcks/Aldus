@@ -289,10 +289,7 @@ export function WorkCard({
           </View>
         ) : null}
       </View>
-      <Text
-        numberOfLines={2}
-        className="mt-1 font-editorial-bold text-base leading-5 text-ink"
-      >
+      <Text numberOfLines={2} className="mt-1 font-editorial-bold text-base leading-5 text-ink">
         {title}
       </Text>
       <Text numberOfLines={1} className="text-sm leading-[18px] text-muted">
@@ -358,7 +355,9 @@ export function WorkRow({
           <Text numberOfLines={1} className="text-sm text-muted">
             {author || 'Unknown author'}
           </Text>
-          {context ? <Text className="text-[11px] font-sans-bold text-muted">{context}</Text> : null}
+          {context ? (
+            <Text className="text-[11px] font-sans-bold text-muted">{context}</Text>
+          ) : null}
           {progress ? (
             <Text numberOfLines={1} className="text-xs font-sans-bold text-accent">
               {progress}
