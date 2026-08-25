@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -196,6 +197,16 @@ func TestDemoSessionLifecycle(t *testing.T) {
 	}
 	if guest.DemoPassword == "" {
 		t.Fatal("demo password is empty")
+	}
+	if guest.DemoPairingCode == "" || guest.DemoPairingExpiresAt.IsZero() {
+		t.Fatalf("demo pairing = %q %v", guest.DemoPairingCode, guest.DemoPairingExpiresAt)
+	}
+	paired, err := store.RedeemDemoPairingCode(ctx, strings.ToLower(guest.DemoPairingCode))
+	if err != nil || paired.User.ID != guest.User.ID {
+		t.Fatalf("paired demo = %#v, %v", paired.User, err)
+	}
+	if _, err := store.RedeemDemoPairingCode(ctx, guest.DemoPairingCode); !errors.Is(err, ErrInvalidPairingCode) {
+		t.Fatalf("reused pairing code error = %v", err)
 	}
 	if _, err := store.Login(ctx, Credentials{Username: guest.User.Username, Password: guest.DemoPassword}); err != nil {
 		t.Fatalf("demo login = %v", err)

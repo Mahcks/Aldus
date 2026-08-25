@@ -22,6 +22,7 @@ var (
 	ErrInvalid            = errors.New("invalid authentication input")
 	ErrDemoDisabled       = errors.New("demo access disabled")
 	ErrDemoCapacity       = errors.New("demo access is full")
+	ErrInvalidPairingCode = errors.New("invalid or expired pairing code")
 )
 
 const CookieName = "aldus_session"
@@ -48,10 +49,12 @@ type User struct {
 }
 
 type Session struct {
-	Token        string    `json:"token,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	User         User      `json:"user"`
-	DemoPassword string    `json:"-"`
+	Token                string    `json:"token,omitempty"`
+	ExpiresAt            time.Time `json:"expires_at"`
+	User                 User      `json:"user"`
+	DemoPairingCode      string    `json:"-"`
+	DemoPairingExpiresAt time.Time `json:"-"`
+	DemoPassword         string    `json:"-"`
 }
 
 type Credentials struct {

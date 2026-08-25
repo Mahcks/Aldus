@@ -14,6 +14,9 @@ func userDTO(v auth.User) contracts.User {
 }
 func sessionDTO(v auth.Session) contracts.Session {
 	result := contracts.Session{Token: v.Token, ExpiresAt: v.ExpiresAt, User: userDTO(v.User)}
+	if v.DemoPairingCode != "" {
+		result.DemoPairing = &contracts.DemoPairing{Code: v.DemoPairingCode, ExpiresAt: v.DemoPairingExpiresAt}
+	}
 	if v.DemoPassword != "" {
 		result.DemoCredentials = &contracts.DemoCredentials{Username: v.User.Username, Password: v.DemoPassword}
 	}

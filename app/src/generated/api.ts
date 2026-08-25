@@ -181,7 +181,18 @@ export interface Session {
   token?: string;
   expires_at: string;
   user: User;
+  demo_pairing?: DemoPairing;
+  /**
+   * DemoCredentials keeps already-installed clients working during the pairing-code rollout.
+   */
   demo_credentials?: DemoCredentials;
+}
+export interface DemoPairing {
+  code: string;
+  expires_at: string;
+}
+export interface DemoPairingRequest {
+  code: string;
 }
 export interface DemoCredentials {
   username: string;

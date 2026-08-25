@@ -27,7 +27,7 @@ import type {
   CreateRepresentationRequest,
   CreateUserRequest,
   CreateWorkRequest,
-  DemoCredentials,
+  DemoPairing,
   EPUBLocator,
   Library,
   LibrarySource,
@@ -172,12 +172,19 @@ export const api = {
   demoLogin: () => {
     const origin = getAPIBaseURL();
     return request<Session>('/auth/demo', { method: 'POST' }).then(async (session) => {
-      if (!session.demo_credentials) throw new APIError(500, 'Demo sign-in details are missing.');
+      if (!session.demo_pairing) throw new APIError(500, 'Demo pairing code is missing.');
       return {
         user: await acceptSession(session, origin),
-        credentials: session.demo_credentials as DemoCredentials,
+        pairing: session.demo_pairing as DemoPairing,
       };
     });
+  },
+  pairDemo: (code: string) => {
+    const origin = getAPIBaseURL();
+    return request<Session>('/auth/demo/pair', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }).then((session) => acceptSession(session, origin));
   },
   me: () => request<User>('/auth/me'),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),

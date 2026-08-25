@@ -62,7 +62,7 @@ func TestRouteContract(t *testing.T) {
 		"GET /alignment-jobs/{jobID}", "GET /alignments/{alignmentID}", "GET /alignments/{alignmentID}/progress", "GET /auth/me", "GET /health", "GET /ready", "GET /libraries", "GET /libraries/{libraryID}", "GET /libraries/{libraryID}/members", "GET /libraries/{libraryID}/representations/{representationID}/media", "GET /libraries/{libraryID}/works", "GET /media/{mediaID}", "GET /representations/{representationID}", "GET /representations/{representationID}/state", "GET /setup/status", "GET /users", "GET /works", "GET /works/{workID}", "GET /works/{workID}/alignment-jobs", "GET /works/{workID}/covers/search", "GET /works/{workID}/preference", "GET /works/{workID}/progress", "GET /works/{workID}/representations",
 		"DELETE /libraries/{libraryID}", "DELETE /libraries/{libraryID}/members/{userID}", "DELETE /representations/{representationID}", "DELETE /works/{workID}", "DELETE /works/{workID}/cover",
 		"PATCH /libraries/{libraryID}", "PATCH /representations/{representationID}", "PATCH /users/{userID}", "PATCH /works/{workID}",
-		"POST /alignment-jobs", "POST /alignment-jobs/{jobID}/cancel", "POST /alignments/{alignmentID}/locators/audio", "POST /alignments/{alignmentID}/locators/epub", "POST /alignments/{alignmentID}/resolve/audio", "POST /alignments/{alignmentID}/resolve/epub", "POST /auth/demo", "POST /auth/login", "POST /auth/logout", "POST /libraries", "POST /libraries/{libraryID}/representations/{representationID}/media", "POST /libraries/{libraryID}/works", "POST /setup", "POST /users", "POST /works/{workID}/activity", "POST /works/{workID}/metadata/refresh", "POST /works/{workID}/representations",
+		"POST /alignment-jobs", "POST /alignment-jobs/{jobID}/cancel", "POST /alignments/{alignmentID}/locators/audio", "POST /alignments/{alignmentID}/locators/epub", "POST /alignments/{alignmentID}/resolve/audio", "POST /alignments/{alignmentID}/resolve/epub", "POST /auth/demo", "POST /auth/demo/pair", "POST /auth/login", "POST /auth/logout", "POST /libraries", "POST /libraries/{libraryID}/representations/{representationID}/media", "POST /libraries/{libraryID}/works", "POST /setup", "POST /users", "POST /works/{workID}/activity", "POST /works/{workID}/metadata/refresh", "POST /works/{workID}/representations",
 		"PUT /activity/{sessionID}", "PUT /alignments/{alignmentID}/progress", "PUT /libraries/{libraryID}/members/{userID}", "PUT /representations/{representationID}/state", "PUT /works/{workID}/cover", "PUT /works/{workID}/preference", "PUT /works/{workID}/progress", "PUT /works/{workID}/status",
 	}
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
@@ -381,9 +381,20 @@ func TestDemoAuthenticationContract(t *testing.T) {
 	if session.DemoCredentials == nil || session.DemoCredentials.Username != session.User.Username || session.DemoCredentials.Password == "" {
 		t.Fatalf("demo credentials = %#v", session.DemoCredentials)
 	}
+	if session.DemoPairing == nil || len(session.DemoPairing.Code) != 9 {
+		t.Fatalf("demo pairing = %#v", session.DemoPairing)
+	}
 	me := request(t, handler, session.Token, http.MethodGet, "/auth/me", "")
 	if me.Code != http.StatusOK || !strings.Contains(me.Body.String(), `"username":"guest-`) || strings.Contains(me.Body.String(), session.DemoCredentials.Password) {
 		t.Fatalf("demo session = %d %s", me.Code, me.Body.String())
+	}
+	paired := request(t, handler, "", http.MethodPost, "/auth/demo/pair", `{"code":"`+session.DemoPairing.Code+`"}`)
+	if paired.Code != http.StatusOK || !strings.Contains(paired.Body.String(), `"id":"`+session.User.ID+`"`) {
+		t.Fatalf("paired demo = %d %s", paired.Code, paired.Body.String())
+	}
+	reused := request(t, handler, "", http.MethodPost, "/auth/demo/pair", `{"code":"`+session.DemoPairing.Code+`"}`)
+	if reused.Code != http.StatusUnauthorized {
+		t.Fatalf("reused pairing code = %d %s", reused.Code, reused.Body.String())
 	}
 }
 

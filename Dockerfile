@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM --platform=$BUILDPLATFORM oven/bun:1.3.5-alpine AS web
+ARG EXPO_PUBLIC_WEB_CANONICAL_ORIGIN
+ENV EXPO_PUBLIC_WEB_CANONICAL_ORIGIN=$EXPO_PUBLIC_WEB_CANONICAL_ORIGIN
 WORKDIR /src/app
 COPY app/package.json app/bun.lock app/bunfig.toml ./
 COPY app/patches ./patches

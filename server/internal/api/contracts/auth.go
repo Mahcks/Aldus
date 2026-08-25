@@ -13,10 +13,19 @@ type User struct {
 	DemoExpiresAt *time.Time `json:"demo_expires_at,omitempty"`
 }
 type Session struct {
-	Token           string           `json:"token,omitempty"`
-	ExpiresAt       time.Time        `json:"expires_at"`
-	User            User             `json:"user"`
+	Token       string       `json:"token,omitempty"`
+	ExpiresAt   time.Time    `json:"expires_at"`
+	User        User         `json:"user"`
+	DemoPairing *DemoPairing `json:"demo_pairing,omitempty"`
+	// DemoCredentials keeps already-installed clients working during the pairing-code rollout.
 	DemoCredentials *DemoCredentials `json:"demo_credentials,omitempty"`
+}
+type DemoPairing struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+type DemoPairingRequest struct {
+	Code string `json:"code"`
 }
 type DemoCredentials struct {
 	Username string `json:"username"`

@@ -2,9 +2,12 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 )
@@ -68,11 +71,85 @@ func (s *Store) CreateDemoSession(ctx context.Context) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	pairingCode, err := createDemoPairingCode(ctx, tx, user.ID, now)
+	if err != nil {
+		return Session{}, err
+	}
+	session.DemoPairingCode = pairingCode
+	session.DemoPairingExpiresAt = now.Add(10 * time.Minute)
 	session.DemoPassword = password
 	if err := tx.Commit(); err != nil {
 		return Session{}, fmt.Errorf("commit demo session: %w", err)
 	}
 	return session, nil
+}
+
+func (s *Store) RedeemDemoPairingCode(ctx context.Context, code string) (Session, error) {
+	normalized := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(code), "-", ""))
+	if len(normalized) != 8 {
+		return Session{}, ErrInvalidPairingCode
+	}
+	hash := sha256.Sum256([]byte(normalized))
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Session{}, fmt.Errorf("begin demo pairing: %w", err)
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	var userID string
+	if err := tx.QueryRowContext(ctx, `DELETE FROM demo_pairing_codes WHERE code_hash=? AND expires_at>? RETURNING user_id`, hash[:], formatTime(now)).Scan(&userID); errors.Is(err, sql.ErrNoRows) {
+		return Session{}, ErrInvalidPairingCode
+	} else if err != nil {
+		return Session{}, fmt.Errorf("consume demo pairing code: %w", err)
+	}
+	var user User
+	var createdAt, updatedAt, demoExpiresAt string
+	var admin, disabled int
+	if err := tx.QueryRowContext(ctx, `SELECT id,username,display_name,is_admin,disabled,created_at,updated_at,demo_expires_at FROM users WHERE id=? AND demo_expires_at>?`, userID, formatTime(now)).Scan(&user.ID, &user.Username, &user.DisplayName, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt); errors.Is(err, sql.ErrNoRows) {
+		return Session{}, ErrInvalidPairingCode
+	} else if err != nil {
+		return Session{}, fmt.Errorf("find paired demo user: %w", err)
+	}
+	user.Admin, user.Disabled = admin != 0, disabled != 0
+	if user.Disabled {
+		return Session{}, ErrInvalidPairingCode
+	}
+	if user.CreatedAt, err = parseTime(createdAt); err != nil {
+		return Session{}, err
+	}
+	if user.UpdatedAt, err = parseTime(updatedAt); err != nil {
+		return Session{}, err
+	}
+	expires, err := parseTime(demoExpiresAt)
+	if err != nil {
+		return Session{}, err
+	}
+	user.DemoExpiresAt = &expires
+	session, err := createSession(ctx, tx, user, now, expires.Sub(now))
+	if err != nil {
+		return Session{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Session{}, fmt.Errorf("commit demo pairing: %w", err)
+	}
+	return session, nil
+}
+
+func createDemoPairingCode(ctx context.Context, tx *sql.Tx, userID string, now time.Time) (string, error) {
+	const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+	code := make([]byte, 8)
+	for i := range code {
+		value, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		if err != nil {
+			return "", fmt.Errorf("generate demo pairing code: %w", err)
+		}
+		code[i] = alphabet[value.Int64()]
+	}
+	hash := sha256.Sum256(code)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO demo_pairing_codes(code_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)`, hash[:], userID, formatTime(now.Add(10*time.Minute)), formatTime(now)); err != nil {
+		return "", fmt.Errorf("save demo pairing code: %w", err)
+	}
+	return string(code[:4]) + "-" + string(code[4:]), nil
 }
 
 func (s *Store) CleanupExpiredDemoUsers(ctx context.Context) error {

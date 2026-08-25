@@ -16,10 +16,33 @@ import (
 func registerAuthRoutes(router chi.Router, store *auth.Store, trustProxyHeaders bool) {
 	limiter := newLimiter(10, time.Minute, trustProxyHeaders)
 	demoLimiter := newLimiter(5, time.Hour, trustProxyHeaders)
+	pairingLimiter := newLimiter(5, time.Minute, trustProxyHeaders)
 	router.Get("/setup/status", setupStatus(store))
 	router.With(limiter.middleware).Post("/setup", setup(store))
 	router.With(limiter.middleware).Post("/auth/login", login(store))
 	router.With(demoLimiter.middleware).Post("/auth/demo", demoLogin(store))
+	router.With(pairingLimiter.middleware).Post("/auth/demo/pair", redeemDemoPairing(store))
+}
+
+func redeemDemoPairing(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request contracts.DemoPairingRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		session, err := store.RedeemDemoPairingCode(r.Context(), request.Code)
+		if errors.Is(err, auth.ErrInvalidPairingCode) {
+			http.Error(w, "That pairing code is invalid, expired, or already used.", http.StatusUnauthorized)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		store.SetCookie(w, session)
+		writeJSON(w, http.StatusOK, sessionDTO(session))
+	}
 }
 
 func registerSessionRoutes(router chi.Router, store *auth.Store) {

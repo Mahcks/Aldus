@@ -45,7 +45,12 @@ async function inspectServer(origin: string): Promise<SetupStatus> {
 export function ServerProvider({ children }: PropsWithChildren) {
   const web = Platform.OS === 'web';
   const [loading, setLoading] = useState(!web);
-  const [origin, setOrigin] = useState('');
+  const [origin, setOrigin] = useState(
+    web
+      ? process.env.EXPO_PUBLIC_WEB_CANONICAL_ORIGIN ||
+          (typeof globalThis.location !== 'undefined' ? globalThis.location.origin : '')
+      : '',
+  );
   const [profiles, setProfiles] = useState<ServerProfile[]>([]);
 
   useEffect(() => {
