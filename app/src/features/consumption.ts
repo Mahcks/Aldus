@@ -15,6 +15,10 @@ export type MediaChoice = Media & { representation: Representation };
 export const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 export const SLEEP_TIMER_MINUTES = [15, 30, 45, 60] as const;
 
+export function shouldLoadConsumptionMedia(mode: 'read' | 'listen', kind: 'epub' | 'audio') {
+  return (mode === 'read' && kind === 'epub') || (mode === 'listen' && kind === 'audio');
+}
+
 export function sleepTimerDeadline(minutes?: number, nowMS = Date.now()) {
   if (minutes == null) return undefined;
   if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(nowMS)) return undefined;

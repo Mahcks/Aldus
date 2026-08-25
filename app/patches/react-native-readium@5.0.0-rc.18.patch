@@ -15,6 +15,12 @@ diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
 index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..5248bb1adde287e79c30a38c248d54c20169e0fa 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
+@@ -208,5 +208,4 @@ class HybridReadiumView: HybridReadiumViewSpec {
+     viewController!.addChild(readerViewController!)
+     let rootView = readerViewController!.view!
+     hostView.addSubview(rootView)
+-    viewController!.addChild(readerViewController!)
+     readerViewController!.didMove(toParent: viewController!)
 @@ -276,6 +276,22 @@ class HybridReadiumView: HybridReadiumViewSpec {
      }
    }

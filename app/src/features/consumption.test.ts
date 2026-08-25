@@ -18,10 +18,18 @@ import {
   readyJob,
   resumedProgressLabel,
   scrubberPosition,
+  shouldLoadConsumptionMedia,
   sleepTimerDeadline,
   sleepTimerRemainingSeconds,
   synchronizationLabel,
 } from './consumption';
+
+it('loads only the media needed by the active consumption mode', () => {
+  expect(shouldLoadConsumptionMedia('read', 'epub')).toBe(true);
+  expect(shouldLoadConsumptionMedia('read', 'audio')).toBe(false);
+  expect(shouldLoadConsumptionMedia('listen', 'epub')).toBe(false);
+  expect(shouldLoadConsumptionMedia('listen', 'audio')).toBe(true);
+});
 
 const passageSegments = [
   {
