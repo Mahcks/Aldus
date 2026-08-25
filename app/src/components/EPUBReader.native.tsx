@@ -38,6 +38,13 @@ type ReaderPreferences = {
   margin: number;
   theme: 'paper' | 'sepia';
 };
+export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
+  layout: 'paginated',
+  zoom: 1,
+  lineHeight: 1.72,
+  margin: 2,
+  theme: 'paper',
+};
 type EPUBReaderHandle = {
   captureSelection: () => null;
   restoreSelection: () => Promise<string>;
@@ -69,7 +76,16 @@ export const EPUBReader = forwardRef<
     onError?: (error: Error) => void;
   }
 >(function EPUBReader(
-  { source, segments = [], preferences, compactChrome, statusLabel, onLocation, onReady, onError },
+  {
+    source,
+    segments = [],
+    preferences = DEFAULT_READER_PREFERENCES,
+    compactChrome,
+    statusLabel,
+    onLocation,
+    onReady,
+    onError,
+  },
   ref,
 ) {
   const insets = useSafeAreaInsets();
