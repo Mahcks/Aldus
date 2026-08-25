@@ -1,6 +1,9 @@
 <div align="center">
 
-# Aldus
+<h1>
+  <img src="docs/images/icon.png" alt="Aldus icon" width="40" height="40" align="absmiddle">
+  Aldus
+</h1>
 
 **A self-hosted home for the books you own — ebooks and audiobooks, read together.**
 

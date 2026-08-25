@@ -6,9 +6,11 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/branding/icon.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mahcks.aldus",
+      "icon": "./assets/branding/icon.png",
       "infoPlist": {
         "DEV_CLIENT_TRY_TO_LAUNCH_LAST_BUNDLE": false,
         "NSLocalNetworkUsageDescription": "Aldus connects to your local development server and Metro on your network.",
@@ -19,11 +21,16 @@
     },
     "android": {
       "package": "com.mahcks.aldus",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/branding/adaptive-icon.png",
+        "backgroundColor": "#8a3c24"
+      }
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/branding/favicon.png"
     },
     "plugins": [
       "./plugins/with-readium",
