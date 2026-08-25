@@ -1,4 +1,6 @@
 const { describe, expect, test } = require('bun:test');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 const { patchPodfile } = require('./with-readium');
 
 const podfile = `require 'react-native/scripts/react_native_pods'
@@ -30,5 +32,16 @@ describe('Readium config plugin', () => {
     );
     expect(patchPodfile(old)).toContain("require_relative '../plugins/readium_post_install'");
     expect(patchPodfile(old)).toContain('    aldus_readium_post_install(installer)');
+  });
+
+  test('keeps the patched iOS locator method outside destroy', () => {
+    const swift = readFileSync(
+      join(__dirname, '../node_modules/react-native-readium/ios/HybridReadiumView.swift'),
+      'utf8',
+    );
+    expect(swift.indexOf('func currentVisibleLocation()')).toBeLessThan(
+      swift.indexOf('func destroy()'),
+    );
+    expect(swift.match(/addChild\(readerViewController!\)/g)).toHaveLength(1);
   });
 });
