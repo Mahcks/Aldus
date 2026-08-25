@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment
+.PHONY: fixture demo-media seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -38,6 +38,34 @@ expo-dev:
 
 ios-dev:
 	cd app && bun run ios:device
+
+release:
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release VERSION=0.1.0-beta.15" >&2; exit 1)
+	./scripts/release.sh release "$(VERSION)"
+
+release-all:
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release-all VERSION=0.1.0-beta.15" >&2; exit 1)
+	./scripts/release.sh release "$(VERSION)"
+	./scripts/ios-release.sh testflight
+
+demo-deploy:
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make demo-deploy VERSION=0.1.0-beta.15" >&2; exit 1)
+	./scripts/release.sh demo "$(VERSION)"
+
+ios-testflight:
+	./scripts/ios-release.sh testflight
+
+ios-testflight-remote:
+	./scripts/ios-release.sh remote "$(REF)"
+
+ios-external:
+	@test -n "$(BUILD_ID)" || (echo "Set BUILD_ID to the processed App Store Connect build ID" >&2; exit 1)
+	./scripts/ios-release.sh external "$(BUILD_ID)"
+
+ios-release:
+	@test -n "$(VERSION)" || (echo "Set VERSION to the App Store version, for example 0.1.0" >&2; exit 1)
+	@test -n "$(BUILD_ID)" || (echo "Set BUILD_ID to the tested App Store Connect build ID" >&2; exit 1)
+	./scripts/ios-release.sh release "$(VERSION)" "$(BUILD_ID)"
 
 generate:
 	mkdir -p $(TOOL_BIN)

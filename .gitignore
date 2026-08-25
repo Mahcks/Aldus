@@ -4,6 +4,7 @@
 .env.*.local
 app/credentials.json
 *.p8
+app/.secrets/
 .tools/
 data/
 app/.expo/
@@ -20,3 +21,5 @@ __pycache__/
 test-fixtures/alice/media/
 library-media/
 artifacts/
+.asc/
+scripts/ios-release.env

@@ -182,7 +182,7 @@ To update, pin the new version in `.env`, then `docker compose pull && docker co
 
 ## Using Aldus away from your server
 
-The web app works from any browser that can reach your Aldus server. Put it behind an HTTPS reverse proxy or a trusted private network for remote access, and set `ALDUS_SECURE_COOKIES=true` once HTTPS terminates in front of it. The native iOS and Android apps are currently development builds — store distribution isn't configured yet.
+The web app works from any browser that can reach your Aldus server. Put it behind an HTTPS reverse proxy or a trusted private network for remote access, and set `ALDUS_SECURE_COOKIES=true` once HTTPS terminates in front of it. Native development uses Expo development clients; signed iOS candidates are built locally on the maintainer's Mac and promoted through TestFlight.
 
 For e-ink devices, create a credential under **Account → KOReader and OPDS**, then add the displayed `/opds/` URL as an OPDS catalog and use the Aldus origin as KOReader's custom progress server.
 
@@ -197,6 +197,30 @@ For e-ink devices, create a credential under **Account → KOReader and OPDS**, 
 **A download finished but the title is unavailable** — confirm `ALDUS_DOWNLOAD_PATH` matches qBittorrent's folder, confirm **qBittorrent download root** is set correctly, and check **More → Sources → Import review** — Aldus asks for help when a completed payload is ambiguous or conflicts with an existing format.
 
 **Is the server healthy?** `/api/health` confirms the process is running; `/api/ready` checks SQLite and data-directory write access.
+
+<br>
+
+## Maintainer releases
+
+The API and exported web client ship together in one container. A normal beta publishes that container and moves the public demo to the exact same source tag:
+
+```sh
+make release VERSION=0.1.0-beta.15
+```
+
+The command requires a clean `main` matching `origin/main` with successful CI, waits for the GHCR workflow, backs up the demo, deploys the tagged source to Fly, and checks its readiness endpoint. Redeploy or roll back only the demo with `make demo-deploy VERSION=0.1.0-beta.15`.
+
+iOS moves independently. On the Mac mini, authenticate once with `asc auth login` and `eas login`; the script finds Aldus's App Store record from its bundle identifier. The ignored `scripts/ios-release.env` is only needed for custom group names or optional remote-Mac settings.
+
+```sh
+make ios-testflight
+make ios-external BUILD_ID=<processed-build-id>
+make ios-release VERSION=0.1.0 BUILD_ID=<tested-build-id>
+```
+
+`ios-testflight` compiles locally, uploads with `asc`, waits for processing, and adds the build to the internal group. `ios-external` promotes that same binary to external TestFlight review. `ios-release` attaches the tested build to its App Store version and validates it; the final review submission remains an intentional App Store Connect action. From another trusted computer, configure the optional Mac host/path and run `make ios-testflight-remote REF=<commit-or-tag>`.
+
+When one commit genuinely needs every surface, `make release-all VERSION=0.1.0-beta.15` performs the container/demo release and then starts the local or remote iOS candidate. Server-only and iOS-only fixes should use their narrower commands instead.
 
 <br>
 

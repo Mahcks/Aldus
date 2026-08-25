@@ -47,10 +47,10 @@ Point an external HTTPS monitor at `https://demo.aldus.media/api/ready`. Fly kee
 
 ## 4. Apple review build
 
-Bundle the native review build with:
+The production profile already preloads `https://demo.aldus.media`. Build and upload it from the Mac mini with:
 
 ```sh
-EXPO_PUBLIC_API_URL=https://demo.aldus.media <your normal release build command>
+make ios-testflight
 ```
 
 This preloads the demo without locking the app to it. In App Store Connect, provide the persistent reviewer credentials and this walkthrough:
