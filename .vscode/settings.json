@@ -1,20 +1,30 @@
 {
   "files.watcherExclude": {
     "**/node_modules/**": true,
-    "**/app/dist/**": true,
-    "**/app/.expo/**": true,
+    "**/.tools/**": true,
+    "**/artifacts/**": true,
     "**/data/**": true,
+    "**/library-media/**": true,
+    "**/test-results/**": true,
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true
   },
   "search.exclude": {
-    "**/node_modules": true,
-    "**/app/dist": true,
-    "**/app/.expo": true,
-    "**/data": true,
     "**/app/src/generated/api.ts": true
   },
   "files.exclude": {
-    "**/app/.expo": true
+    "**/.claude": true,
+    "**/.expo": true,
+    "**/.tools": true,
+    "**/__pycache__": true,
+    "**/android": true,
+    "**/artifacts": true,
+    "**/data": true,
+    "**/dist": true,
+    "**/ios": true,
+    "**/library-media": true,
+    "**/node_modules": true,
+    "**/plans": true,
+    "**/test-results": true
   }
 }

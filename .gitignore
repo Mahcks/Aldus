@@ -8,6 +8,7 @@ app/node_modules/
 app/ios/
 app/android/
 server/aldus
+server/app
 AGENTS.md
 plans/
 __pycache__/
