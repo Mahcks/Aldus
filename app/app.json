@@ -11,9 +11,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.mahcks.aldus",
       "icon": "./assets/branding/icon.png",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "DEV_CLIENT_TRY_TO_LAUNCH_LAST_BUNDLE": false,
-        "NSLocalNetworkUsageDescription": "Aldus connects to your local development server and Metro on your network.",
+        "NSLocalNetworkUsageDescription": "Aldus connects to libraries hosted on your local network.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -21,11 +24,15 @@
     },
     "android": {
       "package": "com.mahcks.aldus",
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/adaptive-icon.png",
         "backgroundColor": "#8a3c24"
-      }
+      },
+      "permissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -34,6 +41,14 @@
     },
     "plugins": [
       "./plugins/with-readium",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       [
         "expo-dev-client",
         {
@@ -58,6 +73,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5c8e76ab-ed68-48eb-a2bd-bcf1fafa0779"
+      }
+    },
+    "owner": "mahcksimus"
   }
 }

@@ -1,5 +1,9 @@
 .DS_Store
 .env
+.env.local
+.env.*.local
+app/credentials.json
+*.p8
 .tools/
 data/
 app/.expo/

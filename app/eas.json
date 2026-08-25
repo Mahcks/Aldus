@@ -1,0 +1,36 @@
+{
+  "cli": {
+    "version": ">= 22.4.0",
+    "appVersionSource": "remote",
+    "requireCommit": true
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development",
+      "bun": "1.3.5"
+    },
+    "internal-preview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "bun": "1.3.5",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://demo.aldus.media"
+      }
+    },
+    "production": {
+      "environment": "production",
+      "bun": "1.3.5",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://demo.aldus.media"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {}
+    }
+  }
+}
