@@ -73,13 +73,6 @@
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "5c8e76ab-ed68-48eb-a2bd-bcf1fafa0779"
-      }
-    },
-    "owner": "mahcksimus"
+    }
   }
 }
