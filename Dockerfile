@@ -50,7 +50,8 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     && uv pip install --system --no-cache --override /tmp/requirements-alignment-overrides.txt -r /tmp/requirements-alignment.txt \
     && pip uninstall -y uv
 ENV HF_HOME=/opt/aldus-models TORCH_HOME=/opt/aldus-models/torch NLTK_DATA=/opt/aldus-models/nltk MPLCONFIGDIR=/tmp/matplotlib
-RUN python -c "import nltk, whisperx; nltk.download('punkt_tab', download_dir='/opt/aldus-models/nltk', raise_on_error=True); whisperx.load_model('base.en', 'cpu', compute_type='int8', vad_method='silero', language='en'); whisperx.load_align_model(language_code='en', device='cpu')"
+RUN python -c "import nltk, whisperx; nltk.download('punkt_tab', download_dir='/opt/aldus-models/nltk', raise_on_error=True); whisperx.load_model('base.en', 'cpu', compute_type='int8', vad_method='silero', language='en'); whisperx.load_align_model(language_code='en', device='cpu')" \
+    && chown -R aldus:aldus /opt/aldus-models
 WORKDIR /app
 COPY --from=server /aldus /usr/local/bin/aldus
 COPY --from=web /src/app/dist ./public

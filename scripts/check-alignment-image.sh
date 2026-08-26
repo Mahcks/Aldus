@@ -40,7 +40,7 @@ print("CPU alignment runtime initialized")
       exit 1
     fi
     docker run --rm --entrypoint sh -v "$cache_volume:/data" "$image" \
-      -c 'test -n "$(find /data/models -type f -print -quit)"'
+      -c 'diff -qr /opt/aldus-models /data/models'
     docker volume rm -f "$cache_volume" >/dev/null
     trap - EXIT
     ;;

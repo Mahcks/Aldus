@@ -294,7 +294,7 @@ func backupFiles(dataDir, snapshot string) (map[string]string, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		if path == dataDir || entry.IsDir() {
+		if path == dataDir {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
@@ -305,6 +305,12 @@ func backupFiles(dataDir, snapshot string) (map[string]string, error) {
 			return err
 		}
 		name := filepath.ToSlash(relative)
+		if entry.IsDir() {
+			if name == "models" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if name == "aldus.db" || name == "aldus.db-wal" || name == "aldus.db-shm" {
 			return nil
 		}
@@ -398,11 +404,10 @@ func Restore(ctx context.Context, archivePath, dataDir string) error {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect restore directory: %w", err)
 	}
-	parent := filepath.Dir(dataDir)
-	if err := os.MkdirAll(parent, 0o750); err != nil {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return err
 	}
-	temporary, err := os.MkdirTemp(parent, ".aldus-restore-*")
+	temporary, err := os.MkdirTemp(dataDir, ".aldus-restore-*")
 	if err != nil {
 		return err
 	}
@@ -418,11 +423,21 @@ func Restore(ctx context.Context, archivePath, dataDir string) error {
 	if schemaVersion != manifest.SchemaVersion || schemaVersion > database.SupportedSchemaVersion() {
 		return errors.New("backup schema is incompatible with this Aldus version")
 	}
-	if err := os.Remove(dataDir); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("prepare restore directory: %w", err)
+	entries, err := os.ReadDir(temporary)
+	if err != nil {
+		return fmt.Errorf("read verified restore: %w", err)
 	}
-	if err := os.Rename(temporary, dataDir); err != nil {
-		return fmt.Errorf("publish restore: %w", err)
+	moved := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		source := filepath.Join(temporary, entry.Name())
+		destination := filepath.Join(dataDir, entry.Name())
+		if err := os.Rename(source, destination); err != nil {
+			for i := len(moved) - 1; i >= 0; i-- {
+				_ = os.Rename(filepath.Join(dataDir, moved[i]), filepath.Join(temporary, moved[i]))
+			}
+			return fmt.Errorf("publish restore: %w", err)
+		}
+		moved = append(moved, entry.Name())
 	}
 	return nil
 }

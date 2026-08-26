@@ -76,6 +76,12 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataDir, "media", "book.bin"), []byte("immutable media"), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "models"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "models", "downloaded-model.bin"), []byte("reproducible cache"), 0o640); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(dataDir, "acquisitions", "library", "request"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +113,9 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	}
 	if manifest.ManagedAcquisitionFiles != 1 || manifest.ExternalMediaExcluded != 1 {
 		t.Fatalf("media completeness counts managed=%d external=%d", manifest.ManagedAcquisitionFiles, manifest.ExternalMediaExcluded)
+	}
+	if _, ok := manifest.Files["models/downloaded-model.bin"]; ok {
+		t.Fatal("backup includes reproducible alignment model cache")
 	}
 	snapshotBytes, err := os.ReadFile(filepath.Join(extracted, "aldus.db"))
 	if err != nil {

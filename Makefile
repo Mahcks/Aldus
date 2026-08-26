@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
+.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -120,3 +120,6 @@ docker:
 
 docker-alignment:
 	docker build --target alignment -t ghcr.io/mahcks/aldus:alignment .
+
+release-smoke:
+	./scripts/release-smoke.sh "$${IMAGE:-aldus:ci}"

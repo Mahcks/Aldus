@@ -56,6 +56,7 @@ jobs:
           cache-from: type=gha,scope=alignment
           cache-to: type=gha,mode=max,scope=alignment
       - run: ./scripts/check-alignment-image.sh aldus:ci cpu
+      - run: make release-smoke IMAGE=aldus:ci
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
