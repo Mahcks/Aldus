@@ -221,11 +221,19 @@ func TestFailuresTimeoutAndSafeConfidence(t *testing.T) {
 			}
 		})
 	}
+	gpu := setupManager(t, "gpu_unavailable", time.Second)
+	job, _ := gpu.manager.Enqueue(context.Background(), gpu.admin, gpu.request)
+	claimed, _, _ := gpu.manager.claim(context.Background())
+	gpu.manager.run(context.Background(), claimed)
+	failed, _ := gpu.manager.Job(context.Background(), gpu.admin, job.ID)
+	if failed.State != "failed" || failed.Error != "GPU acceleration unavailable; check the NVIDIA driver and Docker GPU access" {
+		t.Fatalf("GPU failure=%#v", failed)
+	}
 	s := setupManager(t, "sleep", 20*time.Millisecond)
-	job, _ := s.manager.Enqueue(context.Background(), s.admin, s.request)
-	claimed, _, _ := s.manager.claim(context.Background())
+	job, _ = s.manager.Enqueue(context.Background(), s.admin, s.request)
+	claimed, _, _ = s.manager.claim(context.Background())
 	s.manager.run(context.Background(), claimed)
-	failed, _ := s.manager.Job(context.Background(), s.admin, job.ID)
+	failed, _ = s.manager.Job(context.Background(), s.admin, job.ID)
 	if failed.State != "failed" || failed.Error != "worker timeout" {
 		t.Fatalf("timeout=%#v", failed)
 	}
@@ -345,6 +353,7 @@ inp=json.load(open(args[args.index('--job-input')+1]))
 out=args[args.index('--output')+1]
 mode='` + mode + `'
 if mode=='failure': sys.exit(2)
+if mode=='gpu_unavailable': sys.exit(78)
 if mode=='sleep': time.sleep(10)
 if mode=='malformed': open(out,'w').write('{');sys.exit(0)
 s=inp['segments'][0]

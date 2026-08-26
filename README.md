@@ -40,11 +40,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Open [http://localhost:8080](http://localhost:8080) and create the first account — it becomes the administrator. Pin a specific release in `.env` before starting if you don't want `latest`:
-
-```dotenv
-ALDUS_VERSION=0.1.0-beta.13
-```
+The example pins a published release and listens only on `127.0.0.1`. Open [http://localhost:8080](http://localhost:8080) and create the first account — it becomes the administrator. Do that before exposing Aldus to another machine.
 
 Prefer to look before you clone anything? [demo.aldus.media](https://demo.aldus.media) runs the current build against a small public-domain catalog — no account required.
 
@@ -79,7 +75,7 @@ Prefer to look before you clone anything? [demo.aldus.media](https://demo.aldus.
 
 ## Read↔listen sync that means it
 
-When a book's ebook and audiobook are aligned, switching from reading to listening resumes at the *same point in the text* — not an approximate percentage rounded to the nearest chapter. Alignment happens once, automatically, in the background; after that, the format you pick up doesn't matter.
+When a book's ebook and audiobook are aligned, switching from reading to listening resumes at the *same point in the text* — not an approximate percentage rounded to the nearest chapter. The standard Aldus image runs WhisperX on CPU automatically in the background; an optional NVIDIA image accelerates the same work.
 
 ```mermaid
 flowchart LR
@@ -137,7 +133,7 @@ Indexer names, file sizes, and release strings never surface to someone who just
 | Browse books I already own | One Library and one Source | Home, Discover, and Collections |
 | Read an EPUB | An imported EPUB | The title page, then **Read** |
 | Listen to an audiobook | Imported MP3/M4B audio | The title page, then **Listen** |
-| Test read/listen synchronization | Matching ebook and audiobook plus alignment | Switching formats without losing your place |
+| Test read/listen synchronization | Matching ebook and audiobook | Switching formats without losing your place |
 | Request missing formats | Prowlarr, qBittorrent, and library download rules | Discover and Activity |
 | Use KOReader | A reader credential | Account → KOReader and OPDS |
 
@@ -176,13 +172,23 @@ docker compose run --rm aldus restore \
 docker compose up -d
 ```
 
-To update, pin the new version in `.env`, then `docker compose pull && docker compose up -d`. Take a backup first; to roll back, restore the matching backup and set `ALDUS_VERSION` back to its previous value. Avoid `latest` for data you care about.
+To update, pin the new version in `.env`, then `docker compose pull && docker compose up -d`. Take a backup first; to roll back, restore the matching backup and set `ALDUS_VERSION` back to its previous value. Aldus intentionally has no implicit `latest` fallback.
 
 <br>
 
 ## Using Aldus away from your server
 
-The web app works from any browser that can reach your Aldus server. Put it behind an HTTPS reverse proxy or a trusted private network for remote access, and set `ALDUS_SECURE_COOKIES=true` once HTTPS terminates in front of it. Native development uses Expo development clients; signed iOS candidates are built locally on the maintainer's Mac and promoted through TestFlight.
+The default Compose mapping is localhost-only. Before making it reachable elsewhere, create the first administrator and put Aldus behind an HTTPS reverse proxy. Set `ALDUS_BIND_HOST=0.0.0.0` and `ALDUS_SECURE_COOKIES=true` when the proxy reaches Aldus over the host network. Trusted-LAN-only HTTP remains available for native clients on private IPs, but requires the explicit `ALDUS_ALLOW_INSECURE_HTTP=true` acknowledgement. Never expose that mode to the internet.
+
+## Optional NVIDIA acceleration
+
+The standard Aldus image includes WhisperX and generates exact read/listen mappings on CPU without extra setup. CPU processing can take hours for a long audiobook. To accelerate it, install the NVIDIA driver and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), then run one command:
+
+```sh
+docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
+```
+
+The override replaces the same `aldus` container and requests one GPU. Aldus selects CUDA, FP16, and a conservative memory profile internally. If CUDA is unavailable, the alignment job reports a useful error while the rest of Aldus remains available. Return to CPU processing with `docker compose up -d --pull always`.
 
 For e-ink devices, create a credential under **Account → KOReader and OPDS**, then add the displayed `/opds/` URL as an OPDS catalog and use the Aldus origin as KOReader's custom progress server.
 

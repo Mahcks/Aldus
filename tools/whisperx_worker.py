@@ -6,10 +6,14 @@ import difflib
 import importlib.metadata
 import json
 import re
+import sys
 import time
 from pathlib import Path
 
 import whisperx
+from whisperx_worker_config import load as load_worker_config
+
+CUDA_UNAVAILABLE_EXIT = 78
 
 
 def write(path, value):
@@ -18,6 +22,18 @@ def write(path, value):
 
 def tokens(text):
     return re.findall(r"[a-z0-9]+", text.lower().replace("’", "'"))
+
+
+def require_accelerator(device):
+    if device == "cuda":
+        import torch
+
+        if not torch.cuda.is_available():
+            print(
+                "Aldus CUDA alignment is unavailable: Docker did not expose a compatible NVIDIA GPU",
+                file=sys.stderr,
+            )
+            raise SystemExit(CUDA_UNAVAILABLE_EXIT)
 
 
 parser = argparse.ArgumentParser()
@@ -39,12 +55,13 @@ if args.job_input:
 elif not args.audio:
     parser.error("--audio is required without --job-input")
 
-device = "cpu"
+device, compute_type, batch_size = load_worker_config()
+require_accelerator(device)
 audio = whisperx.load_audio(args.audio)
 started = time.monotonic()
 if args.job_input:
-    model = whisperx.load_model(args.model, device, compute_type="int8", vad_method="silero", language="en")
-    transcription = model.transcribe(audio, batch_size=4, language="en")
+    model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+    transcription = model.transcribe(audio, batch_size=batch_size, language="en")
     segments = transcription["segments"]
     asr_seconds = time.monotonic() - started
 elif args.known_segments:
@@ -59,8 +76,8 @@ elif args.known_segments:
     ]
     asr_seconds = 0
 else:
-    model = whisperx.load_model(args.model, device, compute_type="int8", vad_method="silero", language="en")
-    result = model.transcribe(audio, batch_size=4, language="en")
+    model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+    result = model.transcribe(audio, batch_size=batch_size, language="en")
     segments = result["segments"]
     asr_seconds = time.monotonic() - started
     if args.raw_asr:
@@ -126,7 +143,7 @@ write(Path(args.output).with_name("runtime.json"), {
     "asr_model": None if args.known_segments else args.model,
     "alignment_model": metadata.get("type"),
     "device": device,
-    "compute_type": "int8",
+    "compute_type": compute_type,
     "asr_seconds": asr_seconds,
     "alignment_seconds": time.monotonic() - align_started,
     "total_seconds": time.monotonic() - started,

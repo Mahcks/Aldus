@@ -33,7 +33,7 @@ Aldus ships as one container that serves the API and the exported web app togeth
    cp .env.example .env
    ```
 
-2. Open `.env` and point `ALDUS_SOURCE_PATH` at the folder that holds your books. Every other setting has a working default.
+2. Open `.env`, confirm the pinned `ALDUS_VERSION`, and point `ALDUS_SOURCE_PATH` at the folder that holds your books. Every other setting has a safe local default.
 
 3. Start Aldus:
 
@@ -41,12 +41,12 @@ Aldus ships as one container that serves the API and the exported web app togeth
    docker compose up -d
    ```
 
-4. Open `http://localhost:8080` (or whatever `ALDUS_PORT` you set). The first account you create becomes the server administrator — there is no separate setup wizard, and no default password to change.
+4. Open `http://localhost:8080` (or whatever `ALDUS_PORT` you set). The first account you create becomes the server administrator — there is no separate setup wizard, and no default password to change. Create it before changing `ALDUS_BIND_HOST` to expose Aldus to another machine.
 
 </Steps>
 
-<Aside type="caution" title="Pin a version before you rely on this">
-  `.env.example` ships with `ALDUS_VERSION=latest`. That's convenient while you're trying Aldus out, but it means every `docker compose pull` can jump versions without warning. Once you have data you care about, pin an exact release — for example `ALDUS_VERSION=0.1.0-beta.13` — so upgrades are something you choose, not something that happens to you.
+<Aside type="caution" title="Keep the release pin">
+  `.env.example` names an exact published release. Aldus has no implicit `latest` fallback: change the pin deliberately when you upgrade, after taking a backup.
 </Aside>
 
 ## Every environment variable
@@ -55,12 +55,14 @@ Aldus ships as one container that serves the API and the exported web app togeth
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `ALDUS_VERSION` | `latest` | Which published image tag to run. Pin this once you have real data — see the warning above. |
+| `ALDUS_VERSION` | `0.1.0-beta.14` | Exact published image tag to run. Compose stops with an error when this is missing. |
+| `ALDUS_BIND_HOST` | `127.0.0.1` | Host interface that publishes Aldus. The default is reachable only from the Docker host. Use `0.0.0.0` only after the first administrator exists and HTTPS or trusted-LAN controls are ready. |
 | `ALDUS_PORT` | `8080` | The host port Aldus listens on. Change it if `8080` is already taken on your machine. |
 | `ALDUS_SOURCE_PATH` | `./library-media` | Host folder mounted **read-only** into the container at `/library/media`. This becomes the one path you're allowed to add Sources under — see [Media sources](/admin/sources/). |
 | `ALDUS_DOWNLOAD_PATH` | `./downloads` | Host folder mounted **read-only** into the container at `/downloads`. Only needed for [automatic requests](/admin/acquisitions/) — it must be the same folder your qBittorrent container writes completed downloads to. |
 | `ALDUS_BACKUP_PATH` | `./backups` | Host folder mounted read-write at `/backups`. Where `docker compose run --rm aldus backup` writes archives — see [Backups and upgrades](/admin/backups/). |
-| `ALDUS_SECURE_COOKIES` | `false` | Marks the session cookie `Secure`, so browsers will only send it over HTTPS. Leave `false` for plain HTTP (including a home LAN); set `true` once a reverse proxy terminates HTTPS in front of Aldus. Getting this backwards — `true` without HTTPS — silently breaks sign-in, because the browser refuses to send the cookie at all. |
+| `ALDUS_SECURE_COOKIES` | `false` | Marks the session cookie `Secure`, so browsers only send it over HTTPS. Set `true` when a reverse proxy terminates HTTPS. Setting it without HTTPS breaks sign-in. |
+| `ALDUS_ALLOW_INSECURE_HTTP` | `false` | Explicit acknowledgement required when production binds beyond loopback without secure cookies. Use only on a trusted private LAN where native clients need private-IP HTTP; never expose that configuration to the internet. |
 | `ALDUS_MAX_UPLOAD_BYTES` | `2147483648` (2 GiB) | The largest file Aldus will accept, both for direct uploads and while scanning a Source. Raise it if you have single audiobook files larger than 2 GiB. |
 
 Inside the container, `compose.yml` sets three more variables directly rather than exposing them as `.env` values, because they're implementation details of the mounts above rather than choices you make independently:
@@ -68,6 +70,65 @@ Inside the container, `compose.yml` sets three more variables directly rather th
 - **`ALDUS_ENV=production`** — selects production logging and disables the developer fixture library.
 - **`ALDUS_SOURCE_ROOTS=/library/media`** — the container-side path Aldus is allowed to scan Sources under. This is what actually enforces the read-only mount; a Source pointed anywhere else is rejected.
 - **`ALDUS_DOWNLOAD_INGRESS=/downloads`** — the container-side path Aldus expects completed qBittorrent downloads to appear under. This only matters if you configure automatic requests.
+
+## Network exposure
+
+The default `127.0.0.1` mapping is intentionally safe for first-account setup. For normal access from other devices, put Aldus behind an HTTPS reverse proxy and set:
+
+```dotenv
+ALDUS_BIND_HOST=0.0.0.0
+ALDUS_SECURE_COOKIES=true
+```
+
+If a native client must connect directly to a private IP on a trusted home LAN, plain HTTP is supported only as an informed opt-in:
+
+```dotenv
+ALDUS_BIND_HOST=0.0.0.0
+ALDUS_SECURE_COOKIES=false
+ALDUS_ALLOW_INSECURE_HTTP=true
+```
+
+That mode exposes credentials and sessions to anyone able to observe the LAN. Do not port-forward it or use it over public Wi-Fi.
+
+## WhisperX alignment
+
+The standard Aldus image includes the alignment runtime and required models. New read/listen alignments run on CPU automatically with no separate service or setup. Models are copied into Aldus's existing data volume on first start, so recreating or upgrading the container does not download them again. A full audiobook can take hours on CPU, so supported NVIDIA hosts can opt into acceleration below.
+
+### NVIDIA GPU (one command)
+
+On an x86-64 Linux host, install a current NVIDIA driver and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Docker Compose 2.30 or newer is required. Then start GPU alignment:
+
+```sh
+docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
+```
+
+The override recreates the existing `aldus` container with the CUDA image, requests one GPU through Compose, and uses the same data and model cache. Aldus selects CUDA, FP16, and a conservative batch size internally. If PyTorch cannot use the GPU, only the alignment job fails with a focused diagnostic; reading, listening, and administration remain available.
+
+Check startup with `docker compose -f compose.yml -f compose.gpu.yml logs aldus`. Docker Desktop on macOS cannot pass an NVIDIA GPU through; use CPU there.
+
+Return to normal CPU processing with:
+
+```sh
+docker compose up -d --pull always
+```
+
+<Aside type="caution" title="Available with the next release">
+  The pinned beta.14 image predates built-in CPU alignment and the CUDA tag. These paths become available with the next tagged Aldus release.
+</Aside>
+
+### Advanced GPU troubleshooting
+
+Most installations should not set any alignment variables. Aldus deliberately owns device and compute-type selection. If a supported GPU still runs out of memory, `ALDUS_ALIGNMENT_BATCH_SIZE` is the one advanced override retained: set it to `2` or `1` in `.env`, then rerun the GPU command. The default is `4`; larger values may improve throughput but are not part of the supported baseline.
+
+### Maintainer NVIDIA acceptance test
+
+Run this before publishing a CUDA tag on a real x86-64 Linux NVIDIA host:
+
+1. Start the CUDA configuration with `docker compose -f compose.yml -f compose.gpu.yml up -d --pull always` and confirm `/api/ready` succeeds.
+2. Run `docker compose -f compose.yml -f compose.gpu.yml exec aldus nvidia-smi`.
+3. Run `docker compose -f compose.yml -f compose.gpu.yml exec aldus python3 -c "import importlib.metadata as m; import torch, ctranslate2, whisperx; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0), torch.version.cuda, ctranslate2.__version__, m.version('whisperx'))"`.
+4. Import the short Alice EPUB/audio fixture, request its alignment, and wait for the job to reach `ready` rather than `failed`.
+5. Open the resulting title, switch Read → Listen and Listen → Read, and confirm Aldus restores the validated matching position. This final step proves the GPU produced an artifact Aldus accepted and stored; `nvidia-smi` alone is not sufficient.
 
 ## Troubleshooting
 
@@ -80,6 +141,6 @@ Inside the container, `compose.yml` sets three more variables directly rather th
 
 **Port already in use.** `ALDUS_ADDR` isn't validated ahead of time — Aldus only discovers a port conflict when it actually tries to bind, which shows up as a bind error in the logs at the moment of startup rather than a clean pre-flight message. Change `ALDUS_PORT` in `.env` and restart.
 
-**Sign-in silently does nothing.** This is almost always `ALDUS_SECURE_COOKIES=true` without HTTPS in front of Aldus — the browser drops the session cookie rather than showing an error. Set it back to `false` for plain HTTP, or put a TLS-terminating proxy in front of Aldus and set it to `true`.
+**Sign-in silently does nothing.** This is almost always `ALDUS_SECURE_COOKIES=true` without HTTPS in front of Aldus — the browser drops the session cookie rather than showing an error. Use the documented trusted-LAN opt-in for private-IP HTTP, or put a TLS-terminating proxy in front of Aldus and keep secure cookies enabled.
 
 **`/api/health` and `/api/ready` both matter.** `/api/health` only confirms the process is running. `/api/ready` additionally checks that SQLite is reachable and that Aldus can still write to its data directory — useful for catching a volume that went read-only after a host reboot.

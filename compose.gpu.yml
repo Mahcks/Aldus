@@ -1,0 +1,15 @@
+services:
+  aldus:
+    image: ghcr.io/mahcks/aldus:${ALDUS_VERSION:?Set ALDUS_VERSION in .env to a published release}-cuda
+    build:
+      context: .
+      target: alignment-nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      ALDUS_ALIGNMENT_BATCH_SIZE: ${ALDUS_ALIGNMENT_BATCH_SIZE:-4}

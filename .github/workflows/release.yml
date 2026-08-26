@@ -28,6 +28,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - id: meta-alignment-nvidia
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/mahcks/aldus
+          tags: type=semver,pattern={{version}},suffix=-cuda
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -38,5 +43,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ github.ref_name }}
-          cache-from: type=gha,scope=production
-          cache-to: type=gha,mode=max,scope=production
+          cache-from: type=gha,scope=alignment
+          cache-to: type=gha,mode=max,scope=alignment
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          target: alignment-nvidia
+          platforms: linux/amd64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta-alignment-nvidia.outputs.tags }}
+          labels: ${{ steps.meta-alignment-nvidia.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}
+          cache-from: type=gha,scope=alignment-nvidia
+          cache-to: type=gha,mode=max,scope=alignment-nvidia

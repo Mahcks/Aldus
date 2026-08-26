@@ -1,9 +1,7 @@
-services:
-  aldus:
-    image: ghcr.io/mahcks/aldus:${ALDUS_VERSION:-latest}
+x-aldus-common: &aldus-common
     restart: unless-stopped
     ports:
-      - "${ALDUS_PORT:-8080}:8080"
+      - "${ALDUS_BIND_HOST:-127.0.0.1}:${ALDUS_PORT:-8080}:8080"
     volumes:
       - aldus-data:/data
       - ${ALDUS_SOURCE_PATH:-./library-media}:/library/media:ro
@@ -11,18 +9,26 @@ services:
       - ${ALDUS_BACKUP_PATH:-./backups}:/backups
     environment:
       ALDUS_ENV: production
+      ALDUS_ADDR: :8080
+      ALDUS_BIND_HOST: ${ALDUS_BIND_HOST:-127.0.0.1}
+      ALDUS_ALLOW_INSECURE_HTTP: ${ALDUS_ALLOW_INSECURE_HTTP:-false}
       ALDUS_SOURCE_ROOTS: /library/media
       ALDUS_DOWNLOAD_INGRESS: /downloads
       ALDUS_SECURE_COOKIES: ${ALDUS_SECURE_COOKIES:-false}
       ALDUS_MAX_UPLOAD_BYTES: ${ALDUS_MAX_UPLOAD_BYTES:-2147483648}
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/ready"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/api/ready"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
     tmpfs:
       - /tmp
+
+services:
+  aldus:
+    <<: *aldus-common
+    image: ghcr.io/mahcks/aldus:${ALDUS_VERSION:?Set ALDUS_VERSION in .env to a published release}
 
 volumes:
   aldus-data:

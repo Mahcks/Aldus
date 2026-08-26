@@ -1,0 +1,1 @@
+torchcodec>=0.6.0,<0.8.0; (sys_platform == "linux" and platform_machine == "x86_64") or sys_platform == "darwin" or sys_platform == "win32"

@@ -454,7 +454,7 @@ func (m *Manager) run(parent context.Context, job Job) {
 	m.mu.Unlock()
 	defer func() { cancel(); m.mu.Lock(); delete(m.cancel, job.ID); m.mu.Unlock() }()
 	artifactPath, artifactID, err := m.execute(ctx, job)
-	summary := "worker execution failed"
+	summary := workerFailureSummary(err)
 	if err == nil {
 		err = m.publish(ctx, job, artifactPath, artifactID)
 		summary = "artifact validation failed"
@@ -471,6 +471,14 @@ func (m *Manager) run(parent context.Context, job Job) {
 		}
 		_, _ = m.db.Exec(`UPDATE alignment_jobs SET state='failed',error_summary=?,finished_at=? WHERE id=?`, summary, time.Now().UTC().Format(time.RFC3339Nano), job.ID)
 	}
+}
+
+func workerFailureSummary(err error) string {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 78 {
+		return "GPU acceleration unavailable; check the NVIDIA driver and Docker GPU access"
+	}
+	return "worker execution failed"
 }
 func (m *Manager) execute(ctx context.Context, job Job) (string, string, error) {
 	dir := filepath.Join(m.options.ArtifactRoot, job.ID)

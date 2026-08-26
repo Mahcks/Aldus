@@ -1,1 +1,6 @@
 whisperx==3.8.6
+ctranslate2==4.8.1
+faster-whisper==1.2.1
+transformers==4.57.6
+pyannote.audio==4.0.7
+triton==3.4.0; sys_platform == "linux" and platform_machine == "x86_64"

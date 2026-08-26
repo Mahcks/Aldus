@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -36,6 +37,8 @@ type Config struct {
 	DownloadIngress         string
 	DemoLibraryID           string
 	TrustProxyHeaders       bool
+	BindHost                string
+	AllowInsecureHTTP       bool
 }
 
 func Load() (Config, error) {
@@ -43,8 +46,8 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{
-		Addr:                    envOr("ALDUS_ADDR", ":8080"),
+	cfg := Config{
+		Addr:                    envOr("ALDUS_ADDR", "127.0.0.1:8080"),
 		DataDir:                 envOr("ALDUS_DATA_DIR", "/data"),
 		FixtureDir:              envOr("ALDUS_FIXTURE_DIR", "../test-fixtures/alice/media"),
 		KOReaderUser:            os.Getenv("ALDUS_KOREADER_USER"),
@@ -70,7 +73,30 @@ func Load() (Config, error) {
 		DownloadIngress:         envOr("ALDUS_DOWNLOAD_INGRESS", "/downloads"),
 		DemoLibraryID:           strings.TrimSpace(os.Getenv("ALDUS_DEMO_LIBRARY_ID")),
 		TrustProxyHeaders:       envBool("ALDUS_TRUST_PROXY_HEADERS"),
-	}, nil
+		BindHost:                os.Getenv("ALDUS_BIND_HOST"),
+		AllowInsecureHTTP:       envBool("ALDUS_ALLOW_INSECURE_HTTP"),
+	}
+	exposureHost := cfg.BindHost
+	if exposureHost == "" {
+		exposureHost = listenerHost(cfg.Addr)
+	}
+	if cfg.Environment == "production" && !cfg.SecureCookies && !cfg.AllowInsecureHTTP && !isLoopbackHost(exposureHost) {
+		return Config{}, fmt.Errorf("plain HTTP on non-loopback host %q requires ALDUS_ALLOW_INSECURE_HTTP=true", exposureHost)
+	}
+	return cfg, nil
+}
+
+func listenerHost(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
+}
+
+func isLoopbackHost(host string) bool {
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return strings.EqualFold(host, "localhost") || ip != nil && ip.IsLoopback()
 }
 
 func parseLogLevel(value string) (slog.Level, error) {
