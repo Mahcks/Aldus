@@ -1,0 +1,71 @@
+---
+title: Libraries and members
+description: What a library actually is, exactly what each role can do, and how to manage members.
+---
+
+import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
+
+A library groups works, Sources, acquisition policy, and membership under one access boundary. It isn't a storage folder — the same physical files can be scanned into different libraries by different Sources, and a library's "storage" is really just the set of Sources and the one hidden managed-downloads folder attached to it. Most households need exactly one; add a second only when a specific set of members or a specific set of media genuinely needs to be kept separate — a kids' library alongside a shared one, for example.
+
+<img
+  class="docs-shot"
+  src="/images/admin-libraries.png"
+  alt="Aldus Libraries administration screen showing the Public library and its owner role"
+/>
+
+## Roles
+
+Every library member has exactly one role, and — unlike the acquisition permissions below — role changes take effect immediately with no separate confirmation step.
+
+<CardGrid>
+  <Card title="Owner" icon="star">
+    Everything an editor can do, plus managing members: inviting, removing, changing roles, and toggling the three acquisition permissions below. Only an owner can rename or delete the library, and only an owner can reach **Library settings**.
+  </Card>
+  <Card title="Editor" icon="pencil">
+    Adds and edits works, manages Sources and scans, and edits acquisition policy (default destinations, size limits, formats). Cannot manage members or delete the library.
+  </Card>
+  <Card title="Reader" icon="open-book">
+    Reads and listens. Requesting missing formats is off by default for a reader and is granted individually — see the three permissions below.
+  </Card>
+</CardGrid>
+
+<Aside type="note">
+  A server administrator can do everything an owner can, in every library, regardless of membership — with one exception: adding a *new* account to a library is an admin-only action even for an owner. The library management dialog says it plainly: *"Only a global administrator can add a new account. You can change roles or remove existing members here."* Owners can promote, demote, and remove members Aldus already knows about, but they can't bring a brand-new person onto the server.
+</Aside>
+
+<Aside type="caution" title="Adding and removing Sources is admin-only">
+  Editors manage a Source's scans and its auto-import toggle, but creating, editing, or deleting a Source outright is restricted to server administrators — even for a library owner. If you're an owner and the **Add source** button seems to disappear, that's why: it isn't hidden by a bug, it's server policy.
+</Aside>
+
+Aldus won't let a library end up without an owner. Trying to demote or remove the last remaining owner is rejected outright, so a library can never accidentally become unmanageable.
+
+## The three acquisition permissions
+
+These only apply to readers — owners and editors already have all three implicitly, and Aldus forces them on whenever you promote someone into either role. For a reader, each is an independent toggle:
+
+- **Can request** — lets the member submit a request for a missing ebook or audiobook format at all. Without it, a reader can browse and read but never sees a "Request" action.
+- **Skip approval** — a request from this member starts downloading immediately instead of waiting in the owner's approval queue. It still has to obey every rule in the library's [acquisition policy](/admin/acquisitions/#per-library-download-rules) — skipping approval is not the same as skipping the rules.
+- **Advanced release choice** — lets the member search and pick a specific release manually instead of accepting Aldus's guided pick. The library management screen states that members with this permission "may bypass" the library's download rules, so grant it only to someone you'd trust with unrestricted search results.
+
+<img
+  class="docs-shot"
+  src="/images/admin-library-members.png"
+  alt="Manage members dialog showing role pills and the three per-reader acquisition permission checkboxes"
+/>
+
+## Exclusive access grants
+
+If a household runs more than one library, membership is additive by default — belonging to two libraries means you see both. An **exclusive access grant** changes that: once any account holds an exclusive grant on any library, that account's visibility becomes the union of only its exclusive memberships, dropping any library it belongs to non-exclusively. This is how you carve out a library that's genuinely private to a subset of the household — a kids' account with an exclusive grant on a curated library won't also inherit the shared collection through an ordinary membership. The toggle only appears once a server has more than one library, since it has nothing to do with a single-library setup.
+
+## Creating and managing a library
+
+<Steps>
+
+1. Open **Libraries** and select **Add library**. Give it a name — that's the only required field.
+2. Open the new library and use **Members** to add people (server admins only, per above), set roles, and toggle acquisition permissions for readers.
+3. Use **Sources** to point the library at folders of media — see [Media sources](/admin/sources/).
+4. Use **Acquisition policy** to set download destinations and rules — see [Automatic requests](/admin/acquisitions/).
+
+</Steps>
+
+A library can only be deleted once it contains no works — Aldus refuses the delete otherwise, so you can't lose books by clicking the wrong button.

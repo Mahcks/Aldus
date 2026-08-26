@@ -11,7 +11,7 @@ This page is a pre-release policy draft. Contact and retention details will be f
 
 An Aldus server is operated by you or your server administrator. The server stores account details, library membership, media metadata, reading and listening progress, activity, and configuration needed to provide the service. The Aldus project does not receive that information merely because you use the app.
 
-The app stores authentication credentials securely on the device and may store downloaded media, metadata, and pending progress for offline use.
+The app stores authentication credentials in the device's secure keychain or keystore, not in plain storage, and may store downloaded media, metadata, and pending progress for [offline use](/read-listen/offline/).
 
 ## Public demo
 

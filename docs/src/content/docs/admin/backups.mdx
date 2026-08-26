@@ -1,0 +1,98 @@
+---
+title: Backups and upgrades
+description: What a backup actually contains, how the online snapshot and checksum verification work, and a real restore walkthrough.
+---
+
+import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
+
+## Take a backup
+
+```sh
+docker compose run --rm aldus backup \
+  --archive /backups/aldus-backup-$(date +%Y%m%d).tar.gz
+```
+
+This runs against the live server — Aldus does not need to be stopped. `--archive` must point somewhere outside the data directory itself (`/backups` in the default Compose setup, mapped to `ALDUS_BACKUP_PATH` on the host); Aldus refuses to write a backup inside the directory it's backing up, and refuses to overwrite a file that already exists at the target path.
+
+<img
+  class="docs-shot"
+  src="/images/admin-backups.png"
+  alt="System administration screen describing the backup command and restore requirements"
+/>
+
+## What actually happens during a backup
+
+<CardGrid>
+  <Card title="A true hot snapshot" icon="seti:db">
+    Aldus uses SQLite's own online backup API to copy the live database into a temporary file without pausing the server. This is a consistent point-in-time snapshot, not a raw copy of a file that might be mid-write.
+  </Card>
+  <Card title="Credentials are actually scrubbed" icon="seti:lock">
+    On the snapshot only, Aldus clears the stored Prowlarr API key and qBittorrent password, plus any indexer URLs embedded in request history, then runs `VACUUM` with secure-delete on so the freed space is overwritten rather than just unlinked. This is a real data-erasure step, not a display-only redaction — the bytes are gone from the archive.
+  </Card>
+  <Card title="Every file is checksummed" icon="seti:lock">
+    Each file written into the archive gets a SHA-256 hash recorded in a `manifest.json` inside it. Immediately after writing the archive, Aldus extracts and re-verifies it against that manifest before reporting success — a `backup` command that exits cleanly has already round-tripped itself.
+  </Card>
+</CardGrid>
+
+<Aside type="caution" title="You'll need to re-enter Prowlarr and qBittorrent credentials after a restore">
+  Because those credentials are deliberately erased at backup time, restoring from a backup always leaves acquisitions disconnected until you go back to **Acquisitions → Connections** and re-save them. This is expected, not a bug in the restore.
+</Aside>
+
+### Included and excluded
+
+The archive contains the redacted database snapshot plus everything else under the data directory: managed acquisition downloads, covers, and alignment artifacts. It does **not** contain the files behind your external Sources — those live in a folder you own outside Aldus's data directory, so only their catalog metadata (title, author, path, checksum) travels in the database snapshot, not the file bytes themselves. In practice this means a backup restores your library's structure, progress, requests, and anything Aldus downloaded on your behalf — but you're still responsible for backing up the actual media folder you pointed `ALDUS_SOURCE_PATH` at, separately, with whatever tool you already use for that.
+
+Aldus also refuses to include a symbolic link anywhere under the data directory, and the restore path rejects any archive entry that isn't a plain file or that tries to write outside the target directory — both are hard failures, not warnings.
+
+## Restore
+
+<Steps>
+
+1. Stop Aldus:
+
+   ```sh
+   docker compose stop aldus
+   ```
+
+2. Make sure the target data directory is empty. Restoring onto a data directory that already has files in it is refused outright — if you're recovering onto the same host, this usually means removing or renaming the existing `aldus-data` volume first, not restoring on top of it.
+
+3. Restore the archive:
+
+   ```sh
+   docker compose run --rm aldus restore \
+     --archive /backups/aldus-backup-20260819.tar.gz \
+     --data-dir /data
+   ```
+
+   Restore re-verifies every file's checksum against the archive's manifest before touching anything, and separately confirms the backup's database schema isn't newer than what this build of Aldus understands — an incompatible backup is rejected with a clear error rather than silently restored into a broken state.
+
+4. Start Aldus again:
+
+   ```sh
+   docker compose up -d
+   ```
+
+5. Reconnect Prowlarr and qBittorrent under **Acquisitions → Connections** — their credentials were scrubbed from the backup on purpose.
+
+</Steps>
+
+## Upgrading
+
+To move to a new version: take a backup first, then pin the new tag in `.env` and pull it.
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+If something goes wrong after an upgrade, roll back by restoring the backup you just took and setting `ALDUS_VERSION` back to the version it came from. Avoid `latest` for a server you depend on — see [Install](/admin/install/) for why.
+
+## A realistic schedule
+
+A single backup taken right before an upgrade protects you from that upgrade. It doesn't protect you from a bad disk, an accidental library deletion, or three months of drift you didn't notice. A reasonable baseline for a household server:
+
+- **Before every upgrade or config change**, always — this is the one that actually saves you most often.
+- **Nightly**, via a host cron job calling the same `docker compose run --rm aldus backup` command with a dated filename, kept for a couple of weeks.
+- **Weekly**, copied off the host entirely — onto separate storage, or synced to cloud storage — so a lost or failed host doesn't take the backups with it.
+
+Because backups are hot and checksummed automatically, there's little cost to running them more often than feels necessary.

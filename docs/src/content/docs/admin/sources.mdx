@@ -1,0 +1,79 @@
+---
+title: Media sources
+description: External vs. managed sources, how scanning actually works, and how import review resolves ambiguous files.
+---
+
+import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
+
+A Source points a library at a folder Aldus is allowed to scan. Client filenames never determine where Aldus stores anything — a Source only ever *reads* what's already there.
+
+<img
+  class="docs-shot"
+  src="/images/admin-sources.png"
+  alt="Sources and imports administration screen showing two enabled sources with scan counts"
+/>
+
+## Two kinds of Source
+
+<CardGrid>
+  <Card title="External Sources" icon="open-book">
+    Folders you already own, added by a server administrator through **Add source**. They stay exactly where they are on disk, mounted read-only, and are only ever indexed — never copied, renamed, or written to. Every external Source's root must live inside the host folder mounted at `ALDUS_SOURCE_PATH` (see [Install](/admin/install/)); Aldus rejects any path outside it.
+  </Card>
+  <Card title="The managed Source" icon="seti:folder">
+    Every library gets exactly one, created automatically the moment the library exists — you never add it by hand, and it doesn't appear in the "Add source" folder picker. It lives under Aldus's own data directory and is where completed [acquisition](/admin/acquisitions/) downloads get copied once verified. It can't be edited or deleted through the API; disabling or removing it isn't offered in the UI at all.
+  </Card>
+</CardGrid>
+
+<Aside type="tip">
+  When you set a library's default ebook or audiobook source under **Acquisition policy**, "Aldus managed downloads" is one of the options alongside any external Sources you've added — that's this same built-in Source.
+</Aside>
+
+Both kinds of Source are checksummed the same way: every file gets a SHA-256 hash at scan time, and Aldus re-verifies that hash (not just size and modified time) before serving a file for alignment or before finalizing a managed download copy. A managed download is written to a temporary path, hashed, moved into place, and re-hashed at its final location before Aldus trusts it.
+
+## Adding a Source
+
+Only a server administrator can add, edit, or delete a Source, even inside a library an editor otherwise fully manages.
+
+<Steps>
+
+1. Open **Sources**, choose the library from the tabs if you manage more than one, and select **Add source**.
+2. Pick a starting folder from the list of roots Aldus can see, then browse into the specific subfolder you want scanned — everything inside it will be scanned, including subfolders.
+3. Name the Source and decide whether clear matches should **import automatically** (see below).
+4. Aldus kicks off a first scan immediately after the Source is created.
+
+</Steps>
+
+<img
+  class="docs-shot"
+  src="/images/admin-sources-add.png"
+  alt="Add source dialog showing the folder picker with two available root locations"
+/>
+
+If no root folders are available at all, the dialog explains why: an administrator needs to mount a folder into the container and list its container-visible path in `ALDUS_SOURCE_ROOTS` (already handled for you if you're using the default Compose setup and `ALDUS_SOURCE_PATH`).
+
+## How scanning actually works
+
+A scan is a background job, not something that happens inline while you wait. Each scan moves through `pending` → `scanning` → `completed` (or `failed`), and only one scan can be active per Source at a time — starting a second one while the first is still running is rejected outright rather than queued silently.
+
+Aldus never follows symlinks during a scan — a symlinked file or folder inside a Source is invisible to it entirely, which is a deliberate safety boundary, not a bug. For every file it does see, Aldus:
+
+- Computes a SHA-256 hash.
+- Classifies it against the last scan as **new**, **changed**, or **unchanged**, and marks anything previously seen but now absent as **missing**.
+- For EPUBs: parses the zip defensively (path-traversal entries are rejected, entry count is capped at 10,000, expanded size is capped at your `ALDUS_MAX_UPLOAD_BYTES`) and pulls title, author, language, publisher, date, series, and cover presence straight out of the file.
+- For audio: runs `ffprobe` with a 30-second timeout to pull duration and format details.
+
+The scan card's counters — Discovered, New, Changed, Unchanged, Missing, Problems — are exactly these classifications from the most recent run.
+
+## Import review
+
+After a scan, Aldus groups every newly registered file by normalized title and author and proposes a match at one of three confidence levels:
+
+- **High** — title and author agree exactly. If the Source has **auto-import** enabled, these skip review entirely and go straight into the library.
+- **Medium** — the same normalized title maps to more than one distinct author, or there's more than one file of the same kind (two different EPUBs claiming to be the same book) that need a human to pick the right edition or narration.
+- **Low** — title or author is missing outright.
+
+Anything below **High**, or anything in a Source without auto-import turned on, waits in **Import review** for a person to accept or ignore it. Accepting re-opens and re-hashes the underlying file first, so a proposal that was generated minutes ago is still checked against what's actually on disk right now — if the file changed in the meantime, or if someone else already resolved the same proposal, Aldus refreshes it and asks you to look again rather than silently applying a stale decision.
+
+<Aside type="note" title="Auto-import is per-Source, not per-library">
+  The **Import clear matches automatically** checkbox lives on each Source individually. A library can have one Source that auto-imports and another that doesn't — useful if you trust the metadata quality of one folder more than another.
+</Aside>

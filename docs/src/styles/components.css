@@ -1,3 +1,20 @@
+.card,
+.card:nth-child(4n + 1),
+.card:nth-child(4n + 2),
+.card:nth-child(4n + 3),
+.card:nth-child(4n + 4),
+.card:nth-child(4n + 5) {
+  --sl-card-border: var(--aldus-accent);
+  --sl-card-bg: var(--aldus-panel);
+  background-color: var(--aldus-panel);
+  border-color: var(--aldus-line);
+}
+.card .icon {
+  color: var(--aldus-accent-strong);
+}
+.sl-link-button.primary {
+  color: var(--aldus-paper);
+}
 .audio-preview {
   align-items: stretch;
   background: var(--aldus-panel);

@@ -1,0 +1,82 @@
+---
+title: Automatic requests
+description: Connect Prowlarr and qBittorrent, set every per-library download rule, and understand exactly what happens when someone requests a book.
+---
+
+import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
+
+Automatic requests are entirely optional. Aldus reads and streams files you already own with no external services at all — this page only matters once you want household members to ask for a format they don't have yet.
+
+Aldus currently works with [Prowlarr](https://prowlarr.com/) to search indexers and [qBittorrent](https://www.qbittorrent.org/) to download the selected release. Usenet clients aren't supported yet. **The server owner is responsible for the indexers and tracker credentials configured here — Aldus doesn't provide, endorse, or ship any of them.**
+
+## Connect Prowlarr and qBittorrent
+
+Open **Acquisitions → Connections**. Every field here maps to a real setting stored on the server (API keys and passwords are write-only — the form shows "Saved, leave blank to keep it" rather than the actual secret).
+
+<img
+  class="docs-shot"
+  src="/images/admin-acquisitions-connections.png"
+  alt="Acquisitions Connections tab with Prowlarr and qBittorrent fields filled in"
+/>
+
+| Field | Notes |
+| --- | --- |
+| Search provider | **Prowlarr** (recommended) or a direct **Torznab feed** for a single advanced indexer. |
+| Prowlarr URL / Torznab feed URL | Must be a valid `http(s)://` URL with a host. With Prowlarr, Aldus discovers and searches every indexer you have enabled there — you don't configure indexers individually in Aldus. |
+| Indexer API key | Prowlarr's API key. Stored, never redisplayed. |
+| qBittorrent URL | The Web UI address, e.g. `http://qbittorrent:8080` on a shared Docker network. |
+| qBittorrent username / password | Credentials for that Web UI. |
+| qBittorrent category | Downloads are tagged with this category in qBittorrent; defaults to `aldus`. |
+| qBittorrent download root | The path **qBittorrent itself** reports for completed files — not Aldus's own `/downloads` mount, unless qBittorrent happens to report that same path. Aldus uses this to translate qBittorrent's view of a finished download into a path it can read. |
+
+Select **Save connections** to persist the settings (it also runs a connection test automatically), or **Test connections** at any time to re-check without saving. A successful test reports how many enabled torrent indexers Prowlarr exposed and whether qBittorrent authenticated.
+
+<Aside type="danger" title="qBittorrent and Aldus must see the same folder">
+  This is the single most common setup mistake. qBittorrent's *download root* setting here has to describe the same physical folder as `ALDUS_DOWNLOAD_PATH` in Aldus's own `.env` — otherwise Aldus computes a path it can't actually open once a torrent finishes, and the request gets stuck. If a download completes in qBittorrent but the title never shows up in Aldus, this mapping is the first thing to check.
+</Aside>
+
+## Per-library download rules
+
+Every library has its own acquisition policy, editable by owners, editors, and admins under **Acquisition policy**. These rules are mandatory for every guided request — including ones a member is allowed to skip approval on. Only a member with **advanced release choice** may bypass them.
+
+<img
+  class="docs-shot"
+  src="/images/admin-acquisition-policy.png"
+  alt="Acquisition policy dialog showing default sources, size limits, formats, language, and active-request cap"
+/>
+
+| Rule | Default | What it does |
+| --- | --- | --- |
+| Default ebook / audiobook source | — (must be set) | Which enabled Source a completed download is copied into. Usually "Aldus managed downloads" — see [Media sources](/admin/sources/). Must point at an enabled Source or the policy won't save. |
+| Maximum ebook size | 200 MB | Releases larger than this are rejected before download. |
+| Maximum audiobook size | 5 GB | Same, for audiobook releases. |
+| Allowed ebook formats | `epub` | Comma-separated list; a release in any other format is filtered out. |
+| Allowed audiobook formats | `m4b`, `mp3` | Same, for audio. |
+| Preferred language | `en` | A language code such as `en` or `en-us`, used to prefer matching releases. |
+| Allow abridged audiobooks | off | Whether abridged audiobook releases are acceptable at all. |
+| Maximum active requests per member | 5 | A whole number from 1–100 capping how many non-finished requests one member can have open at once, across this library. |
+
+Both size limits are internally clamped between 1 KB and 1 TiB regardless of what you type, and formats are normalized to lowercase automatically.
+
+## What happens when someone requests a title
+
+<Steps>
+
+1. A member with **can request** submits a title. Unless they also have **skip approval** (or hold the owner/editor role, which always bypasses the queue), the request waits in the **Requests** tab for an owner, editor, or admin to approve or deny each format.
+2. Once approved, Aldus searches every enabled Prowlarr indexer concurrently and filters results against the library's format, size, and language rules.
+3. The selected release is handed to qBittorrent, tagged with the request's own ID so Aldus can find it again even if the Aldus process restarts mid-download.
+4. Aldus polls qBittorrent roughly every 15 seconds. Once the torrent reports as finished, Aldus copies the file from qBittorrent's download folder into the library's managed Source, verifying its SHA-256 hash both during and after the copy.
+5. That copy triggers a scan of the managed Source, which produces an import proposal exactly as described in [Media sources](/admin/sources/) — a high-confidence match imports immediately if the managed Source has auto-import on; anything less certain waits in **Import review**.
+6. The request's status moves through **Requests → Downloads** and finally to **Available** once the matching work exists in the library — or **Needs review** if the import needs a human decision, or **Failed** with a plain-language reason and an expandable technical detail panel if something went wrong along the way.
+
+</Steps>
+
+<img
+  class="docs-shot"
+  src="/images/admin-acquisitions-requests.png"
+  alt="Acquisitions Requests tab showing pending format requests"
+/>
+
+<Aside type="tip">
+  Already run a download manager like Listenarr? You don't need Aldus's search-provider connection at all — point it at an enabled Source folder instead, and Aldus will scan and import completed files the same way it does for anything else you already own.
+</Aside>

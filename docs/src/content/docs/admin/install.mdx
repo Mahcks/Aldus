@@ -1,0 +1,85 @@
+---
+title: Install Aldus
+description: Start the Aldus server with Docker Compose, understand every environment variable, and fix the snags that actually happen.
+---
+
+import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
+
+Aldus ships as one container that serves the API and the exported web app together. Every tagged release publishes a ready-to-run image to GitHub Container Registry — there is nothing to build, and no Go toolchain or Node install required on the host.
+
+## Requirements
+
+<CardGrid>
+  <Card title="Docker with Compose" icon="seti:docker">
+    Any recent Docker Engine with the `compose` plugin. Podman with a Compose shim works too, but isn't tested as thoroughly.
+  </Card>
+  <Card title="A persistent data directory" icon="seti:db">
+    Aldus keeps its SQLite database, managed downloads, covers, and alignment artifacts in one Docker volume. Losing it loses your library metadata.
+  </Card>
+  <Card title="A folder of media you own" icon="open-book">
+    A directory of EPUB and audiobook files Aldus can read. Aldus never renames, moves, or rewrites anything inside it.
+  </Card>
+</CardGrid>
+
+## Start the server
+
+<Steps>
+
+1. Clone the repository and copy the example environment file:
+
+   ```sh
+   git clone https://github.com/mahcks/aldus.git
+   cd aldus
+   cp .env.example .env
+   ```
+
+2. Open `.env` and point `ALDUS_SOURCE_PATH` at the folder that holds your books. Every other setting has a working default.
+
+3. Start Aldus:
+
+   ```sh
+   docker compose up -d
+   ```
+
+4. Open `http://localhost:8080` (or whatever `ALDUS_PORT` you set). The first account you create becomes the server administrator — there is no separate setup wizard, and no default password to change.
+
+</Steps>
+
+<Aside type="caution" title="Pin a version before you rely on this">
+  `.env.example` ships with `ALDUS_VERSION=latest`. That's convenient while you're trying Aldus out, but it means every `docker compose pull` can jump versions without warning. Once you have data you care about, pin an exact release — for example `ALDUS_VERSION=0.1.0-beta.13` — so upgrades are something you choose, not something that happens to you.
+</Aside>
+
+## Every environment variable
+
+`.env` controls the handful of values Compose needs to know about the host; `compose.yml` then forwards most of them into the container under their real `ALDUS_*` names. The table below is every variable in `.env.example`, in the order it appears there.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `ALDUS_VERSION` | `latest` | Which published image tag to run. Pin this once you have real data — see the warning above. |
+| `ALDUS_PORT` | `8080` | The host port Aldus listens on. Change it if `8080` is already taken on your machine. |
+| `ALDUS_SOURCE_PATH` | `./library-media` | Host folder mounted **read-only** into the container at `/library/media`. This becomes the one path you're allowed to add Sources under — see [Media sources](/admin/sources/). |
+| `ALDUS_DOWNLOAD_PATH` | `./downloads` | Host folder mounted **read-only** into the container at `/downloads`. Only needed for [automatic requests](/admin/acquisitions/) — it must be the same folder your qBittorrent container writes completed downloads to. |
+| `ALDUS_BACKUP_PATH` | `./backups` | Host folder mounted read-write at `/backups`. Where `docker compose run --rm aldus backup` writes archives — see [Backups and upgrades](/admin/backups/). |
+| `ALDUS_SECURE_COOKIES` | `false` | Marks the session cookie `Secure`, so browsers will only send it over HTTPS. Leave `false` for plain HTTP (including a home LAN); set `true` once a reverse proxy terminates HTTPS in front of Aldus. Getting this backwards — `true` without HTTPS — silently breaks sign-in, because the browser refuses to send the cookie at all. |
+| `ALDUS_MAX_UPLOAD_BYTES` | `2147483648` (2 GiB) | The largest file Aldus will accept, both for direct uploads and while scanning a Source. Raise it if you have single audiobook files larger than 2 GiB. |
+
+Inside the container, `compose.yml` sets three more variables directly rather than exposing them as `.env` values, because they're implementation details of the mounts above rather than choices you make independently:
+
+- **`ALDUS_ENV=production`** — selects production logging and disables the developer fixture library.
+- **`ALDUS_SOURCE_ROOTS=/library/media`** — the container-side path Aldus is allowed to scan Sources under. This is what actually enforces the read-only mount; a Source pointed anywhere else is rejected.
+- **`ALDUS_DOWNLOAD_INGRESS=/downloads`** — the container-side path Aldus expects completed qBittorrent downloads to appear under. This only matters if you configure automatic requests.
+
+## Troubleshooting
+
+**Aldus exits immediately after `docker compose up -d`.** Run `docker compose logs aldus`. Two startup checks fail loudly and exit the process rather than limping along:
+
+- An invalid `ALDUS_LOG_LEVEL` (only `debug`, `info`, `warn`, and `error` are accepted) stops configuration loading before anything else runs.
+- A source root that doesn't exist, isn't a directory, is a symlink, or overlaps Aldus's own managed storage fails with a specific message naming the bad path — this is the most common cause of a container that starts and then immediately stops.
+
+**The data directory won't create.** Aldus calls `mkdir` on its data directory at startup and exits if that fails — almost always a host-side permissions problem on the named Docker volume or a bind mount owned by a different UID. Check `docker compose logs aldus` for `create data directory`.
+
+**Port already in use.** `ALDUS_ADDR` isn't validated ahead of time — Aldus only discovers a port conflict when it actually tries to bind, which shows up as a bind error in the logs at the moment of startup rather than a clean pre-flight message. Change `ALDUS_PORT` in `.env` and restart.
+
+**Sign-in silently does nothing.** This is almost always `ALDUS_SECURE_COOKIES=true` without HTTPS in front of Aldus — the browser drops the session cookie rather than showing an error. Set it back to `false` for plain HTTP, or put a TLS-terminating proxy in front of Aldus and set it to `true`.
+
+**`/api/health` and `/api/ready` both matter.** `/api/health` only confirms the process is running. `/api/ready` additionally checks that SQLite is reachable and that Aldus can still write to its data directory — useful for catching a volume that went read-only after a host reboot.
