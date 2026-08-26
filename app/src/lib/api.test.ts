@@ -70,6 +70,22 @@ describe('API transport', () => {
     expect(method).toBe('DELETE');
   });
 
+  it('uses server-owned backup names for download and deletion', async () => {
+    const calls: { url: string; method: string }[] = [];
+    globalThis.fetch = (async (input, init) => {
+      calls.push({ url: String(input), method: init?.method || 'GET' });
+      if (init?.method === 'DELETE') return new Response(null, { status: 204 });
+      return new Response('backup', { headers: { 'Content-Type': 'application/gzip' } });
+    }) as typeof fetch;
+    const name = 'aldus-backup-20260826T120000.000000000Z.tar.gz';
+    expect(await api.downloadBackup(name)).toBeInstanceOf(Blob);
+    await api.deleteBackup(name);
+    expect(calls).toEqual([
+      { url: `/api/system/backups/${name}`, method: 'GET' },
+      { url: `/api/system/backups/${name}`, method: 'DELETE' },
+    ]);
+  });
+
   it('includes the server request reference in unexpected errors', async () => {
     globalThis.fetch = (async () =>
       new Response('internal server error\n', {

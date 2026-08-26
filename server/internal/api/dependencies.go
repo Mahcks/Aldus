@@ -9,6 +9,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/backup"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/collection"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
@@ -33,6 +34,7 @@ type Dependencies struct {
 	TitleRequests       *acquisition.TitleRequestStore
 	Notifications       *notification.Store
 	Diagnostics         *diagnostics.Store
+	Backups             *backup.Manager
 	KOReader            koreader.Credentials
 	AllowedOrigins      []string
 	TrustProxyHeaders   bool

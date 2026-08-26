@@ -134,7 +134,10 @@ var demoPairingSchema string
 //go:embed migrations/041_account_deletion.sql
 var accountDeletionSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema, workDescriptionsSchema, exclusiveLibraryGrantsSchema, workPublisherDetailsSchema, notificationWorkIDSchema, demoUsersSchema, demoPairingSchema, accountDeletionSchema}
+//go:embed migrations/042_notification_recipient_integrity.sql
+var notificationRecipientIntegritySchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema, workDescriptionsSchema, exclusiveLibraryGrantsSchema, workPublisherDetailsSchema, notificationWorkIDSchema, demoUsersSchema, demoPairingSchema, accountDeletionSchema, notificationRecipientIntegritySchema}
 
 func SupportedSchemaVersion() int { return len(migrations) }
 
@@ -195,19 +198,17 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit migration %d: %w", next, err)
 		}
-		if next == 41 {
-			if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON`); err != nil {
-				return fmt.Errorf("enable foreign keys after migration %d: %w", next, err)
-			}
-			var table string
-			if err := db.QueryRowContext(ctx, `SELECT "table" FROM pragma_foreign_key_check LIMIT 1`).Scan(&table); err != sql.ErrNoRows {
-				if err == nil {
-					return fmt.Errorf("migration %d left foreign key violation in %s", next, table)
-				}
-				return fmt.Errorf("check migration %d foreign keys: %w", next, err)
-			}
-		}
 		version = next
+	}
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON`); err != nil {
+		return fmt.Errorf("enable foreign keys after migrations: %w", err)
+	}
+	var table string
+	if err := db.QueryRowContext(ctx, `SELECT "table" FROM pragma_foreign_key_check LIMIT 1`).Scan(&table); err != sql.ErrNoRows {
+		if err == nil {
+			return fmt.Errorf("schema version %d has foreign key violation in %s", version, table)
+		}
+		return fmt.Errorf("check schema version %d foreign keys: %w", version, err)
 	}
 	return nil
 }

@@ -32,6 +32,8 @@ const names = {
   add: 'plus',
   users: 'account-group-outline',
   system: 'server-outline',
+  backup: 'database-arrow-up-outline',
+  report: 'file-document-outline',
   settings: 'cog-outline',
   folder: 'folder-outline',
   scan: 'refresh',

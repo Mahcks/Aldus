@@ -25,5 +25,6 @@ __pycache__/
 test-fixtures/alice/media/
 library-media/
 artifacts/
+backups/
 .asc/
 scripts/ios-release.env

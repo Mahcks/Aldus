@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -14,8 +15,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 41 {
-		t.Fatalf("schema version = %d, want 41", version)
+	if version := schemaVersion(t, db); version != SupportedSchemaVersion() {
+		t.Fatalf("schema version = %d, want %d", version, SupportedSchemaVersion())
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -24,8 +25,8 @@ func TestMigrationCreatesAndReopensCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version := schemaVersion(t, db); version != 41 {
-		t.Fatalf("schema version after reopen = %d, want 41", version)
+	if version := schemaVersion(t, db); version != SupportedSchemaVersion() {
+		t.Fatalf("schema version after reopen = %d, want %d", version, SupportedSchemaVersion())
 	}
 }
 
@@ -79,8 +80,8 @@ INSERT INTO progress (alignment_id, segment_id, offset, revision, updated_at, so
 	if err := db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
 		t.Fatalf("foreign key check = %q, %v", violation, err)
 	}
-	if version := schemaVersion(t, db); version != 41 {
-		t.Fatalf("migrated schema version = %d, want 41", version)
+	if version := schemaVersion(t, db); version != SupportedSchemaVersion() {
+		t.Fatalf("migrated schema version = %d, want %d", version, SupportedSchemaVersion())
 	}
 	var epubHash, representationID string
 	if err := db.QueryRowContext(ctx, `SELECT sha256,representation_id FROM media WHERE id='epub'`).Scan(&epubHash, &representationID); err != nil || epubHash != strings.Repeat("a", 64) || representationID != "legacy-representation-epub" {
@@ -109,13 +110,49 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`PRAGMA user_version = 42`); err != nil {
+	newerVersion := SupportedSchemaVersion() + 1
+	if _, err := db.Exec(`PRAGMA user_version = ` + fmt.Sprint(newerVersion)); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
 	_, err = Open(context.Background(), path)
-	if err == nil || !strings.Contains(err.Error(), "schema version 42 is newer than supported version 41") {
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("schema version %d is newer than supported version %d", newerVersion, SupportedSchemaVersion())) {
 		t.Fatalf("Open error = %v", err)
+	}
+}
+
+func TestNotificationRecipientIntegrityMigrationRemovesOnlyOrphans(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := strings.Join(migrations[:41], "\n") + `
+PRAGMA user_version=41;
+INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at)
+VALUES('reader','reader','reader','Reader','hash',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+INSERT INTO notification_events(id,kind,title,created_at) VALUES('event','test','Test','2026-01-01T00:00:00Z');
+INSERT INTO notification_recipients(event_id,user_id) VALUES('event','reader'),('missing','reader');`
+	if _, err := db.ExecContext(ctx, fixture); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var eventID string
+	if err := db.QueryRowContext(ctx, `SELECT event_id FROM notification_recipients`).Scan(&eventID); err != nil || eventID != "event" {
+		t.Fatalf("remaining recipient = %q, %v", eventID, err)
+	}
+	var violation string
+	if err := db.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&violation); err != sql.ErrNoRows {
+		t.Fatalf("foreign key check = %q, %v", violation, err)
 	}
 }
 
@@ -224,7 +261,7 @@ func TestMigrationFromVersionTwo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 41 {
+	if version := schemaVersion(t, db); version != SupportedSchemaVersion() {
 		t.Fatalf("version=%d", version)
 	}
 	var users, tables int
@@ -251,7 +288,7 @@ func TestMigrationFromVersionThree(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 41 {
+	if version := schemaVersion(t, db); version != SupportedSchemaVersion() {
 		t.Fatalf("version=%d", version)
 	}
 	var columns int
@@ -275,7 +312,7 @@ func TestMigrationFromVersionFour(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if version := schemaVersion(t, db); version != 41 {
+	if version := schemaVersion(t, db); version != SupportedSchemaVersion() {
 		t.Fatalf("version=%d", version)
 	}
 	var jobs int
@@ -341,13 +378,14 @@ func TestMigrationRollsBackFailedVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := migrations
+	currentVersion := SupportedSchemaVersion()
 	migrations = append(append([]string{}, migrations...), `CREATE TABLE partial (id TEXT); SELECT nope FROM missing;`)
 	t.Cleanup(func() { migrations = original })
 	if err := migrate(ctx, db); err == nil {
 		t.Fatal("failed migration succeeded")
 	}
-	if version := schemaVersion(t, db); version != 41 {
-		t.Fatalf("schema version after rollback = %d, want 41", version)
+	if version := schemaVersion(t, db); version != currentVersion {
+		t.Fatalf("schema version after rollback = %d, want %d", version, currentVersion)
 	}
 	var exists int
 	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'partial')`).Scan(&exists); err != nil || exists != 0 {

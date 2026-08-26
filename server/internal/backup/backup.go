@@ -16,14 +16,143 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"modernc.org/sqlite"
 
+	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/database"
 )
 
 const manifestName = "manifest.json"
+
+var (
+	ErrForbidden = errors.New("administrator access required")
+	ErrNotFound  = errors.New("backup not found")
+)
+
+type Archive struct {
+	Name      string
+	CreatedAt time.Time
+	SizeBytes int64
+}
+
+type Manager struct {
+	dataDir, backupDir, version string
+	mu                          sync.Mutex
+}
+
+func NewManager(dataDir, backupDir, version string) *Manager {
+	return &Manager{dataDir: dataDir, backupDir: backupDir, version: version}
+}
+
+func (m *Manager) List(actor auth.User) ([]Archive, error) {
+	if !actor.Admin {
+		return nil, ErrForbidden
+	}
+	entries, err := os.ReadDir(m.backupDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return []Archive{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list backups: %w", err)
+	}
+	archives := make([]Archive, 0, len(entries))
+	for _, entry := range entries {
+		createdAt, ok := backupTime(entry.Name())
+		if !ok || !entry.Type().IsRegular() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("inspect backup: %w", err)
+		}
+		archives = append(archives, Archive{Name: entry.Name(), CreatedAt: createdAt, SizeBytes: info.Size()})
+	}
+	sort.Slice(archives, func(i, j int) bool { return archives[i].CreatedAt.After(archives[j].CreatedAt) })
+	return archives, nil
+}
+
+func (m *Manager) Create(ctx context.Context, actor auth.User) (Archive, error) {
+	if !actor.Admin {
+		return Archive{}, ErrForbidden
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := os.MkdirAll(m.backupDir, 0o750); err != nil {
+		return Archive{}, fmt.Errorf("prepare backup directory: %w", err)
+	}
+	createdAt := time.Now().UTC()
+	name := "aldus-backup-" + createdAt.Format("20060102T150405.000000000Z") + ".tar.gz"
+	temporary := filepath.Join(m.backupDir, ".creating-"+name)
+	defer os.Remove(temporary)
+	if err := Create(ctx, m.dataDir, temporary, m.version); err != nil {
+		return Archive{}, err
+	}
+	path := filepath.Join(m.backupDir, name)
+	if err := os.Rename(temporary, path); err != nil {
+		return Archive{}, fmt.Errorf("publish backup: %w", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return Archive{}, fmt.Errorf("inspect backup: %w", err)
+	}
+	return Archive{Name: name, CreatedAt: createdAt, SizeBytes: info.Size()}, nil
+}
+
+func (m *Manager) Open(actor auth.User, name string) (*os.File, Archive, error) {
+	if !actor.Admin {
+		return nil, Archive{}, ErrForbidden
+	}
+	createdAt, ok := backupTime(name)
+	if !ok {
+		return nil, Archive{}, ErrNotFound
+	}
+	file, err := os.Open(filepath.Join(m.backupDir, name))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, Archive{}, ErrNotFound
+	}
+	if err != nil {
+		return nil, Archive{}, fmt.Errorf("open backup: %w", err)
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return nil, Archive{}, ErrNotFound
+	}
+	return file, Archive{Name: name, CreatedAt: createdAt, SizeBytes: info.Size()}, nil
+}
+
+func (m *Manager) Delete(actor auth.User, name string) error {
+	if !actor.Admin {
+		return ErrForbidden
+	}
+	if _, ok := backupTime(name); !ok {
+		return ErrNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := os.Remove(filepath.Join(m.backupDir, name)); errors.Is(err, os.ErrNotExist) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("delete backup: %w", err)
+	}
+	return nil
+}
+
+func backupTime(name string) (time.Time, bool) {
+	value, ok := strings.CutPrefix(name, "aldus-backup-")
+	if !ok {
+		return time.Time{}, false
+	}
+	value, ok = strings.CutSuffix(value, ".tar.gz")
+	if !ok {
+		return time.Time{}, false
+	}
+	createdAt, err := time.Parse("20060102T150405.000000000Z", value)
+	return createdAt, err == nil
+}
 
 type Manifest struct {
 	Version                  string            `json:"version"`

@@ -155,7 +155,7 @@ For acquisitions, qBittorrent and Aldus must see the same completed-download fol
 
 ## Backups and upgrades
 
-Take a verified, checksummed backup before experimenting:
+Create and download a verified backup from **More → System → Data and recovery**. The command line remains available for emergency recovery:
 
 ```sh
 docker compose run --rm aldus backup \

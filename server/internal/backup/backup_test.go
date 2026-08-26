@@ -2,13 +2,58 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/database"
 )
+
+func TestManagerOwnsSafeAdminArchives(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	backupDir := filepath.Join(root, "backups")
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	db, err := database.Open(ctx, filepath.Join(dataDir, "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	manager := NewManager(dataDir, backupDir, "test")
+	if _, err := manager.Create(ctx, auth.User{}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-admin create error = %v", err)
+	}
+	admin := auth.User{Admin: true}
+	created, err := manager.Create(ctx, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archives, err := manager.List(admin)
+	if err != nil || len(archives) != 1 || archives[0].Name != created.Name || archives[0].SizeBytes == 0 {
+		t.Fatalf("archives = %#v, %v", archives, err)
+	}
+	file, _, err := manager.Open(admin, created.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	if _, _, err := manager.Open(admin, "../aldus.db"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unsafe name error = %v", err)
+	}
+	if err := manager.Delete(admin, created.Name); err != nil {
+		t.Fatal(err)
+	}
+	archives, err = manager.List(admin)
+	if err != nil || len(archives) != 0 {
+		t.Fatalf("archives after delete = %#v, %v", archives, err)
+	}
+}
 
 func TestCreateVerifyAndRestore(t *testing.T) {
 	ctx := context.Background()

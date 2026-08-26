@@ -7,18 +7,16 @@ import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
 
 ## Take a backup
 
+Open **More → System → Data and recovery**, then choose **Back up now**. Aldus creates and verifies the archive on the server. Download a copy from the same page and keep it somewhere outside the Aldus host.
+
+The command line remains available when the web application cannot start:
+
 ```sh
 docker compose run --rm aldus backup \
   --archive /backups/aldus-backup-$(date +%Y%m%d).tar.gz
 ```
 
-This runs against the live server — Aldus does not need to be stopped. `--archive` must point somewhere outside the data directory itself (`/backups` in the default Compose setup, mapped to `ALDUS_BACKUP_PATH` on the host); Aldus refuses to write a backup inside the directory it's backing up, and refuses to overwrite a file that already exists at the target path.
-
-<img
-  class="docs-shot"
-  src="/images/admin-backups.png"
-  alt="System administration screen describing the backup command and restore requirements"
-/>
+This runs against the live server — Aldus does not need to be stopped. `--archive` must point somewhere outside the data directory itself (`/backups` is the dedicated backup volume in the default Compose setup); Aldus refuses to write a backup inside the directory it's backing up, and refuses to overwrite a file that already exists at the target path.
 
 ## What actually happens during a backup
 

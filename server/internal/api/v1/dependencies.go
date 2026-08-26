@@ -5,6 +5,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/acquisition"
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/backup"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/collection"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
@@ -26,6 +27,7 @@ type Dependencies struct {
 	AcquisitionPolicies *acquisition.PolicyStore
 	TitleRequests       *acquisition.TitleRequestStore
 	Diagnostics         *diagnostics.Store
+	Backups             *backup.Manager
 	Notifications       *notification.Store
 	TrustProxyHeaders   bool
 	Ready               func(context.Context) error

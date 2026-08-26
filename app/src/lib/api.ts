@@ -14,6 +14,7 @@ import type {
   AcceptImportProposalResponse,
   AlignmentJob,
   AudioChapter,
+  BackupArchive,
   AudioLocator,
   CanonicalPosition,
   Collection,
@@ -189,6 +190,11 @@ export const api = {
   me: () => request<User>('/auth/me'),
   deleteAccount: () => request<void>('/auth/me', { method: 'DELETE' }),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),
+  backups: () => request<BackupArchive[]>('/system/backups'),
+  createBackup: () => request<BackupArchive>('/system/backups', { method: 'POST' }),
+  downloadBackup: (name: string) => download(`/system/backups/${encodeURIComponent(name)}`),
+  deleteBackup: (name: string) =>
+    request<void>(`/system/backups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   logout: async () => {
     const origin = getAPIBaseURL();
     try {

@@ -224,6 +224,15 @@ export interface UpdateUserRequest {
 }
 
 //////////
+// source: backups.go
+
+export interface BackupArchive {
+  name: string;
+  created_at: string;
+  size_bytes: number /* int64 */;
+}
+
+//////////
 // source: catalog.go
 
 export interface Library {

@@ -158,6 +158,7 @@ func main() {
 	titleRequestStore := acquisition.NewTitleRequestStore(db)
 	notificationStore := notification.New(db)
 	diagnosticStore := diagnostics.New(db, cfg.DataDir, cfg.SourceRoots, version, cfg.Environment)
+	backupManager := backup.NewManager(cfg.DataDir, cfg.BackupDir, version)
 	if err := sourceStore.EnsureManagedSources(ctx); err != nil {
 		slog.Error("create managed acquisition sources", "error", err)
 		db.Close()
@@ -183,6 +184,7 @@ func main() {
 			TitleRequests:       titleRequestStore,
 			Notifications:       notificationStore,
 			Diagnostics:         diagnosticStore,
+			Backups:             backupManager,
 			KOReader:            koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins, TrustProxyHeaders: cfg.TrustProxyHeaders,
 			Ready: func(ctx context.Context) error {
 				if err := db.PingContext(ctx); err != nil {

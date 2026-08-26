@@ -40,6 +40,9 @@ func Handler(deps Dependencies) http.Handler {
 		if deps.Diagnostics != nil {
 			registerDiagnosticRoutes(router, deps.Diagnostics)
 		}
+		if deps.Backups != nil {
+			registerBackupRoutes(router, deps.Backups)
+		}
 	})
 	return router
 }

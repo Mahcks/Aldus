@@ -6,7 +6,7 @@ x-aldus-common: &aldus-common
       - aldus-data:/data
       - ${ALDUS_SOURCE_PATH:-./library-media}:/library/media:ro
       - ${ALDUS_DOWNLOAD_PATH:-./downloads}:/downloads:ro
-      - ${ALDUS_BACKUP_PATH:-./backups}:/backups
+      - aldus-backups:/backups
     environment:
       ALDUS_ENV: production
       ALDUS_ADDR: :8080
@@ -14,6 +14,7 @@ x-aldus-common: &aldus-common
       ALDUS_ALLOW_INSECURE_HTTP: ${ALDUS_ALLOW_INSECURE_HTTP:-false}
       ALDUS_SOURCE_ROOTS: /library/media
       ALDUS_DOWNLOAD_INGRESS: /downloads
+      ALDUS_BACKUP_DIR: /backups
       ALDUS_SECURE_COOKIES: ${ALDUS_SECURE_COOKIES:-false}
       ALDUS_MAX_UPLOAD_BYTES: ${ALDUS_MAX_UPLOAD_BYTES:-2147483648}
     healthcheck:
@@ -32,3 +33,4 @@ services:
 
 volumes:
   aldus-data:
+  aldus-backups:

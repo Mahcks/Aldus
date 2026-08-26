@@ -20,16 +20,16 @@ COPY server/ ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /aldus ./cmd/app
 
 FROM alpine:3.22 AS production
-RUN apk add --no-cache curl ffmpeg && addgroup -S aldus && adduser -S -G aldus aldus && mkdir /data /app \
+RUN apk add --no-cache curl ffmpeg && addgroup -S aldus && adduser -S -G aldus aldus && mkdir /data /backups /app \
     && printf '#!/bin/sh\necho "alignment unavailable: run an alignment image" >&2\nexit 1\n' > /usr/local/bin/aldus-alignment-unavailable \
-    && chmod 755 /usr/local/bin/aldus-alignment-unavailable && chown aldus:aldus /data /app
+    && chmod 755 /usr/local/bin/aldus-alignment-unavailable && chown aldus:aldus /data /backups /app
 WORKDIR /app
 COPY --from=server /aldus /usr/local/bin/aldus
 COPY --from=web /src/app/dist ./public
 ENV ALDUS_ALIGNMENT_COMMAND=/usr/local/bin/aldus-alignment-unavailable
 USER aldus
 EXPOSE 8080
-VOLUME ["/data"]
+VOLUME ["/data", "/backups"]
 ENTRYPOINT ["aldus"]
 
 # Standard image with local CPU alignment. Models are fetched at image-build
@@ -37,8 +37,8 @@ ENTRYPOINT ["aldus"]
 FROM python:3.11-slim AS alignment
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system aldus && useradd --system --gid aldus aldus && mkdir /data /app /opt/aldus-models /tmp/matplotlib \
-    && chown aldus:aldus /data /app /opt/aldus-models /tmp/matplotlib
+    && groupadd --system aldus && useradd --system --gid aldus aldus && mkdir /data /backups /app /opt/aldus-models /tmp/matplotlib \
+    && chown aldus:aldus /data /backups /app /opt/aldus-models /tmp/matplotlib
 COPY tools/requirements-alignment.txt /tmp/requirements-alignment.txt
 COPY tools/requirements-alignment-overrides.txt /tmp/requirements-alignment-overrides.txt
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
@@ -61,15 +61,15 @@ ENV ALDUS_ALIGNMENT_COMMAND="python3 /app/tools/whisperx_worker.py" \
     ALDUS_ALIGNMENT_MODEL_DIR=/data/models
 USER aldus
 EXPOSE 8080
-VOLUME ["/data"]
+VOLUME ["/data", "/backups"]
 ENTRYPOINT ["aldus-entrypoint"]
 
 # NVIDIA-accelerated variant of the standard alignment-capable image.
 FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime AS alignment-nvidia
 RUN apt-get update && apt-get install -y --no-install-recommends curl ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system aldus && useradd --system --gid aldus aldus && mkdir /data /app /opt/aldus-models /tmp/matplotlib \
-    && chown aldus:aldus /data /app /opt/aldus-models /tmp/matplotlib
+    && groupadd --system aldus && useradd --system --gid aldus aldus && mkdir /data /backups /app /opt/aldus-models /tmp/matplotlib \
+    && chown aldus:aldus /data /backups /app /opt/aldus-models /tmp/matplotlib
 COPY tools/requirements-alignment.txt /tmp/requirements-alignment.txt
 COPY tools/requirements-alignment-overrides.txt /tmp/requirements-alignment-overrides.txt
 RUN pip install --no-cache-dir torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cu128 \
@@ -89,7 +89,7 @@ ENV HF_HOME=/data/models TORCH_HOME=/data/models/torch NLTK_DATA=/data/models/nl
     ALDUS_ALIGNMENT_ACCELERATOR=cuda
 USER aldus
 EXPOSE 8080
-VOLUME ["/data"]
+VOLUME ["/data", "/backups"]
 ENTRYPOINT ["aldus-entrypoint"]
 
 FROM production AS aldus-base

@@ -60,7 +60,6 @@ Aldus ships as one container that serves the API and the exported web app togeth
 | `ALDUS_PORT` | `8080` | The host port Aldus listens on. Change it if `8080` is already taken on your machine. |
 | `ALDUS_SOURCE_PATH` | `./library-media` | Host folder mounted **read-only** into the container at `/library/media`. This becomes the one path you're allowed to add Sources under — see [Media sources](/admin/sources/). |
 | `ALDUS_DOWNLOAD_PATH` | `./downloads` | Host folder mounted **read-only** into the container at `/downloads`. Only needed for [automatic requests](/admin/acquisitions/) — it must be the same folder your qBittorrent container writes completed downloads to. |
-| `ALDUS_BACKUP_PATH` | `./backups` | Host folder mounted read-write at `/backups`. Where `docker compose run --rm aldus backup` writes archives — see [Backups and upgrades](/admin/backups/). |
 | `ALDUS_SECURE_COOKIES` | `false` | Marks the session cookie `Secure`, so browsers only send it over HTTPS. Set `true` when a reverse proxy terminates HTTPS. Setting it without HTTPS breaks sign-in. |
 | `ALDUS_ALLOW_INSECURE_HTTP` | `false` | Explicit acknowledgement required when production binds beyond loopback without secure cookies. Use only on a trusted private LAN where native clients need private-IP HTTP; never expose that configuration to the internet. |
 | `ALDUS_MAX_UPLOAD_BYTES` | `2147483648` (2 GiB) | The largest file Aldus will accept, both for direct uploads and while scanning a Source. Raise it if you have single audiobook files larger than 2 GiB. |

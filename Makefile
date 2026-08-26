@@ -24,7 +24,7 @@ dev-docs:
 
 dev-server:
 	@LAN_ORIGINS=$$(ip -4 -o addr show scope global | awk '{split($$4, address, "/"); printf ",http://%s:8081", address[1]}'); \
-	cd server && ALDUS_ENV=$${ALDUS_ENV:-development} ALDUS_LOG_LEVEL=$${ALDUS_LOG_LEVEL:-debug} ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081$$LAN_ORIGINS} go run ./cmd/app
+	cd server && ALDUS_ENV=$${ALDUS_ENV:-development} ALDUS_LOG_LEVEL=$${ALDUS_LOG_LEVEL:-debug} ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_BACKUP_DIR=../backups ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081$$LAN_ORIGINS} go run ./cmd/app
 
 web-dev: dev-app
 

@@ -18,6 +18,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/alignment"
 	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/backup"
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
@@ -46,6 +47,30 @@ func TestSystemDiagnosticsAreAuthenticatedAndAdminOnly(t *testing.T) {
 	unauthorized := request(t, handler, "", http.MethodGet, "/system/diagnostics", "")
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthorized diagnostics = %d", unauthorized.Code)
+	}
+}
+
+func TestAdminCanCreateDownloadAndDeleteBackup(t *testing.T) {
+	handler, token := testHandler(t)
+	created := request(t, handler, token, http.MethodPost, "/system/backups", "")
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create backup = %d %s", created.Code, created.Body.String())
+	}
+	var archive contracts.BackupArchive
+	if err := json.Unmarshal(created.Body.Bytes(), &archive); err != nil || archive.Name == "" || archive.SizeBytes == 0 {
+		t.Fatalf("created backup = %#v, %v", archive, err)
+	}
+	listed := request(t, handler, token, http.MethodGet, "/system/backups", "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), archive.Name) {
+		t.Fatalf("list backups = %d %s", listed.Code, listed.Body.String())
+	}
+	downloaded := request(t, handler, token, http.MethodGet, "/system/backups/"+archive.Name, "")
+	if downloaded.Code != http.StatusOK || downloaded.Header().Get("Content-Type") != "application/gzip" {
+		t.Fatalf("download backup = %d %s", downloaded.Code, downloaded.Body.String())
+	}
+	deleted := request(t, handler, token, http.MethodDelete, "/system/backups/"+archive.Name, "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete backup = %d %s", deleted.Code, deleted.Body.String())
 	}
 }
 
@@ -116,6 +141,7 @@ func TestRouteContract(t *testing.T) {
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
 	want = append(want, "GET /media/{mediaID}/chapters")
 	want = append(want, "GET /system/diagnostics")
+	want = append(want, "GET /system/backups", "POST /system/backups", "GET /system/backups/{name}", "DELETE /system/backups/{name}")
 	want = append(want, "DELETE /auth/me")
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
 	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /me/acquisition-tracker", "POST /me/acquisition-tracker/seen", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/retry", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/cancel", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", "POST /libraries/{libraryID}/acquisition-discoveries", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair")
@@ -501,7 +527,7 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test")}), session.Token
+	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test"), Backups: backup.NewManager(filepath.Dir(path), t.TempDir(), "test")}), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {
