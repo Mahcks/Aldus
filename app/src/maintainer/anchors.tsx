@@ -14,7 +14,7 @@ import {
 
 import { EPUBReader, type EPUBReaderHandle, type ReaderCapture } from '../components/EPUBReader';
 import { mediaURL } from '../lib/media';
-import type { Anchor, AnchorFixture, SeekDiagnostic } from '../types/anchors';
+import type { Anchor, AnchorFixture, SeekDiagnostic } from '../maintainer/anchors.types';
 
 const oldStorageKeys = ['aldus:alice:anchors:v1', 'aldus:alice:anchors:v2'];
 const storageKey = 'aldus:alice:anchors:v3';

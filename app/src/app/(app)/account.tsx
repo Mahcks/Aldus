@@ -1,7 +1,8 @@
 import type { Library, ReaderCredential, WorkSummary } from '../../generated/api';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { useServer } from '../../features/auth/ServerProvider';
@@ -25,6 +26,9 @@ import {
 } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
 import { apiBaseURL } from '../../lib/api-base';
+
+const supportURL = 'https://aldus.media/support/';
+const privacyURL = 'https://aldus.media/privacy/';
 
 export default function AccountScreen() {
   const auth = useAuth();
@@ -120,9 +124,22 @@ export default function AccountScreen() {
     }
   }
 
+  async function openExternalURL(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError('Unable to open that page. Email support@aldus.media for help.');
+    }
+  }
+
   const readingSeconds = activity.reduce((total, work) => total + work.reading_seconds, 0);
   const listeningSeconds = activity.reduce((total, work) => total + work.listening_seconds, 0);
   const opdsURL = serverOrigin ? `${serverOrigin}/opds/` : '/opds/';
+  const nativeBuild =
+    Platform.OS === 'ios'
+      ? Constants.platform?.ios?.buildNumber
+      : Constants.platform?.android?.versionCode;
+  const version = `Version ${Constants.expoConfig?.version ?? 'development'}${nativeBuild ? ` (${nativeBuild})` : ''}`;
 
   return (
     <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
@@ -300,6 +317,29 @@ export default function AccountScreen() {
                 Create a credential to connect KOReader or an OPDS reader.
               </EmptyState>
             )}
+          </View>
+        </Section>
+        <Section title="Help and legal">
+          <View className="gap-3">
+            <IconRow
+              icon="support"
+              title="Support"
+              subtitle="Setup help, troubleshooting, and contact information"
+              onPress={() => void openExternalURL(supportURL)}
+            />
+            <IconRow
+              icon="privacy"
+              title="Privacy policy"
+              subtitle="What stays on your device and what a server operator can access"
+              onPress={() => void openExternalURL(privacyURL)}
+            />
+            <View className="gap-1 border-t border-line pt-4">
+              <Text className="text-sm font-sans-semibold text-ink">{version}</Text>
+              <Text className="text-sm leading-5 text-muted">
+                Aldus does not send diagnostics automatically. You choose what to share with
+                support.
+              </Text>
+            </View>
           </View>
         </Section>
         <Section title="Delete account">

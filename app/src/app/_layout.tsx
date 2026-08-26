@@ -25,7 +25,7 @@ function ServerSession() {
 }
 
 export default function Layout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Lora_400Regular,
     Lora_700Bold,
     SourceSerif4_400Regular,
@@ -35,7 +35,7 @@ export default function Layout() {
     Inter_700Bold,
   });
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <ServerProvider>

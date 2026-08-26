@@ -249,6 +249,8 @@ func redactConnectorSecrets(ctx context.Context, path string) error {
 	defer db.Close()
 	if _, err := db.ExecContext(ctx, `PRAGMA secure_delete=ON;
 		UPDATE acquisition_settings SET indexer_api_key='',qbittorrent_password='';
+		UPDATE title_request_formats SET state='awaiting_release',next_search_at=NULL,error='Choose a release again after restoring this backup.' WHERE legacy_acquisition_request_id IN (SELECT id FROM acquisition_requests WHERE fulfillment_state='submitting');
+		UPDATE acquisition_requests SET status='requested',download_state='',fulfillment_state='awaiting_selection',download_error='Choose a release again after restoring this backup.' WHERE fulfillment_state='submitting';
 		UPDATE acquisition_requests SET selected_url=NULL;
 		UPDATE acquisition_results SET download_url='';
 		VACUUM`); err != nil {

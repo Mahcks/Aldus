@@ -300,7 +300,7 @@ func (s *Store) Tracker(ctx context.Context, actor auth.User) (Tracker, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT acquisition_seen_at FROM users WHERE id=? AND disabled=0`, actor.ID).Scan(&seen); err != nil {
 		return Tracker{}, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT r.id,r.library_id,r.requested_by,COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),COALESCE(r.selected_published_at,''),r.created_at,r.updated_at FROM acquisition_requests r WHERE r.requested_by=? AND r.dismissed_at='' ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID)
+	rows, err := s.db.QueryContext(ctx, `SELECT r.id,r.library_id,COALESCE(r.requested_by,''),COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),COALESCE(r.selected_published_at,''),r.created_at,r.updated_at FROM acquisition_requests r WHERE r.requested_by=? AND r.dismissed_at='' ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID)
 	if err != nil {
 		return Tracker{}, fmt.Errorf("list acquisition tracker: %w", err)
 	}
@@ -623,7 +623,7 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET proposal_id=(SELECT proposal_id FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),work_id=(SELECT accepted_work_id FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),fulfillment_state='available',download_state='ready',download_error='',updated_at=? WHERE fulfillment_state IN ('scanning','needs_review') AND EXISTS(SELECT 1 FROM acquisition_import_outcomes o JOIN works w ON w.id=o.accepted_work_id AND w.library_id=acquisition_requests.library_id WHERE o.acquisition_request_id=acquisition_requests.id AND o.state='accepted')`, now); err != nil {
 		return fmt.Errorf("reconcile accepted acquisitions: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) SELECT requested_by,work_id,'want_to_read',? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL ON CONFLICT(user_id,work_id) DO NOTHING`, now); err != nil {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) SELECT requested_by,work_id,'want_to_read',? FROM acquisition_requests WHERE fulfillment_state='available' AND work_id IS NOT NULL AND requested_by IS NOT NULL ON CONFLICT(user_id,work_id) DO NOTHING`, now); err != nil {
 		return fmt.Errorf("save acquired work status: %w", err)
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_pairs SET work_id=(SELECT work_id FROM acquisition_requests WHERE pair_id=acquisition_pairs.id AND work_id IS NOT NULL LIMIT 1),updated_at=? WHERE work_id IS NULL AND EXISTS(SELECT 1 FROM acquisition_requests WHERE pair_id=acquisition_pairs.id AND work_id IS NOT NULL)`, now); err != nil {
@@ -642,7 +642,7 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 		return fmt.Errorf("select acquisition covers: %w", err)
 	}
 	if s.pairHandoff != nil {
-		rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.requested_by,em.id,em.sha256,am.id,am.sha256 FROM acquisition_pairs p JOIN acquisition_requests er ON er.pair_id=p.id AND er.fulfillment_state='available' JOIN import_items ei ON ei.group_id=er.proposal_id AND ei.representation_kind='epub' JOIN media_locations el ON el.source_entry_id=ei.source_entry_id JOIN media em ON em.id=el.media_id AND em.kind='epub' JOIN acquisition_requests ar ON ar.pair_id=p.id AND ar.fulfillment_state='available' JOIN import_items ai ON ai.group_id=ar.proposal_id AND ai.representation_kind='audiobook' JOIN media_locations al ON al.source_entry_id=ai.source_entry_id JOIN media am ON am.id=al.media_id AND am.kind IN ('audio','audiobook') WHERE er.work_id=ar.work_id`)
+		rows, err := s.db.QueryContext(ctx, `SELECT p.id,COALESCE(p.requested_by,''),em.id,em.sha256,am.id,am.sha256 FROM acquisition_pairs p JOIN acquisition_requests er ON er.pair_id=p.id AND er.fulfillment_state='available' JOIN import_items ei ON ei.group_id=er.proposal_id AND ei.representation_kind='epub' JOIN media_locations el ON el.source_entry_id=ei.source_entry_id JOIN media em ON em.id=el.media_id AND em.kind='epub' JOIN acquisition_requests ar ON ar.pair_id=p.id AND ar.fulfillment_state='available' JOIN import_items ai ON ai.group_id=ar.proposal_id AND ai.representation_kind='audiobook' JOIN media_locations al ON al.source_entry_id=ai.source_entry_id JOIN media am ON am.id=al.media_id AND am.kind IN ('audio','audiobook') WHERE er.work_id=ar.work_id`)
 		if err != nil {
 			return fmt.Errorf("find completed acquisition pairs: %w", err)
 		}
@@ -738,7 +738,7 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, sourceID
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]Request, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.id,r.library_id,r.requested_by,COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),
+		SELECT r.id,r.library_id,COALESCE(r.requested_by,''),COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),
 			COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),
 			COALESCE(r.selected_published_at,''),r.created_at,r.updated_at
 		FROM acquisition_requests r
@@ -1062,7 +1062,7 @@ func (s *Store) blacklistRelease(ctx context.Context, acquisitionRequestID, hash
 
 func (s *Store) request(ctx context.Context, id string) (Request, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id,library_id,requested_by,COALESCE(source_id,''),query,status,COALESCE(pair_id,''),download_state,download_error,fulfillment_state,COALESCE(scan_id,''),COALESCE(proposal_id,''),COALESCE(work_id,''),
+		SELECT id,library_id,COALESCE(requested_by,''),COALESCE(source_id,''),query,status,COALESCE(pair_id,''),download_state,download_error,fulfillment_state,COALESCE(scan_id,''),COALESCE(proposal_id,''),COALESCE(work_id,''),
 			COALESCE(selected_title,''),COALESCE(selected_source,''),COALESCE(selected_size,0),COALESCE(selected_published_at,''),created_at,updated_at
 		FROM acquisition_requests WHERE id=?`, id)
 	value, err := scanRequest(row)

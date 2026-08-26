@@ -29,6 +29,13 @@ Do not replace either file by editing this metadata. Intentionally adopting a ne
 
 ## Authoring anchors
 
+The authoring screens are intentionally excluded from the production router. Before starting a maintainer session, copy them into the local route tree; these route copies are Git-ignored:
+
+```sh
+cp app/src/maintainer/anchors.tsx app/src/app/anchors.tsx
+cp app/src/maintainer/onsets.tsx app/src/app/onsets.tsx
+```
+
 1. Run `make fixture`.
 2. Run `make dev`.
 3. Open `http://localhost:8081/anchors` (or append `/anchors` to the URL printed by Expo).
@@ -40,7 +47,7 @@ Do not replace either file by editing this metadata. Intentionally adopting a ne
 9. Choose **Export JSON**, then replace `test-fixtures/alice/anchors.json` with the downloaded file. Review the diff; timestamps are human-authored evidence.
 10. Run `make test`. `TestSavedAliceAnchors` validates every exported anchor in both directions and resolves the final locator to the exact EPUB passage.
 
-The tool is web-only and developer-only. It cannot write the repository directly: exporting and reviewing the JSON is an intentional trust boundary.
+The tool is web-only and developer-only. It cannot write the repository directly: exporting and reviewing the JSON is an intentional trust boundary. Delete the two temporary route copies when the session ends.
 
 ## Authoring audible-onset anchors
 

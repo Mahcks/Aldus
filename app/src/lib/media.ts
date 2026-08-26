@@ -17,3 +17,7 @@ export async function productAudioSource(id: string, _expectedSize?: number): Pr
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   };
 }
+
+export async function downloadProductAudio(id: string, expectedSize?: number) {
+  return productAudioSource(id, expectedSize);
+}

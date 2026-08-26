@@ -30,7 +30,7 @@ const ServerContext = createContext<ServerContextValue | null>(null);
 async function inspectServer(origin: string): Promise<SetupStatus> {
   let response: Response;
   try {
-    response = await fetch(`${origin}/api/setup/status`);
+    response = await fetch(`${origin}/api/setup/status`, { signal: AbortSignal.timeout(10_000) });
   } catch {
     throw new Error('Unable to connect. Check the address, network, and HTTPS certificate.');
   }

@@ -18,8 +18,24 @@ export async function productAudioSource(id: string, expectedSize?: number): Pro
   const origin = getAPIBaseURL();
   const scope = activeStorageScope();
   const destination = new File(Paths.document, scopedMediaFileName(id, 'audio', scope));
-  if (destination.exists && (!expectedSize || destination.size === expectedSize))
+  if (destination.exists && (!expectedSize || destination.size === expectedSize)) {
     return destination.uri;
+  }
+  if (destination.exists) destination.delete();
+  const token = await getToken(origin);
+  return {
+    uri: productMediaURL(id, origin),
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  };
+}
+
+export async function downloadProductAudio(id: string, expectedSize?: number) {
+  const origin = getAPIBaseURL();
+  const scope = activeStorageScope();
+  const destination = new File(Paths.document, scopedMediaFileName(id, 'audio', scope));
+  if (destination.exists && (!expectedSize || destination.size === expectedSize)) {
+    return destination.uri;
+  }
   const pending = downloads.get(destination.uri);
   if (pending) return pending;
   const download = (async () => {

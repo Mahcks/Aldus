@@ -13,7 +13,7 @@ import type {
 import type { MediaChoice } from '../features/consumption';
 import { offlineAudioChapters } from '../features/offline-chapters';
 import { productEPUBSource } from './epub-source';
-import { productAudioSource } from './media';
+import { downloadProductAudio } from './media';
 import { pendingProgress } from './progress-outbox';
 import { parseStoredJSON } from './stored-json';
 import { activeStorageScope, scopedMediaFileName, scopedStorageKey } from './storage-scope';
@@ -141,7 +141,7 @@ export async function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_a
   const scope = activeStorageScope();
   await Promise.all([
     ...value.epubs.map((item) => productEPUBSource(item.id, item.size_bytes)),
-    ...value.audio.map((item) => productAudioSource(item.id, item.size_bytes)),
+    ...value.audio.map((item) => downloadProductAudio(item.id, item.size_bytes)),
   ]);
   const stored = { ...value, downloaded_at: new Date().toISOString() };
   await AsyncStorage.setItem(key(scope, value.work.id), JSON.stringify(stored));

@@ -101,7 +101,7 @@ func (s *TitleRequestStore) Poll(ctx context.Context) error {
 func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 	for range 10 {
 		var requestID, requestedBy, title, format, current, legacyState, diagnosis string
-		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,r.requested_by,r.title,f.format,f.state,a.fulfillment_state,a.download_error FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('submitting','downloading','scanning','needs_review') AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis)
+		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,COALESCE(r.requested_by,''),r.title,f.format,f.state,a.fulfillment_state,a.download_error FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('submitting','downloading','scanning','needs_review') AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -156,7 +156,7 @@ func (s *TitleRequestStore) recoverClaims(ctx context.Context) error {
 	cutoff := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339Nano)
 	for range 10 {
 		var requestID, requestedBy, title, format, legacyState, updated string
-		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,r.requested_by,r.title,f.format,COALESCE(a.fulfillment_state,''),f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state='searching' AND (a.fulfillment_state IN ('submitting','downloading') OR f.updated_at<=?) ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`, cutoff).Scan(&requestID, &requestedBy, &title, &format, &legacyState, &updated)
+		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,COALESCE(r.requested_by,''),r.title,f.format,COALESCE(a.fulfillment_state,''),f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state='searching' AND (a.fulfillment_state IN ('submitting','downloading') OR f.updated_at<=?) ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`, cutoff).Scan(&requestID, &requestedBy, &title, &format, &legacyState, &updated)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -203,7 +203,7 @@ func (s *TitleRequestStore) claimDueFormat(ctx context.Context) (claimedTitleFor
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for {
 		var value claimedTitleFormat
-		err := s.db.QueryRowContext(ctx, `SELECT r.id,r.library_id,r.requested_by,r.title,r.author,f.format,COALESCE(f.source_id,'') FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id WHERE f.state IN ('wanted','awaiting_release') AND (f.next_search_at IS NULL OR f.next_search_at<=?) ORDER BY COALESCE(f.next_search_at,''),f.updated_at,r.id,f.format LIMIT 1`, now).Scan(&value.requestID, &value.libraryID, &value.requestedBy, &value.title, &value.author, &value.format, &value.sourceID)
+		err := s.db.QueryRowContext(ctx, `SELECT r.id,r.library_id,COALESCE(r.requested_by,''),r.title,r.author,f.format,COALESCE(f.source_id,'') FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id WHERE f.state IN ('wanted','awaiting_release') AND (f.next_search_at IS NULL OR f.next_search_at<=?) ORDER BY COALESCE(f.next_search_at,''),f.updated_at,r.id,f.format LIMIT 1`, now).Scan(&value.requestID, &value.libraryID, &value.requestedBy, &value.title, &value.author, &value.format, &value.sourceID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return claimedTitleFormat{}, false, nil
 		}
@@ -651,7 +651,7 @@ func (s *TitleRequestStore) transition(ctx context.Context, actor auth.User, lib
 	}
 	defer tx.Rollback()
 	var requestedBy, title, role, state string
-	err = tx.QueryRowContext(ctx, `SELECT r.requested_by,r.title,COALESCE(m.role,''),f.state FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=?`, format, actor.ID, id, libraryID).Scan(&requestedBy, &title, &role, &state)
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(r.requested_by,''),r.title,COALESCE(m.role,''),f.state FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=?`, format, actor.ID, id, libraryID).Scan(&requestedBy, &title, &role, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -690,7 +690,7 @@ func (s *TitleRequestStore) transition(ctx context.Context, actor auth.User, lib
 	return nil
 }
 
-const titleRequestSelect = `SELECT r.id,r.library_id,r.requested_by,COALESCE(r.work_id,''),r.external_source,r.external_id,r.title,r.author,r.cover_url,r.created_at,r.updated_at FROM title_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=?`
+const titleRequestSelect = `SELECT r.id,r.library_id,COALESCE(r.requested_by,''),COALESCE(r.work_id,''),r.external_source,r.external_id,r.title,r.author,r.cover_url,r.created_at,r.updated_at FROM title_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=?`
 
 func scanTitleRequest(row rowScanner) (TitleRequest, error) {
 	var value TitleRequest
@@ -749,7 +749,7 @@ func appendTitleRequestEvent(ctx context.Context, tx *sql.Tx, id, format, eventT
 }
 
 func (s *TitleRequestStore) notifyRequesterTx(ctx context.Context, tx *sql.Tx, requestID, format, transition, title, requestedBy, stamp string) error {
-	if s.notifications == nil {
+	if s.notifications == nil || requestedBy == "" {
 		return nil
 	}
 	kind, heading := "acquisition."+transition, "Request updated"

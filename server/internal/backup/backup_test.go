@@ -91,7 +91,11 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01','2026-01-01'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at,storage_kind) VALUES('external','library','local','External','/external',1,'2026-01-01','2026-01-01','referenced'); INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,state,created_at,updated_at) VALUES('entry','external','book.epub',1,'2026-01-01','registered','2026-01-01','2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,selected_url,created_at,updated_at) VALUES('request','library','admin','Book','requested',?,'2026-01-01','2026-01-01'); INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,created_at) VALUES('result','request','Book',?,'Indexer',1,'2026-01-01')`, "https://indexer.test/download?apikey="+downloadSecret, "https://indexer.test/file?apikey="+downloadSecret); err != nil {
+	if _, err := db.Exec(`
+		INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,selected_url,fulfillment_state,created_at,updated_at) VALUES('request','library','admin','Book','requested',?,'submitting','2026-01-01','2026-01-01');
+		INSERT INTO acquisition_results(id,request_id,title,download_url,source,size,created_at) VALUES('result','request','Book',?,'Indexer',1,'2026-01-01');
+		INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES('title','library','admin','Book','2026-01-01','2026-01-01');
+		INSERT INTO title_request_formats(title_request_id,format,state,legacy_acquisition_request_id,created_at,updated_at) VALUES('title','ebook','submitting','request','2026-01-01','2026-01-01')`, "https://indexer.test/download?apikey="+downloadSecret, "https://indexer.test/file?apikey="+downloadSecret); err != nil {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(t.TempDir(), "backup.tar.gz")
@@ -156,6 +160,13 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	}
 	if err := restoredDB.QueryRow(`SELECT download_url FROM acquisition_results WHERE id='result'`).Scan(&restoredDownloadURL); err != nil || restoredSelectedURL != "" || restoredDownloadURL != "" {
 		t.Fatalf("restored download URLs = %q %q, %v", restoredSelectedURL, restoredDownloadURL, err)
+	}
+	var requestState, formatState string
+	if err := restoredDB.QueryRow(`SELECT fulfillment_state FROM acquisition_requests WHERE id='request'`).Scan(&requestState); err != nil {
+		t.Fatal(err)
+	}
+	if err := restoredDB.QueryRow(`SELECT state FROM title_request_formats WHERE title_request_id='title' AND format='ebook'`).Scan(&formatState); err != nil || requestState != "awaiting_selection" || formatState != "awaiting_release" {
+		t.Fatalf("restored active submission states = %q %q, %v", requestState, formatState, err)
 	}
 }
 

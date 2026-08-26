@@ -34,6 +34,8 @@ const names = {
   system: 'server-outline',
   backup: 'database-arrow-up-outline',
   report: 'file-document-outline',
+  support: 'lifebuoy',
+  privacy: 'shield-lock-outline',
   settings: 'cog-outline',
   folder: 'folder-outline',
   scan: 'refresh',

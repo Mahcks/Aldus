@@ -10,6 +10,8 @@ data/
 app/.expo/
 app/dist/
 app/node_modules/
+app/src/app/anchors.tsx
+app/src/app/onsets.tsx
 docs/.astro/
 docs/dist/
 docs/node_modules/
@@ -26,5 +28,8 @@ test-fixtures/alice/media/
 library-media/
 artifacts/
 backups/
+downloads/
 .asc/
 scripts/ios-release.env
+*.p12
+*.mobileprovision
