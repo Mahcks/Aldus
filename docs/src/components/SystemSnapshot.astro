@@ -1,0 +1,12 @@
+---
+const rows = [
+  ['Streaming', 'Never wait to seek', 'HTTP byte ranges, even on a twelve-hour audiobook'],
+  ['Position', 'One exact place', 'A canonical segment and offset, shared across every client'],
+  ['Clients', 'Read anywhere', 'Expo apps, the web, and KOReader all watch the same position'],
+  ['Storage', 'Your files stay yours', 'External sources are never modified; imports are verified copies'],
+];
+---
+<div class="system-snapshot">
+  <div class="system-snapshot__header"><h2>One library, several ways in</h2><p>Aldus keeps device adapters at the edge and one progress model at the center.</p></div>
+  <dl>{rows.map(([term, value, description]) => <div><dt>{term}</dt><dd><strong>{value}</strong><span>{description}</span></dd></div>)}</dl>
+</div>

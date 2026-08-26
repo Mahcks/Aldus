@@ -1,7 +1,7 @@
 <div align="center">
 
 <h1>
-  <img src="docs/images/icon.png" alt="Aldus icon" width="40" height="40" align="absmiddle">
+  <img src="docs/public/images/icon.png" alt="Aldus icon" width="40" height="40" align="absmiddle">
   Aldus
 </h1>
 
@@ -18,7 +18,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/home.png" alt="Aldus home screen showing a continue-reading shelf and recently added books" width="850">
+  <img src="docs/public/images/home.png" alt="Aldus home screen showing a continue-reading shelf and recently added books" width="850">
 </p>
 
 <br>
@@ -55,21 +55,21 @@ Prefer to look before you clone anything? [demo.aldus.media](https://demo.aldus.
 <table>
 <tr>
 <td width="50%">
-<img src="docs/images/read-listen-sync.png" alt="Work page showing a synced ebook and audiobook with a shared progress bar">
+<img src="docs/public/images/read-listen-sync.png" alt="Work page showing a synced ebook and audiobook with a shared progress bar">
 <p align="center"><sub>One title, two formats, one position kept in sync</sub></p>
 </td>
 <td width="50%">
-<img src="docs/images/metadata-enrichment.png" alt="Work page showing a description and subject tags pulled from Open Library">
+<img src="docs/public/images/metadata-enrichment.png" alt="Work page showing a description and subject tags pulled from Open Library">
 <p align="center"><sub>Missing description and genre tags, filled in from Open Library</sub></p>
 </td>
 </tr>
 <tr>
 <td width="50%">
-<img src="docs/images/discover.png" alt="Discover grid with sort and availability filters">
+<img src="docs/public/images/discover.png" alt="Discover grid with sort and availability filters">
 <p align="center"><sub>Browse and filter by what's actually available to read or listen to</sub></p>
 </td>
 <td width="50%">
-<img src="docs/images/manage-cover.png" alt="Cover management screen with generated cover design controls">
+<img src="docs/public/images/manage-cover.png" alt="Cover management screen with generated cover design controls">
 <p align="center"><sub>Generated cover art with adjustable design, position, and color when no artwork exists</sub></p>
 </td>
 </tr>
@@ -124,7 +124,7 @@ Indexer names, file sizes, and release strings never surface to someone who just
 <br>
 
 <p align="center">
-  <img src="docs/images/library.png" alt="Library admin view with member and source management" width="850">
+  <img src="docs/public/images/library.png" alt="Aldus library administration screen" width="850">
 </p>
 <p align="center"><sub>Full control over sources, members, and acquisition policy per library</sub></p>
 
@@ -255,5 +255,5 @@ The repository stays small on purpose: `app/` is the universal Expo client, `ser
 The ambition is a complete, calm home for the books you own — one that treats reading and listening as one continuous act instead of two apps that happen to share a title. Acquisition, alignment, and the household permission model are the parts still hardening the fastest, so expect them to change shape a little before things settle. Aldus is public enough to use for real, not yet old enough to have found all its own edges — if you run into something that doesn't add up, that report is exactly what's useful right now.
 
 <p align="center">
-  <img src="docs/images/demo.png" alt="Aldus public demo landing page" width="850">
+  <img src="docs/public/images/demo.png" alt="Aldus public demo landing page" width="850">
 </p>

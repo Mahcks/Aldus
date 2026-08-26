@@ -1,0 +1,108 @@
+---
+title: Aldus — one exact place for your books
+description: A self-hosted home for the ebooks and audiobooks you own, with one exact reading position shared between them. Free, self-hosted, and yours to run.
+template: splash
+hero:
+  title: Your books, one exact place.
+  tagline: Read an ebook, continue in audio, and return to the same sentence on any supported device.
+  image:
+    file: ../../../public/images/icon.png
+  actions:
+    - text: Start reading
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: Run your server
+      link: /admin/install/
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkButton } from "@astrojs/starlight/components";
+import AudioPlayerPreview from "../../components/AudioPlayerPreview";
+import SystemSnapshot from "../../components/SystemSnapshot.astro";
+
+<p className="hero-trust">
+  Free and open source · Self-hosted on your own server · No subscription,
+  ever
+</p>
+
+<AudioPlayerPreview client:load />
+
+## Why people switch to Aldus
+
+<CardGrid>
+  <Card title="Never lose your place" icon="approve-check-circle">
+    Close the ebook on your commute, open the audiobook that night, and
+    resume at the same sentence — not an approximate percentage.
+  </Card>
+  <Card title="Own it, don't rent it" icon="seti:lock">
+    Your books live on your server. No account with a streaming company, no
+    subscription, nothing that disappears if a company shuts down.
+  </Card>
+  <Card title="Ask for what's missing" icon="magnifier">
+    Request a format you don't have. Aldus searches, downloads, verifies, and
+    imports it under rules you set — optional, and entirely under your
+    control.
+  </Card>
+</CardGrid>
+
+## See it in your library
+
+<img
+  class="docs-shot"
+  src="/images/read-listen-sync.png"
+  alt="Aldus work page showing ebook and audiobook editions sharing one synchronized position"
+/>
+
+<div className="shot-grid">
+  <figure>
+    <img
+      class="docs-shot"
+      src="/images/home.png"
+      alt="Aldus home screen with a continue-reading shelf and recently added books"
+    />
+    <figcaption>Pick up where you left off, across every format.</figcaption>
+  </figure>
+  <figure>
+    <img
+      class="docs-shot"
+      src="/images/metadata-enrichment.png"
+      alt="Aldus work page showing a description and genre tags pulled from Open Library"
+    />
+    <figcaption>
+      Missing details fill themselves in from Open Library.
+    </figcaption>
+  </figure>
+</div>
+
+<SystemSnapshot />
+
+## Get started
+
+<CardGrid>
+  <Card title="Read and listen" icon="open-book">
+    Learn the iPhone, iPad, Android, web, offline, and exact synchronization
+    workflows.
+  </Card>
+  <Card title="Connect an e-reader" icon="seti:config">
+    Create KOReader credentials and browse your library through OPDS.
+  </Card>
+  <Card title="Run Aldus" icon="setting">
+    Install the server, add owned media, configure a household, and keep it
+    backed up.
+  </Card>
+</CardGrid>
+
+<div className="closing-cta">
+  <h2>Free, self-hosted, and yours to run.</h2>
+  <p>No account required to try it, and nothing to lose if you stop.</p>
+  <div className="closing-cta__actions">
+    <LinkButton href="/getting-started/" icon="right-arrow">
+      Start reading
+    </LinkButton>
+    <LinkButton href="/admin/install/" icon="external" variant="minimal">
+      Run your server
+    </LinkButton>
+  </div>
+</div>

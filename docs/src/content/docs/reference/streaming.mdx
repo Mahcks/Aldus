@@ -1,0 +1,32 @@
+---
+title: Streaming architecture
+description: See the Go byte-range handler and Expo playback request together.
+---
+
+import DualStackCode from "../../../components/DualStackCode";
+
+export const goCode = `func media(w http.ResponseWriter, r *http.Request) {
+    file, meta, err := store.Open(r.Context(), actor(r), mediaID(r))
+    if err != nil {
+        http.Error(w, "media unavailable", http.StatusNotFound)
+        return
+    }
+    defer file.Close()
+    http.ServeContent(w, r, meta.Name, meta.Modified, file)
+}`;
+
+export const typescriptCode = `export async function playableMediaURL(mediaID: string) {
+  const token = await authToken();
+  return {
+    uri: \`${"${apiBaseURL}"}/api/media/${"${mediaID}"}\`,
+    headers: { Authorization: \`Bearer ${"${token}"}\` },
+  };
+}`;
+
+The Go server owns authorization and byte-range behavior. The Expo client supplies the authenticated media URL to the native audio player.
+
+<DualStackCode client:visible goCode={goCode} typescriptCode={typescriptCode} />
+
+## Why byte ranges matter
+
+Native players seek by requesting only the required part of a large audiobook. `http.ServeContent` implements standard range responses without a custom streaming abstraction.

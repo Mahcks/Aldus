@@ -10,11 +10,15 @@ data/
 app/.expo/
 app/dist/
 app/node_modules/
+docs/.astro/
+docs/dist/
+docs/node_modules/
 app/ios/
 app/android/
 server/aldus
 server/app
 AGENTS.md
+PRODUCT.md
 plans/
 __pycache__/
 *.py[cod]

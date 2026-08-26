@@ -1,0 +1,11 @@
+---
+import Default from '@astrojs/starlight/components/ThemeProvider.astro';
+---
+
+<script is:inline>
+  if (!localStorage.getItem('starlight-theme')) {
+    localStorage.setItem('starlight-theme', 'dark');
+  }
+</script>
+
+<Default />

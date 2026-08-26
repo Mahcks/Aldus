@@ -1,0 +1,104 @@
+@layer base, starlight, theme, components, utilities;
+@import "@astrojs/starlight-tailwind";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./components.css" layer(components);
+
+@theme {
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --color-accent-50: oklch(96% 0.025 42);
+  --color-accent-100: oklch(92% 0.045 42);
+  --color-accent-200: oklch(85% 0.075 42);
+  --color-accent-300: oklch(76% 0.11 42);
+  --color-accent-400: oklch(67% 0.14 42);
+  --color-accent-500: oklch(58% 0.15 42);
+  --color-accent-600: oklch(50% 0.135 42);
+  --color-accent-700: oklch(42% 0.11 42);
+  --color-accent-800: oklch(34% 0.08 42);
+  --color-accent-900: oklch(27% 0.055 42);
+  --color-accent-950: oklch(20% 0.025 42);
+  --color-gray-50: oklch(97% 0.007 68);
+  --color-gray-100: oklch(93% 0.008 68);
+  --color-gray-200: oklch(86% 0.009 68);
+  --color-gray-300: oklch(75% 0.01 68);
+  --color-gray-400: oklch(64% 0.011 68);
+  --color-gray-500: oklch(53% 0.011 68);
+  --color-gray-600: oklch(43% 0.012 68);
+  --color-gray-700: oklch(34% 0.012 68);
+  --color-gray-800: oklch(25% 0.011 68);
+  --color-gray-900: oklch(18% 0.01 68);
+  --color-gray-950: oklch(12% 0.008 68);
+}
+
+:root {
+  --aldus-ink: oklch(13% 0.009 58);
+  --aldus-panel: oklch(17% 0.011 58);
+  --aldus-raised: oklch(21% 0.012 58);
+  --aldus-line: oklch(31% 0.013 58);
+  --aldus-paper: oklch(93% 0.018 78);
+  --aldus-muted: oklch(72% 0.018 70);
+  --aldus-accent: oklch(59% 0.15 42);
+  --aldus-accent-strong: oklch(68% 0.14 42);
+  --aldus-focus: oklch(76% 0.13 47);
+  --sl-content-width: 52rem;
+  --sl-text-5xl: 2.5rem;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-bg: var(--aldus-ink);
+  --sl-color-bg-nav: oklch(14.5% 0.01 58);
+  --sl-color-bg-sidebar: oklch(15.5% 0.011 58);
+  --sl-color-hairline-light: var(--aldus-line);
+  --sl-color-hairline: oklch(27% 0.012 58);
+  --sl-color-text: var(--aldus-paper);
+  --sl-color-text-accent: var(--aldus-accent-strong);
+  --sl-color-accent: var(--aldus-accent-strong);
+  --sl-color-accent-high: oklch(88% 0.055 58);
+  --sl-color-accent-low: oklch(25% 0.055 42);
+}
+
+body {
+  background: var(--sl-color-bg);
+  font-kerning: normal;
+}
+h1,
+h2,
+h3 {
+  color: var(--aldus-paper);
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+}
+.sl-markdown-content p,
+.sl-markdown-content li {
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+.site-title {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -0.015em;
+}
+:focus-visible {
+  outline: 2px solid var(--aldus-focus);
+  outline-offset: 3px;
+}
+.docs-shot {
+  border: 1px solid var(--aldus-line);
+  border-radius: 10px;
+  display: block;
+  margin-block: 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

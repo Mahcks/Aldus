@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
+.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -18,6 +18,9 @@ dev:
 
 dev-app:
 	cd app && EXPO_PUBLIC_API_URL=$${EXPO_PUBLIC_API_URL:-http://localhost:8080} bun run start
+
+dev-docs:
+	cd docs && bun run dev
 
 dev-server:
 	@LAN_ORIGINS=$$(ip -4 -o addr show scope global | awk '{split($$4, address, "/"); printf ",http://%s:8081", address[1]}'); \
