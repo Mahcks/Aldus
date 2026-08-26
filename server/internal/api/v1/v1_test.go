@@ -49,6 +49,54 @@ func TestSystemDiagnosticsAreAuthenticatedAndAdminOnly(t *testing.T) {
 	}
 }
 
+func TestDeleteCurrentAccount(t *testing.T) {
+	handler, token := testHandler(t)
+	created := request(t, handler, token, http.MethodPost, "/users", `{"username":"other-admin","password":"a-secure-test-password","display_name":"Other Admin","admin":true}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create second admin = %d %s", created.Code, created.Body.String())
+	}
+	deleted := request(t, handler, token, http.MethodDelete, "/auth/me", `{"user_id":"someone-else"}`)
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete current account = %d %s", deleted.Code, deleted.Body.String())
+	}
+	invalid := request(t, handler, token, http.MethodGet, "/auth/me", "")
+	if invalid.Code != http.StatusUnauthorized {
+		t.Fatalf("deleted session = %d %s", invalid.Code, invalid.Body.String())
+	}
+	unauthorized := request(t, handler, "", http.MethodDelete, "/auth/me", "")
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized deletion = %d", unauthorized.Code)
+	}
+}
+
+func TestDeleteGuestAccount(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "aldus.db")
+	db, err := database.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := position.New(db).SeedFixture(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := auth.New(db, auth.Options{DemoLibraryID: "fixture-library"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := accounts.Setup(context.Background(), auth.Credentials{Username: "admin", Password: "a-secure-test-password"}); err != nil {
+		t.Fatal(err)
+	}
+	guest, err := accounts.CreateDemoSession(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := Handler(Dependencies{Auth: accounts, Catalog: catalog.New(db), Position: position.New(db), Acquisitions: acquisition.NewStore(db, nil)})
+	deleted := request(t, handler, guest.Token, http.MethodDelete, "/auth/me", "")
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("delete guest = %d %s", deleted.Code, deleted.Body.String())
+	}
+}
+
 func TestRouteContract(t *testing.T) {
 	handler, _ := testHandler(t)
 	var got []string
@@ -68,6 +116,7 @@ func TestRouteContract(t *testing.T) {
 	want = append(want, "GET /covers/{coverID}", "GET /media/{mediaID}/cover", "GET /works/{workID}/covers", "POST /works/{workID}/cover", "PATCH /works/{workID}/cover/settings", "DELETE /works/{workID}/covers/{coverID}")
 	want = append(want, "GET /media/{mediaID}/chapters")
 	want = append(want, "GET /system/diagnostics")
+	want = append(want, "DELETE /auth/me")
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
 	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /me/acquisition-tracker", "POST /me/acquisition-tracker/seen", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/retry", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/cancel", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", "POST /libraries/{libraryID}/acquisition-discoveries", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair")
 	want = append(want, "GET /search/titles")

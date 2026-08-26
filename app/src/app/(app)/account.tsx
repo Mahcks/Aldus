@@ -39,6 +39,8 @@ export default function AccountScreen() {
   const [serverOrigin, setServerOrigin] = useState(apiBaseURL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [confirmingAccountDeletion, setConfirmingAccountDeletion] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     let canceled = false;
@@ -101,6 +103,20 @@ export default function AccountScreen() {
       setError(errorMessage(value));
     } finally {
       setSavingCredential(false);
+    }
+  }
+
+  async function deleteAccount() {
+    setDeletingAccount(true);
+    setError('');
+    try {
+      await auth.deleteAccount();
+      router.replace('/connect');
+    } catch (value) {
+      setError(errorMessage(value));
+      setConfirmingAccountDeletion(false);
+    } finally {
+      setDeletingAccount(false);
     }
   }
 
@@ -286,7 +302,31 @@ export default function AccountScreen() {
             )}
           </View>
         </Section>
+        <Section title="Delete account">
+          <View className="items-start gap-4 border-y border-line py-5">
+            <Notice danger>
+              This permanently removes your account, reading activity, preferences, credentials,
+              collections, and offline data from this device. Shared books, server media, and
+              anonymized request history remain.
+            </Notice>
+            <Button
+              label="Delete account"
+              kind="danger"
+              onPress={() => setConfirmingAccountDeletion(true)}
+            />
+          </View>
+        </Section>
       </View>
+      <ConfirmDialog
+        visible={confirmingAccountDeletion}
+        title="Permanently delete your account?"
+        description="This cannot be undone. Your account and personal reading data will be removed from this server, along with offline data stored on this device."
+        confirmLabel="Delete account"
+        danger
+        busy={deletingAccount}
+        onClose={() => setConfirmingAccountDeletion(false)}
+        onConfirm={() => void deleteAccount()}
+      />
       <ConfirmDialog
         visible={Boolean(deletingCredential)}
         title="Revoke reader credential?"

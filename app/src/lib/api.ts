@@ -187,6 +187,7 @@ export const api = {
     }).then((session) => acceptSession(session, origin));
   },
   me: () => request<User>('/auth/me'),
+  deleteAccount: () => request<void>('/auth/me', { method: 'DELETE' }),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),
   logout: async () => {
     const origin = getAPIBaseURL();

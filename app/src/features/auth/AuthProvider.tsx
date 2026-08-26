@@ -15,6 +15,7 @@ import {
 } from 'react';
 import { AppState, Platform } from 'react-native';
 import { clearStorageScope, prepareStorageScope, setStorageUserID } from '../../lib/storage-scope';
+import { deleteAccountAndClearState } from './account-deletion';
 import { useServer } from './ServerProvider';
 
 type AuthState = {
@@ -28,6 +29,7 @@ type AuthContextValue = AuthState & {
   refresh: () => Promise<void>;
   signedIn: (user: User) => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -194,6 +196,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
             });
           }
         }
+      },
+      deleteAccount: async () => {
+        const origin = getAPIBaseURL();
+        const user = state.user;
+        if (!user) return;
+        await deleteAccountAndClearState(
+          api.deleteAccount,
+          [
+            () => clearToken(origin),
+            () => rememberUser(null, origin),
+            () => clearStorageScope(origin, user.id),
+          ],
+          () => {
+            setStorageUserID('');
+            setState({
+              loading: false,
+              setupAvailable: false,
+              demoAvailable: state.demoAvailable || Boolean(user.demo_expires_at),
+              user: null,
+              error: null,
+            });
+          },
+        );
       },
     }),
     [state, refresh],

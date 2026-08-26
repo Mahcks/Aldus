@@ -11,7 +11,7 @@ import (
 
 var (
 	ErrForbidden     = errors.New("authentication operation forbidden")
-	ErrLastAdmin     = errors.New("cannot disable last enabled administrator")
+	ErrLastAdmin     = errors.New("cannot remove last enabled administrator")
 	ErrUsernameTaken = errors.New("username already exists")
 )
 
@@ -48,6 +48,44 @@ func (s *Store) Users(ctx context.Context, actor User, limit, offset int) ([]Use
 		out = append(out, u)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) DeleteCurrentUser(ctx context.Context, actor User) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin account deletion: %w", err)
+	}
+	defer tx.Rollback()
+	var admin, disabled int
+	if err := tx.QueryRowContext(ctx, `SELECT is_admin,disabled FROM users WHERE id=?`, actor.ID).Scan(&admin, &disabled); errors.Is(err, sql.ErrNoRows) {
+		return ErrUnauthenticated
+	} else if err != nil {
+		return fmt.Errorf("find account for deletion: %w", err)
+	}
+	if admin != 0 && disabled == 0 {
+		var enabled int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE is_admin=1 AND disabled=0`).Scan(&enabled); err != nil {
+			return fmt.Errorf("count enabled administrators: %w", err)
+		}
+		if enabled <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id=?`, actor.ID)
+	if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check account deletion: %w", err)
+	}
+	if deleted != 1 {
+		return ErrUnauthenticated
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit account deletion: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) CreateUser(ctx context.Context, actor User, credentials Credentials, admin bool) (User, error) {

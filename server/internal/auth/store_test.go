@@ -293,3 +293,73 @@ func TestAdminUserManagement(t *testing.T) {
 		t.Fatalf("users = %#v, %v", users, err)
 	}
 }
+
+func TestDeleteCurrentUser(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{DemoLibraryID: "library"})
+	admin, err := store.Setup(ctx, Credentials{Username: "admin", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteCurrentUser(ctx, admin.User); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("delete last admin = %v", err)
+	}
+	secondAdmin, err := store.CreateUser(ctx, admin.User, Credentials{Username: "second-admin", Password: testPassword}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader", Password: testPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := formatTime(time.Now().UTC())
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library',?,?)`, []any{now, now}},
+		{`INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('library',?,'reader',?)`, []any{reader.ID, now}},
+		{`INSERT INTO reader_credentials(id,user_id,label,secret_hash,sync_key_hash,created_at) VALUES('credential',?,'Reader','secret','sync',?)`, []any{reader.ID, now}},
+		{`INSERT INTO collections(id,user_id,title,created_at,updated_at) VALUES('collection',?,'Favorites',?,?)`, []any{reader.ID, now, now}},
+		{`INSERT INTO acquisition_pairs(id,library_id,requested_by,query,created_at,updated_at) VALUES('pair','library',?,'Book',?,?)`, []any{reader.ID, now, now}},
+		{`INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,created_at,updated_at,pair_id) VALUES('request','library',?,'Book','requested',?,?,'pair')`, []any{reader.ID, now, now}},
+		{`INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES('title','library',?,'Book',?,?)`, []any{reader.ID, now, now}},
+	}
+	for _, statement := range statements {
+		if _, err := store.db.ExecContext(ctx, statement.query, statement.args...); err != nil {
+			t.Fatalf("fixture %q: %v", statement.query, err)
+		}
+	}
+	readerSession, err := store.Login(ctx, Credentials{Username: "reader", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteCurrentUser(ctx, reader); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Authenticate(ctx, readerSession.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("deleted session authentication = %v", err)
+	}
+	for _, table := range []string{"users", "library_members", "reader_credentials", "collections"} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE `+map[string]string{"users": "id", "library_members": "user_id", "reader_credentials": "user_id", "collections": "user_id"}[table]+`=?`, reader.ID).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s count=%d, %v", table, count, err)
+		}
+	}
+	for _, table := range []string{"acquisition_pairs", "acquisition_requests", "title_requests"} {
+		var anonymous int
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE requested_by IS NULL`).Scan(&anonymous); err != nil || anonymous != 1 {
+			t.Fatalf("%s anonymous=%d, %v", table, anonymous, err)
+		}
+	}
+	if err := store.DeleteCurrentUser(ctx, secondAdmin); err != nil {
+		t.Fatalf("delete non-last admin: %v", err)
+	}
+	guest, err := store.CreateDemoSession(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteCurrentUser(ctx, guest.User); err != nil {
+		t.Fatalf("delete guest: %v", err)
+	}
+}

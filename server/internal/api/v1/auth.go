@@ -48,6 +48,29 @@ func redeemDemoPairing(store *auth.Store) http.HandlerFunc {
 func registerSessionRoutes(router chi.Router, store *auth.Store) {
 	router.Post("/auth/logout", logout(store))
 	router.Get("/auth/me", me)
+	router.Delete("/auth/me", deleteCurrentUser(store))
+}
+
+func deleteCurrentUser(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		err := store.DeleteCurrentUser(r.Context(), user)
+		switch {
+		case errors.Is(err, auth.ErrLastAdmin):
+			http.Error(w, "Create another administrator before deleting this account.", http.StatusConflict)
+		case errors.Is(err, auth.ErrUnauthenticated):
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		case err != nil:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		default:
+			store.ClearCookie(w)
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}
 }
 
 func setupStatus(store *auth.Store) http.HandlerFunc {

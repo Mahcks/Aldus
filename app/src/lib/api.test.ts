@@ -57,6 +57,19 @@ describe('API transport', () => {
     );
   });
 
+  it('deletes only the authenticated account', async () => {
+    let url = '';
+    let method = '';
+    globalThis.fetch = (async (input, init) => {
+      url = String(input);
+      method = init?.method || '';
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+    await api.deleteAccount();
+    expect(url).toEndWith('/api/auth/me');
+    expect(method).toBe('DELETE');
+  });
+
   it('includes the server request reference in unexpected errors', async () => {
     globalThis.fetch = (async () =>
       new Response('internal server error\n', {
