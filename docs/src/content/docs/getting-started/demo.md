@@ -28,10 +28,11 @@ The demo is stocked with complete public-domain classics — *Pride and Prejudic
 A guest visit is temporary by design:
 
 - Your reading and listening progress, and anything you add to a collection, are private to that visit.
-- The visit expires **24 hours** after it's created. After that, the guest account and everything tied to it are gone.
-- There's no email, password, or personal information attached to a guest account — there's nothing to delete because nothing identifying was collected in the first place.
+- The visit expires **24 hours** after it's created. Expired guest records and their personal activity are removed during automated cleanup, which may happen after access expires rather than at the exact 24-hour mark.
+- There's no email or password attached to a guest account. The demo still processes a random guest identifier, activity, progress, and operational request logs while the visit exists.
+- Operational request logs used to run, troubleshoot, and protect the demo are retained for 30 days. See the [privacy policy](/privacy/) for details.
 
-Because guest data doesn't persist, don't use the public demo as a place to keep anything you care about, and don't upload personal media to it — it's a shared, developer-operated instance for trying Aldus, not a free library host.
+Because guest account data is temporary, don't use the public demo as a place to keep anything you care about, and don't upload personal media to it — it's a shared, developer-operated instance for trying Aldus, not a free library host.
 
 ## Limits
 
