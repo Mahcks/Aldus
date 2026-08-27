@@ -87,7 +87,7 @@ export function BookCover({
   title: string;
   author?: string;
   compact?: boolean;
-  size?: 'mini' | 'small' | 'tile' | 'continue' | 'hero';
+  size?: 'mini' | 'small' | 'grid' | 'tile' | 'continue' | 'hero';
   coverURL?: string;
 } & CoverPresentation) {
   const [failedURL, setFailedURL] = useState('');
@@ -96,6 +96,7 @@ export function BookCover({
   const sizeClass = {
     mini: 'h-20 w-14',
     small: 'h-[218px] w-[148px]',
+    grid: 'w-full',
     tile: 'h-[270px] w-[184px]',
     continue: 'h-[156px] w-[106px]',
     hero: 'h-[300px] w-[204px]',
@@ -115,6 +116,7 @@ export function BookCover({
   const titleFit = {
     hero: { threshold: 20, base: 'text-2xl leading-7', long: 'text-xl leading-6' },
     tile: { threshold: 18, base: 'text-xl leading-6', long: 'text-lg leading-5' },
+    grid: { threshold: 12, base: 'text-lg leading-5', long: 'text-base leading-4' },
     small: { threshold: 10, base: 'text-lg leading-5', long: 'text-base leading-4' },
     continue: { threshold: 12, base: 'text-base leading-5', long: 'text-sm leading-4' },
     mini: { threshold: Infinity, base: 'text-[10px] leading-3', long: 'text-[10px] leading-3' },
@@ -142,6 +144,7 @@ export function BookCover({
     <View
       accessibilityLabel={`Cover for ${title}`}
       className={`relative shrink-0 overflow-hidden rounded-control shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
+      style={resolvedSize === 'grid' ? { aspectRatio: 148 / 218 } : undefined}
     >
       {showImage ? (
         <ExpoImage
@@ -266,7 +269,6 @@ type WorkPresentationProps = {
   coverPresentation?: CoverPresentation;
   availability?: WorkAvailability;
   progress?: string;
-  context?: string;
   narrow?: boolean;
   onPress: () => void;
 };
@@ -279,7 +281,6 @@ export function WorkCard({
   coverPresentation,
   availability,
   progress,
-  context,
   narrow,
   onPress,
 }: WorkPresentationProps) {
@@ -291,7 +292,7 @@ export function WorkCard({
   const handlePressIn = () => setPressed(true);
   const handlePressOut = () => setPressed(false);
 
-  const widthClass = narrow ? 'w-[148px]' : 'w-[184px]';
+  const widthClass = narrow ? 'w-full' : 'w-[184px]';
   const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
@@ -311,7 +312,7 @@ export function WorkCard({
           author={author}
           coverURL={coverURL}
           {...coverPresentation}
-          size={narrow ? 'small' : 'tile'}
+          size={narrow ? 'grid' : 'tile'}
         />
         {progress ? (
           <View
@@ -324,6 +325,7 @@ export function WorkCard({
             </Text>
           </View>
         ) : null}
+        {availability ? <AvailabilityBadge value={availability} /> : null}
       </View>
       <Text numberOfLines={2} className="mt-1 font-editorial-bold text-base leading-5 text-ink">
         {title}
@@ -331,8 +333,6 @@ export function WorkCard({
       <Text numberOfLines={1} className="text-sm leading-[18px] text-muted">
         {author || 'Unknown author'}
       </Text>
-      {context ? <Text className="text-[11px] font-sans-bold text-muted">{context}</Text> : null}
-      {availability ? <AvailabilityIcons value={availability} /> : null}
     </Pressable>
   );
 }
@@ -348,7 +348,6 @@ export function WorkRow({
   coverPresentation,
   availability,
   progress,
-  context,
   onPress,
   action,
 }: WorkPresentationProps & { action?: ReactNode }) {
@@ -391,9 +390,6 @@ export function WorkRow({
           <Text numberOfLines={1} className="text-sm text-muted">
             {author || 'Unknown author'}
           </Text>
-          {context ? (
-            <Text className="text-[11px] font-sans-bold text-muted">{context}</Text>
-          ) : null}
           {progress ? (
             <Text numberOfLines={1} className="text-xs font-sans-bold text-accent">
               {progress}
@@ -414,7 +410,7 @@ export type WorkAvailability = { readable: boolean; listenable: boolean; synchro
  * available (a ready alignment requires both), so a synced Work collapses to
  * one "Read & Listen" chip instead of three chips repeating the same fact.
  */
-export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
+function availabilityItems(value: WorkAvailability) {
   const items: { enabled: boolean; icon: AppIconName; label: string; short: string }[] =
     value.synchronized
       ? [
@@ -429,7 +425,12 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
           { enabled: value.readable, icon: 'read', label: 'Readable', short: 'Read' },
           { enabled: value.listenable, icon: 'listen', label: 'Listenable', short: 'Listen' },
         ];
-  const available = items.filter((item) => item.enabled);
+  return items.filter((item) => item.enabled);
+}
+
+/** Icon + label row, for list rows (`WorkRow`) that have the horizontal room for it. */
+export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
+  const available = availabilityItems(value);
   return (
     <View
       accessibilityLabel={available.map((item) => item.label).join(', ')}
@@ -440,6 +441,38 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
           <AppIcon name={item.icon} size={15} color={colors.muted} />
           <Text className="text-[11px] font-sans-semibold text-muted">{item.short}</Text>
         </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Icon-only badge overlaid on the cover itself (bottom-right), for grid
+ * cards (`WorkCard`) — an icon+label row under the cover is one more line
+ * stacked on top of title/author, and adds up fast across a whole shelf of
+ * cards. The progress ribbon already established the cover as fair game for
+ * status (top-left); this uses the opposite corner so the two never
+ * collide. A dark scrim behind the icon(s) keeps them legible against any
+ * cover art, light or dark — unlike the muted-gray icon color `AvailabilityIcons`
+ * uses against the app's own paper background.
+ *
+ * Hidden entirely for plain read-only Works — in most libraries that's the
+ * overwhelming majority, so stamping every cover with the same "read" icon
+ * added zero information and just read as visual noise across a shelf. The
+ * badge now only appears for the exceptional case: a Work that also has
+ * (or only has) audio.
+ */
+function AvailabilityBadge({ value }: { value: WorkAvailability }) {
+  if (!value.listenable && !value.synchronized) return null;
+  const available = availabilityItems(value);
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="absolute bottom-1.5 right-1.5 flex-row items-center gap-1 rounded-pill bg-ink/70 px-1.5 py-1"
+    >
+      {available.map((item) => (
+        <AppIcon key={item.label} name={item.icon} size={13} color={colors.paper} />
       ))}
     </View>
   );

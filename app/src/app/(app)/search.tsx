@@ -500,11 +500,7 @@ export default function SearchScreen() {
           </EmptyState>
         ) : (
           <View className="items-start gap-6">
-            <WorkGrid
-              works={browseWorks}
-              showLibrary
-              onOpen={(work) => router.push(`/work/${work.id}`)}
-            />
+            <WorkGrid works={browseWorks} onOpen={(work) => router.push(`/work/${work.id}`)} />
             {browseHasMore ? (
               <Button
                 label={browseLoadingMore ? 'Loading…' : 'Load more'}

@@ -8,15 +8,10 @@ import type {
 } from '../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../../features/auth/AuthProvider';
-import {
-  AvailabilityIcons,
-  Badge,
-  BookCover,
-  coverPresentation,
-} from '../../../features/bookshelf';
+import { Badge, BookCover, coverPresentation } from '../../../features/bookshelf';
 import {
   choices,
   defaultPair,
@@ -381,6 +376,115 @@ export default function WorkScreen() {
     }
   }
 
+  const cover = (
+    <BookCover
+      title={work.title}
+      author={work.author}
+      coverURL={work.cover_url}
+      size={narrow ? 'continue' : 'hero'}
+      {...coverPresentation(work)}
+    />
+  );
+  const identity = (
+    <View className={narrow ? 'min-w-0 flex-1 gap-2' : 'gap-3'}>
+      <Text className="text-xs font-sans-bold uppercase tracking-wide text-accent">
+        {formatLabel}
+      </Text>
+      <Text
+        accessibilityRole="header"
+        numberOfLines={3}
+        className={`${narrow ? 'text-2xl leading-8' : 'text-4xl leading-[44px]'} font-editorial-bold text-ink`}
+      >
+        {work.title}
+      </Text>
+      <Text numberOfLines={2} className="text-base text-muted sm:text-lg">
+        {work.author || 'Unknown author'}
+      </Text>
+    </View>
+  );
+  const controls = (
+    <View className="w-full gap-4">
+      {work.in_progress ? (
+        <View className="w-full max-w-md gap-1.5 py-0.5">
+          <View
+            className="h-1.5 overflow-hidden rounded-full bg-line"
+            accessibilityRole="progressbar"
+            accessibilityValue={{ min: 0, max: 100, now: work.completion_percent }}
+          >
+            <View
+              className="h-full rounded-full bg-accent-strong"
+              style={{ width: `${work.completion_percent}%` }}
+            />
+          </View>
+          <Text className="text-sm text-muted">
+            {work.completion_percent}% complete
+            {work.active_seconds > 0 ? ` · ${formatDuration(work.active_seconds)} active` : ''}
+          </Text>
+        </View>
+      ) : null}
+
+      {primaryAvailable ? (
+        <View className="flex-row flex-wrap items-center gap-2">
+          <Button
+            label={`${hasProgress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
+            icon={primaryMode === 'read' ? 'read' : 'listen'}
+            kind="primary"
+            onPress={() => consume(primaryMode)}
+          />
+          {secondaryAvailable ? (
+            <Button
+              icon={secondaryMode === 'read' ? 'read' : 'listen'}
+              label={secondaryMode === 'read' ? 'Read instead' : 'Listen instead'}
+              kind="secondary"
+              onPress={() => consume(secondaryMode)}
+            />
+          ) : null}
+        </View>
+      ) : (
+        <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
+      )}
+
+      {note ? <Text className="max-w-md text-sm text-muted">{note}</Text> : null}
+
+      <View className="w-full flex-row flex-wrap items-center gap-1 border-t border-line pt-3">
+        <Button
+          label={readingStatusLabel(work.reading_status)}
+          icon={
+            work.reading_status === 'finished'
+              ? 'check'
+              : work.reading_status === 'reading'
+                ? 'read'
+                : 'add'
+          }
+          kind="quiet"
+          disabled={offline}
+          onPress={() => setStatusOpen(true)}
+        />
+        <Button
+          label="Collection"
+          accessibilityLabel="Add to collection"
+          icon="collections"
+          kind="quiet"
+          disabled={offline}
+          onPress={() => void openCollections()}
+        />
+        {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
+          <Button
+            label={downloaded ? 'Remove download' : 'Download'}
+            accessibilityLabel={
+              downloaded ? 'Remove download from this device' : 'Download for offline'
+            }
+            icon={downloaded ? 'enabled' : 'acquire'}
+            kind="quiet"
+            loading={downloadBusy}
+            disabled={offline}
+            onPress={() => void toggleOfflineDownload()}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+
   return (
     <Page title="Work" hideHeader>
       <View className="flex-row items-center justify-between">
@@ -415,157 +519,34 @@ export default function WorkScreen() {
         <View
           className={
             narrow
-              ? 'items-center gap-6 py-4'
+              ? 'w-full gap-5'
               : 'mx-auto w-full max-w-[1000px] flex-row items-start gap-12 py-10'
           }
         >
-          <BookCover
-            title={work.title}
-            author={work.author}
-            coverURL={work.cover_url}
-            size={narrow ? 'small' : 'hero'}
-            {...coverPresentation(work)}
-          />
-          <View
-            className={
-              narrow ? 'w-full items-center gap-4' : 'min-w-0 flex-1 items-start gap-4 pt-2'
-            }
-          >
-            <Text
-              className={`text-xs font-sans-bold uppercase tracking-wide text-accent ${narrow ? 'text-center' : ''}`}
-            >
-              {formatLabel}
-            </Text>
-            <Text
-              numberOfLines={3}
-              className={`${narrow ? 'text-center text-3xl leading-9' : 'text-4xl leading-[44px]'} font-editorial-bold text-ink`}
-            >
-              {work.title}
-            </Text>
-            <Text
-              numberOfLines={2}
-              className={`text-base text-muted sm:text-lg ${narrow ? 'text-center' : ''}`}
-            >
-              {work.author || 'Unknown author'}
-            </Text>
-
-            {selectedEPUB || selectedAudio ? (
-              <View
-                className={`flex-row flex-wrap items-center gap-3 ${narrow ? 'justify-center' : ''}`}
-              >
-                <AvailabilityIcons
-                  value={{
-                    readable: Boolean(selectedEPUB),
-                    listenable: Boolean(selectedAudio),
-                    synchronized: Boolean(readyJob(jobs, epubID, audioID)),
-                  }}
-                />
+          {narrow ? (
+            <>
+              <View className="w-full flex-row items-start gap-5">
+                {cover}
+                {identity}
               </View>
-            ) : null}
-
-            {work.in_progress ? (
-              <View className="w-full max-w-md gap-1.5 py-0.5">
-                <View
-                  className="h-1.5 overflow-hidden rounded-full bg-line"
-                  accessibilityRole="progressbar"
-                  accessibilityValue={{ min: 0, max: 100, now: work.completion_percent }}
-                >
-                  <View
-                    className="h-full rounded-full bg-accent-strong"
-                    style={{ width: `${work.completion_percent}%` }}
-                  />
-                </View>
-                <Text className={`text-sm text-muted ${narrow ? 'text-center' : ''}`}>
-                  {work.completion_percent}% complete
-                  {work.active_seconds > 0
-                    ? ` · ${formatDuration(work.active_seconds)} active`
-                    : ''}
-                </Text>
+              {controls}
+            </>
+          ) : (
+            <>
+              {cover}
+              <View className="min-w-0 flex-1 items-start gap-5 pt-2">
+                {identity}
+                {controls}
               </View>
-            ) : null}
-
-            {primaryAvailable ? (
-              <View
-                className={`flex-row flex-wrap items-center gap-2 pt-1 ${narrow ? 'justify-center' : ''}`}
-              >
-                <Button
-                  label={
-                    narrow
-                      ? hasProgress
-                        ? 'Continue'
-                        : primaryMode === 'read'
-                          ? 'Read'
-                          : 'Listen'
-                      : `${hasProgress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`
-                  }
-                  icon={primaryMode === 'read' ? 'read' : 'listen'}
-                  kind="primary"
-                  onPress={() => consume(primaryMode)}
-                />
-                {secondaryAvailable ? (
-                  <Button
-                    icon={secondaryMode === 'read' ? 'read' : 'listen'}
-                    label={secondaryMode === 'read' ? 'Read instead' : 'Listen instead'}
-                    kind="secondary"
-                    onPress={() => consume(secondaryMode)}
-                  />
-                ) : null}
-              </View>
-            ) : (
-              <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
-            )}
-
-            {note ? (
-              <Text className={`max-w-md text-sm text-muted ${narrow ? 'text-center' : ''}`}>
-                {note}
-              </Text>
-            ) : null}
-
-            <View
-              className={`w-full flex-row flex-wrap items-center gap-2 border-t border-line pt-4 ${narrow ? 'justify-center' : ''}`}
-            >
-              <Button
-                label={readingStatusLabel(work.reading_status)}
-                icon={
-                  work.reading_status === 'finished'
-                    ? 'check'
-                    : work.reading_status === 'reading'
-                      ? 'read'
-                      : 'add'
-                }
-                kind="quiet"
-                disabled={offline}
-                onPress={() => setStatusOpen(true)}
-              />
-              <Button
-                label="Add to collection"
-                icon="collections"
-                kind="quiet"
-                disabled={offline}
-                onPress={() => void openCollections()}
-              />
-              {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
-                downloadBusy ? (
-                  <View className="h-11 w-11 items-center justify-center">
-                    <ActivityIndicator color={colors.accent} />
-                  </View>
-                ) : (
-                  <IconButton
-                    icon={downloaded ? 'enabled' : 'acquire'}
-                    label={downloaded ? 'Remove download (on this device)' : 'Download for offline'}
-                    kind="quiet"
-                    disabled={offline}
-                    onPress={() => void toggleOfflineDownload()}
-                  />
-                )
-              ) : null}
-            </View>
-          </View>
+            </>
+          )}
         </View>
       </Animated.View>
 
       {description || details.length || canEdit ? (
-        <View className="mx-auto w-full max-w-[1000px] gap-3 border-t border-line py-6 sm:py-8">
+        <View
+          className={`mx-auto w-full max-w-[1000px] gap-3 ${narrow ? 'pb-6' : 'border-t border-line py-8'}`}
+        >
           <Text className="font-editorial-bold text-2xl text-ink">About this book</Text>
           {description ? (
             <>

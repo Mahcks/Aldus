@@ -328,31 +328,32 @@ export function DestinationPicker({
 
 export function WorkGrid({
   works,
-  showLibrary,
   onOpen,
 }: {
   works: WorkSummary[];
-  showLibrary?: boolean;
   onOpen: (work: WorkSummary) => void;
 }) {
   const narrow = useWindowDimensions().width < 600;
 
   return (
-    <View className={`flex-row flex-wrap items-start ${narrow ? 'gap-x-4 gap-y-6' : 'gap-6'}`}>
+    <View
+      className={`w-full flex-row flex-wrap items-start ${narrow ? 'justify-between gap-y-6' : 'gap-6'}`}
+    >
       {works.map((work, index) => (
-        <Animated.View key={work.id} entering={listItemEnter(index)}>
-          <WorkCard
-            title={work.title}
-            author={work.author}
-            coverURL={work.cover_url}
-            coverPresentation={coverPresentation(work)}
-            availability={work}
-            progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
-            context={showLibrary ? work.library_name : undefined}
-            narrow={narrow}
-            onPress={() => onOpen(work)}
-          />
-        </Animated.View>
+        <View key={`${work.id}-${narrow ? 'narrow' : 'wide'}`} className={narrow ? 'w-[48%]' : ''}>
+          <Animated.View entering={listItemEnter(index)}>
+            <WorkCard
+              title={work.title}
+              author={work.author}
+              coverURL={work.cover_url}
+              coverPresentation={coverPresentation(work)}
+              availability={work}
+              progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
+              narrow={narrow}
+              onPress={() => onOpen(work)}
+            />
+          </Animated.View>
+        </View>
       ))}
     </View>
   );
