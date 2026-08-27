@@ -603,7 +603,11 @@ export const api = {
 
 export function errorMessage(error: unknown) {
   if (!(error instanceof APIError)) return 'Something went wrong.';
-  if (error.status === 401) return 'Your session has expired. Sign in again.';
+  if (error.status === 401) {
+    if (error.message === 'invalid credentials') return 'Username or password is incorrect.';
+    if (error.message === 'current password is incorrect') return 'Current password is incorrect.';
+    return 'Your session has expired. Sign in again.';
+  }
   if (error.status === 404) return 'This item was not found or is not available to your account.';
   if (error.status === 409) return error.message || 'The item changed. Refresh and try again.';
   return error.message || 'Something went wrong.';

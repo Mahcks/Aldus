@@ -90,15 +90,14 @@ export function resumedProgressLabel(source?: string, audioSeconds?: number) {
 export function progressSaveLabel(
   state: 'idle' | 'saving' | 'saved' | 'offline' | 'error',
   mode: 'read' | 'listen',
-  audioMilliseconds?: number,
 ) {
-  if (state === 'saving') return 'Saving…';
   if (state === 'offline') return 'Saved on this device';
   if (state === 'error') return 'Couldn’t save';
+  if (mode === 'listen' && (state === 'saving' || state === 'saved'))
+    return 'Progress saves automatically';
+  if (state === 'saving') return 'Saving…';
   if (state !== 'saved') return '';
-  return mode === 'listen' && audioMilliseconds != null
-    ? `Saved at ${formatAudioTime(audioMilliseconds / 1000)}`
-    : 'Saved here';
+  return 'Saved here';
 }
 
 export function playbackRate(rate?: number) {

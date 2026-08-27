@@ -27,6 +27,18 @@ test('offline audio positions preserve canonical segment offsets', () => {
   });
 });
 
+test('offline audio positions snap gaps to the nearest readable boundary', () => {
+  expect(
+    offlineAudioToCanonical(alignment, { resource: 'book.m4b', timestamp_ms: 0 }),
+  ).toMatchObject({ segment_id: 'segment', offset: 0 });
+  expect(
+    offlineAudioToCanonical(alignment, { resource: 'book.m4b', timestamp_ms: 4_000 }),
+  ).toMatchObject({ segment_id: 'segment', offset: 1_000_000 });
+  expect(
+    offlineAudioToCanonical(alignment, { resource: 'another.m4b', timestamp_ms: 0 }),
+  ).toBeUndefined();
+});
+
 test('offline audio positions use the server word timing model when available', () => {
   const timed = {
     ...alignment,

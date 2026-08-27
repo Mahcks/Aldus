@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 mock.module('react-native', () => ({ Platform: { OS: 'web' } }));
-const { api, APIError } = await import('./api');
+const { api, APIError, errorMessage } = await import('./api');
 const { resolveAPIBaseURL } = await import('./api-base');
 
 const originalFetch = globalThis.fetch;
@@ -54,6 +54,15 @@ describe('API transport', () => {
       new Response('last administrator\n', { status: 409 })) as unknown as typeof fetch;
     await expect(api.updateUser('u', { disabled: true })).rejects.toEqual(
       new APIError(409, 'last administrator'),
+    );
+  });
+
+  it('distinguishes rejected credentials from an expired session', () => {
+    expect(errorMessage(new APIError(401, 'invalid credentials'))).toBe(
+      'Username or password is incorrect.',
+    );
+    expect(errorMessage(new APIError(401, 'unauthorized'))).toBe(
+      'Your session has expired. Sign in again.',
     );
   });
 

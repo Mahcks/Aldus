@@ -4,7 +4,9 @@ import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ReadiumView,
+  type Link,
   type Locator,
+  type PublicationReadyEvent,
   type ReadiumViewRef,
   type SearchResult,
   type SelectionActionEvent,
@@ -21,6 +23,7 @@ import {
   segmentForEPUBLocator,
 } from '../features/reader-spike/readium-locator';
 import { colors } from '../features/theme';
+import { flattenReaderContents } from '../features/reader-navigation';
 import { Text, View } from '../features/tw';
 import { IconButton } from '../features/ui';
 
@@ -36,7 +39,7 @@ type ReaderPreferences = {
   zoom: number;
   lineHeight: number;
   margin: number;
-  theme: 'paper' | 'sepia';
+  theme: 'paper' | 'sepia' | 'night';
 };
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   layout: 'paginated',
@@ -45,10 +48,14 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   margin: 2,
   theme: 'paper',
 };
-type EPUBReaderHandle = {
+export type ReaderNavigationItem = { title: string; location: unknown; depth: number };
+export type ReaderSearchResult = { title: string; excerpt: string; location: unknown };
+export type EPUBReaderHandle = {
   captureSelection: () => null;
   restoreSelection: () => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
+  navigate: (location: unknown) => Promise<boolean>;
+  search: (query: string) => Promise<ReaderSearchResult[]>;
 };
 
 function savedLocator(value: unknown) {
@@ -72,7 +79,7 @@ export const EPUBReader = forwardRef<
     compactChrome?: boolean;
     statusLabel?: string;
     onLocation?: (location: ReaderLocation) => void;
-    onReady?: () => void;
+    onReady?: (contents: ReaderNavigationItem[]) => void;
     onError?: (error: Error) => void;
   }
 >(function EPUBReader(
@@ -134,6 +141,42 @@ export const EPUBReader = forwardRef<
     () => ({
       captureSelection: () => null,
       restoreSelection: async () => '',
+      navigate: async (location) => {
+        const view = reader.current;
+        if (!view || !location || typeof location !== 'object') return false;
+        pendingRestore.current = undefined;
+        direction.current = 'backward';
+        view.goTo(location as Locator);
+        return true;
+      },
+      search: async (query) => {
+        const view = reader.current;
+        if (!view || !query.trim()) return [];
+        try {
+          let page = await view.search(query.trim(), {
+            caseSensitive: false,
+            diacriticSensitive: false,
+          });
+          if (!page.isSupported) return [];
+          const results: SearchResult[] = [];
+          for (let pageCount = 0; pageCount < 100 && results.length < 100; pageCount += 1) {
+            results.push(...page.results.slice(0, 100 - results.length));
+            if (!page.hasMore) break;
+            page = await view.loadMoreSearchResults();
+          }
+          return results.map((result) => ({
+            title: result.locator.title?.trim() || 'Search result',
+            excerpt: [result.before, result.highlight, result.after].filter(Boolean).join(''),
+            location: result.locator,
+          }));
+        } finally {
+          try {
+            view.cancelSearch();
+          } catch {
+            // Older native reader binaries may not implement search cleanup yet.
+          }
+        }
+      },
       restoreLocation: async (location) => {
         const view = reader.current;
         if (!view) {
@@ -316,6 +359,16 @@ export const EPUBReader = forwardRef<
     });
   }
 
+  function handleReady(event?: PublicationReadyEvent) {
+    onReady?.(
+      flattenReaderContents(event?.tableOfContents as Link[] | undefined).map((item) => ({
+        title: item.title,
+        location: { href: item.href, type: 'application/xhtml+xml', title: item.title },
+        depth: item.depth,
+      })),
+    );
+  }
+
   if (!fileURL)
     return (
       <View className="flex-1 items-center justify-center gap-3 bg-paper">
@@ -332,17 +385,23 @@ export const EPUBReader = forwardRef<
           ref={reader}
           file={{ url: fileURL }}
           preferences={{
-            backgroundColor: colors.paper,
-            textColor: colors.ink,
+            backgroundColor:
+              preferences?.theme === 'night' ? colors.readerNightPaper : colors.paper,
+            textColor: preferences?.theme === 'night' ? colors.readerNightInk : colors.ink,
             scroll: preferences?.layout === 'scrolled',
             fontSize: preferences?.zoom,
             lineHeight: preferences?.lineHeight,
             pageMargins: preferences?.margin,
-            theme: preferences?.theme === 'sepia' ? 'sepia' : 'light',
+            theme:
+              preferences?.theme === 'night'
+                ? 'dark'
+                : preferences?.theme === 'sepia'
+                  ? 'sepia'
+                  : 'light',
           }}
           selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
           onLocationChange={handleLocation}
-          onPublicationReady={onReady}
+          onPublicationReady={handleReady}
           onSelectionAction={handleSelection}
         />
       </View>

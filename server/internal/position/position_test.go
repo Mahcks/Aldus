@@ -84,6 +84,23 @@ func TestResolverRoundTrips(t *testing.T) {
 	}
 }
 
+func TestAudioResolverSnapsUnalignedTimeToNearestReadableBoundary(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+
+	before, err := store.AudioToCanonical(ctx, FixtureAlignmentID, AudioLocator{Resource: "fixture/book.m4b", TimestampMS: 0})
+	if err != nil || before.SegmentID != "s0001" || before.Offset != 0 {
+		t.Fatalf("before first passage = %#v, %v", before, err)
+	}
+	after, err := store.AudioToCanonical(ctx, FixtureAlignmentID, AudioLocator{Resource: "fixture/book.m4b", TimestampMS: 20_000})
+	if err != nil || after.SegmentID != "s0003" || after.Offset != OffsetMax {
+		t.Fatalf("after last passage = %#v, %v", after, err)
+	}
+	if _, err := store.AudioToCanonical(ctx, FixtureAlignmentID, AudioLocator{Resource: "another.m4b", TimestampMS: 0}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("wrong resource error = %v, want not found", err)
+	}
+}
+
 func TestKOReaderContainerStartResolvesToFirstFragmentSegment(t *testing.T) {
 	ctx := context.Background()
 	store := testStore(t)
@@ -282,7 +299,7 @@ func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 	}
 	locator := json.RawMessage(`{"href":"text/chapter-1.xhtml","locations":{"cfi":"epubcfi(/6/2!/4/2:3)"}}`)
 	zoom, lineHeight, margin := 1.2, 1.8, 2.0
-	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", Zoom: &zoom, ReaderTheme: "sepia", LineHeight: &lineHeight, Margin: &margin, ExpectedRevision: 0}); err != nil {
+	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", Zoom: &zoom, ReaderTheme: "night", LineHeight: &lineHeight, Margin: &margin, ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -297,12 +314,12 @@ func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" || state.ReaderTheme != "sepia" || state.Zoom == nil || *state.Zoom != zoom || state.LineHeight == nil || *state.LineHeight != lineHeight || state.Margin == nil || *state.Margin != margin {
+	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" || state.ReaderTheme != "night" || state.Zoom == nil || *state.Zoom != zoom || state.LineHeight == nil || *state.LineHeight != lineHeight || state.Margin == nil || *state.Margin != margin {
 		t.Fatalf("reopened EPUB state = %#v", state)
 	}
 	updatedMargin := 1.0
 	state, err = store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{Margin: &updatedMargin, ExpectedRevision: state.Revision})
-	if err != nil || string(state.EPUBLocator) != string(locator) || state.ReaderTheme != "sepia" || state.Margin == nil || *state.Margin != updatedMargin {
+	if err != nil || string(state.EPUBLocator) != string(locator) || state.ReaderTheme != "night" || state.Margin == nil || *state.Margin != updatedMargin {
 		t.Fatalf("partial preference update = %#v, %v", state, err)
 	}
 }

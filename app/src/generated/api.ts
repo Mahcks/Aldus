@@ -658,7 +658,7 @@ export interface RepresentationState {
   playback_speed?: number /* float64 */;
   reader_layout?: 'paginated' | 'scrolled';
   zoom?: number /* float64 */;
-  reader_theme?: 'paper' | 'sepia';
+  reader_theme?: 'paper' | 'sepia' | 'night';
   line_height?: number /* float64 */;
   margin?: number /* float64 */;
   revision: number /* int64 */;
@@ -670,7 +670,7 @@ export interface RepresentationStateUpdate {
   playback_speed?: number /* float64 */;
   reader_layout?: 'paginated' | 'scrolled';
   zoom?: number /* float64 */;
-  reader_theme?: 'paper' | 'sepia';
+  reader_theme?: 'paper' | 'sepia' | 'night';
   line_height?: number /* float64 */;
   margin?: number /* float64 */;
   expected_revision: number /* int64 */;

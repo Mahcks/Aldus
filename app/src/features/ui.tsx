@@ -298,7 +298,7 @@ export function IconButton({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${shadowClass} ${opacityClass}`}
+      className={`will-change-variable ${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${shadowClass} ${opacityClass}`}
     >
       <AppIcon name={icon} size={size === 'large' ? 30 : 20} color={iconColor} />
     </Pressable>
@@ -375,13 +375,25 @@ export function Field({
   return (
     <View className="gap-1.5">
       <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
+      {/*
+        `text-base` carries a 24px line-height against a 16px font — fine for
+        paragraph text, but on iOS a single-line TextInput doesn't distribute
+        that extra leading evenly the way a Text node does; it pushes the
+        glyphs toward the top of the box instead of centering them.
+        `text-[16px]` below sets only the font size, no companion
+        line-height, which is what actually centers it. Android has the
+        opposite failure mode for the same "box taller than the text" setup —
+        `textAlignVertical` (an Android-only prop, no-op on iOS) covers that
+        side, and multiline fields stay top-aligned.
+      */}
       <TextInput
         {...props}
         accessibilityLabel={label}
         onBlur={handleBlur}
         onFocus={handleFocus}
         placeholderTextColor={colors.subtle}
-        className={`min-h-11 rounded-control px-3 py-2 text-base text-ink outline-none ${backgroundClass} ${borderClass}`}
+        textAlignVertical={props.multiline ? 'top' : 'center'}
+        className={`min-h-11 rounded-control px-3 py-2 text-[16px] text-ink outline-none ${backgroundClass} ${borderClass}`}
       />
       {error || help ? (
         <Text
@@ -403,11 +415,13 @@ export function SearchField({
   label = 'Search',
   value,
   onChangeText,
+  onSubmit,
   placeholder,
 }: {
   label?: string;
   value: string;
   onChangeText: (value: string) => void;
+  onSubmit?: () => void;
   placeholder?: string;
 }) {
   const [focused, setFocused] = useState(false);
@@ -428,13 +442,15 @@ export function SearchField({
         <TextInput
           value={value}
           onChangeText={onChangeText}
+          onSubmitEditing={onSubmit}
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder={placeholder}
           placeholderTextColor={colors.subtle}
           accessibilityLabel={label}
           returnKeyType="search"
-          className="min-h-11 flex-1 py-2 text-base text-ink outline-none"
+          textAlignVertical="center"
+          className="min-h-11 flex-1 py-2 text-[16px] text-ink outline-none"
         />
       </View>
     </View>

@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
 import { IconButton } from '../features/ui';
 import { colors } from '../features/theme';
+import { flattenReaderContents } from '../features/reader-navigation';
 import { Text, View } from '../features/tw';
 import {
   activeContentIndex,
@@ -39,13 +40,17 @@ export type EPUBReaderHandle = {
   captureSelection: () => ReaderCapture | null;
   restoreSelection: (capture: ReaderCapture) => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
+  navigate: (location: unknown) => Promise<boolean>;
+  search: (query: string) => Promise<ReaderSearchResult[]>;
 };
+export type ReaderNavigationItem = { title: string; location: unknown; depth: number };
+export type ReaderSearchResult = { title: string; excerpt: string; location: unknown };
 export type ReaderPreferences = {
   layout: 'paginated' | 'scrolled';
   zoom: number;
   lineHeight: number;
   margin: number;
-  theme: 'paper' | 'sepia';
+  theme: 'paper' | 'sepia' | 'night';
 };
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   layout: 'paginated',
@@ -63,7 +68,7 @@ type Props = {
   compactChrome?: boolean;
   statusLabel?: string;
   onLocation?: (location: ReaderLocation) => void;
-  onReady?: () => void;
+  onReady?: (contents: ReaderNavigationItem[]) => void;
   onError?: (error: Error) => void;
 };
 type SyncSegment = {
@@ -150,6 +155,46 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         });
         if (!operation) throw new Error('The reader is closing.');
         return operation;
+      },
+      async navigate(location) {
+        const view = reader.current;
+        const disposal = disposalRef.current;
+        if (!view || !disposal || (!location && location !== 0)) return false;
+        direction.current = 'forward';
+        return (
+          (await disposal.track(async () => {
+            await view.goTo(location);
+            return true;
+          })) ?? false
+        );
+      },
+      async search(query) {
+        const view = reader.current;
+        const disposal = disposalRef.current;
+        if (!view || !disposal || !query.trim()) return [];
+        return (
+          (await disposal.track(async () => {
+            const results: ReaderSearchResult[] = [];
+            try {
+              for await (const result of view.search({ query: query.trim() })) {
+                if (result === 'done' || results.length >= 100) break;
+                for (const item of result.subitems ?? []) {
+                  results.push({
+                    title: result.label || 'Search result',
+                    excerpt: [item.excerpt?.pre, item.excerpt?.match, item.excerpt?.post]
+                      .filter(Boolean)
+                      .join(''),
+                    location: item.cfi,
+                  });
+                  if (results.length >= 100) break;
+                }
+              }
+              return results;
+            } finally {
+              view.clearSearch();
+            }
+          })) ?? []
+        );
       },
       async restoreLocation(value, highlight = false) {
         const view = reader.current;
@@ -348,7 +393,13 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         view.renderer.setAttribute('flow', preferencesRef.current.layout);
         reader.current = view;
         setReady(true);
-        onReadyRef.current?.();
+        onReadyRef.current?.(
+          flattenReaderContents(view.book.toc ?? []).map((item) => ({
+            title: item.title,
+            location: item.href,
+            depth: item.depth,
+          })),
+        );
       })
       .catch((error: unknown) => {
         disposal.fail();
@@ -614,8 +665,15 @@ function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
     doc.querySelector<HTMLStyleElement>('#aldus-reader-style') ??
     doc.head.appendChild(doc.createElement('style'));
   style.id = 'aldus-reader-style';
-  const background = preferences.theme === 'sepia' ? colors.canvas : colors.paper;
-  style.textContent = `html { color: ${colors.ink}; background: ${background}; } body { font-family: Georgia, 'Times New Roman', serif; font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } ::selection { background: ${colors.accentSoft}; color: ${colors.ink}; }`;
+  const night = preferences.theme === 'night';
+  const background = night
+    ? colors.readerNightPaper
+    : preferences.theme === 'sepia'
+      ? colors.canvas
+      : colors.paper;
+  const ink = night ? colors.readerNightInk : colors.ink;
+  const selection = night ? colors.readerNightSelection : colors.accentSoft;
+  style.textContent = `html { color: ${ink}; background: ${background}; } body { font-family: Georgia, 'Times New Roman', serif; font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } a { color: inherit; } ::selection { background: ${selection}; color: ${ink}; }`;
 }
 
 function serializeRange(view: any, index: number, range: Range): ReaderCapture {

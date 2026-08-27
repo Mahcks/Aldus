@@ -19,7 +19,9 @@ import {
   EPUBReader,
   type EPUBReaderHandle,
   type ReaderLocation,
+  type ReaderNavigationItem,
   type ReaderPreferences,
+  type ReaderSearchResult,
 } from '../../../components/EPUBReader';
 import { commitsReadingProgress } from '../../../components/reader-location';
 import { BookCover, coverPresentation } from '../../../features/bookshelf';
@@ -58,6 +60,7 @@ import {
   IconButton,
   Loading,
   Notice,
+  SearchField,
   StatusBadge,
 } from '../../../features/ui';
 import { Pressable, ScrollView, Text, View } from '../../../features/tw';
@@ -109,6 +112,15 @@ export default function ConsumeWorkScreen() {
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
+  const [readerContents, setReaderContents] = useState<ReaderNavigationItem[]>([]);
+  const [readerNavigationReady, setReaderNavigationReady] = useState(false);
+  const [contentsOpen, setContentsOpen] = useState(false);
+  const [readerSearchOpen, setReaderSearchOpen] = useState(false);
+  const [readerSearchQuery, setReaderSearchQuery] = useState('');
+  const [readerSearchResults, setReaderSearchResults] = useState<ReaderSearchResult[]>([]);
+  const [readerSearching, setReaderSearching] = useState(false);
+  const [readerSearchRan, setReaderSearchRan] = useState(false);
+  const [readerSearchError, setReaderSearchError] = useState('');
   const [chaptersOpen, setChaptersOpen] = useState(false);
   const [sleepTimerOpen, setSleepTimerOpen] = useState(false);
   const [sleepTimerDeadline, setSleepTimerDeadline] = useState<number>();
@@ -120,7 +132,6 @@ export default function ConsumeWorkScreen() {
   const [audioReady, setAudioReady] = useState(false);
   const [notice, setNotice] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
-  const [lastSavedAudioMS, setLastSavedAudioMS] = useState<number>();
   const [resumeMessage, setResumeMessage] = useState('');
   const [progressConflict, setProgressConflict] = useState<ProgressConflict>();
   const [loading, setLoading] = useState(true);
@@ -269,6 +280,8 @@ export default function ConsumeWorkScreen() {
       setReaderCommit(undefined);
       setInitialAudioMS(undefined);
       readerReady.current = false;
+      setReaderNavigationReady(false);
+      setReaderContents([]);
       restoredReaderTarget.current = undefined;
       restoringReaderTarget.current = undefined;
       const stored = Platform.OS === 'web' ? null : await offlineWork(params.id);
@@ -363,6 +376,17 @@ export default function ConsumeWorkScreen() {
     async function loadSelection() {
       const loadEPUB = Platform.OS === 'web' || shouldLoadConsumptionMedia(mode, 'epub');
       const loadAudio = shouldLoadConsumptionMedia(mode, 'audio');
+      if (loadEPUB) {
+        readerReady.current = false;
+        setReaderNavigationReady(false);
+        setReaderContents([]);
+        setContentsOpen(false);
+        setReaderSearchOpen(false);
+        setReaderSearchQuery('');
+        setReaderSearchResults([]);
+        setReaderSearchRan(false);
+        setReaderSearchError('');
+      }
       if (loadAudio) {
         restoredAudio.current = '';
         playAfterRestore.current = false;
@@ -665,12 +689,54 @@ export default function ConsumeWorkScreen() {
     if (commitsReadingProgress(location.reason)) setReaderCommit(location);
     setSyncAvailable(Boolean(location.sync));
   }, []);
-  const onReaderReady = useCallback(() => {
-    readerReady.current = true;
-    if (readerTarget && restoredReaderTarget.current !== readerTarget) {
-      void restoreReader(readerTarget);
+  const onReaderReady = useCallback(
+    (contents: ReaderNavigationItem[]) => {
+      readerReady.current = true;
+      setReaderNavigationReady(true);
+      setReaderContents(contents);
+      if (readerTarget && restoredReaderTarget.current !== readerTarget) {
+        void restoreReader(readerTarget);
+      }
+    },
+    [readerTarget, restoreReader],
+  );
+
+  async function runReaderSearch() {
+    const query = readerSearchQuery.trim();
+    if (!query || !reader.current) return;
+    setReaderSearching(true);
+    setReaderSearchRan(false);
+    setReaderSearchError('');
+    try {
+      setReaderSearchResults(await reader.current.search(query));
+    } catch (error) {
+      setReaderSearchResults([]);
+      setReaderSearchError(errorMessage(error));
+    } finally {
+      setReaderSearching(false);
+      setReaderSearchRan(true);
     }
-  }, [readerTarget, restoreReader]);
+  }
+
+  function changeReaderSearchQuery(query: string) {
+    setReaderSearchQuery(query);
+    setReaderSearchResults([]);
+    setReaderSearchRan(false);
+    setReaderSearchError('');
+  }
+
+  async function openReaderLocation(location: unknown) {
+    try {
+      if (!(await reader.current?.navigate(location))) {
+        setNotice('That location is unavailable in this ebook.');
+        return;
+      }
+      setContentsOpen(false);
+      setReaderSearchOpen(false);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    }
+  }
 
   useEffect(() => {
     if (mode !== 'read' || !readerLocation || !selectedEPUB) return;
@@ -910,18 +976,18 @@ export default function ConsumeWorkScreen() {
       timestamp_ms: timestampMS,
     };
     try {
-      if (await saveCanonical(await api.audioToCanonical(alignmentID, locator)))
-        setLastSavedAudioMS(timestampMS);
+      await saveCanonical(await api.audioToCanonical(alignmentID, locator));
     } catch (error) {
       if (error instanceof APIError && error.status === 0 && alignment) {
         const canonical = offlineAudioToCanonical(alignment, locator);
-        if (canonical && (await saveCanonical(canonical))) setLastSavedAudioMS(timestampMS);
+        if (canonical) await saveCanonical(canonical);
       } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
       else setNotice(errorMessage(error));
     }
   }
 
   async function switchToListen() {
+    if (switching.current) return;
     if (!work || !readerLocation?.sync || !alignmentID)
       return setNotice('Synchronized listening is unavailable at this passage.');
     switching.current = true;
@@ -984,6 +1050,7 @@ export default function ConsumeWorkScreen() {
   }
 
   async function switchToRead() {
+    if (switching.current) return;
     if (!work || !alignmentID || !alignment?.segments[0])
       return setNotice('Synchronized reading is unavailable at this point.');
     switching.current = true;
@@ -1166,7 +1233,7 @@ export default function ConsumeWorkScreen() {
     : readerLocation?.syncState === 'partial'
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
-  const saveLabel = progressSaveLabel(saveState, mode, lastSavedAudioMS);
+  const saveLabel = progressSaveLabel(saveState, mode);
   const progressStatus = resumeMessage || saveLabel;
   return (
     <View className="flex-1 bg-canvas">
@@ -1198,13 +1265,31 @@ export default function ConsumeWorkScreen() {
         </View>
         <View className="flex-row gap-2">
           {mode === 'read' && selectedEPUB ? (
-            <IconButton
-              icon="settings"
-              label={settingsOpen ? 'Close reader settings' : 'Open reader settings'}
-              kind="quiet"
-              selected={settingsOpen}
-              onPress={() => setSettingsOpen((open) => !open)}
-            />
+            <>
+              {readerNavigationReady ? (
+                <>
+                  <IconButton
+                    icon="contents"
+                    label="Open table of contents"
+                    kind="quiet"
+                    onPress={() => setContentsOpen(true)}
+                  />
+                  <IconButton
+                    icon="search"
+                    label="Search inside book"
+                    kind="quiet"
+                    onPress={() => setReaderSearchOpen(true)}
+                  />
+                </>
+              ) : null}
+              <IconButton
+                icon="settings"
+                label={settingsOpen ? 'Close reader settings' : 'Open reader settings'}
+                kind="quiet"
+                selected={settingsOpen}
+                onPress={() => setSettingsOpen((open) => !open)}
+              />
+            </>
           ) : null}
           {selectedEPUB && (!compactNative || mode === 'listen') ? (
             compact ? (
@@ -1297,6 +1382,65 @@ export default function ConsumeWorkScreen() {
           disabled={settingsBusy}
           onChange={(next) => void updateReaderPreferences(next)}
         />
+      </Dialog>
+      <Dialog
+        visible={mode === 'read' && contentsOpen}
+        onClose={() => setContentsOpen(false)}
+        title="Contents"
+      >
+        <View className="gap-1">
+          {readerContents.length === 0 ? (
+            <Text className="text-sm text-muted">
+              This ebook does not provide a table of contents.
+            </Text>
+          ) : null}
+          {readerContents.map((item, index) => (
+            <View key={`${item.title}-${index}`} style={{ paddingLeft: item.depth * 12 }}>
+              <Button
+                label={item.title}
+                kind="quiet"
+                onPress={() => void openReaderLocation(item.location)}
+              />
+            </View>
+          ))}
+        </View>
+      </Dialog>
+      <Dialog
+        visible={mode === 'read' && readerSearchOpen}
+        onClose={() => setReaderSearchOpen(false)}
+        title="Search this book"
+        wide
+      >
+        <View className="gap-4">
+          <SearchField
+            label="Words or phrase"
+            value={readerSearchQuery}
+            onChangeText={changeReaderSearchQuery}
+            onSubmit={() => void runReaderSearch()}
+            placeholder="Search inside this ebook"
+          />
+          <Button
+            label={readerSearching ? 'Searching…' : 'Search'}
+            icon="search"
+            kind="primary"
+            disabled={readerSearching || !readerSearchQuery.trim()}
+            onPress={() => void runReaderSearch()}
+          />
+          {readerSearchError ? <Notice danger>{readerSearchError}</Notice> : null}
+          {!readerSearching && readerSearchRan && readerSearchResults.length === 0 ? (
+            <Text className="text-sm text-muted">No matches found.</Text>
+          ) : null}
+          <View className="gap-1">
+            {readerSearchResults.map((item, index) => (
+              <Button
+                key={`${item.title}-${index}`}
+                label={[item.title, item.excerpt].filter(Boolean).join(' · ')}
+                kind="quiet"
+                onPress={() => void openReaderLocation(item.location)}
+              />
+            ))}
+          </View>
+        </View>
       </Dialog>
       <Dialog
         visible={mode === 'listen' && chaptersOpen}

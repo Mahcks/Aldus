@@ -40,6 +40,7 @@ export async function downloadProductAudio(id: string, expectedSize?: number) {
   if (pending) return pending;
   const download = (async () => {
     const temporary = new File(Paths.document, scopedMediaFileName(id, 'audio.part', scope));
+    const temporaryURI = temporary.uri;
     if (temporary.exists) temporary.delete();
     const token = await getToken(origin);
     try {
@@ -54,7 +55,8 @@ export async function downloadProductAudio(id: string, expectedSize?: number) {
       await temporary.move(destination);
       return destination.uri;
     } finally {
-      if (temporary.exists) temporary.delete();
+      const leftover = new File(temporaryURI);
+      if (leftover.exists) leftover.delete();
     }
   })();
   downloads.set(destination.uri, download);

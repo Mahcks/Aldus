@@ -81,7 +81,7 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 }
 
 func validRepresentationUpdate(update RepresentationUpdate) bool {
-	if len(update.EPUBLocator) > 0 && !json.Valid(update.EPUBLocator) || update.AudioTimestampMS != nil && *update.AudioTimestampMS < 0 || update.PlaybackSpeed != nil && (*update.PlaybackSpeed < .25 || *update.PlaybackSpeed > 4) || update.Zoom != nil && (*update.Zoom < .5 || *update.Zoom > 3) || update.LineHeight != nil && (*update.LineHeight < 1.2 || *update.LineHeight > 2.2) || update.Margin != nil && (*update.Margin < 0 || *update.Margin > 4) || update.ReaderLayout != "" && update.ReaderLayout != "paginated" && update.ReaderLayout != "scrolled" || update.ReaderTheme != "" && update.ReaderTheme != "paper" && update.ReaderTheme != "sepia" {
+	if len(update.EPUBLocator) > 0 && !json.Valid(update.EPUBLocator) || update.AudioTimestampMS != nil && *update.AudioTimestampMS < 0 || update.PlaybackSpeed != nil && (*update.PlaybackSpeed < .25 || *update.PlaybackSpeed > 4) || update.Zoom != nil && (*update.Zoom < .5 || *update.Zoom > 3) || update.LineHeight != nil && (*update.LineHeight < 1.2 || *update.LineHeight > 2.2) || update.Margin != nil && (*update.Margin < 0 || *update.Margin > 4) || update.ReaderLayout != "" && update.ReaderLayout != "paginated" && update.ReaderLayout != "scrolled" || update.ReaderTheme != "" && update.ReaderTheme != "paper" && update.ReaderTheme != "sepia" && update.ReaderTheme != "night" {
 		return false
 	}
 	return len(update.EPUBLocator) > 0 || update.AudioTimestampMS != nil || update.PlaybackSpeed != nil || update.Zoom != nil || update.LineHeight != nil || update.Margin != nil || update.ReaderLayout != "" || update.ReaderTheme != ""

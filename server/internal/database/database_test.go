@@ -121,6 +121,48 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	}
 }
 
+func TestReaderNightThemeMigrationPreservesReadingState(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := strings.Join(migrations[:43], "\n") + `
+PRAGMA user_version=43;
+INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at)
+VALUES('reader','reader','reader','Reader','hash',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+INSERT INTO libraries(id,name,created_at,updated_at)
+VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+INSERT INTO works(id,library_id,title,created_at,updated_at)
+VALUES('work','library','Book','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+INSERT INTO representations(id,work_id,kind,label,created_at,updated_at)
+VALUES('epub','work','epub','EPUB','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+INSERT INTO representation_state(user_id,representation_id,epub_locator,reader_theme,revision,updated_at)
+VALUES('reader','epub','{"href":"chapter.xhtml"}','sepia',3,'2026-01-01T00:00:00Z');`
+	if _, err := db.ExecContext(ctx, fixture); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var locator, theme string
+	var revision int
+	if err := db.QueryRowContext(ctx, `SELECT epub_locator,reader_theme,revision FROM representation_state WHERE user_id='reader'`).Scan(&locator, &theme, &revision); err != nil || locator != `{"href":"chapter.xhtml"}` || theme != "sepia" || revision != 3 {
+		t.Fatalf("reading state = %q %q %d, %v", locator, theme, revision, err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE representation_state SET reader_theme='night' WHERE user_id='reader'`); err != nil {
+		t.Fatalf("persist night theme: %v", err)
+	}
+}
+
 func TestNotificationRecipientIntegrityMigrationRemovesOnlyOrphans(t *testing.T) {
 	ctx := context.Background()
 	path := t.TempDir() + "/aldus.db"

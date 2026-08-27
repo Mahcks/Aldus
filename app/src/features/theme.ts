@@ -34,4 +34,8 @@ export const colors = {
   infoSoft: '#dfe7ee',
   neutral: '#6c6258',
   neutralSoft: '#e7e0d4',
+
+  readerNightPaper: '#171410',
+  readerNightInk: '#eee6d8',
+  readerNightSelection: '#5b3024',
 };

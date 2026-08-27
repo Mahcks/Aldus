@@ -58,6 +58,7 @@ export function ReaderSettings({ value, disabled, compact, onChange }: Props) {
           options={[
             ['Paper', 'paper'],
             ['Sepia', 'sepia'],
+            ['Night', 'night'],
           ]}
           selected={value.theme}
           disabled={disabled}

@@ -62,6 +62,9 @@ func (s *Store) CanonicalToEPUB(ctx context.Context, p Canonical) (EPUBLocator, 
 }
 
 func (s *Store) AudioToCanonical(ctx context.Context, alignmentID string, locator AudioLocator) (Canonical, error) {
+	if locator.Resource == "" || locator.TimestampMS < 0 {
+		return Canonical{}, ErrInvalid
+	}
 	var p Canonical
 	var start, end int64
 	var text string
@@ -70,17 +73,33 @@ func (s *Store) AudioToCanonical(ctx context.Context, alignmentID string, locato
 		SELECT s.alignment_id, s.id, s.audio_start_ms, s.audio_end_ms, s.text, s.word_timings
 		FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
 		WHERE s.alignment_id = ? AND s.audio_resource = ?
-			AND s.audio_start_ms <= ? AND s.audio_end_ms > ? AND s.highlightable=1 AND a.state = 'ready'
+			AND s.audio_start_ms <= ? AND s.audio_end_ms > ?
+			AND s.highlightable=1 AND a.state = 'ready'
 		ORDER BY s.ordinal LIMIT 1`,
 		alignmentID, locator.Resource, locator.TimestampMS, locator.TimestampMS,
 	).Scan(&p.AlignmentID, &p.SegmentID, &start, &end, &text, &timings)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = s.db.QueryRowContext(ctx, `
+			SELECT s.alignment_id, s.id, s.audio_start_ms, s.audio_end_ms, s.text, s.word_timings
+			FROM alignment_segments s JOIN alignments a ON a.id = s.alignment_id
+			WHERE s.alignment_id = ? AND s.audio_resource = ?
+				AND s.highlightable=1 AND a.state = 'ready'
+			ORDER BY MIN(ABS(? - s.audio_start_ms), ABS(? - s.audio_end_ms)), s.ordinal
+			LIMIT 1`,
+			alignmentID, locator.Resource, locator.TimestampMS, locator.TimestampMS,
+		).Scan(&p.AlignmentID, &p.SegmentID, &start, &end, &text, &timings)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Canonical{}, ErrNotFound
 	}
 	if err != nil {
 		return Canonical{}, fmt.Errorf("resolve audio locator: %w", err)
 	}
-	if offset, ok := wordOffset(locator.TimestampMS, text, timings.String); timings.Valid && ok {
+	if locator.TimestampMS <= start {
+		p.Offset = 0
+	} else if locator.TimestampMS >= end {
+		p.Offset = OffsetMax
+	} else if offset, ok := wordOffset(locator.TimestampMS, text, timings.String); timings.Valid && ok {
 		p.Offset = offset
 	} else {
 		p.Offset = int((locator.TimestampMS - start) * OffsetMax / (end - start))

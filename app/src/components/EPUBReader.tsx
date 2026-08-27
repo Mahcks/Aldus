@@ -25,13 +25,17 @@ export type EPUBReaderHandle = {
   captureSelection: () => ReaderCapture | null;
   restoreSelection: (capture: ReaderCapture) => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
+  navigate: (location: unknown) => Promise<boolean>;
+  search: (query: string) => Promise<ReaderSearchResult[]>;
 };
+export type ReaderNavigationItem = { title: string; location: unknown; depth: number };
+export type ReaderSearchResult = { title: string; excerpt: string; location: unknown };
 export type ReaderPreferences = {
   layout: 'paginated' | 'scrolled';
   zoom: number;
   lineHeight: number;
   margin: number;
-  theme: 'paper' | 'sepia';
+  theme: 'paper' | 'sepia' | 'night';
 };
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   layout: 'paginated',
@@ -51,7 +55,7 @@ export const EPUBReader = forwardRef<
     compactChrome?: boolean;
     statusLabel?: string;
     onLocation?: (location: ReaderLocation) => void;
-    onReady?: () => void;
+    onReady?: (contents: ReaderNavigationItem[]) => void;
     onError?: (error: Error) => void;
   }
 >(function EPUBReader(_, ref) {
@@ -61,6 +65,8 @@ export const EPUBReader = forwardRef<
       captureSelection: () => null,
       restoreSelection: async () => '',
       restoreLocation: async () => false,
+      navigate: async () => false,
+      search: async () => [],
     }),
     [],
   );

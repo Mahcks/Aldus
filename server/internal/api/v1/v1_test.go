@@ -28,7 +28,11 @@ import (
 func TestResolveAudioAndUpdateProgress(t *testing.T) {
 	handler, token := testHandler(t)
 
-	response := request(t, handler, token, http.MethodPost, "/alignments/fixture-alignment/resolve/audio", `{"resource":"fixture/book.m4b","timestamp_ms":4420}`)
+	response := request(t, handler, token, http.MethodPost, "/alignments/fixture-alignment/resolve/audio", `{"resource":"fixture/book.m4b","timestamp_ms":0}`)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"segment_id":"s0001"`) || !strings.Contains(response.Body.String(), `"offset":0`) {
+		t.Fatalf("resolve intro response = %d %s", response.Code, response.Body.String())
+	}
+	response = request(t, handler, token, http.MethodPost, "/alignments/fixture-alignment/resolve/audio", `{"resource":"fixture/book.m4b","timestamp_ms":4420}`)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"segment_id":"s0002"`) || !strings.Contains(response.Body.String(), `"offset":350000`) {
 		t.Fatalf("resolve response = %d %s", response.Code, response.Body.String())
 	}
