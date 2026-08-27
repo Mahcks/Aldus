@@ -272,11 +272,11 @@ func TestAdminUserManagement(t *testing.T) {
 	if err := store.SetDisabled(ctx, session.User, session.User.ID, true); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("disable last admin = %v", err)
 	}
-	user, err := store.CreateUser(ctx, session.User, Credentials{Username: "reader", Password: testPassword}, false)
+	user, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "reader", Password: testPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CreateUser(ctx, session.User, Credentials{Username: "READER", Password: testPassword}, false); !errors.Is(err, ErrUsernameTaken) {
+	if _, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "READER", Password: testPassword}, false); !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("duplicate username = %v", err)
 	}
 	if err := store.SetDisabled(ctx, user, user.ID, true); !errors.Is(err, ErrForbidden) {
@@ -294,6 +294,78 @@ func TestAdminUserManagement(t *testing.T) {
 	}
 }
 
+func TestAccountCredentialLifecycle(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{})
+	admin, err := store.Setup(ctx, Credentials{Username: "admin", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, temporaryPassword, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader"}, false)
+	if err != nil || temporaryPassword == "" || !reader.MustChangeCredentials {
+		t.Fatalf("created account = %#v, temporary=%q, %v", reader, temporaryPassword, err)
+	}
+	temporarySession, err := store.Login(ctx, Credentials{Username: reader.Username, Password: temporaryPassword})
+	if err != nil || !temporarySession.User.MustChangeCredentials {
+		t.Fatalf("temporary login = %#v, %v", temporarySession.User, err)
+	}
+	claimed, err := store.ClaimAccount(ctx, temporarySession.User, Credentials{Username: "reader-owned", DisplayName: "Reader Owned", Password: testPassword})
+	if err != nil || claimed.User.MustChangeCredentials || claimed.User.Username != "reader-owned" {
+		t.Fatalf("claimed account = %#v, %v", claimed.User, err)
+	}
+	if _, err := store.Authenticate(ctx, temporarySession.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("temporary session remains valid: %v", err)
+	}
+	otherSession, err := store.Login(ctx, Credentials{Username: "reader-owned", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := store.ChangePassword(ctx, claimed.User, testPassword, "a-different-secure-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range []string{claimed.Token, otherSession.Token} {
+		if _, err := store.Authenticate(ctx, token); !errors.Is(err, ErrUnauthenticated) {
+			t.Fatalf("old session remains valid: %v", err)
+		}
+	}
+	updated, err := store.UpdateDisplayName(ctx, changed.User, "Updated Reader")
+	if err != nil || updated.DisplayName != "Updated Reader" {
+		t.Fatalf("updated profile = %#v, %v", updated, err)
+	}
+	resetPassword, err := store.ResetPassword(ctx, admin.User, reader.ID)
+	if err != nil || resetPassword == "" {
+		t.Fatalf("password reset = %q, %v", resetPassword, err)
+	}
+	if _, err := store.Authenticate(ctx, changed.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("password-change session remains after reset: %v", err)
+	}
+	resetSession, err := store.Login(ctx, Credentials{Username: "reader-owned", Password: resetPassword})
+	if err != nil || !resetSession.User.MustChangeCredentials {
+		t.Fatalf("reset login = %#v, %v", resetSession.User, err)
+	}
+}
+
+func TestHostAdministratorPasswordReset(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{})
+	admin, err := store.Setup(ctx, Credentials{Username: "admin", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporaryPassword, err := store.ResetAdministratorPasswordFromHost(ctx, "ADMIN")
+	if err != nil || temporaryPassword == "" {
+		t.Fatalf("host reset = %q, %v", temporaryPassword, err)
+	}
+	if _, err := store.Authenticate(ctx, admin.Token); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("admin session remains valid: %v", err)
+	}
+	reset, err := store.Login(ctx, Credentials{Username: "admin", Password: temporaryPassword})
+	if err != nil || !reset.User.MustChangeCredentials {
+		t.Fatalf("reset admin login = %#v, %v", reset.User, err)
+	}
+}
+
 func TestDeleteCurrentUser(t *testing.T) {
 	ctx := context.Background()
 	store, _ := openTestStore(t, Options{DemoLibraryID: "library"})
@@ -301,14 +373,14 @@ func TestDeleteCurrentUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteCurrentUser(ctx, admin.User); !errors.Is(err, ErrLastAdmin) {
+	if err := store.DeleteCurrentUser(ctx, admin.User, testPassword); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("delete last admin = %v", err)
 	}
-	secondAdmin, err := store.CreateUser(ctx, admin.User, Credentials{Username: "second-admin", Password: testPassword}, true)
+	secondAdmin, _, err := store.CreateUser(ctx, admin.User, Credentials{Username: "second-admin", Password: testPassword}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader", Password: testPassword}, false)
+	reader, _, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader", Password: testPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +406,10 @@ func TestDeleteCurrentUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteCurrentUser(ctx, reader); err != nil {
+	if err := store.DeleteCurrentUser(ctx, reader, "wrong-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("delete with wrong password = %v", err)
+	}
+	if err := store.DeleteCurrentUser(ctx, reader, testPassword); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Authenticate(ctx, readerSession.Token); !errors.Is(err, ErrUnauthenticated) {
@@ -352,14 +427,14 @@ func TestDeleteCurrentUser(t *testing.T) {
 			t.Fatalf("%s anonymous=%d, %v", table, anonymous, err)
 		}
 	}
-	if err := store.DeleteCurrentUser(ctx, secondAdmin); err != nil {
+	if err := store.DeleteCurrentUser(ctx, secondAdmin, testPassword); err != nil {
 		t.Fatalf("delete non-last admin: %v", err)
 	}
 	guest, err := store.CreateDemoSession(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteCurrentUser(ctx, guest.User); err != nil {
+	if err := store.DeleteCurrentUser(ctx, guest.User, ""); err != nil {
 		t.Fatalf("delete guest: %v", err)
 	}
 }

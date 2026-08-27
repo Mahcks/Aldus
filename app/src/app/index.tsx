@@ -12,7 +12,9 @@ export default function Home() {
     <Redirect
       href={
         (auth.user
-          ? '/home'
+          ? auth.user.must_change_credentials
+            ? '/claim'
+            : '/home'
           : auth.demoAvailable
             ? '/demo'
             : auth.setupAvailable

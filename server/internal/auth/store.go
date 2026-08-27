@@ -38,14 +38,15 @@ type Options struct {
 }
 
 type User struct {
-	ID            string     `json:"id"`
-	Username      string     `json:"username"`
-	DisplayName   string     `json:"display_name"`
-	Admin         bool       `json:"admin"`
-	Disabled      bool       `json:"disabled"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DemoExpiresAt *time.Time `json:"demo_expires_at,omitempty"`
+	ID                    string     `json:"id"`
+	Username              string     `json:"username"`
+	DisplayName           string     `json:"display_name"`
+	Admin                 bool       `json:"admin"`
+	Disabled              bool       `json:"disabled"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	DemoExpiresAt         *time.Time `json:"demo_expires_at,omitempty"`
+	MustChangeCredentials bool       `json:"must_change_credentials"`
 }
 
 type Session struct {
@@ -160,8 +161,9 @@ func (s *Store) Login(ctx context.Context, credentials Credentials) (Session, er
 	var passwordHash, createdAt, updatedAt string
 	var admin, disabled int
 	var demoExpiresAt sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id,username,display_name,password_hash,is_admin,disabled,created_at,updated_at,demo_expires_at FROM users WHERE username_normalized = ?`, username).
-		Scan(&user.ID, &user.Username, &user.DisplayName, &passwordHash, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt)
+	var mustChange int
+	err := s.db.QueryRowContext(ctx, `SELECT id,username,display_name,password_hash,is_admin,disabled,created_at,updated_at,demo_expires_at,must_change_credentials FROM users WHERE username_normalized = ?`, username).
+		Scan(&user.ID, &user.Username, &user.DisplayName, &passwordHash, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt, &mustChange)
 	if errors.Is(err, sql.ErrNoRows) {
 		_, _ = VerifyPassword(s.dummyHash, credentials.Password)
 		return Session{}, ErrInvalidCredentials
@@ -177,6 +179,7 @@ func (s *Store) Login(ctx context.Context, credentials Credentials) (Session, er
 		return Session{}, ErrInvalidCredentials
 	}
 	user.Admin, user.Disabled = admin != 0, disabled != 0
+	user.MustChangeCredentials = mustChange != 0
 	if demoExpiresAt.Valid {
 		expires, parseErr := parseTime(demoExpiresAt.String)
 		if parseErr != nil {
@@ -224,11 +227,11 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	hash := sha256.Sum256([]byte(token))
 	var user User
 	var createdAt, updatedAt string
-	var admin, disabled int
+	var admin, disabled, mustChange int
 	now := time.Now().UTC()
 	var demoExpiresAt sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.username,u.display_name,u.is_admin,u.disabled,u.created_at,u.updated_at,u.demo_expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0 AND (u.demo_expires_at IS NULL OR u.demo_expires_at>?)`, hash[:], formatTime(now), formatTime(now)).
-		Scan(&user.ID, &user.Username, &user.DisplayName, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt)
+	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.username,u.display_name,u.is_admin,u.disabled,u.created_at,u.updated_at,u.demo_expires_at,u.must_change_credentials FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.disabled=0 AND (u.demo_expires_at IS NULL OR u.demo_expires_at>?)`, hash[:], formatTime(now), formatTime(now)).
+		Scan(&user.ID, &user.Username, &user.DisplayName, &admin, &disabled, &createdAt, &updatedAt, &demoExpiresAt, &mustChange)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrUnauthenticated
 	}
@@ -236,6 +239,7 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 		return User{}, fmt.Errorf("authenticate session: %w", err)
 	}
 	user.Admin, user.Disabled = admin != 0, disabled != 0
+	user.MustChangeCredentials = mustChange != 0
 	if demoExpiresAt.Valid {
 		expires, parseErr := parseTime(demoExpiresAt.String)
 		if parseErr != nil {

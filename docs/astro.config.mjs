@@ -58,6 +58,7 @@ export default defineConfig({
           items: [
             { label: "Install Aldus", slug: "admin/install" },
             { label: "Libraries and members", slug: "admin/libraries" },
+            { label: "Users and recovery", slug: "admin/users" },
             { label: "Media sources", slug: "admin/sources" },
             { label: "Automatic requests", slug: "admin/acquisitions" },
             { label: "Backups and upgrades", slug: "admin/backups" },

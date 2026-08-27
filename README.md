@@ -114,7 +114,7 @@ Indexer names, file sizes, and release strings never surface to someone who just
 | **Bring what you already have** | Point Aldus at a folder of EPUBs and audio files and it imports them without renaming or rewriting a single file. Nothing you already own gets touched. |
 | **Two ways to store media** | External Sources stay exactly where they are, referenced read-only. Managed media from acquisitions is copied in, checksummed, and verified on import. |
 | **Read anywhere** | Native apps for iOS and Android, a full web app, and OPDS + KOReader credentials for e-ink devices — all backed by the same server and the same progress. |
-| **Verified backups** | `docker compose run --rm aldus backup` produces a checksummed archive of the database, managed media, covers, and alignment artifacts — credentials scrubbed automatically. |
+| **Verified backups** | `docker compose run --rm aldus backup` produces a checksummed archive of the database, managed media, covers, and alignment artifacts. Connector secrets and active sessions are removed from the archive. |
 | **It's yours** | Self-hosted, your data, on your hardware. No account required anywhere but your own server. |
 
 <br>

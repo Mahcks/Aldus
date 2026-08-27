@@ -10,7 +10,7 @@ import (
 )
 
 func userDTO(v auth.User) contracts.User {
-	return contracts.User{ID: v.ID, Username: v.Username, DisplayName: v.DisplayName, Admin: v.Admin, Disabled: v.Disabled, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, DemoExpiresAt: v.DemoExpiresAt}
+	return contracts.User{ID: v.ID, Username: v.Username, DisplayName: v.DisplayName, Admin: v.Admin, Disabled: v.Disabled, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, DemoExpiresAt: v.DemoExpiresAt, MustChangeCredentials: v.MustChangeCredentials}
 }
 func sessionDTO(v auth.Session) contracts.Session {
 	result := contracts.Session{Token: v.Token, ExpiresAt: v.ExpiresAt, User: userDTO(v.User)}

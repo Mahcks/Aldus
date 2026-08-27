@@ -24,8 +24,8 @@ This runs against the live server — Aldus does not need to be stopped. `--arch
   <Card title="A true hot snapshot" icon="seti:db">
     Aldus uses SQLite's own online backup API to copy the live database into a temporary file without pausing the server. This is a consistent point-in-time snapshot, not a raw copy of a file that might be mid-write.
   </Card>
-  <Card title="Credentials are actually scrubbed" icon="seti:lock">
-    On the snapshot only, Aldus clears the stored Prowlarr API key and qBittorrent password, plus any indexer URLs embedded in request history, then runs `VACUUM` with secure-delete on so the freed space is overwritten rather than just unlinked. This is a real data-erasure step, not a display-only redaction — the bytes are gone from the archive.
+  <Card title="Connector secrets and sessions are removed" icon="seti:lock">
+    On the snapshot only, Aldus clears the stored Prowlarr API key and qBittorrent password, removes indexer URLs embedded in request history, and deletes active app sessions. It then runs `VACUUM` with secure-delete so those removed bytes are overwritten rather than merely unlinked.
   </Card>
   <Card title="Every file is checksummed" icon="seti:lock">
     Each file written into the archive gets a SHA-256 hash recorded in a `manifest.json` inside it. Immediately after writing the archive, Aldus extracts and re-verifies it against that manifest before reporting success — a `backup` command that exits cleanly has already round-tripped itself.
@@ -34,6 +34,10 @@ This runs against the live server — Aldus does not need to be stopped. `--arch
 
 <Aside type="caution" title="You'll need to re-enter Prowlarr and qBittorrent credentials after a restore">
   Because those credentials are deliberately erased at backup time, restoring from a backup always leaves acquisitions disconnected until you go back to **Acquisitions → Connections** and re-save them. This is expected, not a bug in the restore.
+</Aside>
+
+<Aside type="caution" title="A backup is still sensitive">
+  Account password hashes and KOReader/OPDS credential verifiers remain so user accounts survive a restore. Keep archives private and access-controlled. Active sessions do not survive: everyone signs in again after restoration.
 </Aside>
 
 ### Included and excluded
@@ -71,6 +75,8 @@ Aldus also refuses to include a symbolic link anywhere under the data directory,
    ```
 
 5. Reconnect Prowlarr and qBittorrent under **Acquisitions → Connections** — their credentials were scrubbed from the backup on purpose.
+
+6. Sign in again on each Aldus app or browser. Active sessions are intentionally excluded from backups.
 
 </Steps>
 

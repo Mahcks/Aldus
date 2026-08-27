@@ -24,7 +24,7 @@ func Handler(deps Dependencies) http.Handler {
 	router.Handle("/users/*", koreaderHandler)
 	router.Handle("/syncs/*", koreaderHandler)
 	if deps.Media != nil {
-		router.Handle("/media/*", cors(deps.AllowedOrigins)(deps.Auth.Middleware(http.StripPrefix("/media/", http.FileServer(deps.Media)))))
+		router.Handle("/media/*", cors(deps.AllowedOrigins)(deps.Auth.Middleware(deps.Auth.RequireClaimed(http.StripPrefix("/media/", http.FileServer(deps.Media))))))
 	}
 	if deps.Web != nil {
 		spa := spaHandler(deps.Web)

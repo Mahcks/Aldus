@@ -13,5 +13,6 @@ export function AuthGate() {
     return (
       <Redirect href={auth.demoAvailable ? '/demo' : auth.setupAvailable ? '/setup' : '/login'} />
     );
+  if (auth.user.must_change_credentials) return <Redirect href="/claim" />;
   return <AppShell />;
 }

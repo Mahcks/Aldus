@@ -29,7 +29,8 @@ type AuthContextValue = AuthState & {
   refresh: () => Promise<void>;
   signedIn: (user: User) => Promise<void>;
   signOut: () => Promise<void>;
-  deleteAccount: () => Promise<void>;
+  signOutEverywhere: () => Promise<void>;
+  deleteAccount: (password?: string) => Promise<void>;
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -197,12 +198,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
           }
         }
       },
-      deleteAccount: async () => {
+      signOutEverywhere: async () => {
+        const origin = getAPIBaseURL();
+        await api.logoutAll();
+        await rememberUser(null, origin);
+        if (origin === getAPIBaseURL()) {
+          setStorageUserID('');
+          setState({
+            loading: false,
+            setupAvailable: false,
+            demoAvailable: state.demoAvailable || Boolean(state.user?.demo_expires_at),
+            user: null,
+            error: null,
+          });
+        }
+      },
+      deleteAccount: async (password?: string) => {
         const origin = getAPIBaseURL();
         const user = state.user;
         if (!user) return;
         await deleteAccountAndClearState(
-          api.deleteAccount,
+          () => api.deleteAccount({ password }),
           [
             () => clearToken(origin),
             () => rememberUser(null, origin),

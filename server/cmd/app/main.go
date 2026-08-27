@@ -36,11 +36,42 @@ var version = "dev"
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(os.Args) > 1 && (os.Args[1] == "backup" || os.Args[1] == "restore") {
+	if len(os.Args) > 1 && (os.Args[1] == "backup" || os.Args[1] == "restore" || os.Args[1] == "reset-password") {
 		command := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 		dataDir := command.String("data-dir", "/data", "Aldus data directory")
 		archive := command.String("archive", "", "backup archive path")
+		username := command.String("username", "", "administrator username")
 		_ = command.Parse(os.Args[2:])
+		if os.Args[1] == "reset-password" {
+			if strings.TrimSpace(*username) == "" {
+				fmt.Fprintln(os.Stderr, "--username is required")
+				os.Exit(2)
+			}
+			databasePath := filepath.Join(*dataDir, "aldus.db")
+			if info, err := os.Stat(databasePath); err != nil || !info.Mode().IsRegular() {
+				fmt.Fprintln(os.Stderr, "Aldus database was not found:", databasePath)
+				os.Exit(1)
+			}
+			db, err := database.Open(ctx, databasePath)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "open database:", err)
+				os.Exit(1)
+			}
+			defer db.Close()
+			store, err := auth.New(db, auth.Options{})
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "open authentication database:", err)
+				os.Exit(1)
+			}
+			temporaryPassword, err := store.ResetAdministratorPasswordFromHost(ctx, *username)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "reset administrator password:", err)
+				os.Exit(1)
+			}
+			fmt.Println("Temporary password:", temporaryPassword)
+			fmt.Println("Sign in and finish account setup immediately. All previous sessions were revoked.")
+			return
+		}
 		if *archive == "" {
 			fmt.Fprintln(os.Stderr, "--archive is required")
 			os.Exit(2)

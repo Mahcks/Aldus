@@ -11,7 +11,7 @@ You need an address and credentials supplied by the person who runs your Aldus s
 2. Enter the server address in the **Server address** field — for example `demo.aldus.media` or a local address like `http://192.168.1.20:8080`.
 3. Select **Continue**.
 4. Aldus checks the address, then sends you to the right place: sign-in if the server already has accounts, first-time setup if it's brand new, or the demo welcome screen if the server offers a public demo.
-5. Sign in with the username and password your server owner gave you.
+5. Sign in with the one-time username and password your server owner gave you. Aldus then asks you to choose your final credentials before opening the library.
 
 ## HTTP versus HTTPS
 

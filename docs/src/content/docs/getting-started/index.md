@@ -9,11 +9,11 @@ Three doors in. Pick the one that matches you.
 
 ## If someone invited you
 
-Someone who already runs an Aldus server added you as a reader. You need two things from them: the server's address (something like `https://library.example.com` or a local address like `http://192.168.1.20:8080`) and a username and password.
+Someone who already runs an Aldus server added you as a reader. You need two things from them: the server's address (something like `https://library.example.com` or a local address like `http://192.168.1.20:8080`) and the one-time username and password Aldus generated for you.
 
 1. Install Aldus on your phone or open it in a browser.
 2. Enter the address you were given and select **Continue**.
-3. Sign in with your username and password.
+3. Sign in with the one-time credentials, then choose your final username, display name, and password.
 
 Full walkthrough, including what happens with a bad address or wrong password, is in [Connect to a server](/getting-started/connect/). Platform-specific notes live under [iPhone and iPad](/read-listen/ios/) and [Android](/read-listen/android/).
 

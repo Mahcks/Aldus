@@ -1,0 +1,57 @@
+---
+title: Users and account recovery
+description: Add household members, hand off one-time credentials, reset access, and recover an administrator account.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+Every Aldus account belongs to one server. There is no Aldus cloud account, email signup, or password-reset service. The household administrator creates access; each reader then chooses credentials the administrator does not know.
+
+## Add a reader
+
+<Steps>
+
+1. Open **More → Users** and select **Add user**.
+2. Enter a provisional username and display name. Leave global administrator access off for an ordinary reader.
+3. Save the one-time username and password Aldus shows. The password cannot be shown again.
+4. Share the server address and one-time credentials privately. Do not send them through a public issue or support request.
+5. Add the account to the appropriate Library under **Libraries → Members**.
+6. On first sign-in, the reader chooses their final username, display name, and password before Aldus grants library access.
+
+</Steps>
+
+The final username stays fixed after setup because KOReader and OPDS devices use it when authenticating. A reader can change their display name and password from **Account**.
+
+## Reset a reader's password
+
+Open **More → Users**, select the account, and choose **Reset password**. Aldus immediately revokes that account's app and browser sessions and shows a new one-time password. The reader signs in with it, then chooses final credentials again.
+
+Reader-device credentials are separate. If a KOReader or OPDS credential may also be compromised, the reader should revoke it under **Account → KOReader and OPDS** after recovering the account.
+
+## Disable or remove access
+
+Disabling an account prevents login and revokes every app session. It does not erase the account, reading history, collections, or reader-device credentials. Re-enable it when the same person should regain access.
+
+Readers can permanently remove their own account under **Account → Delete account**. Regular accounts confirm deletion with their current password; temporary demo guests do not have a password and use the confirmation dialog only. The final enabled administrator cannot delete their own account until another administrator exists.
+
+## Recover the only administrator
+
+If the sole administrator forgets their password, use host access. Stop the service first so only the recovery command opens the database:
+
+```sh
+docker compose stop aldus
+docker compose run --rm aldus reset-password --username YOUR_USERNAME
+docker compose up -d
+```
+
+The command prints a one-time password and revokes every existing session for that administrator. Sign in and finish account setup immediately. It works only for an existing administrator and does not expose recovery over the network.
+
+<Aside type="caution" title="Protect the printed password">
+  The one-time password appears in your terminal once. Do not paste it into shell history, logs, GitHub issues, or support email.
+</Aside>
+
+## Sessions and backups
+
+**Sign out** removes only the current app or browser session. **Sign out everywhere** removes all Aldus app and browser sessions for the account while leaving KOReader and OPDS credentials connected.
+
+Backups retain user password hashes and reader-credential verifiers so accounts still exist after recovery, but active sessions are removed from the backup snapshot. Everyone signs in again after a restore. Treat every backup as sensitive account and library data, store it with restricted access, and keep an off-host copy.

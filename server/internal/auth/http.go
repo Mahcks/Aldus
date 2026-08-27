@@ -26,6 +26,21 @@ func (s *Store) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Store) RequireClaimed(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if user.MustChangeCredentials {
+			http.Error(w, "Finish setting up your account.", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userContextKey{}).(User)
 	return user, ok

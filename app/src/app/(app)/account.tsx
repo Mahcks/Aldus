@@ -15,12 +15,14 @@ import {
   Button,
   colors,
   ConfirmDialog,
+  Dialog,
   EmptyState,
   Field,
   IconRow,
   Loading,
   Notice,
   Page,
+  Row,
   Section,
   StatusBadge,
 } from '../../features/ui';
@@ -43,25 +45,37 @@ export default function AccountScreen() {
   const [serverOrigin, setServerOrigin] = useState(apiBaseURL);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [displayName, setDisplayName] = useState(auth.user?.display_name || '');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: '',
+    password: '',
+    password_confirmation: '',
+  });
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [confirmingSignOutEverywhere, setConfirmingSignOutEverywhere] = useState(false);
   const [confirmingAccountDeletion, setConfirmingAccountDeletion] = useState(false);
+  const [deletionPassword, setDeletionPassword] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     let canceled = false;
-    Promise.all([
+    Promise.allSettled([
       api.libraries(),
       api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 100 }),
       api.readerCredentials(),
     ])
-      .then(([items, works, readerCredentials]) => {
-        if (!canceled) {
-          setLibraries(items);
-          setActivity(works.items);
-          setCredentials(readerCredentials);
-        }
-      })
-      .catch((value) => {
-        if (!canceled) setError(errorMessage(value));
+      .then(([libraryResult, activityResult, credentialResult]) => {
+        if (canceled) return;
+        if (libraryResult.status === 'fulfilled') setLibraries(libraryResult.value);
+        if (activityResult.status === 'fulfilled') setActivity(activityResult.value.items);
+        if (credentialResult.status === 'fulfilled') setCredentials(credentialResult.value);
+        const failed = [libraryResult, activityResult, credentialResult].find(
+          (result) => result.status === 'rejected',
+        );
+        if (failed?.status === 'rejected') setError(errorMessage(failed.reason));
       })
       .finally(() => {
         if (!canceled) setLoading(false);
@@ -110,15 +124,76 @@ export default function AccountScreen() {
     }
   }
 
+  async function saveProfile() {
+    if (!displayName.trim()) return;
+    setSavingAccount(true);
+    setError('');
+    try {
+      const user = await api.updateProfile({ display_name: displayName.trim() });
+      await auth.signedIn(user);
+      setEditingProfile(false);
+      setSuccess('Profile updated.');
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingAccount(false);
+    }
+  }
+
+  async function changePassword() {
+    setSavingAccount(true);
+    setError('');
+    try {
+      const user = await api.changePassword(passwordForm);
+      await auth.signedIn(user);
+      setPasswordForm({ current_password: '', password: '', password_confirmation: '' });
+      setChangingPassword(false);
+      setSuccess('Password changed. Other app sessions were signed out.');
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingAccount(false);
+    }
+  }
+
+  function closePasswordDialog() {
+    setPasswordForm({ current_password: '', password: '', password_confirmation: '' });
+    setChangingPassword(false);
+  }
+
+  function closeProfileDialog() {
+    setDisplayName(auth.user?.display_name || '');
+    setEditingProfile(false);
+  }
+
+  function closeDeletionDialog() {
+    setDeletionPassword('');
+    setConfirmingAccountDeletion(false);
+  }
+
+  async function signOutEverywhere() {
+    setSavingAccount(true);
+    setError('');
+    try {
+      await auth.signOutEverywhere();
+      router.replace('/login');
+    } catch (value) {
+      setError(errorMessage(value));
+      setConfirmingSignOutEverywhere(false);
+    } finally {
+      setSavingAccount(false);
+    }
+  }
+
   async function deleteAccount() {
     setDeletingAccount(true);
     setError('');
     try {
-      await auth.deleteAccount();
+      await auth.deleteAccount(deletionPassword);
       router.replace('/connect');
     } catch (value) {
       setError(errorMessage(value));
-      setConfirmingAccountDeletion(false);
+      closeDeletionDialog();
     } finally {
       setDeletingAccount(false);
     }
@@ -140,10 +215,17 @@ export default function AccountScreen() {
       ? Constants.platform?.ios?.buildNumber
       : Constants.platform?.android?.versionCode;
   const version = `Version ${Constants.expoConfig?.version ?? 'development'}${nativeBuild ? ` (${nativeBuild})` : ''}`;
+  const isGuest = Boolean(auth.user?.demo_expires_at);
+  const passwordsMatch = passwordForm.password === passwordForm.password_confirmation;
+  const canChangePassword =
+    passwordForm.current_password.length > 0 &&
+    passwordForm.password.length >= 12 &&
+    passwordsMatch;
 
   return (
     <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
       {error ? <Notice danger>{error}</Notice> : null}
+      {success ? <Notice tone="success">{success}</Notice> : null}
       {Platform.OS !== 'web' ? (
         <Section title="Server">
           <View className="gap-2 border-y border-line py-4">
@@ -183,8 +265,37 @@ export default function AccountScreen() {
             {auth.user?.admin ? (
               <StatusBadge tone="info" label="Administrator" icon="users" />
             ) : null}
+            {!isGuest ? (
+              <Row>
+                <Button
+                  label="Edit name"
+                  kind="secondary"
+                  onPress={() => setEditingProfile(true)}
+                />
+                <Button
+                  label="Change password"
+                  kind="secondary"
+                  onPress={() => setChangingPassword(true)}
+                />
+              </Row>
+            ) : null}
           </View>
         </Section>
+        {!isGuest ? (
+          <Section title="Security">
+            <View className="items-start gap-3 border-y border-line py-5">
+              <Text className="text-sm leading-5 text-muted">
+                If a phone or browser is lost, sign out every Aldus app session. Your KOReader and
+                OPDS credentials stay connected.
+              </Text>
+              <Button
+                label="Sign out everywhere"
+                kind="secondary"
+                onPress={() => setConfirmingSignOutEverywhere(true)}
+              />
+            </View>
+          </Section>
+        ) : null}
         <Section title="Your activity">
           {activity.length ? (
             <View className="gap-4">
@@ -357,15 +468,120 @@ export default function AccountScreen() {
           </View>
         </Section>
       </View>
+      {isGuest ? (
+        <ConfirmDialog
+          visible={confirmingAccountDeletion}
+          title="Permanently delete your account?"
+          description="This cannot be undone. Your guest account and personal reading data will be removed from this server, along with offline data stored on this device."
+          confirmLabel="Delete account"
+          danger
+          busy={deletingAccount}
+          onClose={() => setConfirmingAccountDeletion(false)}
+          onConfirm={() => void deleteAccount()}
+        />
+      ) : (
+        <Dialog
+          visible={confirmingAccountDeletion}
+          title="Permanently delete your account?"
+          onClose={closeDeletionDialog}
+        >
+          <View className="gap-5">
+            <Notice danger>
+              This cannot be undone. Enter your current password to remove your account and personal
+              reading data.
+            </Notice>
+            <Field
+              label="Current password"
+              secureTextEntry
+              autoComplete="current-password"
+              value={deletionPassword}
+              onChangeText={setDeletionPassword}
+            />
+            <Row>
+              <Button label="Cancel" onPress={closeDeletionDialog} />
+              <Button
+                label="Delete account"
+                kind="danger"
+                loading={deletingAccount}
+                disabled={!deletionPassword}
+                onPress={() => void deleteAccount()}
+              />
+            </Row>
+          </View>
+        </Dialog>
+      )}
+      <Dialog visible={editingProfile} title="Edit profile" onClose={closeProfileDialog}>
+        <View className="gap-4">
+          <Field label="Display name" value={displayName} onChangeText={setDisplayName} autoFocus />
+          <Text className="text-sm text-muted">
+            Your username stays fixed after setup so connected e-readers keep working.
+          </Text>
+          <Row>
+            <Button label="Cancel" onPress={closeProfileDialog} />
+            <Button
+              label="Save name"
+              kind="primary"
+              loading={savingAccount}
+              disabled={!displayName.trim()}
+              onPress={() => void saveProfile()}
+            />
+          </Row>
+        </View>
+      </Dialog>
+      <Dialog visible={changingPassword} title="Change password" onClose={closePasswordDialog}>
+        <View className="gap-4">
+          <Notice>Changing your password signs out every other Aldus app session.</Notice>
+          <Field
+            label="Current password"
+            secureTextEntry
+            autoComplete="current-password"
+            value={passwordForm.current_password}
+            onChangeText={(current_password) =>
+              setPasswordForm((current) => ({ ...current, current_password }))
+            }
+          />
+          <Field
+            label="New password"
+            secureTextEntry
+            autoComplete="new-password"
+            value={passwordForm.password}
+            onChangeText={(password) => setPasswordForm((current) => ({ ...current, password }))}
+            help="Use at least 12 characters."
+          />
+          <Field
+            label="Confirm new password"
+            secureTextEntry
+            autoComplete="new-password"
+            value={passwordForm.password_confirmation}
+            onChangeText={(password_confirmation) =>
+              setPasswordForm((current) => ({ ...current, password_confirmation }))
+            }
+            error={
+              passwordForm.password_confirmation && !passwordsMatch
+                ? 'Passwords do not match.'
+                : undefined
+            }
+          />
+          <Row>
+            <Button label="Cancel" onPress={closePasswordDialog} />
+            <Button
+              label="Change password"
+              kind="primary"
+              loading={savingAccount}
+              disabled={!canChangePassword}
+              onPress={() => void changePassword()}
+            />
+          </Row>
+        </View>
+      </Dialog>
       <ConfirmDialog
-        visible={confirmingAccountDeletion}
-        title="Permanently delete your account?"
-        description="This cannot be undone. Your account and personal reading data will be removed from this server, along with offline data stored on this device."
-        confirmLabel="Delete account"
-        danger
-        busy={deletingAccount}
-        onClose={() => setConfirmingAccountDeletion(false)}
-        onConfirm={() => void deleteAccount()}
+        visible={confirmingSignOutEverywhere}
+        title="Sign out everywhere?"
+        description="Every Aldus app session, including this one, will be signed out. Reader-device credentials are not affected."
+        confirmLabel="Sign out everywhere"
+        busy={savingAccount}
+        onClose={() => setConfirmingSignOutEverywhere(false)}
+        onConfirm={() => void signOutEverywhere()}
       />
       <ConfirmDialog
         visible={Boolean(deletingCredential)}

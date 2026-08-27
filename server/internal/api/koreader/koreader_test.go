@@ -85,8 +85,8 @@ func TestReaderCredentialsKeepProgressIsolated(t *testing.T) {
 	}
 	accounts, _ := auth.New(db, auth.Options{})
 	admin, _ := accounts.Setup(ctx, auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
-	alice, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "alice", Password: "a-secure-alice-password"}, false)
-	bob, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "bob", Password: "a-secure-bob-password"}, false)
+	alice, _, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "alice", Password: "a-secure-alice-password"}, false)
+	bob, _, _ := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "bob", Password: "a-secure-bob-password"}, false)
 	for _, user := range []auth.User{alice, bob} {
 		if err := catalog.New(db).SetMember(ctx, admin.User, "fixture-library", user.ID, "reader"); err != nil {
 			t.Fatal(err)

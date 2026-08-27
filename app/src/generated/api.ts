@@ -176,6 +176,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   demo_expires_at?: string;
+  must_change_credentials: boolean;
 }
 export interface Session {
   token?: string;
@@ -201,7 +202,6 @@ export interface DemoCredentials {
 export interface LoginRequest {
   username: string;
   password: string;
-  display_name?: string;
 }
 export interface SetupRequest {
   username: string;
@@ -215,12 +215,35 @@ export interface SetupStatus {
 }
 export interface CreateUserRequest {
   username: string;
-  password: string;
   display_name?: string;
   admin: boolean;
 }
+export interface CreatedUser {
+  user: User;
+  temporary_password: string;
+}
 export interface UpdateUserRequest {
   disabled?: boolean;
+}
+export interface ClaimAccountRequest {
+  username: string;
+  display_name?: string;
+  password: string;
+  password_confirmation: string;
+}
+export interface ChangePasswordRequest {
+  current_password: string;
+  password: string;
+  password_confirmation: string;
+}
+export interface UpdateProfileRequest {
+  display_name: string;
+}
+export interface DeleteAccountRequest {
+  password?: string;
+}
+export interface ResetPasswordResponse {
+  temporary_password: string;
 }
 
 //////////

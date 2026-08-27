@@ -26,9 +26,13 @@ import type {
   CreateLibraryRequest,
   CreateLibrarySourceRequest,
   CreateRepresentationRequest,
+  CreatedUser,
   CreateUserRequest,
   CreateWorkRequest,
   DemoPairing,
+  ClaimAccountRequest,
+  ChangePasswordRequest,
+  DeleteAccountRequest,
   EPUBLocator,
   Library,
   LibrarySource,
@@ -55,6 +59,7 @@ import type {
   SetupStatus,
   SetupRequest,
   SystemDiagnostics,
+  ResetPasswordResponse,
   TitleRequest,
   TitleRequestEvent,
   TitleSearchResult,
@@ -64,6 +69,7 @@ import type {
   UpdateActivityRequest,
   UpdateLibrarySourceRequest,
   UpdateRepresentationRequest,
+  UpdateProfileRequest,
   UpdateUserRequest,
   UpdateWorkRequest,
   UpdateCoverSettingsRequest,
@@ -188,7 +194,23 @@ export const api = {
     }).then((session) => acceptSession(session, origin));
   },
   me: () => request<User>('/auth/me'),
-  deleteAccount: () => request<void>('/auth/me', { method: 'DELETE' }),
+  claimAccount: (body: ClaimAccountRequest) => {
+    const origin = getAPIBaseURL();
+    return request<Session>('/auth/claim', { method: 'POST', body: JSON.stringify(body) }).then(
+      (session) => acceptSession(session, origin),
+    );
+  },
+  updateProfile: (body: UpdateProfileRequest) =>
+    request<User>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
+  changePassword: (body: ChangePasswordRequest) => {
+    const origin = getAPIBaseURL();
+    return request<Session>('/auth/me/password', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }).then((session) => acceptSession(session, origin));
+  },
+  deleteAccount: (body: DeleteAccountRequest = {}) =>
+    request<void>('/auth/me', { method: 'DELETE', body: JSON.stringify(body) }),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),
   backups: () => request<BackupArchive[]>('/system/backups'),
   createBackup: () => request<BackupArchive>('/system/backups', { method: 'POST' }),
@@ -202,6 +224,11 @@ export const api = {
     } finally {
       await clearToken(origin);
     }
+  },
+  logoutAll: async () => {
+    const origin = getAPIBaseURL();
+    await request<void>('/auth/logout-all', { method: 'POST' });
+    await clearToken(origin);
   },
   readerCredentials: () => request<ReaderCredential[]>('/me/reader-credentials'),
   createReaderCredential: (body: CreateReaderCredentialRequest) =>
@@ -271,9 +298,11 @@ export const api = {
 
   users: (offset = 0) => request<User[]>(`/users?limit=100&offset=${offset}`),
   createUser: (body: CreateUserRequest) =>
-    request<User>('/users', { method: 'POST', body: JSON.stringify(body) }),
+    request<CreatedUser>('/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id: string, body: UpdateUserRequest) =>
     request<void>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  resetUserPassword: (id: string) =>
+    request<ResetPasswordResponse>(`/users/${id}/reset-password`, { method: 'POST' }),
 
   libraries: () => request<Library[]>('/libraries'),
   library: (id: string) => request<Library>(`/libraries/${id}`),

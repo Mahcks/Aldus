@@ -68,6 +68,9 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','hash',1,0,'2026-01-01','2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO sessions(token_hash,user_id,expires_at,created_at,last_seen_at) VALUES(?,'admin','2099-01-01','2026-01-01','2026-01-01')`, make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
 	const indexerSecret, qbitSecret = "prowlarr-secret-that-must-not-leak", "qbittorrent-secret-that-must-not-leak"
 	const downloadSecret = "download-secret-that-must-not-leak"
 	if _, err := db.Exec(`INSERT INTO acquisition_settings(id,indexer_url,indexer_api_key,qbittorrent_url,qbittorrent_username,qbittorrent_password,qbittorrent_category,updated_at) VALUES(1,'http://prowlarr',?,'http://qbittorrent','aldus',?,'aldus','2026-01-01')`, indexerSecret, qbitSecret); err != nil {
@@ -110,6 +113,10 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if err := db.QueryRow(`SELECT download_url FROM acquisition_results WHERE id='result'`).Scan(&liveDownloadURL); err != nil || !strings.Contains(liveDownloadURL, downloadSecret) {
 		t.Fatalf("live download URL changed = %q, %v", liveDownloadURL, err)
 	}
+	var liveSessions int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&liveSessions); err != nil || liveSessions != 1 {
+		t.Fatalf("live sessions = %d, %v", liveSessions, err)
+	}
 	extracted := t.TempDir()
 	manifest, err := extractAndVerify(archive, extracted)
 	if err != nil || !manifest.ConnectorSecretsRedacted {
@@ -149,6 +156,10 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	var users int
 	if err := restoredDB.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&users); err != nil || users != 1 {
 		t.Fatalf("restored users = %d, %v", users, err)
+	}
+	var sessions int
+	if err := restoredDB.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&sessions); err != nil || sessions != 0 {
+		t.Fatalf("restored sessions = %d, %v", sessions, err)
 	}
 	var restoredIndexerSecret, restoredQBitSecret string
 	if err := restoredDB.QueryRow(`SELECT indexer_api_key,qbittorrent_password FROM acquisition_settings WHERE id=1`).Scan(&restoredIndexerSecret, &restoredQBitSecret); err != nil || restoredIndexerSecret != "" || restoredQBitSecret != "" {

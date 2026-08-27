@@ -47,8 +47,86 @@ func redeemDemoPairing(store *auth.Store) http.HandlerFunc {
 
 func registerSessionRoutes(router chi.Router, store *auth.Store) {
 	router.Post("/auth/logout", logout(store))
+	router.Post("/auth/logout-all", logoutAll(store))
+	router.Post("/auth/claim", claimAccount(store))
 	router.Get("/auth/me", me)
+	router.Patch("/auth/me", updateProfile(store))
+	router.Put("/auth/me/password", changePassword(store))
 	router.Delete("/auth/me", deleteCurrentUser(store))
+}
+
+func claimAccount(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, _ := auth.UserFromContext(r.Context())
+		var request contracts.ClaimAccountRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		if request.Password != request.PasswordConfirmation {
+			http.Error(w, "passwords do not match", http.StatusBadRequest)
+			return
+		}
+		session, err := store.ClaimAccount(r.Context(), user, auth.Credentials{Username: request.Username, DisplayName: request.DisplayName, Password: request.Password})
+		switch {
+		case errors.Is(err, auth.ErrUsernameTaken):
+			http.Error(w, "username already exists", http.StatusConflict)
+		case errors.Is(err, auth.ErrInvalid):
+			http.Error(w, "invalid account", http.StatusBadRequest)
+		case err != nil:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		default:
+			w.Header().Set("Cache-Control", "no-store")
+			store.SetCookie(w, session)
+			writeJSON(w, http.StatusOK, sessionDTO(session))
+		}
+	}
+}
+
+func updateProfile(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, _ := auth.UserFromContext(r.Context())
+		var request contracts.UpdateProfileRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		updated, err := store.UpdateDisplayName(r.Context(), user, request.DisplayName)
+		if errors.Is(err, auth.ErrInvalid) {
+			http.Error(w, "invalid profile", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, userDTO(updated))
+	}
+}
+
+func changePassword(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, _ := auth.UserFromContext(r.Context())
+		var request contracts.ChangePasswordRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		if request.Password != request.PasswordConfirmation {
+			http.Error(w, "passwords do not match", http.StatusBadRequest)
+			return
+		}
+		session, err := store.ChangePassword(r.Context(), user, request.CurrentPassword, request.Password)
+		switch {
+		case errors.Is(err, auth.ErrInvalidCredentials):
+			http.Error(w, "current password is incorrect", http.StatusUnauthorized)
+		case errors.Is(err, auth.ErrInvalid), errors.Is(err, auth.ErrCredentialsRequired):
+			http.Error(w, "invalid password", http.StatusBadRequest)
+		case err != nil:
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		default:
+			w.Header().Set("Cache-Control", "no-store")
+			store.SetCookie(w, session)
+			writeJSON(w, http.StatusOK, sessionDTO(session))
+		}
+	}
 }
 
 func deleteCurrentUser(store *auth.Store) http.HandlerFunc {
@@ -58,12 +136,18 @@ func deleteCurrentUser(store *auth.Store) http.HandlerFunc {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		err := store.DeleteCurrentUser(r.Context(), user)
+		var request contracts.DeleteAccountRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		err := store.DeleteCurrentUser(r.Context(), user, request.Password)
 		switch {
 		case errors.Is(err, auth.ErrLastAdmin):
 			http.Error(w, "Create another administrator before deleting this account.", http.StatusConflict)
 		case errors.Is(err, auth.ErrUnauthenticated):
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		case errors.Is(err, auth.ErrInvalidCredentials):
+			http.Error(w, "current password is incorrect", http.StatusUnauthorized)
 		case err != nil:
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 		default:
@@ -131,6 +215,7 @@ func setup(store *auth.Store) http.HandlerFunc {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-store")
 		store.SetCookie(w, session)
 		writeJSON(w, http.StatusCreated, sessionDTO(session))
 	}
@@ -142,7 +227,7 @@ func login(store *auth.Store) http.HandlerFunc {
 		if !decode(w, r, &request) {
 			return
 		}
-		session, err := store.Login(r.Context(), auth.Credentials{Username: request.Username, Password: request.Password, DisplayName: request.DisplayName})
+		session, err := store.Login(r.Context(), auth.Credentials{Username: request.Username, Password: request.Password})
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
 			return
@@ -151,6 +236,7 @@ func login(store *auth.Store) http.HandlerFunc {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Cache-Control", "no-store")
 		store.SetCookie(w, session)
 		writeJSON(w, http.StatusOK, sessionDTO(session))
 	}
@@ -159,6 +245,18 @@ func login(store *auth.Store) http.HandlerFunc {
 func logout(store *auth.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := store.Logout(r.Context(), auth.RequestToken(r)); err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		store.ClearCookie(w)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func logoutAll(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, _ := auth.UserFromContext(r.Context())
+		if err := store.RevokeAllSessions(r.Context(), user); err != nil {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}

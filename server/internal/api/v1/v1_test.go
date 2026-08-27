@@ -76,11 +76,11 @@ func TestAdminCanCreateDownloadAndDeleteBackup(t *testing.T) {
 
 func TestDeleteCurrentAccount(t *testing.T) {
 	handler, token := testHandler(t)
-	created := request(t, handler, token, http.MethodPost, "/users", `{"username":"other-admin","password":"a-secure-test-password","display_name":"Other Admin","admin":true}`)
+	created := request(t, handler, token, http.MethodPost, "/users", `{"username":"other-admin","display_name":"Other Admin","admin":true}`)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create second admin = %d %s", created.Code, created.Body.String())
 	}
-	deleted := request(t, handler, token, http.MethodDelete, "/auth/me", `{"user_id":"someone-else"}`)
+	deleted := request(t, handler, token, http.MethodDelete, "/auth/me", `{"password":"a-secure-test-password"}`)
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete current account = %d %s", deleted.Code, deleted.Body.String())
 	}
@@ -116,7 +116,7 @@ func TestDeleteGuestAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := Handler(Dependencies{Auth: accounts, Catalog: catalog.New(db), Position: position.New(db), Acquisitions: acquisition.NewStore(db, nil)})
-	deleted := request(t, handler, guest.Token, http.MethodDelete, "/auth/me", "")
+	deleted := request(t, handler, guest.Token, http.MethodDelete, "/auth/me", `{}`)
 	if deleted.Code != http.StatusNoContent {
 		t.Fatalf("delete guest = %d %s", deleted.Code, deleted.Body.String())
 	}
@@ -146,6 +146,7 @@ func TestRouteContract(t *testing.T) {
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
 	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /me/acquisition-tracker", "POST /me/acquisition-tracker/seen", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/retry", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/cancel", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", "POST /libraries/{libraryID}/acquisition-discoveries", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair")
 	want = append(want, "GET /search/titles")
+	want = append(want, "PATCH /auth/me", "POST /auth/claim", "POST /auth/logout-all", "POST /users/{userID}/reset-password", "PUT /auth/me/password")
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
@@ -203,7 +204,7 @@ func TestWorkAlignmentJobListing(t *testing.T) {
 	}
 	sessions := map[string]auth.Session{}
 	for _, role := range []string{"owner", "editor", "reader"} {
-		user, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: role, Password: "a-secure-test-password"}, false)
+		user, _, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: role, Password: "a-secure-test-password"}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +213,7 @@ func TestWorkAlignmentJobListing(t *testing.T) {
 		}
 		sessions[role], _ = accounts.Login(ctx, auth.Credentials{Username: role, Password: "a-secure-test-password"})
 	}
-	_, err = accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
+	_, _, err = accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +295,7 @@ func TestReadingStatePersistsAcrossSessionsAndRemainsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outsider, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
+	outsider, _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +332,7 @@ func TestReadingStatePersistsAcrossSessionsAndRemainsPrivate(t *testing.T) {
 			t.Fatalf("outsider PUT %s = %d %s", path, response.Code, response.Body.String())
 		}
 	}
-	if _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "second-admin", Password: "a-secure-test-password"}, true); err != nil {
+	if _, _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "second-admin", Password: "a-secure-test-password"}, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := authStore.SetDisabled(ctx, first.User, first.User.ID, true); err != nil {
@@ -380,12 +381,57 @@ func TestAuthenticationRoutes(t *testing.T) {
 	if login.Code != http.StatusOK || !strings.Contains(login.Body.String(), `"token":`) {
 		t.Fatalf("login = %d %s", login.Code, login.Body.String())
 	}
+	if login.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("login cache control = %q", login.Header().Get("Cache-Control"))
+	}
 	cookieRequest := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
 	cookieRequest.AddCookie(login.Result().Cookies()[0])
 	cookieResponse := httptest.NewRecorder()
 	handler.ServeHTTP(cookieResponse, cookieRequest)
 	if cookieResponse.Code != http.StatusOK || !strings.Contains(cookieResponse.Body.String(), `"username":"alice"`) {
 		t.Fatalf("cookie authentication = %d %s", cookieResponse.Code, cookieResponse.Body.String())
+	}
+}
+
+func TestUnclaimedAccountCannotUseProtectedRoutes(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	accounts, err := auth.New(db, auth.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := accounts.Setup(ctx, auth.Credentials{Username: "admin", Password: "a-secure-admin-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, temporaryPassword, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "reader"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporarySession, err := accounts.Login(ctx, auth.Credentials{Username: reader.Username, Password: temporaryPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := Handler(Dependencies{Auth: accounts, Catalog: catalog.New(db), Position: position.New(db)})
+	blocked := request(t, handler, temporarySession.Token, http.MethodGet, "/libraries", "")
+	if blocked.Code != http.StatusForbidden {
+		t.Fatalf("unclaimed library access = %d %s", blocked.Code, blocked.Body.String())
+	}
+	claimed := request(t, handler, temporarySession.Token, http.MethodPost, "/auth/claim", `{"username":"reader-owned","display_name":"Reader Owned","password":"a-secure-reader-password","password_confirmation":"a-secure-reader-password"}`)
+	if claimed.Code != http.StatusOK {
+		t.Fatalf("claim = %d %s", claimed.Code, claimed.Body.String())
+	}
+	var session contracts.Session
+	if err := json.Unmarshal(claimed.Body.Bytes(), &session); err != nil || session.Token == "" || session.User.MustChangeCredentials {
+		t.Fatalf("claim session = %#v, %v", session, err)
+	}
+	allowed := request(t, handler, session.Token, http.MethodGet, "/libraries", "")
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("claimed library access = %d %s", allowed.Code, allowed.Body.String())
 	}
 }
 

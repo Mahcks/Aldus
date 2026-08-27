@@ -18,8 +18,7 @@ import {
 } from '../../features/ui';
 import { api, errorMessage } from '../../lib/api';
 
-const emptyForm = { username: '', display_name: '', password: '', admin: false };
-const MIN_PASSWORD_LENGTH = 12;
+const emptyForm = { username: '', display_name: '', admin: false };
 
 export default function UsersScreen() {
   const auth = useAuth();
@@ -29,6 +28,11 @@ export default function UsersScreen() {
   const [selected, setSelected] = useState<User>();
   const [createOpen, setCreateOpen] = useState(false);
   const [confirmingDisable, setConfirmingDisable] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [temporaryCredential, setTemporaryCredential] = useState<{
+    username: string;
+    password: string;
+  }>();
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -62,18 +66,39 @@ export default function UsersScreen() {
   const visibleUsers = users.filter((user) =>
     `${user.display_name} ${user.username}`.toLocaleLowerCase().includes(normalizedQuery),
   );
-  const passwordTooShort = form.password.length > 0 && form.password.length < MIN_PASSWORD_LENGTH;
-  const canSubmit = form.username.trim().length > 0 && form.password.length >= MIN_PASSWORD_LENGTH;
+  const canSubmit = form.username.trim().length >= 3;
 
   async function createUser() {
     if (!canSubmit || busy) return;
     setBusy(true);
     setError('');
     try {
-      await api.createUser(form);
+      const created = await api.createUser(form);
       setForm(emptyForm);
       setCreateOpen(false);
-      setSuccess('Account created.');
+      setTemporaryCredential({
+        username: created.user.username,
+        password: created.temporary_password,
+      });
+      setSuccess('Account created. Share the one-time sign-in details securely.');
+      await loadUsers();
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetPassword() {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const reset = await api.resetUserPassword(selected.id);
+      setConfirmingReset(false);
+      setTemporaryCredential({ username: selected.username, password: reset.temporary_password });
+      setSelected(undefined);
+      setSuccess('Password reset. Existing app sessions were revoked.');
       await loadUsers();
     } catch (value) {
       setError(errorMessage(value));
@@ -143,6 +168,9 @@ export default function UsersScreen() {
                 </View>
                 <Row>
                   {user.admin ? <StatusBadge tone="info" label="Admin" /> : null}
+                  {user.must_change_credentials ? (
+                    <StatusBadge tone="warning" label="Setup required" />
+                  ) : null}
                   {user.disabled ? (
                     <StatusBadge tone="neutral" label="Disabled" icon="disabled" />
                   ) : null}
@@ -173,24 +201,17 @@ export default function UsersScreen() {
             autoCapitalize="none"
             value={form.username}
             onChangeText={(username) => setForm((current) => ({ ...current, username }))}
+            help="The reader can change this provisional username during first sign-in."
           />
           <Field
             label="Display name"
             value={form.display_name}
             onChangeText={(display_name) => setForm((current) => ({ ...current, display_name }))}
           />
-          <Field
-            label="Temporary password"
-            secureTextEntry
-            value={form.password}
-            onChangeText={(password) => setForm((current) => ({ ...current, password }))}
-            help={passwordTooShort ? undefined : 'Use at least 12 characters.'}
-            error={
-              passwordTooShort
-                ? `Add ${MIN_PASSWORD_LENGTH - form.password.length} more characters.`
-                : undefined
-            }
-          />
+          <Notice>
+            Aldus generates a one-time password. The reader chooses their final username and
+            password when they first sign in.
+          </Notice>
           <Checkbox
             label="Grant global administrator access"
             checked={form.admin}
@@ -233,11 +254,27 @@ export default function UsersScreen() {
                 label={selected.disabled ? 'Disabled' : 'Enabled'}
                 icon={selected.disabled ? 'disabled' : 'enabled'}
               />
+              {selected.must_change_credentials ? (
+                <StatusBadge tone="warning" label="Waiting for setup" />
+              ) : null}
             </Row>
             <Notice tone="info">
               Disabling an account also revokes its active sessions. Library roles are managed from
               each Library.
             </Notice>
+            <View className="self-start">
+              <Button
+                label="Reset password"
+                kind="secondary"
+                disabled={selected.id === auth.user?.id}
+                onPress={() => setConfirmingReset(true)}
+              />
+              {selected.id === auth.user?.id ? (
+                <Text className="mt-2 text-sm text-muted">
+                  Change your own password from Account.
+                </Text>
+              ) : null}
+            </View>
             <View className="self-start">
               <Button
                 label={selected.disabled ? 'Enable account' : 'Disable account'}
@@ -282,6 +319,48 @@ export default function UsersScreen() {
         danger
         busy={busy}
       />
+      <ConfirmDialog
+        visible={confirmingReset}
+        onClose={() => setConfirmingReset(false)}
+        onConfirm={() => void resetPassword()}
+        title="Reset password?"
+        description={`This signs ${selected?.display_name || selected?.username} out everywhere and creates a new one-time password.`}
+        confirmLabel="Reset password"
+        busy={busy}
+      />
+      <Dialog
+        visible={Boolean(temporaryCredential)}
+        title="One-time sign-in"
+        onClose={() => setTemporaryCredential(undefined)}
+      >
+        {temporaryCredential ? (
+          <View className="gap-4">
+            <Notice tone="warning">
+              Share the library address and these details securely. The password is shown only once
+              and must be replaced at first sign-in.
+            </Notice>
+            <View className="gap-1 rounded-control bg-panel p-3">
+              <Text className="text-xs font-sans-semibold text-muted">Username</Text>
+              <Text selectable className="font-mono text-sm text-ink">
+                {temporaryCredential.username}
+              </Text>
+            </View>
+            <View className="gap-1 rounded-control bg-panel p-3">
+              <Text className="text-xs font-sans-semibold text-muted">One-time password</Text>
+              <Text selectable className="font-mono text-sm text-ink">
+                {temporaryCredential.password}
+              </Text>
+            </View>
+            <View className="self-start">
+              <Button
+                label="I saved it"
+                kind="primary"
+                onPress={() => setTemporaryCredential(undefined)}
+              />
+            </View>
+          </View>
+        ) : null}
+      </Dialog>
     </Page>
   );
 }

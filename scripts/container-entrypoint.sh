@@ -2,7 +2,7 @@
 set -eu
 
 case ${1:-} in
-  backup|restore)
+  backup|restore|reset-password)
     exec aldus "$@"
     ;;
 esac

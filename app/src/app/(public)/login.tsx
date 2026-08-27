@@ -26,7 +26,7 @@ export default function Login() {
     try {
       const user = await api.login({ username, password });
       await auth.signedIn(user);
-      router.replace('/home');
+      router.replace(user.must_change_credentials ? '/claim' : '/home');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -70,6 +70,10 @@ export default function Login() {
         disabled={busy || !username || !password}
         onPress={submit}
       />
+      <Text className="text-sm leading-5 text-muted">
+        Forgot your password? Ask the person who runs this library to reset it. Aldus does not send
+        password-reset email.
+      </Text>
     </AuthLayout>
   );
 }

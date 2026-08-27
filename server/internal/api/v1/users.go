@@ -14,6 +14,7 @@ func registerUserRoutes(router chi.Router, store *auth.Store) {
 	router.Get("/users", listUsers(store))
 	router.Post("/users", createUser(store))
 	router.Patch("/users/{userID}", updateUser(store))
+	router.Post("/users/{userID}/reset-password", resetUserPassword(store))
 }
 
 func listUsers(store *auth.Store) http.HandlerFunc {
@@ -36,12 +37,26 @@ func createUser(store *auth.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		user, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, Password: body.Password, DisplayName: body.DisplayName}, body.Admin)
+		user, temporaryPassword, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, DisplayName: body.DisplayName}, body.Admin)
 		if err == nil {
-			writeJSON(w, http.StatusCreated, userDTO(user))
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusCreated, contracts.CreatedUser{User: userDTO(user), TemporaryPassword: temporaryPassword})
 			return
 		}
 		writeAuthResult(w, user, err)
+	}
+}
+
+func resetUserPassword(store *auth.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		actor, _ := auth.UserFromContext(r.Context())
+		temporaryPassword, err := store.ResetPassword(r.Context(), actor, chi.URLParam(r, "userID"))
+		if err == nil {
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, contracts.ResetPasswordResponse{TemporaryPassword: temporaryPassword})
+			return
+		}
+		writeAuthResult(w, nil, err)
 	}
 }
 
