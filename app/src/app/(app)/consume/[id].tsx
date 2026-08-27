@@ -12,7 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
 import { ActivityIndicator, AppState, Platform, useWindowDimensions } from 'react-native';
-import Animated, { LinearTransition } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   DEFAULT_READER_PREFERENCES,
@@ -25,7 +25,6 @@ import {
 } from '../../../components/EPUBReader';
 import { commitsReadingProgress } from '../../../components/reader-location';
 import { BookCover, coverPresentation } from '../../../features/bookshelf';
-import { AppIcon } from '../../../features/icons';
 import { ReaderSettings } from '../../../features/reader-settings';
 import {
   applyPlaybackRate,
@@ -52,11 +51,7 @@ import {
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
-import {
-  DURATION_STANDARD,
-  EASE_STANDARD,
-  fadeIn as passageEntrance,
-} from '../../../features/motion';
+import { fadeIn as passageEntrance } from '../../../features/motion';
 import {
   Button,
   colors,
@@ -65,9 +60,11 @@ import {
   IconButton,
   Loading,
   Notice,
+  resolvePressStateClass,
   SearchField,
   StatusBadge,
 } from '../../../features/ui';
+import { AppIcon } from '../../../features/icons';
 import { Pressable, ScrollView, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
 import { productEPUBSource } from '../../../lib/epub-source';
@@ -94,102 +91,55 @@ type Mode = 'read' | 'listen';
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
 type ProgressConflict = { local: CanonicalPosition; remote: CanonicalPosition };
 
-const MODE_SWITCH_SEGMENT = 38;
-const MODE_SWITCH_TRACK_PADDING = 3;
-
-/**
- * The read/listen toggle, built as its own thing rather than two buttons
- * borrowed from the generic radiogroup pattern — synced reading and
- * listening is this app's whole reason to exist, and a pair of flat filter
- * chips undersold it. A single pill-shaped track carries both icons; a
- * paper-colored lozenge slides between them, the way an iOS segmented
- * control does, so switching modes reads as one continuous object changing
- * state rather than two separate buttons trading places. The slide is a
- * `layout` transition (like every other animation in this app — see
- * `motion.ts`), not a hand-rolled `useSharedValue`/`useAnimatedStyle`
- * worklet: this codebase has never needed a custom worklet anywhere else,
- * only Reanimated's built-in preset builders, and a bespoke one turned out
- * not to survive on-device. Its position is a plain, ordinary style
- * computed from `mode` — Reanimated's layout-animation system detects the
- * position change on re-render and interpolates it automatically.
- * Falls back to a plain static icon (no track, no motion) when a Work only
- * has one format — there's nothing to switch to, so a toggle would be a lie.
- */
-function ModeSwitch({
+function PassageHandoff({
   mode,
-  hasRead,
-  hasListen,
-  onRead,
-  onListen,
+  busy,
+  synchronized,
+  onPress,
 }: {
   mode: Mode;
-  hasRead: boolean;
-  hasListen: boolean;
-  onRead: () => void;
-  onListen: () => void;
+  busy: boolean;
+  synchronized: boolean;
+  onPress: () => void;
 }) {
-  if (!hasRead && !hasListen) return null;
-
-  if (!(hasRead && hasListen)) {
-    const solo = hasRead ? 'read' : 'listen';
-    return (
-      <View
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        className="items-center justify-center rounded-pill bg-accent-soft"
-        style={{ width: MODE_SWITCH_SEGMENT, height: MODE_SWITCH_SEGMENT }}
-      >
-        <AppIcon name={solo} size={17} color={colors.accentStrong} />
-      </View>
-    );
-  }
-
-  const indicatorLeft = MODE_SWITCH_TRACK_PADDING + (mode === 'listen' ? MODE_SWITCH_SEGMENT : 0);
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const listeningNext = mode === 'read';
+  const label = listeningNext ? 'Switch to listening' : 'Switch to reading';
+  const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
-    <View
-      accessibilityRole="radiogroup"
-      accessibilityLabel="Reading mode"
-      className="flex-row rounded-pill bg-control"
-      style={{ padding: MODE_SWITCH_TRACK_PADDING }}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={
+        synchronized
+          ? 'Keeps your synchronized place'
+          : 'Opens the other format at its saved position'
+      }
+      accessibilityState={{ disabled: busy, busy }}
+      disabled={busy}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`will-change-variable h-11 w-14 flex-row items-center justify-center gap-0.5 rounded-control ${
+        busy ? 'opacity-50' : stateClass
+      }`}
     >
-      <Animated.View
-        layout={LinearTransition.duration(DURATION_STANDARD).easing(EASE_STANDARD)}
-        style={{
-          position: 'absolute',
-          top: MODE_SWITCH_TRACK_PADDING,
-          left: indicatorLeft,
-          width: MODE_SWITCH_SEGMENT,
-          height: MODE_SWITCH_SEGMENT,
-          borderRadius: 999,
-          backgroundColor: colors.paper,
-        }}
-      />
-      <Pressable
-        accessibilityRole="radio"
-        accessibilityState={{ checked: mode === 'read' }}
-        accessibilityLabel="Read"
-        onPress={onRead}
-        className="items-center justify-center"
-        style={{ width: MODE_SWITCH_SEGMENT, height: MODE_SWITCH_SEGMENT }}
-      >
-        <AppIcon name="read" size={17} color={mode === 'read' ? colors.accent : colors.subtle} />
-      </Pressable>
-      <Pressable
-        accessibilityRole="radio"
-        accessibilityState={{ checked: mode === 'listen' }}
-        accessibilityLabel="Listen from the visible passage"
-        onPress={onListen}
-        className="items-center justify-center"
-        style={{ width: MODE_SWITCH_SEGMENT, height: MODE_SWITCH_SEGMENT }}
-      >
-        <AppIcon
-          name="listen"
-          size={17}
-          color={mode === 'listen' ? colors.accent : colors.subtle}
-        />
-      </Pressable>
-    </View>
+      <AppIcon name={listeningNext ? 'read' : 'listen'} size={14} color={colors.muted} />
+      <View className="w-2.5 items-center justify-center">
+        <AppIcon name={synchronized ? 'synced' : 'chevron'} size={11} color={colors.subtle} />
+      </View>
+      <View className="h-7 w-7 items-center justify-center rounded-pill bg-accent-soft">
+        {busy ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <AppIcon name={listeningNext ? 'listen' : 'read'} size={19} color={colors.accent} />
+        )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -240,6 +190,7 @@ export default function ConsumeWorkScreen() {
   const [audioReady, setAudioReady] = useState(false);
   const [notice, setNotice] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [modeSwitching, setModeSwitching] = useState(false);
   const [resumeMessage, setResumeMessage] = useState('');
   const [progressConflict, setProgressConflict] = useState<ProgressConflict>();
   const [loading, setLoading] = useState(true);
@@ -1178,6 +1129,7 @@ export default function ConsumeWorkScreen() {
         'Listening can\u2019t start here. Your reading position is saved; select narration text and choose Listen from here.',
       );
     switching.current = true;
+    setModeSwitching(true);
     try {
       await saveEPUBLocation(location);
       await canonicalSaves.current;
@@ -1234,6 +1186,7 @@ export default function ConsumeWorkScreen() {
       }
     } finally {
       switching.current = false;
+      setModeSwitching(false);
     }
   }
 
@@ -1257,6 +1210,7 @@ export default function ConsumeWorkScreen() {
     if (!work || !alignmentID || !alignment?.segments[0])
       return setNotice('Synchronized reading is unavailable at this point.');
     switching.current = true;
+    setModeSwitching(true);
     try {
       await canonicalSaves.current;
       const timestampMS = Math.round(player.currentTime * 1000);
@@ -1316,6 +1270,7 @@ export default function ConsumeWorkScreen() {
       }
     } finally {
       switching.current = false;
+      setModeSwitching(false);
     }
   }
 
@@ -1494,13 +1449,18 @@ export default function ConsumeWorkScreen() {
               />
             </>
           ) : null}
-          <ModeSwitch
-            mode={mode}
-            hasRead={Boolean(selectedEPUB)}
-            hasListen={Boolean(selectedAudio)}
-            onRead={handleReadMode}
-            onListen={handleListenMode}
-          />
+          {selectedEPUB && selectedAudio ? (
+            <PassageHandoff
+              mode={mode}
+              busy={modeSwitching}
+              synchronized={
+                mode === 'read'
+                  ? Boolean(readerLocation?.sync && alignmentID)
+                  : Boolean(alignmentID && status.isLoaded)
+              }
+              onPress={mode === 'read' ? handleListenMode : handleReadMode}
+            />
+          ) : null}
         </View>
       </View>
       {!compactNative ? (
