@@ -1,12 +1,20 @@
-import { useEffect, useId, useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type PropsWithChildren,
+  type ReactNode,
+} from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 import Head from 'expo-router/head';
 import { AppIcon, type AppIconName } from './icons';
@@ -554,16 +562,38 @@ export function Dialog({
   title,
   children,
   wide,
+  fullScreen,
+  scrollHint,
 }: PropsWithChildren<{
   visible: boolean;
   onClose: () => void;
   title: string;
   wide?: boolean;
+  fullScreen?: boolean;
+  scrollHint?: string;
 }>) {
   const closeButtonId = useId();
   const titleId = useId();
   const previouslyFocusedRef = useRef<{ focus: () => void } | null>(null);
+  const scrollMetricsRef = useRef({ content: 0, viewport: 0, offset: 0 });
+  const [showScrollHint, setShowScrollHint] = useState(false);
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const updateScrollHint = useCallback(
+    (next: Partial<(typeof scrollMetricsRef)['current']>) => {
+      Object.assign(scrollMetricsRef.current, next);
+      const { content, viewport, offset } = scrollMetricsRef.current;
+      setShowScrollHint(Boolean(scrollHint && content > viewport + offset + 12));
+    },
+    [scrollHint],
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+    scrollMetricsRef.current.offset = 0;
+    updateScrollHint({});
+  }, [updateScrollHint, visible]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !visible) return;
@@ -589,9 +619,73 @@ export function Dialog({
 
   const maxWidthClass = wide ? 'max-w-[720px]' : 'max-w-[480px]';
   const dialogMaxHeight = Math.max(0, windowHeight - 32);
+  const dialog = (
+    <Pressable
+      onPress={noop}
+      accessibilityViewIsModal
+      aria-labelledby={titleId}
+      role="dialog"
+      style={fullScreen ? { flex: 1 } : { maxHeight: dialogMaxHeight }}
+      className={
+        fullScreen
+          ? 'w-full bg-raised'
+          : `w-full overflow-hidden rounded-dialog border border-line bg-raised shadow-popover ${maxWidthClass}`
+      }
+    >
+      <View
+        className="flex-row items-center justify-between gap-4 border-b border-line px-6 py-3"
+        style={fullScreen ? { paddingTop: insets.top + 8, paddingBottom: 8 } : undefined}
+      >
+        <Text
+          nativeID={titleId}
+          accessibilityRole="header"
+          className="flex-shrink text-lg font-sans-bold text-ink"
+        >
+          {title}
+        </Text>
+        <IconButton
+          icon="close"
+          label="Close dialog"
+          kind="quiet"
+          onPress={onClose}
+          nativeID={closeButtonId}
+        />
+      </View>
+      <ScrollView
+        className={fullScreen ? 'min-h-0 flex-1 px-5 py-4' : 'min-h-0 flex-shrink px-6 py-4'}
+        contentContainerClassName={fullScreen && scrollHint ? 'pb-20' : 'pb-4'}
+        contentInset={{ bottom: fullScreen ? insets.bottom : 0 }}
+        scrollIndicatorInsets={{ bottom: fullScreen ? insets.bottom : 0 }}
+        onContentSizeChange={(_width, content) => updateScrollHint({ content })}
+        onLayout={(event) => updateScrollHint({ viewport: event.nativeEvent.layout.height })}
+        onScroll={(event) => updateScrollHint({ offset: event.nativeEvent.contentOffset.y })}
+        scrollEventThrottle={32}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
+        {children}
+      </ScrollView>
+      {fullScreen && showScrollHint ? (
+        <View
+          pointerEvents="none"
+          className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-1 border-t border-line bg-raised px-4 pt-2"
+          style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+        >
+          <Text className="text-xs font-sans-semibold text-muted">{scrollHint}</Text>
+          <AppIcon name="moveDown" size={16} color={colors.muted} />
+        </View>
+      ) : null}
+    </Pressable>
+  );
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal
+      transparent={!fullScreen}
+      visible={visible}
+      animationType={fullScreen ? 'slide' : 'fade'}
+      presentationStyle={fullScreen ? 'fullScreen' : undefined}
+      onRequestClose={onClose}
+    >
       {/*
        * Modal renders in its own native window on Android, so the activity's
        * automatic keyboard resize never reaches content inside it — without
@@ -602,7 +696,9 @@ export function Dialog({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <View className="flex-1 items-center justify-center p-4">
+        <View
+          className={fullScreen ? 'flex-1 bg-raised' : 'flex-1 items-center justify-center p-4'}
+        >
           {/*
            * The backdrop is a plain (non-button) Pressable positioned behind the
            * dialog content, not a wrapping ancestor of it — an ancestor with
@@ -612,45 +708,18 @@ export function Dialog({
            * button remain the accessible dismiss paths; this is a supplementary
            * pointer convenience only, so it intentionally carries no button role.
            */}
-          <Pressable
-            accessibilityLabel="Dismiss dialog"
-            onPress={onClose}
-            className="absolute inset-0 bg-ink/40"
-          />
-          <Animated.View entering={fadeIn} style={{ width: '100%', alignItems: 'center' }}>
+          {fullScreen ? null : (
             <Pressable
-              onPress={noop}
-              accessibilityViewIsModal
-              aria-labelledby={titleId}
-              role="dialog"
-              style={{ maxHeight: dialogMaxHeight }}
-              className={`w-full overflow-hidden rounded-dialog border border-line bg-raised shadow-popover ${maxWidthClass}`}
-            >
-              <View className="flex-row items-center justify-between gap-4 border-b border-line px-6 py-3">
-                <Text
-                  nativeID={titleId}
-                  accessibilityRole="header"
-                  className="flex-shrink text-lg font-sans-bold text-ink"
-                >
-                  {title}
-                </Text>
-                <IconButton
-                  icon="close"
-                  label="Close dialog"
-                  kind="quiet"
-                  onPress={onClose}
-                  nativeID={closeButtonId}
-                />
-              </View>
-              <ScrollView
-                className="min-h-0 flex-shrink px-6 py-4"
-                contentContainerClassName="pb-1"
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator
-              >
-                {children}
-              </ScrollView>
-            </Pressable>
+              accessibilityLabel="Dismiss dialog"
+              onPress={onClose}
+              className="absolute inset-0 bg-ink/40"
+            />
+          )}
+          <Animated.View
+            entering={fullScreen ? undefined : fadeIn}
+            style={{ width: '100%', flex: fullScreen ? 1 : undefined, alignItems: 'center' }}
+          >
+            {dialog}
           </Animated.View>
         </View>
       </KeyboardAvoidingView>

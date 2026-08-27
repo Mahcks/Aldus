@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { DEFAULT_READER_PREFERENCES, type ReaderPreferences } from '../components/EPUBReader';
 import { colors } from './theme';
 import { stepPreference } from './reader-settings-values';
@@ -47,6 +48,8 @@ export function ReaderSettings({
   onChange,
   onCustomizedChange,
 }: Props) {
+  const { height } = useWindowDimensions();
+  const dense = Boolean(compact && height < 760);
   const theme = themes.find((option) => option.value === value.theme) ?? themes[0];
   const changed =
     value.zoom !== resetValue.zoom ||
@@ -57,18 +60,28 @@ export function ReaderSettings({
     value.fontFamily !== resetValue.fontFamily;
 
   return (
-    <View className={compact ? 'gap-6 bg-raised' : 'border-b border-line bg-panel px-5 py-5'}>
+    <View
+      className={
+        compact
+          ? `w-full bg-raised ${dense ? 'gap-4' : 'gap-6'}`
+          : 'border-b border-line bg-panel px-5 py-5'
+      }
+    >
       <View
         className={
-          compact ? 'gap-6' : 'mx-auto w-full max-w-[960px] flex-row flex-wrap items-start gap-8'
+          compact
+            ? `w-full ${dense ? 'gap-4' : 'gap-6'}`
+            : 'mx-auto w-full max-w-[1180px] flex-row flex-wrap items-start gap-8'
         }
       >
-        <View className={compact ? 'gap-2' : 'w-[300px] gap-2'}>
+        <View className={compact ? 'gap-2' : 'w-[280px] gap-2'}>
           <Text className="text-xs font-sans-bold uppercase tracking-wider text-muted">
             Preview
           </Text>
           <View
-            className="min-h-[132px] justify-center overflow-hidden rounded-card border border-line px-5 py-4"
+            className={`justify-center overflow-hidden rounded-card border border-line px-5 ${
+              dense ? 'min-h-24 py-3' : 'min-h-[132px] py-4'
+            }`}
             style={{ backgroundColor: theme.background }}
           >
             <Text
@@ -89,39 +102,55 @@ export function ReaderSettings({
           </Text>
         </View>
 
-        <View className={compact ? 'gap-6' : 'min-w-[420px] flex-1 gap-6'}>
+        <View
+          className={
+            compact
+              ? dense
+                ? 'gap-4'
+                : 'gap-6'
+              : 'min-w-[640px] flex-1 flex-row flex-wrap items-start gap-x-8 gap-y-5'
+          }
+        >
           {onCustomizedChange ? (
-            <View className="gap-3">
-              <SectionTitle>Apply to</SectionTitle>
-              <View
-                accessibilityRole="radiogroup"
-                accessibilityLabel="Reading settings scope"
-                className="flex-row flex-wrap gap-2"
-              >
-                <Button
-                  label="All books"
-                  accessibilityRole="radio"
-                  selected={!customized}
-                  disabled={disabled}
-                  onPress={() => onCustomizedChange(false)}
-                />
-                <Button
-                  label="This book"
-                  accessibilityRole="radio"
-                  selected={customized}
-                  disabled={disabled}
-                  onPress={() => onCustomizedChange(true)}
-                />
+            <View className={compact ? 'gap-3' : 'basis-full flex-row items-end gap-5'}>
+              <View className="min-w-[280px] flex-1 gap-2">
+                <SectionTitle>Apply changes to</SectionTitle>
+                <Text className="text-xs leading-5 text-muted">
+                  {customized
+                    ? 'Only this edition uses these settings.'
+                    : 'Your default for every book on every device.'}
+                </Text>
               </View>
-              <Text className="text-xs leading-5 text-muted">
-                {customized
-                  ? 'Changes stay with this edition.'
-                  : 'Changes become your default on every device.'}
-              </Text>
+              <View className={compact ? '' : 'w-[300px]'}>
+                <View
+                  accessibilityRole="radiogroup"
+                  accessibilityLabel="Reading settings scope"
+                  className="flex-row flex-wrap gap-2"
+                >
+                  <View className="min-w-[132px] flex-grow basis-[45%]">
+                    <Button
+                      label="All books"
+                      accessibilityRole="radio"
+                      selected={!customized}
+                      disabled={disabled}
+                      onPress={() => onCustomizedChange(false)}
+                    />
+                  </View>
+                  <View className="min-w-[132px] flex-grow basis-[45%]">
+                    <Button
+                      label="This book"
+                      accessibilityRole="radio"
+                      selected={customized}
+                      disabled={disabled}
+                      onPress={() => onCustomizedChange(true)}
+                    />
+                  </View>
+                </View>
+              </View>
             </View>
           ) : null}
 
-          <View className="gap-2">
+          <View className={compact ? 'gap-2' : 'min-w-[360px] flex-grow basis-[52%] gap-2'}>
             <SectionTitle>Typography</SectionTitle>
             <View
               accessibilityRole="radiogroup"
@@ -129,14 +158,15 @@ export function ReaderSettings({
               className="mb-2 flex-row flex-wrap gap-2"
             >
               {fonts.map((font) => (
-                <Button
-                  key={font.value}
-                  label={font.label}
-                  accessibilityRole="radio"
-                  selected={value.fontFamily === font.value}
-                  disabled={disabled}
-                  onPress={() => onChange({ ...value, fontFamily: font.value })}
-                />
+                <View key={font.value} className="min-w-[132px] flex-grow basis-[45%]">
+                  <Button
+                    label={font.label}
+                    accessibilityRole="radio"
+                    selected={value.fontFamily === font.value}
+                    disabled={disabled}
+                    onPress={() => onChange({ ...value, fontFamily: font.value })}
+                  />
+                </View>
               ))}
             </View>
             <Stepper
@@ -183,6 +213,7 @@ export function ReaderSettings({
               increaseDisabled={value.margin >= 4}
               decreaseLabel="Widen the text area"
               increaseLabel="Narrow the text area"
+              divider={false}
               onDecrease={() =>
                 onChange({ ...value, margin: stepPreference(value.margin, -0.5, 0, 4) })
               }
@@ -192,54 +223,70 @@ export function ReaderSettings({
             />
           </View>
 
-          <View className="gap-3 border-t border-line pt-5">
-            <SectionTitle>Page</SectionTitle>
+          <View
+            className={
+              compact ? (dense ? 'gap-4' : 'gap-6') : 'min-w-[280px] flex-grow basis-[34%] gap-5'
+            }
+          >
             <View
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Page color"
-              className="flex-row gap-2"
+              className={`gap-3 border-t border-line ${compact ? (dense ? 'pt-4' : 'pt-5') : 'pt-3'}`}
             >
-              {themes.map((option) => (
-                <ThemeChoice
-                  key={option.value}
-                  label={option.label}
-                  background={option.background}
-                  selected={value.theme === option.value}
-                  disabled={disabled}
-                  onPress={() => onChange({ ...value, theme: option.value })}
-                />
-              ))}
+              <SectionTitle>Page</SectionTitle>
+              <View
+                accessibilityRole="radiogroup"
+                accessibilityLabel="Page color"
+                className="flex-row gap-2"
+              >
+                {themes.map((option) => (
+                  <ThemeChoice
+                    key={option.value}
+                    label={option.label}
+                    background={option.background}
+                    selected={value.theme === option.value}
+                    disabled={disabled}
+                    onPress={() => onChange({ ...value, theme: option.value })}
+                  />
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View className="gap-3 border-t border-line pt-5">
-            <SectionTitle>Reading flow</SectionTitle>
             <View
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Reading flow"
-              className="flex-row flex-wrap gap-2"
+              className={`gap-3 border-t border-line ${compact ? (dense ? 'pt-4' : 'pt-5') : 'pt-4'}`}
             >
-              <Button
-                label="Turn pages"
-                icon="read"
-                accessibilityRole="radio"
-                selected={value.layout === 'paginated'}
-                disabled={disabled}
-                onPress={() => onChange({ ...value, layout: 'paginated' })}
-              />
-              <Button
-                label="Continuous scroll"
-                icon="scroll"
-                accessibilityRole="radio"
-                selected={value.layout === 'scrolled'}
-                disabled={disabled}
-                onPress={() => onChange({ ...value, layout: 'scrolled' })}
-              />
+              <SectionTitle>Reading flow</SectionTitle>
+              <View
+                accessibilityRole="radiogroup"
+                accessibilityLabel="Reading flow"
+                className="flex-row flex-wrap gap-2"
+              >
+                <View className="min-w-[132px] flex-grow basis-[45%]">
+                  <Button
+                    label="Turn pages"
+                    icon="read"
+                    accessibilityRole="radio"
+                    selected={value.layout === 'paginated'}
+                    disabled={disabled}
+                    onPress={() => onChange({ ...value, layout: 'paginated' })}
+                  />
+                </View>
+                <View className="min-w-[132px] flex-grow basis-[45%]">
+                  <Button
+                    label="Continuous scroll"
+                    icon="scroll"
+                    accessibilityRole="radio"
+                    selected={value.layout === 'scrolled'}
+                    disabled={disabled}
+                    onPress={() => onChange({ ...value, layout: 'scrolled' })}
+                  />
+                </View>
+              </View>
             </View>
           </View>
 
           {changed ? (
-            <View className="items-start border-t border-line pt-4">
+            <View
+              className={compact ? 'items-start border-t border-line pt-4' : 'basis-full items-end'}
+            >
               <Button
                 label="Reset reading settings"
                 icon="scan"
@@ -267,6 +314,7 @@ function Stepper({
   increaseDisabled,
   decreaseLabel,
   increaseLabel,
+  divider = true,
   onDecrease,
   onIncrease,
 }: {
@@ -277,11 +325,16 @@ function Stepper({
   increaseDisabled: boolean;
   decreaseLabel: string;
   increaseLabel: string;
+  divider?: boolean;
   onDecrease: () => void;
   onIncrease: () => void;
 }) {
   return (
-    <View className="min-h-12 flex-row items-center gap-3 border-b border-line-subtle py-1 last:border-b-0">
+    <View
+      className={`min-h-12 flex-row items-center gap-3 py-1 ${
+        divider ? 'border-b border-line-subtle' : ''
+      }`}
+    >
       <Text className="min-w-0 flex-1 text-sm text-text-secondary">{label}</Text>
       <IconButton
         icon="decrease"

@@ -156,6 +156,7 @@ function PassageHandoff({
 export default function ConsumeWorkScreen() {
   const compact = useWindowDimensions().width < 600;
   const compactNative = compact && Platform.OS !== 'web';
+  const fullScreenSettings = compact || Platform.OS !== 'web';
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; mode?: Mode; epub?: string; audio?: string }>();
   const [work, setWork] = useState<Work>();
@@ -1570,7 +1571,7 @@ export default function ConsumeWorkScreen() {
           </View>
         </View>
       ) : null}
-      {mode === 'read' && settingsOpen && !compactNative ? (
+      {mode === 'read' && settingsOpen && !fullScreenSettings ? (
         <Animated.View entering={passageEntrance}>
           <ReaderSettings
             value={readerPreferences}
@@ -1583,9 +1584,11 @@ export default function ConsumeWorkScreen() {
         </Animated.View>
       ) : null}
       <Dialog
-        visible={compactNative && mode === 'read' && settingsOpen}
+        visible={fullScreenSettings && mode === 'read' && settingsOpen}
         onClose={() => setSettingsOpen(false)}
         title="Reading settings"
+        fullScreen
+        scrollHint="More settings below"
       >
         <ReaderSettings
           compact
