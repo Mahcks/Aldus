@@ -1,6 +1,6 @@
 import type { Library } from '../../generated/api';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import { LibraryCard } from '../../features/bookshelf';
 import { AppIcon } from '../../features/icons';
@@ -81,10 +81,12 @@ export default function Libraries() {
   const [createError, setCreateError] = useState('');
   const [offline, setOffline] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const libraries = await api.libraries();
       setItems(libraries);
+      setError('');
+      setOffline(false);
       await rememberOfflineLibraries(libraries).catch(() => {});
     } catch (value) {
       if (!(value instanceof APIError && value.status === 0)) {
@@ -94,17 +96,17 @@ export default function Libraries() {
       const saved = await offlineLibraries();
       setItems(saved);
       setOffline(saved.length > 0);
-      if (!saved.length) setError(errorMessage(value));
+      setError(saved.length ? '' : errorMessage(value));
     } finally {
       setLoading(false);
     }
-  }
-
-  // Data loading is the external synchronization this effect owns.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   function openLibrary(library: Library) {
     router.push(`/library/${library.id}`);

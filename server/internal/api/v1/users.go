@@ -88,6 +88,8 @@ func writeAuthResult(w http.ResponseWriter, value any, err error) {
 		http.Error(w, "invalid user", http.StatusBadRequest)
 	case errors.Is(err, auth.ErrLastAdmin):
 		http.Error(w, "last administrator", http.StatusConflict)
+	case errors.Is(err, auth.ErrLastOwner):
+		http.Error(w, "last enabled library owner", http.StatusConflict)
 	case err != nil:
 		slog.Error("auth request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

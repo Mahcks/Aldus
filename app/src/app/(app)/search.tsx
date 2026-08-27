@@ -12,6 +12,7 @@ import { BookCover } from '../../features/bookshelf';
 import { AcquisitionGroupRow, BrowseControls, BrowseFacet, WorkGrid } from '../../features/browse';
 import { useAuth } from '../../features/auth/AuthProvider';
 import { titleRequestPresentation } from '../../features/title-search';
+import { offlineBrowseWorks } from '../../features/offline-browse';
 import { Text, View } from '../../features/tw';
 import {
   Button,
@@ -192,9 +193,9 @@ function TitleRow({
 
 export default function SearchScreen() {
   const auth = useAuth();
-  const params = useLocalSearchParams<{ status?: string }>();
+  const params = useLocalSearchParams<{ q?: string; status?: string }>();
   const status = params.status || '';
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(params.q || '');
   const [sort, setSort] = useState('recent');
   const [availability, setAvailability] = useState('all');
   const [browseWorks, setBrowseWorks] = useState<WorkSummary[]>([]);
@@ -267,7 +268,11 @@ export default function SearchScreen() {
         setError(errorMessage(value));
         return;
       }
-      const saved = await offlineWorkSummaries(libraryID || undefined);
+      const saved = offlineBrowseWorks(await offlineWorkSummaries(libraryID || undefined), {
+        availability,
+        sort,
+        status,
+      });
       if (sequence !== searchSequence.current) return;
       setBrowseWorks(saved);
       setBrowseHasMore(false);

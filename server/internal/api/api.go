@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/api/koreader"
@@ -14,18 +15,17 @@ import (
 func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
 	router.Use(requestLogger)
+	readerLimiter := newFailureLimiter(10, time.Minute, deps.TrustProxyHeaders)
 	apiRouter := router.With(cors(deps.AllowedOrigins))
 	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Collections: deps.Collections, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs, Acquisitions: deps.Acquisitions, AcquisitionPolicies: deps.AcquisitionPolicies, TitleRequests: deps.TitleRequests, Notifications: deps.Notifications, Diagnostics: deps.Diagnostics, Backups: deps.Backups, TrustProxyHeaders: deps.TrustProxyHeaders, Ready: deps.Ready})
 	apiRouter.Mount("/api/v1", v1Handler)
 	apiRouter.Mount("/api", v1Handler)
-	router.Mount("/opds", opds.Handler(opds.Dependencies{Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest}))
-	koreaderHandler := koreader.Handler(deps.Position, deps.Auth, deps.KOReader)
+	router.Mount("/opds", readerLimiter.middleware(opds.Handler(opds.Dependencies{Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest})))
+	koreaderHandler := readerLimiter.middleware(koreader.Handler(deps.Position, deps.Auth, deps.KOReader))
 	router.Handle("/healthcheck", koreaderHandler)
 	router.Handle("/users/*", koreaderHandler)
 	router.Handle("/syncs/*", koreaderHandler)
-	if deps.Media != nil {
-		router.Handle("/media/*", cors(deps.AllowedOrigins)(deps.Auth.Middleware(deps.Auth.RequireClaimed(http.StripPrefix("/media/", http.FileServer(deps.Media))))))
-	}
+	router.Handle("/media/*", http.NotFoundHandler())
 	if deps.Web != nil {
 		spa := spaHandler(deps.Web)
 		router.Handle("/", spa)

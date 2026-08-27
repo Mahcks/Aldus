@@ -15,16 +15,23 @@ export async function productEPUBSource(id: string, expectedSize?: number) {
   const pending = downloads.get(destination.uri);
   if (pending) return pending;
   const download = (async () => {
+    const temporary = new File(Paths.document, scopedMediaFileName(id, 'epub.part', scope));
+    if (temporary.exists) temporary.delete();
     const token = await getToken(origin);
-    const downloaded = await File.downloadFileAsync(productMediaURL(id, origin), destination, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      idempotent: true,
-    });
-    if (expectedSize && destination.size !== expectedSize) {
+    try {
+      await File.downloadFileAsync(productMediaURL(id, origin), temporary, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        idempotent: false,
+      });
+      if (expectedSize && temporary.size !== expectedSize) {
+        throw new Error('The ebook download was incomplete. Retry.');
+      }
       if (destination.exists) destination.delete();
-      throw new Error('The ebook download was incomplete. Retry.');
+      await temporary.move(destination);
+      return destination.uri;
+    } finally {
+      if (temporary.exists) temporary.delete();
     }
-    return downloaded.uri;
   })();
   downloads.set(destination.uri, download);
   try {

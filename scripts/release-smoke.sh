@@ -88,6 +88,13 @@ compose run --rm aldus restore \
   --data-dir /data
 compose up --detach
 wait_ready
+STATUS=$(request /api/auth/me --output /dev/null --write-out '%{http_code}' || true)
+[[ $STATUS == 401 ]]
+LOGIN=$(request /api/auth/login \
+  --header 'Content-Type: application/json' \
+  --request POST \
+  --data "{\"username\":\"release-smoke\",\"password\":\"$PASSWORD\"}")
+grep -q '"username":"release-smoke"' <<<"$LOGIN"
 request /api/auth/me | grep -q '"username":"release-smoke"'
 
 echo "Clean install and backup restore smoke test passed"

@@ -1,6 +1,6 @@
 import type { Collection } from '../../generated/api';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { collectionCount } from '../../features/collection-presentation';
 import { AppIcon } from '../../features/icons';
 import { colors } from '../../features/theme';
@@ -64,7 +64,7 @@ export default function CollectionsScreen() {
   const [createError, setCreateError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setItems(await api.collections());
       setError('');
@@ -73,12 +73,13 @@ export default function CollectionsScreen() {
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   function closeCreate() {
     if (busy) return;

@@ -144,6 +144,8 @@ func deleteCurrentUser(store *auth.Store) http.HandlerFunc {
 		switch {
 		case errors.Is(err, auth.ErrLastAdmin):
 			http.Error(w, "Create another administrator before deleting this account.", http.StatusConflict)
+		case errors.Is(err, auth.ErrLastOwner):
+			http.Error(w, "Add another enabled owner to each library before deleting this account.", http.StatusConflict)
 		case errors.Is(err, auth.ErrUnauthenticated):
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 		case errors.Is(err, auth.ErrInvalidCredentials):

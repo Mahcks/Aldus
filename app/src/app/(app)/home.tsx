@@ -1,7 +1,7 @@
 import type { Collection, Notification, Work, WorkSummary } from '../../generated/api';
 import type { Href } from 'expo-router';
-import { router } from 'expo-router';
-import { useEffect, useState, type PropsWithChildren } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState, type PropsWithChildren } from 'react';
 import Animated from 'react-native-reanimated';
 import { BookCover, ContinueCard, coverPresentation, WorkCard } from '../../features/bookshelf';
 import { requestNotification } from '../../features/activity-presentation';
@@ -174,70 +174,81 @@ export default function HomeScreen() {
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
 
-  useEffect(() => {
-    let canceled = false;
-    async function load() {
-      try {
-        const [progressPage, recentPage, wantPage, finishedPage, inbox, savedCollections] =
-          await Promise.all([
-            api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 6 }),
-            api.browseWorks({ sort: 'recent', limit: 8 }),
-            api.browseWorks({ status: 'want_to_read', sort: 'updated', limit: 6 }),
-            api.browseWorks({ status: 'finished', sort: 'updated', limit: 6 }),
-            api.notifications().catch(() => ({ items: [], unread_count: 0 })),
-            api.collections().catch(() => []),
-          ]);
-        if (canceled) return;
-        setContinuing(progressPage.items);
-        setRecent(recentPage.items);
-        setWantToRead(wantPage.items);
-        setFinished(finishedPage.items);
-        const readyItems = inbox.items
-          .filter((item) => /ready|available/.test(item.kind) && notificationHref(item.action_url))
-          .slice(0, 5);
-        setReady(readyItems);
-        setCollections(savedCollections.slice(0, 5));
-
-        const workIDs = [
-          ...new Set(readyItems.map((item) => item.work_id).filter(Boolean)),
-        ] as string[];
-        if (workIDs.length) {
-          const works = await Promise.all(
-            workIDs.map((workID) => api.work(workID).catch(() => undefined)),
-          );
+  useFocusEffect(
+    useCallback(() => {
+      let canceled = false;
+      async function load() {
+        try {
+          const [progressPage, recentPage, wantPage, finishedPage, inbox, savedCollections] =
+            await Promise.all([
+              api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 6 }),
+              api.browseWorks({ sort: 'recent', limit: 8 }),
+              api.browseWorks({ status: 'want_to_read', sort: 'updated', limit: 6 }),
+              api.browseWorks({ status: 'finished', sort: 'updated', limit: 6 }),
+              api.notifications().catch(() => ({ items: [], unread_count: 0 })),
+              api.collections().catch(() => []),
+            ]);
           if (canceled) return;
-          setReadyWorks(
-            Object.fromEntries(
-              works
-                .filter((value): value is NonNullable<typeof value> => Boolean(value))
-                .map((value) => [value.id, value]),
-            ),
+          setError('');
+          setOffline(false);
+          setContinuing(progressPage.items);
+          setRecent(recentPage.items);
+          setWantToRead(wantPage.items);
+          setFinished(finishedPage.items);
+          const readyItems = inbox.items
+            .filter(
+              (item) => /ready|available/.test(item.kind) && notificationHref(item.action_url),
+            )
+            .slice(0, 5);
+          setReady(readyItems);
+          setCollections(savedCollections.slice(0, 5));
+
+          const workIDs = [
+            ...new Set(readyItems.map((item) => item.work_id).filter(Boolean)),
+          ] as string[];
+          if (workIDs.length) {
+            const works = await Promise.all(
+              workIDs.map((workID) => api.work(workID).catch(() => undefined)),
+            );
+            if (canceled) return;
+            setReadyWorks(
+              Object.fromEntries(
+                works
+                  .filter((value): value is NonNullable<typeof value> => Boolean(value))
+                  .map((value) => [value.id, value]),
+              ),
+            );
+          } else {
+            setReadyWorks({});
+          }
+        } catch (value) {
+          if (!(value instanceof APIError && value.status === 0)) {
+            if (!canceled) setError(errorMessage(value));
+            return;
+          }
+          const savedWorks = await offlineWorkSummaries();
+          if (canceled) return;
+          setContinuing(savedWorks.filter((work) => work.in_progress).slice(0, 6));
+          setRecent(savedWorks.slice(0, 8));
+          setWantToRead(
+            savedWorks.filter((work) => work.reading_status === 'want_to_read').slice(0, 6),
           );
+          setFinished(savedWorks.filter((work) => work.reading_status === 'finished').slice(0, 6));
+          setReady([]);
+          setReadyWorks({});
+          setCollections([]);
+          setOffline(true);
+          setError(savedWorks.length ? '' : errorMessage(value));
+        } finally {
+          if (!canceled) setLoading(false);
         }
-      } catch (value) {
-        if (!(value instanceof APIError && value.status === 0)) {
-          if (!canceled) setError(errorMessage(value));
-          return;
-        }
-        const savedWorks = await offlineWorkSummaries();
-        if (canceled) return;
-        setContinuing(savedWorks.filter((work) => work.in_progress).slice(0, 6));
-        setRecent(savedWorks.slice(0, 8));
-        setWantToRead(
-          savedWorks.filter((work) => work.reading_status === 'want_to_read').slice(0, 6),
-        );
-        setFinished(savedWorks.filter((work) => work.reading_status === 'finished').slice(0, 6));
-        setOffline(true);
-        if (!savedWorks.length) setError(errorMessage(value));
-      } finally {
-        if (!canceled) setLoading(false);
       }
-    }
-    void load();
-    return () => {
-      canceled = true;
-    };
-  }, []);
+      void load();
+      return () => {
+        canceled = true;
+      };
+    }, []),
+  );
 
   if (loading) {
     return (

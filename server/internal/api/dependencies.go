@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"io/fs"
-	"net/http"
 
 	"github.com/mahcks/aldus/server/internal/acquisition"
 	"github.com/mahcks/aldus/server/internal/alignment"
@@ -21,7 +20,6 @@ import (
 
 type Dependencies struct {
 	Web                 fs.FS
-	Media               http.FileSystem
 	Position            *position.Store
 	Auth                *auth.Store
 	Catalog             *catalog.Store

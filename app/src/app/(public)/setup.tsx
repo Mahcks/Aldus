@@ -30,7 +30,7 @@ export default function Setup() {
       const user = await api.setup(form);
       setForm((value) => ({ ...value, password: '', password_confirmation: '' }));
       await auth.signedIn(user);
-      router.replace('/system');
+      router.replace('/libraries');
     } catch (value) {
       setError(
         value instanceof APIError && value.status === 404

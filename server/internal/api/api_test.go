@@ -173,30 +173,30 @@ func TestReadinessReportsDependencyFailure(t *testing.T) {
 	}
 }
 
-func TestMediaSupportsCrossOriginRanges(t *testing.T) {
-	databasePath := filepath.Join(t.TempDir(), "aldus.db")
-	db, err := database.Open(context.Background(), databasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	authStore, err := auth.New(db, auth.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := authStore.Setup(context.Background(), auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	media := http.FS(fstest.MapFS{"alice.epub": {Data: []byte("0123456789")}})
+func TestLegacyRawMediaRouteIsNotMounted(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/media/alice.epub", nil)
-	request.Header.Set("Range", "bytes=2-5")
-	request.Header.Set("Authorization", "Bearer "+session.Token)
-	request.Header.Set("Origin", "http://localhost:8081")
 	recorder := httptest.NewRecorder()
-	Handler(Dependencies{Media: media, Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), AllowedOrigins: []string{"http://localhost:8081"}}).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusPartialContent || recorder.Body.String() != "2345" || recorder.Header().Get("Access-Control-Allow-Origin") != "http://localhost:8081" {
-		t.Fatalf("range response = %d %q %#v", recorder.Code, recorder.Body.String(), recorder.Header())
+	Handler(Dependencies{Web: fstest.MapFS{"index.html": {Data: []byte("Aldus web")}}}).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("legacy media response = %d %q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestReaderAuthenticationFailuresAreRateLimited(t *testing.T) {
+	for _, target := range []string{"/opds/", "/users/auth"} {
+		handler := Handler(Dependencies{})
+		for attempt := 1; attempt <= 11; attempt++ {
+			request := httptest.NewRequest(http.MethodGet, target, nil)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			want := http.StatusUnauthorized
+			if attempt == 11 {
+				want = http.StatusTooManyRequests
+			}
+			if recorder.Code != want {
+				t.Fatalf("%s attempt %d = %d, want %d", target, attempt, recorder.Code, want)
+			}
+		}
 	}
 }
 

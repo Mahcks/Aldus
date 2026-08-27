@@ -12,6 +12,7 @@ import (
 var (
 	ErrForbidden           = errors.New("authentication operation forbidden")
 	ErrLastAdmin           = errors.New("cannot remove last enabled administrator")
+	ErrLastOwner           = errors.New("cannot remove the last enabled owner of a library")
 	ErrUsernameTaken       = errors.New("username already exists")
 	ErrCredentialsRequired = errors.New("account credentials must be changed")
 )
@@ -83,6 +84,11 @@ func (s *Store) DeleteCurrentUser(ctx context.Context, actor User, password stri
 		if enabled <= 1 {
 			return ErrLastAdmin
 		}
+	}
+	if blocked, err := lastEnabledLibraryOwner(ctx, tx, actor.ID); err != nil {
+		return err
+	} else if blocked {
+		return ErrLastOwner
 	}
 	result, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id=?`, actor.ID)
 	if err != nil {
@@ -210,6 +216,13 @@ func (s *Store) SetDisabled(ctx context.Context, actor User, userID string, disa
 			return ErrLastAdmin
 		}
 	}
+	if disabled && current == 0 {
+		if blocked, err := lastEnabledLibraryOwner(ctx, tx, userID); err != nil {
+			return err
+		} else if blocked {
+			return ErrLastOwner
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET disabled=?,updated_at=? WHERE id=?`, disabled, formatTime(time.Now().UTC()), userID); err != nil {
 		return err
 	}
@@ -219,4 +232,20 @@ func (s *Store) SetDisabled(ctx context.Context, actor User, userID string, disa
 		}
 	}
 	return tx.Commit()
+}
+
+func lastEnabledLibraryOwner(ctx context.Context, tx *sql.Tx, userID string) (bool, error) {
+	var blocked bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM library_members owned
+		WHERE owned.user_id=? AND owned.role='owner' AND NOT EXISTS(
+			SELECT 1 FROM library_members other
+			JOIN users u ON u.id=other.user_id
+			WHERE other.library_id=owned.library_id AND other.role='owner' AND other.user_id<>? AND u.disabled=0
+		)
+	)`, userID, userID).Scan(&blocked)
+	if err != nil {
+		return false, fmt.Errorf("check library ownership: %w", err)
+	}
+	return blocked, nil
 }

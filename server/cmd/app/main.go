@@ -208,7 +208,7 @@ func main() {
 	server := &http.Server{
 		Addr: cfg.Addr,
 		Handler: api.Handler(api.Dependencies{
-			Web: os.DirFS("public"), Media: http.Dir(cfg.FixtureDir), Position: store, Auth: authStore,
+			Web: os.DirFS("public"), Position: store, Auth: authStore,
 			Catalog: catalogStore, Collections: collectionStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
 			Acquisitions:        acquisitionStore,
 			AcquisitionPolicies: acquisitionPolicyStore,

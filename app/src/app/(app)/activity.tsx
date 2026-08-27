@@ -1,6 +1,6 @@
 import type { Href } from 'expo-router';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import type { Notification, TitleRequest, TitleRequestEvent } from '../../generated/api';
 import {
   groupNotifications,
@@ -109,7 +109,7 @@ export default function ActivityScreen() {
   } | null>(null);
   const [canceling, setCanceling] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     const [notificationsResult, requestsResult] = await Promise.allSettled([
       api.notifications(),
       loadOwnRequests(auth.user?.id),
@@ -129,36 +129,13 @@ export default function ActivityScreen() {
     }
     setError(errors.join(' '));
     setLoading(false);
-  }
-
-  useEffect(() => {
-    let canceled = false;
-    Promise.allSettled([api.notifications(), loadOwnRequests(auth.user?.id)])
-      .then(([notificationsResult, requestsResult]) => {
-        if (canceled) return;
-        const errors: string[] = [];
-        if (notificationsResult.status === 'fulfilled') {
-          setItems(notificationsResult.value.items);
-          setUnreadCount(notificationsResult.value.unread_count);
-        } else {
-          errors.push(errorMessage(notificationsResult.reason));
-        }
-        if (requestsResult.status === 'fulfilled') {
-          setRequests(requestsResult.value.items);
-          if (requestsResult.value.partial)
-            errors.push('Some library requests could not be loaded.');
-        } else {
-          errors.push(errorMessage(requestsResult.reason));
-        }
-        setError(errors.join(' '));
-      })
-      .finally(() => {
-        if (!canceled) setLoading(false);
-      });
-    return () => {
-      canceled = true;
-    };
   }, [auth.user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   async function handleCancel() {
     if (!cancelTarget) return;

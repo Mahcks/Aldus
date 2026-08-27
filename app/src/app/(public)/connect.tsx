@@ -45,40 +45,51 @@ function LibraryProfileRow({
   if (current) return row;
 
   return (
-    <ReanimatedSwipeable
-      ref={swipeable}
-      friction={2}
-      rightThreshold={40}
-      overshootRight={false}
-      onSwipeableOpenStartDrag={() => {
-        suppressPress.current = true;
-      }}
-      onSwipeableCloseStartDrag={() => {
-        suppressPress.current = true;
-      }}
-      onSwipeableOpen={() => {
-        suppressPress.current = true;
-      }}
-      onSwipeableClose={() => {
-        suppressPress.current = false;
-      }}
-      renderRightActions={(_progress, _translation, swipeable) => (
-        <View className="ml-2 w-24 justify-center">
-          <Button
-            label="Forget"
-            accessibilityLabel={`Forget ${title}`}
-            icon="delete"
-            kind="danger"
-            onPress={() => {
-              swipeable.close();
-              onForget();
-            }}
-          />
-        </View>
-      )}
-    >
-      {row}
-    </ReanimatedSwipeable>
+    <View className="flex-row items-center gap-2">
+      <View className="min-w-0 flex-1">
+        <ReanimatedSwipeable
+          ref={swipeable}
+          friction={2}
+          rightThreshold={40}
+          overshootRight={false}
+          onSwipeableOpenStartDrag={() => {
+            suppressPress.current = true;
+          }}
+          onSwipeableCloseStartDrag={() => {
+            suppressPress.current = true;
+          }}
+          onSwipeableOpen={() => {
+            suppressPress.current = true;
+          }}
+          onSwipeableClose={() => {
+            suppressPress.current = false;
+          }}
+          renderRightActions={(_progress, _translation, swipeable) => (
+            <View className="ml-2 w-24 justify-center">
+              <Button
+                label="Forget"
+                accessibilityLabel={`Forget ${title}`}
+                icon="delete"
+                kind="danger"
+                onPress={() => {
+                  swipeable.close();
+                  onForget();
+                }}
+              />
+            </View>
+          )}
+        >
+          {row}
+        </ReanimatedSwipeable>
+      </View>
+      <Button
+        label="Forget"
+        accessibilityLabel={`Forget ${title}`}
+        icon="delete"
+        kind="quiet"
+        onPress={onForget}
+      />
+    </View>
   );
 }
 
@@ -151,7 +162,9 @@ export default function Connect() {
           <View className="mt-2 gap-2 border-t border-line pt-4">
             <Text className="text-sm font-sans-semibold text-ink">Your libraries</Text>
             {server.profiles.some((profile) => profile.origin !== server.origin) ? (
-              <Text className="text-sm text-muted">Swipe a previous library to forget it.</Text>
+              <Text className="text-sm text-muted">
+                Swipe left or use Forget to remove a previous library.
+              </Text>
             ) : null}
             {server.profiles.map((profile) => (
               <LibraryProfileRow

@@ -282,6 +282,19 @@ func TestAdminUserManagement(t *testing.T) {
 	if err := store.SetDisabled(ctx, user, user.ID, true); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-admin disable = %v", err)
 	}
+	now := formatTime(time.Now().UTC())
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO libraries(id,name,created_at,updated_at) VALUES('owned','Owned',?,?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('owned',?,'owner',?)`, user.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetDisabled(ctx, session.User, user.ID, true); !errors.Is(err, ErrLastOwner) {
+		t.Fatalf("disable last library owner = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('owned',?,'owner',?)`, session.User.ID, now); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.SetDisabled(ctx, session.User, user.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +403,7 @@ func TestDeleteCurrentUser(t *testing.T) {
 		args  []any
 	}{
 		{`INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library',?,?)`, []any{now, now}},
-		{`INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('library',?,'reader',?)`, []any{reader.ID, now}},
+		{`INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('library',?,'owner',?)`, []any{reader.ID, now}},
 		{`INSERT INTO reader_credentials(id,user_id,label,secret_hash,sync_key_hash,created_at) VALUES('credential',?,'Reader','secret','sync',?)`, []any{reader.ID, now}},
 		{`INSERT INTO collections(id,user_id,title,created_at,updated_at) VALUES('collection',?,'Favorites',?,?)`, []any{reader.ID, now, now}},
 		{`INSERT INTO acquisition_pairs(id,library_id,requested_by,query,created_at,updated_at) VALUES('pair','library',?,'Book',?,?)`, []any{reader.ID, now, now}},
@@ -409,6 +422,12 @@ func TestDeleteCurrentUser(t *testing.T) {
 	if err := store.DeleteCurrentUser(ctx, reader, "wrong-password"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("delete with wrong password = %v", err)
 	}
+	if err := store.DeleteCurrentUser(ctx, reader, testPassword); !errors.Is(err, ErrLastOwner) {
+		t.Fatalf("delete last library owner = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('library',?,'owner',?)`, secondAdmin.ID, now); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.DeleteCurrentUser(ctx, reader, testPassword); err != nil {
 		t.Fatal(err)
 	}
@@ -426,6 +445,9 @@ func TestDeleteCurrentUser(t *testing.T) {
 		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE requested_by IS NULL`).Scan(&anonymous); err != nil || anonymous != 1 {
 			t.Fatalf("%s anonymous=%d, %v", table, anonymous, err)
 		}
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,created_at) VALUES('library',?,'owner',?)`, admin.User.ID, now); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.DeleteCurrentUser(ctx, secondAdmin, testPassword); err != nil {
 		t.Fatalf("delete non-last admin: %v", err)

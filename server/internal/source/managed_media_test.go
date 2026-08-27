@@ -126,7 +126,7 @@ func TestManagedAcquisitionCopyFailureLeavesNoPartialDirectory(t *testing.T) {
 	if err := os.Symlink("book.epub", filepath.Join(download, "linked.epub")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyManagedDownload(root, "request", download); err == nil {
+	if _, err := copyManagedDownload(root, "request", download, 1<<20); err == nil {
 		t.Fatal("accepted symlink")
 	}
 	if _, err := os.Stat(filepath.Join(root, "request")); !os.IsNotExist(err) {
@@ -134,6 +134,20 @@ func TestManagedAcquisitionCopyFailureLeavesNoPartialDirectory(t *testing.T) {
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil || len(entries) != 0 {
+		t.Fatalf("staging cleanup entries=%v err=%v", entries, err)
+	}
+}
+
+func TestManagedAcquisitionRejectsOversizedDownload(t *testing.T) {
+	root := t.TempDir()
+	download := t.TempDir()
+	if err := os.WriteFile(filepath.Join(download, "book.epub"), []byte("too large"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := copyManagedDownload(root, "request", download, 4); err == nil {
+		t.Fatal("accepted oversized managed download")
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
 		t.Fatalf("staging cleanup entries=%v err=%v", entries, err)
 	}
 }

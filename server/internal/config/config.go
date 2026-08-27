@@ -14,7 +14,6 @@ type Config struct {
 	Addr                    string
 	DataDir                 string
 	BackupDir               string
-	FixtureDir              string
 	KOReaderUser            string
 	KOReaderKey             string
 	SecureCookies           bool
@@ -51,7 +50,6 @@ func Load() (Config, error) {
 		Addr:                    envOr("ALDUS_ADDR", "127.0.0.1:8080"),
 		DataDir:                 envOr("ALDUS_DATA_DIR", "/data"),
 		BackupDir:               envOr("ALDUS_BACKUP_DIR", "/backups"),
-		FixtureDir:              envOr("ALDUS_FIXTURE_DIR", "../test-fixtures/alice/media"),
 		KOReaderUser:            os.Getenv("ALDUS_KOREADER_USER"),
 		KOReaderKey:             os.Getenv("ALDUS_KOREADER_KEY"),
 		SecureCookies:           envBool("ALDUS_SECURE_COOKIES"),

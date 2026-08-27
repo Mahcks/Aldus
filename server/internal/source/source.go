@@ -324,7 +324,7 @@ func (s *Store) EnqueueAcquisitionScan(ctx context.Context, libraryID, sourceID,
 		if requestID == "" || !safeComponent(requestID) {
 			return "", validation("invalid_acquisition_id", "The acquisition identifier is invalid.")
 		}
-		resolved, err = copyManagedDownload(v.RootPath, requestID, resolved)
+		resolved, err = copyManagedDownload(v.RootPath, requestID, resolved, s.maxBytes)
 		if err != nil {
 			return "", err
 		}
@@ -574,7 +574,8 @@ func safeComponent(value string) bool {
 	return value != "" && value != "." && value != ".." && filepath.Base(value) == value && !strings.ContainsAny(value, `/\\`)
 }
 
-func copyManagedDownload(root, requestID, sourcePath string) (string, error) {
+func copyManagedDownload(root, requestID, sourcePath string, maxBytes int64) (string, error) {
+	const maxFiles = 10_000
 	final := filepath.Join(root, requestID)
 	if info, err := os.Stat(final); err == nil && info.IsDir() {
 		return final, nil
@@ -594,8 +595,10 @@ func copyManagedDownload(root, requestID, sourcePath string) (string, error) {
 		return "", validation("unsafe_download", "The completed download contains an unsupported link.")
 	}
 	var files []string
+	var totalBytes int64
 	if info.Mode().IsRegular() {
 		files = []string{sourcePath}
+		totalBytes = info.Size()
 	} else if info.IsDir() {
 		err = filepath.WalkDir(sourcePath, func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -605,6 +608,17 @@ func copyManagedDownload(root, requestID, sourcePath string) (string, error) {
 				return validation("unsafe_download", "The completed download contains an unsupported link.")
 			}
 			if !entry.IsDir() {
+				if len(files) >= maxFiles {
+					return validation("download_too_many_files", "The completed download contains too many files.")
+				}
+				info, err := entry.Info()
+				if err != nil {
+					return err
+				}
+				totalBytes += info.Size()
+				if totalBytes > maxBytes {
+					return validation("download_too_large", "The completed download is larger than this server allows.")
+				}
 				files = append(files, path)
 			}
 			return nil
@@ -618,12 +632,18 @@ func copyManagedDownload(root, requestID, sourcePath string) (string, error) {
 	if len(files) == 0 {
 		return "", validation("empty_download", "The completed download contains no files.")
 	}
+	if totalBytes > maxBytes {
+		return "", validation("download_too_large", "The completed download is larger than this server allows.")
+	}
+	remaining := maxBytes
 	for i, path := range files {
 		ext := safeExtension(filepath.Ext(path))
 		target := filepath.Join(stage, fmt.Sprintf("file-%06d%s", i+1, ext))
-		if err := copyVerifiedFile(path, target); err != nil {
+		written, err := copyVerifiedFile(path, target, remaining)
+		if err != nil {
 			return "", err
 		}
+		remaining -= written
 	}
 	if err := os.Rename(stage, final); err != nil {
 		return "", fmt.Errorf("publish managed acquisition: %w", err)
@@ -646,19 +666,22 @@ func safeExtension(ext string) string {
 	return ext
 }
 
-func copyVerifiedFile(sourcePath, target string) error {
+func copyVerifiedFile(sourcePath, target string, maxBytes int64) (int64, error) {
 	source, err := os.Open(sourcePath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer source.Close()
 	before, err := source.Stat()
 	if err != nil || !before.Mode().IsRegular() {
-		return validation("unsafe_download", "The completed download changed while Aldus was copying it.")
+		return 0, validation("unsafe_download", "The completed download changed while Aldus was copying it.")
+	}
+	if before.Size() > maxBytes {
+		return 0, validation("download_too_large", "The completed download is larger than this server allows.")
 	}
 	targetFile, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	hash := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(targetFile, hash), source)
@@ -666,13 +689,13 @@ func copyVerifiedFile(sourcePath, target string) error {
 	closeErr := targetFile.Close()
 	after, statErr := source.Stat()
 	if copyErr != nil || syncErr != nil || closeErr != nil || statErr != nil || written != before.Size() || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
-		return validation("download_changed", "The completed download changed while Aldus was copying it.")
+		return 0, validation("download_changed", "The completed download changed while Aldus was copying it.")
 	}
 	actual, err := fileSHA256(target)
 	if err != nil || actual != hex.EncodeToString(hash.Sum(nil)) {
-		return errors.New("managed acquisition checksum verification failed")
+		return 0, errors.New("managed acquisition checksum verification failed")
 	}
-	return nil
+	return written, nil
 }
 
 func fileSHA256(path string) (string, error) {

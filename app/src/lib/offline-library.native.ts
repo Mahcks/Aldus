@@ -131,6 +131,7 @@ export async function offlineWork(
       return !file.exists || file.size !== item.size_bytes;
     })
   ) {
+    deleteOfflineFiles(value, scope);
     await AsyncStorage.removeItem(key(scope, workID));
     return null;
   }
@@ -139,10 +140,15 @@ export async function offlineWork(
 
 export async function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_at'>) {
   const scope = activeStorageScope();
-  await Promise.all([
+  const results = await Promise.allSettled([
     ...value.epubs.map((item) => productEPUBSource(item.id, item.size_bytes)),
     ...value.audio.map((item) => downloadProductAudio(item.id, item.size_bytes)),
   ]);
+  const failed = results.find((result) => result.status === 'rejected');
+  if (failed?.status === 'rejected') {
+    deleteOfflineFiles(value, scope);
+    throw failed.reason;
+  }
   const stored = { ...value, downloaded_at: new Date().toISOString() };
   await AsyncStorage.setItem(key(scope, value.work.id), JSON.stringify(stored));
   return stored;
@@ -153,14 +159,18 @@ export async function removeOfflineWork(workID: string) {
   if (await pendingProgress(workID))
     throw new Error('Sync this device before removing the download.');
   const value = await offlineWork(workID);
-  for (const item of [...(value?.epubs ?? []), ...(value?.audio ?? [])]) {
+  if (value) deleteOfflineFiles(value, scope);
+  await AsyncStorage.removeItem(key(scope, workID));
+}
+
+function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: string) {
+  for (const item of [...value.epubs, ...value.audio]) {
     const file = new File(
       Paths.document,
       scopedMediaFileName(item.id, item.representation.kind === 'epub' ? 'epub' : 'audio', scope),
     );
     if (file.exists) file.delete();
   }
-  await AsyncStorage.removeItem(key(scope, workID));
 }
 
 export async function updateOfflineProgress(workID: string, progress: CanonicalPosition) {
