@@ -900,12 +900,14 @@ export function StatusBadge({
 
   return (
     <View
-      className={`flex-row items-stretch self-start overflow-hidden rounded-r-control ${toneClass.background}`}
+      className={`will-change-variable flex-row items-stretch self-start overflow-hidden rounded-r-control ${toneClass.background}`}
     >
-      <View className={`w-[3px] ${toneClass.spine}`} />
+      <View className={`will-change-variable w-[3px] ${toneClass.spine}`} />
       <View className="flex-row items-center gap-1.5 py-1 pl-1.5 pr-2">
         {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
-        <Text className={`text-[11px] font-sans-bold uppercase tracking-wide ${toneClass.text}`}>
+        <Text
+          className={`will-change-variable text-[11px] font-sans-bold uppercase tracking-wide ${toneClass.text}`}
+        >
           {label}
         </Text>
       </View>

@@ -1554,38 +1554,38 @@ export default function ConsumeWorkScreen() {
         selectedAudio ? (
           <ScrollView
             className="flex-1"
-            contentContainerClassName="w-full flex-grow pt-6"
+            contentContainerClassName="w-full flex-grow pt-4"
             contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
           >
-            <View className="mx-auto w-full max-w-[560px] px-6">
-              <View className="items-center gap-4 pt-2">
+            <View className="mx-auto w-full max-w-[560px] px-5">
+              <View className="flex-row items-center gap-5 py-2">
                 <BookCover
                   title={work.title}
                   author={work.author}
                   coverURL={work.cover_url}
-                  size="hero"
+                  size="continue"
                   {...coverPresentation(work)}
                 />
-                <View className="items-center gap-1.5 px-4">
+                <View className="min-w-0 flex-1 items-start gap-1.5">
                   <Text
                     numberOfLines={2}
-                    className="text-center font-editorial-bold text-[26px] leading-8 text-ink"
+                    className="font-editorial-bold text-[22px] leading-7 text-ink"
                   >
                     {work.title}
                   </Text>
-                  <Text numberOfLines={1} className="text-center text-sm text-text-secondary">
+                  <Text numberOfLines={1} className="text-sm text-text-secondary">
                     {work.author || 'Unknown author'}
                   </Text>
                   <Text
                     numberOfLines={2}
-                    className="mt-1 text-center text-[11px] font-sans-semibold uppercase tracking-[1.5px] text-subtle"
+                    className="mt-1 text-[10px] font-sans-semibold uppercase leading-4 tracking-[1.25px] text-subtle"
                   >
                     {selectedAudio.representation.label}
                   </Text>
                   {progressStatus ? (
                     <Text
                       accessibilityLiveRegion="polite"
-                      className="text-xs font-sans-semibold text-muted"
+                      className="pt-1 text-xs font-sans-semibold text-muted"
                     >
                       {progressStatus}
                     </Text>
@@ -1602,7 +1602,7 @@ export default function ConsumeWorkScreen() {
                   <Text className="text-sm text-muted">Loading audiobook…</Text>
                 </View>
               ) : null}
-              <View className="mt-9 w-full gap-2">
+              <View className="mt-6 w-full gap-1">
                 <Pressable
                   accessibilityRole="adjustable"
                   accessibilityLabel="Audiobook position"
@@ -1658,7 +1658,7 @@ export default function ConsumeWorkScreen() {
                 </View>
               </View>
               {chapter ? (
-                <View className="mt-5 w-full flex-row items-center gap-3 border-y border-line-subtle py-2">
+                <View className="mt-4 w-full flex-row items-center gap-2 border-y border-line-subtle py-2">
                   <IconButton
                     icon="previousPage"
                     label="Previous chapter"
@@ -1670,13 +1670,13 @@ export default function ConsumeWorkScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`View chapters. Current chapter: ${chapter.current.title}`}
                     onPress={() => setChaptersOpen(true)}
-                    className="min-h-11 min-w-0 flex-1 items-center justify-center gap-0.5 rounded-control px-2 focus-visible:border focus-visible:border-focus"
+                    className="min-h-11 min-w-0 flex-1 items-center justify-center gap-0.5 rounded-control px-1 focus-visible:border focus-visible:border-focus"
                   >
                     <Text numberOfLines={1} className="text-center text-sm font-sans-bold text-ink">
                       {chapter.current.title}
                     </Text>
                     <Text className="text-center text-[11px] font-sans-semibold uppercase tracking-[1px] text-subtle">
-                      Chapter {chapter.index + 1} of {audioChapters.length} · View all
+                      {chapter.index + 1} of {audioChapters.length} · View chapters
                     </Text>
                   </Pressable>
                   <IconButton
@@ -1688,67 +1688,57 @@ export default function ConsumeWorkScreen() {
                   />
                 </View>
               ) : null}
-              <View className="mt-8 w-full flex-row items-center justify-between">
-                <View className="w-16 items-start">
-                  <Pressable
-                    accessibilityRole="adjustable"
-                    accessibilityLabel="Playback speed"
-                    accessibilityHint="Cycles through playback speeds"
-                    accessibilityValue={{ text: `${currentPlaybackRate} times` }}
-                    accessibilityActions={[
-                      { name: 'increment', label: 'Increase playback speed' },
-                      { name: 'decrement', label: 'Decrease playback speed' },
-                    ]}
-                    accessibilityState={{ disabled: !canAdjustPlaybackRate }}
-                    disabled={!canAdjustPlaybackRate}
-                    onAccessibilityAction={handlePlaybackRateAccessibilityAction}
-                    onPress={cyclePlaybackRate}
-                    className={`h-11 min-w-14 items-center justify-center rounded-pill bg-panel px-3 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
-                  >
-                    <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
-                  </Pressable>
-                </View>
-                <View className="flex-1 flex-row items-center justify-center gap-7">
-                  <View className="h-14 w-14 items-center justify-center rounded-pill bg-panel">
-                    <IconButton
-                      icon="skipBack"
-                      label="Rewind 15 seconds"
-                      kind="quiet"
-                      disabled={!status.isLoaded}
-                      onPress={handleSkipBack}
-                    />
-                  </View>
-                  <IconButton
-                    icon={status.playing ? 'pause' : 'play'}
-                    label={status.playing ? 'Pause' : 'Play'}
-                    kind="primary"
-                    size="large"
-                    disabled={!status.isLoaded}
-                    onPress={handlePlayPause}
-                  />
-                  <View className="h-14 w-14 items-center justify-center rounded-pill bg-panel">
-                    <IconButton
-                      icon="skipForward"
-                      label="Skip forward 15 seconds"
-                      kind="quiet"
-                      disabled={!status.isLoaded}
-                      onPress={handleSkipForward}
-                    />
-                  </View>
-                </View>
-                <View className="w-16 items-end">
-                  <IconButton
-                    icon="sleepTimer"
-                    label={
-                      sleepTimerRemaining == null
-                        ? 'Set sleep timer'
-                        : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
-                    }
-                    kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
-                    disabled={!status.isLoaded}
-                    onPress={() => setSleepTimerOpen(true)}
-                  />
-                </View>
+              <View className="mt-5 w-full flex-row items-center justify-between">
+                <Pressable
+                  accessibilityRole="adjustable"
+                  accessibilityLabel="Playback speed"
+                  accessibilityHint="Cycles through playback speeds"
+                  accessibilityValue={{ text: `${currentPlaybackRate} times` }}
+                  accessibilityActions={[
+                    { name: 'increment', label: 'Increase playback speed' },
+                    { name: 'decrement', label: 'Decrease playback speed' },
+                  ]}
+                  accessibilityState={{ disabled: !canAdjustPlaybackRate }}
+                  disabled={!canAdjustPlaybackRate}
+                  onAccessibilityAction={handlePlaybackRateAccessibilityAction}
+                  onPress={cyclePlaybackRate}
+                  className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
+                >
+                  <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
+                </Pressable>
+                <IconButton
+                  icon="skipBack"
+                  label="Rewind 15 seconds"
+                  kind="quiet"
+                  disabled={!status.isLoaded}
+                  onPress={handleSkipBack}
+                />
+                <IconButton
+                  icon={status.playing ? 'pause' : 'play'}
+                  label={status.playing ? 'Pause' : 'Play'}
+                  kind="primary"
+                  size="large"
+                  disabled={!status.isLoaded}
+                  onPress={handlePlayPause}
+                />
+                <IconButton
+                  icon="skipForward"
+                  label="Skip forward 15 seconds"
+                  kind="quiet"
+                  disabled={!status.isLoaded}
+                  onPress={handleSkipForward}
+                />
+                <IconButton
+                  icon="sleepTimer"
+                  label={
+                    sleepTimerRemaining == null
+                      ? 'Set sleep timer'
+                      : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
+                  }
+                  kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
+                  disabled={!status.isLoaded}
+                  onPress={() => setSleepTimerOpen(true)}
+                />
               </View>
               {sleepTimerRemaining != null ? (
                 <Text
@@ -1759,11 +1749,14 @@ export default function ConsumeWorkScreen() {
                   Sleep timer · {formatAudioTime(sleepTimerRemaining)} remaining
                 </Text>
               ) : null}
-              <View className="mt-9 w-full gap-3 border-t border-line-subtle pt-6">
+              <View className="mt-7 w-full gap-4 border-t border-line-subtle pt-5">
                 <View className="flex-row items-center justify-between gap-3">
-                  <Text className="text-[11px] font-sans-bold uppercase tracking-[1.5px] text-subtle">
-                    Read Along
-                  </Text>
+                  <View className="gap-0.5">
+                    <Text className="text-[11px] font-sans-bold uppercase tracking-[1.5px] text-subtle">
+                      Read Along
+                    </Text>
+                    <Text className="text-xs text-muted">Follow the narration in the book.</Text>
+                  </View>
                   <StatusBadge
                     tone={passage?.active ? 'success' : 'neutral'}
                     icon={passage?.active ? 'synced' : undefined}
@@ -1771,36 +1764,31 @@ export default function ConsumeWorkScreen() {
                   />
                 </View>
                 {passage ? (
-                  <View className="gap-4 rounded-card bg-paper p-5 shadow-xs">
-                    <Animated.View key={passage.current.id} entering={passageEntrance}>
+                  <View className="gap-4 border-y border-line-subtle py-5">
+                    <View key={passage.current.id}>
                       <Text
                         accessibilityLabel={`${passage.active ? 'Current' : 'Upcoming'} passage: ${passage.current.text}`}
-                        numberOfLines={6}
-                        className={
+                        numberOfLines={compact ? 5 : 8}
+                        className={`will-change-variable ${
                           passage.active
                             ? 'font-reading text-lg leading-7 text-ink'
                             : 'font-reading text-base leading-6 text-muted'
-                        }
+                        }`}
                       >
                         {passage.current.text}
                       </Text>
-                    </Animated.View>
-                    {passage.next || passage.following ? (
+                    </View>
+                    {passage.next ? (
                       <View className="gap-2 border-t border-line-subtle pt-3">
                         <Text className="text-[11px] font-sans-semibold uppercase tracking-wide text-subtle">
-                          Coming next
+                          Next passage
                         </Text>
-                        {[passage.next, passage.following].map((segment) =>
-                          segment ? (
-                            <Text
-                              key={segment.id}
-                              numberOfLines={2}
-                              className="font-reading text-sm leading-5 text-subtle"
-                            >
-                              {segment.text}
-                            </Text>
-                          ) : null,
-                        )}
+                        <Text
+                          numberOfLines={2}
+                          className="font-reading text-sm leading-5 text-muted"
+                        >
+                          {passage.next.text}
+                        </Text>
                       </View>
                     ) : null}
                     <View className="items-start pt-1">
