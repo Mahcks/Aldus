@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { normalizeServerOrigin } from './server-origin';
+import { normalizeServerOrigin, serverStoragePrefixes } from './server-origin';
 
 describe('normalizeServerOrigin', () => {
   it('defaults public hosts to HTTPS', () => {
@@ -19,5 +19,12 @@ describe('normalizeServerOrigin', () => {
     expect(() => normalizeServerOrigin('https://user:pass@example.com')).toThrow(
       'only the server address',
     );
+  });
+});
+
+it('builds prefixes that match every local account for one server', () => {
+  expect(serverStoragePrefixes('https://books.example.com')).toEqual({
+    storage: 'aldus:https%3A%2F%2Fbooks.example.com:',
+    file: 'aldus-https%253A%252F%252Fbooks.example.com%3A',
   });
 });

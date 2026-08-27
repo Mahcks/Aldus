@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ServerProfile } from './server-profile-types';
+import { clearToken } from './auth-token';
+import { rememberUser } from './last-user';
+import { clearServerStorage } from './storage-scope';
+import { removeInactiveServerProfile, type ServerProfile } from './server-profile-types';
 
 export type { ServerProfile } from './server-profile-types';
 
@@ -44,5 +47,15 @@ export async function rememberServerProfile(origin: string) {
     AsyncStorage.setItem(profilesKey, JSON.stringify(next)),
     AsyncStorage.setItem(activeKey, origin),
   ]);
+  return next;
+}
+
+export async function forgetServerProfile(origin: string) {
+  const { profiles, activeOrigin } = await loadServerProfiles();
+  const next = removeInactiveServerProfile(profiles, activeOrigin, origin);
+  await clearToken(origin);
+  await rememberUser(null, origin);
+  await clearServerStorage(origin);
+  await AsyncStorage.setItem(profilesKey, JSON.stringify(next));
   return next;
 }

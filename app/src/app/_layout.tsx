@@ -9,6 +9,7 @@ import { SourceSerif4_400Regular } from '@expo-google-fonts/source-serif-4';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import '../global.css';
 import { AuthProvider } from '../features/auth/AuthProvider';
@@ -38,8 +39,10 @@ export default function Layout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ServerProvider>
-      <ServerSession />
-    </ServerProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ServerProvider>
+        <ServerSession />
+      </ServerProvider>
+    </GestureHandlerRootView>
   );
 }

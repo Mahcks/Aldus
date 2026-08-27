@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File, Paths } from 'expo-file-system';
 import { getAPIBaseURL } from './api-base';
-import { serverStorageScope } from './server-origin';
+import { serverStoragePrefixes, serverStorageScope } from './server-origin';
 
 let activeUserID = '';
 const migratedKey = 'aldus:storage-v2-migrated';
@@ -41,5 +41,14 @@ export async function clearStorageScope(origin: string, userID: string) {
   const filePrefix = `aldus-${encodeURIComponent(scope)}-`;
   for (const entry of Paths.document.list()) {
     if (entry instanceof File && entry.name.startsWith(filePrefix)) entry.delete();
+  }
+}
+
+export async function clearServerStorage(origin: string) {
+  const prefixes = serverStoragePrefixes(origin);
+  const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefixes.storage));
+  if (keys.length) await AsyncStorage.multiRemove(keys);
+  for (const entry of Paths.document.list()) {
+    if (entry instanceof File && entry.name.startsWith(prefixes.file)) entry.delete();
   }
 }

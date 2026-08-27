@@ -13,6 +13,8 @@ export async function prepareStorageScope(userID: string) {
 
 export async function clearStorageScope(_origin: string, _userID: string) {}
 
+export async function clearServerStorage(_origin: string) {}
+
 export function activeStorageScope() {
   const origin = getAPIBaseURL();
   return origin && activeUserID ? serverStorageScope(origin, activeUserID) : '';

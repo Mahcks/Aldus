@@ -35,3 +35,11 @@ export function normalizeServerOrigin(input: string) {
 export function serverStorageScope(origin: string, userID: string) {
   return `${encodeURIComponent(origin)}:${userID}`;
 }
+
+export function serverStoragePrefixes(origin: string) {
+  const scopePrefix = `${encodeURIComponent(origin)}:`;
+  return {
+    storage: `aldus:${scopePrefix}`,
+    file: `aldus-${encodeURIComponent(scopePrefix)}`,
+  };
+}

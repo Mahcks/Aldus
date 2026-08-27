@@ -161,6 +161,7 @@ export function Button({
   iconOnly,
   loading,
   accessibilityRole = 'button',
+  accessibilityLabel,
 }: {
   label: string;
   onPress: () => void;
@@ -170,6 +171,7 @@ export function Button({
   icon?: AppIconName;
   iconOnly?: boolean;
   loading?: boolean;
+  accessibilityLabel?: string;
   /** Override for use inside a radiogroup or tablist. */
   accessibilityRole?: 'button' | 'radio' | 'tab';
 }) {
@@ -202,7 +204,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole={accessibilityRole}
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel || label}
       accessibilityState={{
         disabled: isInactive,
         selected: accessibilityRole === 'radio' ? undefined : selected,

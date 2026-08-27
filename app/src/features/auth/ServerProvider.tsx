@@ -12,6 +12,7 @@ import type { SetupStatus } from '../../generated/api';
 import { preloadedAPIBaseURL, setAPIBaseURL } from '../../lib/api-base';
 import { normalizeServerOrigin } from '../../lib/server-origin';
 import {
+  forgetServerProfile,
   loadServerProfiles,
   rememberServerProfile,
   type ServerProfile,
@@ -23,6 +24,7 @@ type ServerContextValue = {
   origin: string;
   profiles: ServerProfile[];
   connect: (address: string) => Promise<SetupStatus>;
+  forget: (origin: string) => Promise<void>;
 };
 
 const ServerContext = createContext<ServerContextValue | null>(null);
@@ -104,6 +106,10 @@ export function ServerProvider({ children }: PropsWithChildren) {
       origin,
       profiles,
       connect,
+      forget: async (forgottenOrigin: string) => {
+        const next = await forgetServerProfile(forgottenOrigin);
+        if (next) setProfiles(next);
+      },
     }),
     [loading, web, origin, profiles, connect],
   );

@@ -12,3 +12,7 @@ export async function loadServerProfiles(): Promise<{
 export async function rememberServerProfile(_origin: string): Promise<ServerProfile[] | undefined> {
   return undefined;
 }
+
+export async function forgetServerProfile(_origin: string): Promise<ServerProfile[] | undefined> {
+  return undefined;
+}
