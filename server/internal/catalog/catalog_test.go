@@ -282,6 +282,21 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if err != nil || detail.ID != alice.ID || !detail.InProgress || detail.CompletionPercent != 25 || detail.ActiveSeconds != 600 || detail.ReadingSeconds != 600 || detail.ListeningSeconds != 0 || detail.LastMode != "read" {
 		t.Fatalf("work detail = %#v, %v", detail, err)
 	}
+	wonderlandEPUB, err := store.CreateRepresentation(ctx, admin, wonderland.ID, "epub", "EPUB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO representation_state(user_id,representation_id,epub_locator,revision,updated_at) VALUES(?,?,?,1,'2026-01-03T00:00:00Z')`, reader.ID, wonderlandEPUB.ID, `{"href":"chapter.xhtml"}`); err != nil {
+		t.Fatal(err)
+	}
+	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Availability: "in_progress", Sort: "progress"})
+	if err != nil || len(values) != 2 || values[0].ID != wonderland.ID || !values[0].InProgress || values[0].CompletionPercent != 0 || values[0].ProgressUpdatedAt.IsZero() {
+		t.Fatalf("format-only progress browse = %#v, %v", values, err)
+	}
+	detail, err = store.WorkDetail(ctx, reader, wonderland.ID)
+	if err != nil || !detail.InProgress || detail.CompletionPercent != 0 || detail.ProgressUpdatedAt.IsZero() {
+		t.Fatalf("format-only work detail = %#v, %v", detail, err)
+	}
 	if err := store.SelectCover(ctx, admin, alice.ID, "open_library", "10521270"); err != nil {
 		t.Fatal(err)
 	}

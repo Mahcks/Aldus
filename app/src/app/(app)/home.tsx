@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { BookCover, ContinueCard, coverPresentation, WorkCard } from '../../features/bookshelf';
 import { requestNotification } from '../../features/activity-presentation';
 import { collectionCount } from '../../features/collection-presentation';
+import { workProgressLabel } from '../../features/consumption';
 import { AppIcon } from '../../features/icons';
 import { listItemEnter } from '../../features/motion';
 import { notificationHref } from '../../features/notification-presentation';
@@ -58,7 +59,7 @@ function ContinueShelf({ works }: { works: WorkSummary[] }) {
               coverURL={work.cover_url}
               coverPresentation={coverPresentation(work)}
               availability={work}
-              progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
+              progress={workProgressLabel(work.in_progress, work.completion_percent)}
               continueMode={mode}
               size="hero"
               onOpen={() => router.push(workHref(work))}
@@ -82,7 +83,7 @@ function WorkShelf({ works }: { works: WorkSummary[] }) {
             coverURL={work.cover_url}
             coverPresentation={coverPresentation(work)}
             availability={work}
-            progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
+            progress={workProgressLabel(work.in_progress, work.completion_percent)}
             onPress={() => router.push(workHref(work))}
           />
         </Animated.View>

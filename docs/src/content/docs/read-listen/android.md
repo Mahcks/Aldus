@@ -11,7 +11,7 @@ Aldus on Android is the same app and library as every other platform, with a cou
   alt="Aldus ebook reader showing a chapter of Alice's Adventures in Wonderland with a Listen from here control"
 />
 
-Connect to your server, open a title, and choose **Read** or **Listen**. Your position saves continuously, so switching apps or losing connectivity mid-page doesn't cost you your place.
+Connect to your server, open a title, and choose **Read** or **Listen**. The ebook saves its native reading locator after navigation settles. Audio saves approximately every two seconds and immediately when you pause, leave, switch formats, or background the app.
 
 ## Background listening
 
@@ -25,7 +25,7 @@ Aldus runs audio through a foreground media playback service, which is what lets
 
 ## Continue in another format
 
-Titles with a **Read & Listen** indicator have a synchronized ebook and audiobook edition. From the work page, **Read instead** or **Listen instead** switches format and resumes at the same position — resolved through the alignment, not an estimated percentage. See [Exact synchronization](/read-listen/synchronization/).
+Titles with a **Read & Listen** indicator have a synchronized ebook and audiobook edition. Tap the headphones button to continue from the visible passage, or long-press a word and choose **Listen from here** for the precise selection-based handoff. See [Exact synchronization](/read-listen/synchronization/) for the complete saving and precision contract.
 
 ## Before you lose signal
 

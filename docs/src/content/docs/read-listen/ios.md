@@ -11,11 +11,11 @@ Aldus on iOS and iPadOS is the same app and the same library as every other plat
   alt="Aldus ebook reader showing a chapter of Alice's Adventures in Wonderland with a Listen from here control"
 />
 
-Open a title and choose **Read** or **Listen**. Aldus saves your position continuously as you move through the book, so closing the app or losing your connection mid-chapter doesn't cost you your place.
+Open a title and choose **Read** or **Listen**. In the ebook, Aldus saves the first visible text location after the page settles and flushes it when you leave or background the app. In audio, it saves approximately every two seconds and immediately when you pause, leave, switch formats, or background the app.
 
 ## Continue in another format
 
-When a title shows the **Read & Listen** indicator, a synchronized edition is available. Leave the reader or the player and select **Read instead** or **Listen instead** on the work page — Aldus resolves your saved position through the alignment instead of estimating from a percentage, so you land on the same sentence in the other format. See [Exact synchronization](/read-listen/synchronization/) for how that mapping works.
+When a title shows the **Read & Listen** indicator, a synchronized edition is available. Tap the headphones button to continue from the first visible synchronized passage. For a precise handoff, long-press a word, adjust the iOS text selection, and choose **Listen from here**. Aldus opens the player at that word when validated word timing is available. See [Exact synchronization](/read-listen/synchronization/) for the complete saving and precision contract.
 
 <img
   class="docs-shot"

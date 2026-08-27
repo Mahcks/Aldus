@@ -1,5 +1,5 @@
 import type { AlignmentSegment, EPUBLocator } from '../../generated/api';
-import type { Locator } from 'react-native-readium';
+import type { DecorationGroup, Locator } from 'react-native-readium';
 
 export function parseReadiumLocator(value: unknown): Locator | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -33,6 +33,26 @@ export function deserializeReadiumLocator(value?: string) {
   } catch {
     return undefined;
   }
+}
+
+export function preferredReadiumLocator(locator: Locator, visible?: Locator) {
+  return visible && normalizeHref(visible.href) === normalizeHref(locator.href) ? visible : locator;
+}
+
+export function readiumResumeDecorations(locator: Locator, highlight: boolean, tint: string) {
+  if (!highlight) return [];
+  return [
+    {
+      name: 'resume-position',
+      decorations: [
+        {
+          id: 'resume-position',
+          locator,
+          style: { type: 'highlight', tint },
+        },
+      ],
+    },
+  ] satisfies DecorationGroup[];
 }
 
 export function mapReadiumLocator(
@@ -93,20 +113,26 @@ export function mapReadiumSelection(
   const matches = segments.flatMap((segment) => {
     if (!segment.highlightable || normalizeHref(segment.epub_href) !== href) return [];
     const text = fold(segment.text);
-    const indexes = selectionIndexes(text, selected, before, after);
-    if (indexes.length !== 1) return [];
+    const match = selectionMatch(text, selected, before, after);
+    if (match.indexes.length !== 1) return [];
     return [
       {
         segment,
-        offset: Math.round((codePoints(text.slice(0, indexes[0])) * 1_000_000) / codePoints(text)),
+        offset: Math.round(
+          (codePoints(text.slice(0, match.indexes[0])) * 1_000_000) / codePoints(text),
+        ),
+        contextual: match.contextual,
       },
     ];
   });
-  if (matches.length === 1)
+  const resolved = matches.some((match) => match.contextual)
+    ? matches.filter((match) => match.contextual)
+    : matches;
+  if (resolved.length === 1)
     return {
-      href: matches[0].segment.epub_href,
-      locator: matches[0].segment.epub_locator,
-      offset: Math.min(1_000_000, matches[0].offset),
+      href: resolved[0].segment.epub_href,
+      locator: resolved[0].segment.epub_locator,
+      offset: Math.min(1_000_000, resolved[0].offset),
     };
   return undefined;
 }
@@ -166,14 +192,6 @@ export function readiumRestoreDisposition(target: EPUBLocator | undefined, href:
     : ('suppress' as const);
 }
 
-export function readiumRestoreMatches(target: EPUBLocator, current: EPUBLocator | undefined) {
-  return Boolean(
-    current &&
-    normalizeHref(target.href) === normalizeHref(current.href) &&
-    JSON.stringify(target.locator) === JSON.stringify(current.locator),
-  );
-}
-
 const normalize = (value: string) =>
   value
     .normalize('NFKC')
@@ -183,7 +201,7 @@ const normalize = (value: string) =>
 const fold = (value: string) =>
   value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
 const codePoints = (value: string) => [...value].length;
-function selectionIndexes(text: string, selected: string, before: string, after: string) {
+function selectionMatch(text: string, selected: string, before: string, after: string) {
   for (const window of [80, 40, 20, 8]) {
     const anchors = [
       joinText(before.slice(-window), selected),
@@ -193,10 +211,10 @@ function selectionIndexes(text: string, selected: string, before: string, after:
       const indexes = occurrences(text, anchor).map((index) =>
         anchor.startsWith(selected) ? index : index + anchor.length - selected.length,
       );
-      if (indexes.length === 1) return indexes;
+      if (indexes.length === 1) return { indexes, contextual: true };
     }
   }
-  return occurrences(text, selected);
+  return { indexes: occurrences(text, selected), contextual: false };
 }
 function joinText(left: string, right: string) {
   if (!left) return right;

@@ -4,9 +4,10 @@ import {
   deserializeReadiumLocator,
   mapReadiumLocator,
   mapReadiumSelection,
+  preferredReadiumLocator,
   readiumLocationReason,
+  readiumResumeDecorations,
   readiumRestoreDisposition,
-  readiumRestoreMatches,
   readiumSearchQuery,
   readiumSearchQueries,
   segmentForEPUBLocator,
@@ -39,18 +40,48 @@ describe('Readium spike locator', () => {
     expect(deserializeReadiumLocator('{')).toBeUndefined();
   });
 
+  test('saves the first visible text locator instead of a coarser page event', () => {
+    const page = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.2 },
+    };
+    const visible = {
+      ...page,
+      text: { highlight: 'beginning to get very tired' },
+    };
+    expect(preferredReadiumLocator(page, visible)).toBe(visible);
+    expect(preferredReadiumLocator(page)).toBe(page);
+    expect(preferredReadiumLocator(page, { ...visible, href: 'OEBPS/next.xhtml' })).toBe(page);
+  });
+
   test('suppresses startup locations until the canonical target arrives', () => {
     const target = { href: segment.epub_href, locator: segment.epub_locator, offset: 500_000 };
     expect(readiumRestoreDisposition(target, 'OEBPS/title.xhtml')).toBe('suppress');
     expect(readiumRestoreDisposition(target, `/${segment.epub_href}#page`)).toBe('restore');
     expect(readiumRestoreDisposition(undefined, 'OEBPS/title.xhtml')).toBe('publish');
-    expect(readiumRestoreMatches(target, { ...target, offset: 0 })).toBe(true);
-    expect(
-      readiumRestoreMatches(target, {
-        ...target,
-        locator: { type: 'dom-element', dom_path: 'html[1]/body[1]/p[2]' },
-      }),
-    ).toBe(false);
+  });
+
+  test('highlights only canonical resume targets', () => {
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.2 },
+      text: { highlight: segment.text },
+    };
+    expect(readiumResumeDecorations(locator, false, '#accent')).toEqual([]);
+    expect(readiumResumeDecorations(locator, true, '#accent')).toEqual([
+      {
+        name: 'resume-position',
+        decorations: [
+          {
+            id: 'resume-position',
+            locator,
+            style: { type: 'highlight', tint: '#accent' },
+          },
+        ],
+      },
+    ]);
   });
 
   test('maps unique text context to the existing canonical EPUB locator and fails closed', () => {
@@ -172,6 +203,44 @@ describe('Readium spike locator', () => {
       href: next.epub_href,
       locator: next.epub_locator,
       offset: 0,
+    });
+  });
+
+  test('uses trailing context to distinguish repeated selected text', () => {
+    const lines = [
+      {
+        ...segment,
+        id: 'hatter',
+        text: '“Not the same thing a bit!” said the Hatter. “You might just as well say that ‘I see what I eat’ is the same thing as ‘I eat what I see’!”',
+      },
+      {
+        ...segment,
+        id: 'hare',
+        epub_locator: { type: 'dom-element', dom_path: 'html[1]/body[1]/p[18]' },
+        text: '“You might just as well say,” added the March Hare, “that ‘I like what I get’ is the same thing as ‘I get what I like’!”',
+      },
+      {
+        ...segment,
+        id: 'dormouse',
+        text: '“You might just as well say,” added the Dormouse, who seemed to be talking in his sleep, “that ‘I breathe when I sleep’ is the same thing as ‘I sleep when I breathe’!”',
+      },
+    ];
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.15384615384615385 },
+      text: {
+        before:
+          'I mean what I say—that’s the same thing, you know. “Not the same thing a bit!” said the Hatter. “You might just as well say that “I see what I eat” is the same thing as “I eat what I see”!” “',
+        highlight: 'You might just as well say,” added',
+        after:
+          ' the March Hare, “that ‘I like what I get’ is the same thing as ‘I get what I like’!” “You might just as well say,” added the Dormouse',
+      },
+    };
+    expect(mapReadiumSelection(locator, locator.text.highlight, lines)).toEqual({
+      href: segment.epub_href,
+      locator: lines[1].epub_locator,
+      offset: expect.any(Number),
     });
   });
 

@@ -18,7 +18,7 @@ The only authoritative position is:
 }
 ```
 
-`offset` is millionths through one aligned segment (`0..1000000`), not percentage through a book. A segment is sentence-sized in Phase 1. The alignment and segment identify the logical passage; offset preserves sub-segment progress for audio interpolation and future word timing. `revision` is the server-issued optimistic-concurrency version of progress, not an alignment revision.
+`offset` is millionths through one aligned segment (`0..1000000`), not percentage through a book. A segment is normally sentence-sized. The alignment and segment identify the logical passage; offset preserves the normalized character position inside it. Validated word timings map that character position to a word onset. When word timings are absent, audio conversion interpolates within the segment interval. `revision` is the server-issued optimistic-concurrency version of progress, not an alignment revision.
 
 Canonical progress belongs to a user and Work. Native state belongs separately to a user and Representation: for example an EPUB locator, audio timestamp, playback speed, reader layout, or zoom. Native state never creates or replaces canonical progress. Native locators are also retained on alignment segments for conversion; an adapter converts only between its native locator and `(segment_id, offset)`.
 
@@ -33,7 +33,7 @@ Each segment stores:
 - EPUB resource `href` and native locator JSON
 - KOReader XPointer for that same EPUB revision
 - audio resource and inclusive start/exclusive end milliseconds
-- optional word timing JSON for later higher precision
+- optional word timing JSON for word-level audio conversion
 
 Audio conversion uses the segment time interval and linearly preserves the canonical offset. EPUB and KOReader conversion returns the stored sentence locator plus the offset. Phase 1 guarantees the same sentence, not character-level placement.
 
@@ -41,11 +41,11 @@ Audio conversion uses the segment time interval and linearly preserves the canon
 
 ### iOS
 
-Use Readium Swift Toolkit. Persist the complete Readium `Locator` JSON from the navigator and restore it with the navigator's locator navigation API. A narrow Expo native view will expose `openBook`, `goToLocator`, `getCurrentLocator`, `onLocatorChanged`, `next`, `previous`, and preferences. The adapter submits the locator JSON to Aldus and does not interpret another platform's locator.
+Use Readium Swift Toolkit. Aldus asks the navigator for its first visible element locator and persists that complete Readium `Locator` JSON. The locator restores the edition position. Its text context may also resolve the first visible aligned passage, but the page save is not eye tracking. A custom native selection action maps the selected text's starting character to a canonical segment offset before a read-to-listen handoff.
 
 ### Android
 
-Use Readium Kotlin Toolkit. Observe `Navigator.currentLocator`, serialize the complete Readium `Locator`, restore it as `initialLocator` or with `navigator.go(locator)`, and expose the same narrow Expo contract as iOS.
+Use Readium Kotlin Toolkit. Observe `Navigator.currentLocator`, serialize the complete Readium `Locator`, and restore it with the navigator. The same custom selection action maps selected text to a canonical segment offset.
 
 ### Web
 
@@ -85,7 +85,7 @@ Alignment is preprocessing, never playback work. WhisperX 3.8.6 is the adopted M
 
 ## Exactness and failure cases
 
-Exact DOM-range restoration is validated against the frozen Alice EPUB. Automatic spoken onset uses the separately human-authored audible-onset fixture; manual-seek anchors retain their distinct restoration/listening-position semantics. Exact word highlighting still requires a validated word timing for that segment.
+Exact DOM-range restoration is validated against the frozen Alice EPUB. Automatic spoken onset uses the separately human-authored audible-onset fixture; manual-seek anchors retain their distinct restoration/listening-position semantics. A deliberate text selection preserves the starting character within its aligned segment and seeks to the corresponding word onset when validated timing exists. Ordinary page navigation preserves the renderer's first visible location, not the reader's unseen eye position. Exact word highlighting still requires validated word timing for that segment.
 
 Resolution fails closed when a source hash changed, an alignment is not ready, a document alias is unknown, a locator has no exact segment mapping, a timestamp is out of bounds, segment ordering is non-monotonic, or a client revision is stale. Text quotes are recovery evidence for diagnostics and future controlled re-anchoring, never permission to reuse an alignment against changed media.
 

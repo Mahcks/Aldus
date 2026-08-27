@@ -91,20 +91,33 @@ export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSumm
     .filter((item) => !libraryID || item.work.library_id === libraryID)
     .map((item) => {
       const library = byID.get(item.work.library_id);
+      const progressUpdatedAt = [
+        item.work.progress_updated_at,
+        item.progress?.updated_at,
+        item.epub_state?.epub_locator ? item.epub_state.updated_at : undefined,
+        item.audio_state?.audio_timestamp_ms != null ? item.audio_state.updated_at : undefined,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1);
       return {
         ...item.work,
         library_name: library?.name ?? 'Offline downloads',
         readable: item.epubs.length > 0,
         listenable: item.audio.length > 0,
         synchronized: Boolean(item.alignment),
-        in_progress: Boolean(item.progress),
+        in_progress: Boolean(
+          item.progress ||
+          item.epub_state?.epub_locator ||
+          item.audio_state?.audio_timestamp_ms != null,
+        ),
         completion_percent: item.work.completion_percent ?? 0,
         active_seconds: item.work.active_seconds ?? 0,
         reading_seconds: item.work.reading_seconds ?? 0,
         listening_seconds: item.work.listening_seconds ?? 0,
         last_mode: item.work.last_mode,
         reading_status: item.work.reading_status ?? '',
-        progress_updated_at: item.work.progress_updated_at,
+        progress_updated_at: progressUpdatedAt,
       };
     });
 }
@@ -177,4 +190,22 @@ export async function updateOfflineProgress(workID: string, progress: CanonicalP
   const scope = activeStorageScope();
   const value = await offlineWork(workID);
   if (value) await AsyncStorage.setItem(key(scope, workID), JSON.stringify({ ...value, progress }));
+}
+
+export async function updateOfflineRepresentationState(
+  workID: string,
+  kind: 'epub' | 'audio',
+  state: RepresentationState,
+) {
+  const scope = activeStorageScope();
+  const value = await offlineWork(workID);
+  if (!value) return false;
+  await AsyncStorage.setItem(
+    key(scope, workID),
+    JSON.stringify({
+      ...value,
+      [kind === 'epub' ? 'epub_state' : 'audio_state']: state,
+    }),
+  );
+  return true;
 }

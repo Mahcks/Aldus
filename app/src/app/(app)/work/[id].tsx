@@ -17,6 +17,7 @@ import {
   defaultPair,
   readyJob,
   synchronizationLabel,
+  workProgressLabel,
   type MediaChoice,
 } from '../../../features/consumption';
 import { formatDuration } from '../../../features/format';
@@ -406,18 +407,20 @@ export default function WorkScreen() {
     <View className="w-full gap-4">
       {work.in_progress ? (
         <View className="w-full max-w-md gap-1.5 py-0.5">
-          <View
-            className="h-1.5 overflow-hidden rounded-full bg-line"
-            accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: 100, now: work.completion_percent }}
-          >
+          {work.completion_percent > 0 ? (
             <View
-              className="h-full rounded-full bg-accent-strong"
-              style={{ width: `${work.completion_percent}%` }}
-            />
-          </View>
+              className="h-1.5 overflow-hidden rounded-full bg-line"
+              accessibilityRole="progressbar"
+              accessibilityValue={{ min: 0, max: 100, now: work.completion_percent }}
+            >
+              <View
+                className="h-full rounded-full bg-accent-strong"
+                style={{ width: `${work.completion_percent}%` }}
+              />
+            </View>
+          ) : null}
           <Text className="text-sm text-muted">
-            {work.completion_percent}% complete
+            {workProgressLabel(work.in_progress, work.completion_percent)}
             {work.active_seconds > 0 ? ` · ${formatDuration(work.active_seconds)} active` : ''}
           </Text>
         </View>
@@ -426,7 +429,7 @@ export default function WorkScreen() {
       {primaryAvailable ? (
         <View className="flex-row flex-wrap items-center gap-2">
           <Button
-            label={`${hasProgress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
+            label={`${hasProgress || work.in_progress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
             icon={primaryMode === 'read' ? 'read' : 'listen'}
             kind="primary"
             onPress={() => consume(primaryMode)}

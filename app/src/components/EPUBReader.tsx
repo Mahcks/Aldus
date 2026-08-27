@@ -55,6 +55,7 @@ export const EPUBReader = forwardRef<
     compactChrome?: boolean;
     statusLabel?: string;
     onLocation?: (location: ReaderLocation) => void;
+    onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;
     onError?: (error: Error) => void;
   }

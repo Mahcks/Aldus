@@ -196,6 +196,11 @@ export function synchronizationLabel(jobs: AlignmentJob[], epubID?: string, audi
   return 'Synchronization unavailable for this pairing';
 }
 
+export function workProgressLabel(inProgress: boolean, completionPercent: number) {
+  if (!inProgress) return undefined;
+  return completionPercent > 0 ? `${completionPercent}% complete` : 'In progress';
+}
+
 type SyncClient = {
   epubToCanonical: (alignmentID: string, locator: EPUBLocator) => Promise<CanonicalPosition>;
   audioToCanonical: (alignmentID: string, locator: AudioLocator) => Promise<CanonicalPosition>;

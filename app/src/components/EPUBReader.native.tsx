@@ -4,6 +4,7 @@ import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ReadiumView,
+  type DecorationGroup,
   type Link,
   type Locator,
   type PublicationReadyEvent,
@@ -16,9 +17,10 @@ import {
   mapReadiumLocator,
   mapReadiumSelection,
   parseReadiumLocator,
+  preferredReadiumLocator,
   readiumLocationReason,
+  readiumResumeDecorations,
   readiumRestoreDisposition,
-  readiumRestoreMatches,
   readiumSearchQueries,
   segmentForEPUBLocator,
 } from '../features/reader-spike/readium-locator';
@@ -79,6 +81,7 @@ export const EPUBReader = forwardRef<
     compactChrome?: boolean;
     statusLabel?: string;
     onLocation?: (location: ReaderLocation) => void;
+    onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;
     onError?: (error: Error) => void;
   }
@@ -90,6 +93,7 @@ export const EPUBReader = forwardRef<
     compactChrome,
     statusLabel,
     onLocation,
+    onListenFromLocation,
     onReady,
     onError,
   },
@@ -104,6 +108,7 @@ export const EPUBReader = forwardRef<
   const locationRequest = useRef(0);
   const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
   const [fileURL, setFileURL] = useState('');
+  const [resumeDecorations, setResumeDecorations] = useState<DecorationGroup[]>([]);
   onErrorRef.current = onError;
   segmentsRef.current = segments;
 
@@ -111,6 +116,7 @@ export const EPUBReader = forwardRef<
     let active = true;
     locationRequest.current += 1;
     pendingRestore.current = undefined;
+    setResumeDecorations([]);
     direction.current = undefined;
     lastProgression.current = undefined;
     async function prepare() {
@@ -145,6 +151,7 @@ export const EPUBReader = forwardRef<
         const view = reader.current;
         if (!view || !location || typeof location !== 'object') return false;
         pendingRestore.current = undefined;
+        setResumeDecorations([]);
         direction.current = 'backward';
         view.goTo(location as Locator);
         return true;
@@ -177,7 +184,7 @@ export const EPUBReader = forwardRef<
           }
         }
       },
-      restoreLocation: async (location) => {
+      restoreLocation: async (location, highlight = false) => {
         const view = reader.current;
         if (!view) {
           if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
@@ -186,6 +193,7 @@ export const EPUBReader = forwardRef<
         const saved = savedLocator(location);
         if (saved) {
           if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
+          setResumeDecorations([]);
           view.goTo(saved);
           return true;
         }
@@ -219,7 +227,6 @@ export const EPUBReader = forwardRef<
           onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
         }
-        pendingRestore.current = target;
         try {
           let matches: SearchResult[] = [];
           let matchedQuery = '';
@@ -268,6 +275,10 @@ export const EPUBReader = forwardRef<
               href: target.href,
               query: matchedQuery,
             });
+          pendingRestore.current = target;
+          setResumeDecorations(
+            readiumResumeDecorations(matches[0].locator, highlight, colors.accentSoft),
+          );
           view.goTo(matches[0].locator);
           return true;
         } catch (cause) {
@@ -300,13 +311,13 @@ export const EPUBReader = forwardRef<
       // The installed native client predates the visible-location bridge.
     }
     if (request !== locationRequest.current) return;
-    const sync = mapReadiumLocator(visible ?? locator, currentSegments);
+    const readingLocator = preferredReadiumLocator(locator, visible);
+    const sync = mapReadiumLocator(readingLocator, currentSegments);
     if (restoreDisposition === 'restore' && restored) {
-      if (!readiumRestoreMatches(restored, sync)) return;
       pendingRestore.current = undefined;
       onLocation?.({
-        href: locator.href,
-        cfi: JSON.stringify(visible ?? locator),
+        href: readingLocator.href,
+        cfi: JSON.stringify(readingLocator),
         sync: restored,
         syncState: 'full',
         reason: 'restore',
@@ -332,8 +343,8 @@ export const EPUBReader = forwardRef<
     direction.current = disposition.pendingDirection;
     if (sync) lastProgression.current = progression;
     onLocation?.({
-      href: locator.href,
-      cfi: JSON.stringify(locator),
+      href: readingLocator.href,
+      cfi: JSON.stringify(readingLocator),
       sync,
       syncState: sync ? 'full' : 'none',
       reason: disposition.reason,
@@ -350,13 +361,15 @@ export const EPUBReader = forwardRef<
         segmentCount: currentSegments.length,
         sync,
       });
-    onLocation?.({
+    const location: ReaderLocation = {
       href: event.locator.href,
       cfi: JSON.stringify(event.locator),
       sync,
       syncState: sync ? 'full' : 'none',
       reason: 'explicit',
-    });
+    };
+    onLocation?.(location);
+    if (event.actionId === 'listen-here') onListenFromLocation?.(location);
   }
 
   function handleReady(event?: PublicationReadyEvent) {
@@ -399,6 +412,7 @@ export const EPUBReader = forwardRef<
                   ? 'sepia'
                   : 'light',
           }}
+          decorations={resumeDecorations}
           selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
           onLocationChange={handleLocation}
           onPublicationReady={handleReady}
@@ -417,6 +431,7 @@ export const EPUBReader = forwardRef<
               kind="quiet"
               onPress={() => {
                 pendingRestore.current = undefined;
+                setResumeDecorations([]);
                 direction.current = 'backward';
                 reader.current?.goBackward();
               }}
@@ -441,6 +456,7 @@ export const EPUBReader = forwardRef<
               kind="quiet"
               onPress={() => {
                 pendingRestore.current = undefined;
+                setResumeDecorations([]);
                 direction.current = 'forward';
                 reader.current?.goForward();
               }}

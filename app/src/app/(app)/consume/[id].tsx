@@ -12,7 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
 import { ActivityIndicator, AppState, Platform, useWindowDimensions } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   DEFAULT_READER_PREFERENCES,
@@ -25,6 +25,7 @@ import {
 } from '../../../components/EPUBReader';
 import { commitsReadingProgress } from '../../../components/reader-location';
 import { BookCover, coverPresentation } from '../../../features/bookshelf';
+import { AppIcon } from '../../../features/icons';
 import { ReaderSettings } from '../../../features/reader-settings';
 import {
   applyPlaybackRate,
@@ -51,7 +52,11 @@ import {
   synchronizationLabel,
   type MediaChoice,
 } from '../../../features/consumption';
-import { fadeIn as passageEntrance } from '../../../features/motion';
+import {
+  DURATION_STANDARD,
+  EASE_STANDARD,
+  fadeIn as passageEntrance,
+} from '../../../features/motion';
 import {
   Button,
   colors,
@@ -68,7 +73,11 @@ import { APIError, api, errorMessage } from '../../../lib/api';
 import { productEPUBSource } from '../../../lib/epub-source';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
-import { offlineWork, updateOfflineProgress } from '../../../lib/offline-library';
+import {
+  offlineWork,
+  updateOfflineProgress,
+  updateOfflineRepresentationState,
+} from '../../../lib/offline-library';
 import {
   offlineAudioToCanonical,
   offlineCanonicalToAudio,
@@ -84,6 +93,105 @@ import {
 type Mode = 'read' | 'listen';
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
 type ProgressConflict = { local: CanonicalPosition; remote: CanonicalPosition };
+
+const MODE_SWITCH_SEGMENT = 38;
+const MODE_SWITCH_TRACK_PADDING = 3;
+
+/**
+ * The read/listen toggle, built as its own thing rather than two buttons
+ * borrowed from the generic radiogroup pattern — synced reading and
+ * listening is this app's whole reason to exist, and a pair of flat filter
+ * chips undersold it. A single pill-shaped track carries both icons; a
+ * paper-colored lozenge slides between them, the way an iOS segmented
+ * control does, so switching modes reads as one continuous object changing
+ * state rather than two separate buttons trading places. The slide is a
+ * `layout` transition (like every other animation in this app — see
+ * `motion.ts`), not a hand-rolled `useSharedValue`/`useAnimatedStyle`
+ * worklet: this codebase has never needed a custom worklet anywhere else,
+ * only Reanimated's built-in preset builders, and a bespoke one turned out
+ * not to survive on-device. Its position is a plain, ordinary style
+ * computed from `mode` — Reanimated's layout-animation system detects the
+ * position change on re-render and interpolates it automatically.
+ * Falls back to a plain static icon (no track, no motion) when a Work only
+ * has one format — there's nothing to switch to, so a toggle would be a lie.
+ */
+function ModeSwitch({
+  mode,
+  hasRead,
+  hasListen,
+  onRead,
+  onListen,
+}: {
+  mode: Mode;
+  hasRead: boolean;
+  hasListen: boolean;
+  onRead: () => void;
+  onListen: () => void;
+}) {
+  if (!hasRead && !hasListen) return null;
+
+  if (!(hasRead && hasListen)) {
+    const solo = hasRead ? 'read' : 'listen';
+    return (
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        className="items-center justify-center rounded-pill bg-accent-soft"
+        style={{ width: MODE_SWITCH_SEGMENT, height: MODE_SWITCH_SEGMENT }}
+      >
+        <AppIcon name={solo} size={17} color={colors.accentStrong} />
+      </View>
+    );
+  }
+
+  const indicatorLeft = MODE_SWITCH_TRACK_PADDING + (mode === 'listen' ? MODE_SWITCH_SEGMENT : 0);
+
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Reading mode"
+      className="flex-row rounded-pill bg-control"
+      style={{ padding: MODE_SWITCH_TRACK_PADDING }}
+    >
+      <Animated.View
+        layout={LinearTransition.duration(DURATION_STANDARD).easing(EASE_STANDARD)}
+        style={{
+          position: 'absolute',
+          top: MODE_SWITCH_TRACK_PADDING,
+          left: indicatorLeft,
+          width: MODE_SWITCH_SEGMENT,
+          height: MODE_SWITCH_SEGMENT,
+          borderRadius: 999,
+          backgroundColor: colors.paper,
+        }}
+      />
+      <Pressable
+        accessibilityRole="radio"
+        accessibilityState={{ checked: mode === 'read' }}
+        accessibilityLabel="Read"
+        onPress={onRead}
+        className="items-center justify-center"
+        style={{ width: MODE_SWITCH_SEGMENT, height: MODE_SWITCH_SEGMENT }}
+      >
+        <AppIcon name="read" size={17} color={mode === 'read' ? colors.accent : colors.subtle} />
+      </Pressable>
+      <Pressable
+        accessibilityRole="radio"
+        accessibilityState={{ checked: mode === 'listen' }}
+        accessibilityLabel="Listen from the visible passage"
+        onPress={onListen}
+        className="items-center justify-center"
+        style={{ width: MODE_SWITCH_SEGMENT, height: MODE_SWITCH_SEGMENT }}
+      >
+        <AppIcon
+          name="listen"
+          size={17}
+          color={mode === 'listen' ? colors.accent : colors.subtle}
+        />
+      </Pressable>
+    </View>
+  );
+}
 
 export default function ConsumeWorkScreen() {
   const compact = useWindowDimensions().width < 600;
@@ -147,7 +255,12 @@ export default function ConsumeWorkScreen() {
   const lastAudioSave = useRef(-1);
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
+  const representationSaves = useRef<Promise<void>>(Promise.resolve());
+  const epubStateRef = useRef<RepresentationState | null>(null);
+  const audioStateRef = useRef<RepresentationState | null>(null);
+  const representationSaveAttempt = useRef(0);
   const switching = useRef(false);
+  const leaving = useRef(false);
   const saveAttempt = useRef(0);
   const sleepTimerExpired = useRef(false);
   const player = useAudioPlayer(source, { updateInterval: 250 });
@@ -172,6 +285,15 @@ export default function ConsumeWorkScreen() {
   const currentPlaybackRate = playbackRate(status.playbackRate);
   const playbackRateIndex = PLAYBACK_RATES.indexOf(currentPlaybackRate);
   const canAdjustPlaybackRate = Boolean(source) && !status.error;
+
+  useEffect(() => {
+    epubStateRef.current = epubState;
+  }, [epubState]);
+
+  useEffect(() => {
+    audioStateRef.current = audioState;
+  }, [audioState]);
+
   const finishSleepTimer = useCallback(() => {
     if (sleepTimerExpired.current) return;
     sleepTimerExpired.current = true;
@@ -745,7 +867,7 @@ export default function ConsumeWorkScreen() {
     function save() {
       if (saved) return;
       saved = true;
-      void saveRepresentation('epub', { href: location.href, cfi: location.cfi });
+      void saveEPUBLocation(location);
     }
     const timer = setTimeout(save, 900);
     const subscription =
@@ -784,38 +906,101 @@ export default function ConsumeWorkScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, status.currentTime, status.isLoaded, audioReady, selectedAudio?.id, alignmentID]);
 
+  useEffect(() => {
+    if (Platform.OS === 'web' || mode !== 'listen' || !status.isLoaded || !selectedAudio) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') return;
+      const timestamp = Math.round(player.currentTime * 1000);
+      lastAudioSave.current = timestamp;
+      void saveListeningPosition(timestamp);
+    });
+    return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, status.isLoaded, selectedAudio?.id, alignmentID]);
+
   async function saveRepresentation(
     kind: 'epub' | 'audio',
     value: unknown,
     playbackSpeed = status.playbackRate || 1,
-  ) {
+  ): Promise<'saved' | 'offline' | 'error'> {
     const selected = kind === 'epub' ? selectedEPUB : selectedAudio;
-    const state = kind === 'epub' ? epubState : audioState;
-    if (!selected) return;
-    try {
-      const next = await api.updateRepresentationState(
+    if (!selected) return 'error';
+    const update = (expectedRevision: number) =>
+      api.updateRepresentationState(
         selected.representation.id,
         kind === 'epub'
           ? {
               epub_locator: value,
               reader_layout: readerPreferences.layout,
-              expected_revision: state?.revision ?? 0,
+              expected_revision: expectedRevision,
             }
           : {
               audio_timestamp_ms: value as number,
               playback_speed: playbackSpeed,
-              expected_revision: state?.revision ?? 0,
+              expected_revision: expectedRevision,
             },
       );
-      if (kind === 'epub') setEPUBState(next);
-      else setAudioState(next);
-    } catch (error) {
-      if (error instanceof APIError && error.status === 409) {
+    try {
+      const state = kind === 'epub' ? epubStateRef.current : audioStateRef.current;
+      let next: RepresentationState;
+      try {
+        next = await update(state?.revision ?? 0);
+      } catch (error) {
+        if (!(error instanceof APIError && error.status === 409)) throw error;
         const current = await api.representationState(selected.representation.id);
-        if (kind === 'epub') setEPUBState(current);
-        else setAudioState(current);
-      } else if (!(error instanceof APIError && error.status === 0)) setNotice(errorMessage(error));
+        next = await update(current?.revision ?? 0);
+      }
+      if (kind === 'epub') {
+        epubStateRef.current = next;
+        setEPUBState(next);
+      } else {
+        audioStateRef.current = next;
+        setAudioState(next);
+      }
+      if (work) await updateOfflineRepresentationState(work.id, kind, next).catch(() => false);
+      return 'saved';
+    } catch (error) {
+      if (error instanceof APIError && error.status === 0 && work) {
+        const current = kind === 'epub' ? epubStateRef.current : audioStateRef.current;
+        const local: RepresentationState = {
+          ...current,
+          representation_id: selected.representation.id,
+          revision: current?.revision ?? 0,
+          updated_at: new Date().toISOString(),
+          ...(kind === 'epub'
+            ? { epub_locator: value, reader_layout: readerPreferences.layout }
+            : { audio_timestamp_ms: value as number, playback_speed: playbackSpeed }),
+        };
+        const stored = await updateOfflineRepresentationState(work.id, kind, local).catch(
+          () => false,
+        );
+        if (stored) {
+          if (kind === 'epub') {
+            epubStateRef.current = local;
+            setEPUBState(local);
+          } else {
+            audioStateRef.current = local;
+            setAudioState(local);
+          }
+          return 'offline';
+        }
+      } else setNotice(errorMessage(error));
+      return 'error';
     }
+  }
+
+  async function saveEPUBLocation(location: ReaderLocation) {
+    const attempt = ++representationSaveAttempt.current;
+    setSaveState('saving');
+    let result: 'saved' | 'offline' | 'error' = 'error';
+    representationSaves.current = representationSaves.current
+      .catch(() => {})
+      .then(async () => {
+        result = await saveRepresentation('epub', { href: location.href, cfi: location.cfi });
+        if (attempt === representationSaveAttempt.current) setSaveState(result);
+      });
+    await representationSaves.current;
+    return result !== 'error';
   }
 
   async function saveCanonical(canonical: CanonicalPosition) {
@@ -986,25 +1171,28 @@ export default function ConsumeWorkScreen() {
     }
   }
 
-  async function switchToListen() {
+  async function switchToListen(location = readerLocation) {
     if (switching.current) return;
-    if (!work || !readerLocation?.sync || !alignmentID)
-      return setNotice('Synchronized listening is unavailable at this passage.');
+    if (!work || !location?.sync || !alignmentID)
+      return setNotice(
+        'Listening can\u2019t start here. Your reading position is saved; select narration text and choose Listen from here.',
+      );
     switching.current = true;
     try {
+      await saveEPUBLocation(location);
       await canonicalSaves.current;
       const { progress: next, target } = await readToListen(
         api,
         work.id,
         alignmentID,
-        readerLocation.sync,
+        location.sync,
         progressRef.current?.revision ?? 0,
         Platform.OS,
       );
       if (__DEV__)
         console.debug('Aldus Read → Listen', {
-          href: readerLocation.sync.href,
-          locator: readerLocation.sync.locator,
+          href: location.sync.href,
+          locator: location.sync.locator,
           canonical: { segment_id: next.segment_id, offset: next.offset },
           audio_timestamp_ms: target.timestamp_ms,
         });
@@ -1019,7 +1207,7 @@ export default function ConsumeWorkScreen() {
     } catch (error) {
       playAfterRestore.current = false;
       if (error instanceof APIError && error.status === 0 && alignment) {
-        const canonical = offlineEPUBToCanonical(alignmentID, readerLocation.sync);
+        const canonical = offlineEPUBToCanonical(alignmentID, location.sync);
         const target = canonical && offlineCanonicalToAudio(alignment, canonical);
         if (canonical && target) {
           await saveCanonical(canonical);
@@ -1040,13 +1228,28 @@ export default function ConsumeWorkScreen() {
         setSyncAvailable(false);
         setNotice(
           error instanceof APIError && error.status === 404
-            ? 'Synchronized listening is unavailable at this passage.'
+            ? 'Listening can\u2019t start here. Your reading position is saved; select narration text and choose Listen from here.'
             : errorMessage(error),
         );
       }
     } finally {
       switching.current = false;
     }
+  }
+
+  async function leaveReader() {
+    if (leaving.current) return;
+    leaving.current = true;
+    if (mode === 'read' && readerLocation && selectedEPUB) {
+      await saveEPUBLocation(readerLocation);
+      if (commitsReadingProgress(readerLocation.reason)) await saveReadingCursor(readerLocation);
+    } else if (mode === 'listen' && status.isLoaded && selectedAudio) {
+      const timestamp = Math.round(player.currentTime * 1000);
+      lastAudioSave.current = timestamp;
+      await saveListeningPosition(timestamp);
+    }
+    await canonicalSaves.current;
+    goBackOr(`/work/${params.id}`);
   }
 
   async function switchToRead() {
@@ -1251,7 +1454,7 @@ export default function ConsumeWorkScreen() {
           icon="back"
           label="Back to work"
           kind="quiet"
-          onPress={() => goBackOr(`/work/${params.id}`)}
+          onPress={() => void leaveReader()}
         />
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-base font-sans-bold text-ink">
@@ -1291,42 +1494,13 @@ export default function ConsumeWorkScreen() {
               />
             </>
           ) : null}
-          {selectedEPUB && (!compactNative || mode === 'listen') ? (
-            compact ? (
-              <IconButton
-                label="Read"
-                icon="read"
-                kind={mode === 'read' ? 'primary' : 'secondary'}
-                selected={mode === 'read'}
-                onPress={handleReadMode}
-              />
-            ) : (
-              <Button
-                label="Read"
-                icon="read"
-                kind={mode === 'read' ? 'primary' : 'secondary'}
-                onPress={handleReadMode}
-              />
-            )
-          ) : null}
-          {selectedAudio && (!compactNative || mode === 'read') ? (
-            compact ? (
-              <IconButton
-                label="Listen"
-                icon="listen"
-                kind={mode === 'listen' ? 'primary' : 'secondary'}
-                selected={mode === 'listen'}
-                onPress={handleListenMode}
-              />
-            ) : (
-              <Button
-                label="Listen"
-                icon="listen"
-                kind={mode === 'listen' ? 'primary' : 'secondary'}
-                onPress={handleListenMode}
-              />
-            )
-          ) : null}
+          <ModeSwitch
+            mode={mode}
+            hasRead={Boolean(selectedEPUB)}
+            hasListen={Boolean(selectedAudio)}
+            onRead={handleReadMode}
+            onListen={handleListenMode}
+          />
         </View>
       </View>
       {!compactNative ? (
@@ -1502,15 +1676,20 @@ export default function ConsumeWorkScreen() {
               compactChrome={compactNative}
               statusLabel={
                 compactNative
-                  ? progressStatus ||
-                    (alignmentID
-                      ? compactPageSyncLabel
-                      : syncAvailable
-                        ? 'Synchronized'
-                        : syncLabel)
+                  ? canListenFromReader
+                    ? [progressStatus, 'Select text to listen from there']
+                        .filter(Boolean)
+                        .join(' · ')
+                    : progressStatus ||
+                      (alignmentID
+                        ? compactPageSyncLabel
+                        : syncAvailable
+                          ? 'Synchronized'
+                          : syncLabel)
                   : undefined
               }
               onLocation={onReaderLocation}
+              onListenFromLocation={(location) => void switchToListen(location)}
               onReady={onReaderReady}
               onError={(error) => setNotice(error.message || 'Unable to open EPUB.')}
             />

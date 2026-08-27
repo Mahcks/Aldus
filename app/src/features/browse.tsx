@@ -9,6 +9,7 @@ import {
   type AcquisitionResultGroup,
 } from './acquisition';
 import { BookCover, coverPresentation, WorkCard } from './bookshelf';
+import { workProgressLabel } from './consumption';
 import { AppIcon } from './icons';
 import { listItemEnter } from './motion';
 import { ScrollView, Text, View } from './tw';
@@ -348,7 +349,7 @@ export function WorkGrid({
               coverURL={work.cover_url}
               coverPresentation={coverPresentation(work)}
               availability={work}
-              progress={work.in_progress ? `${work.completion_percent}% complete` : undefined}
+              progress={workProgressLabel(work.in_progress, work.completion_percent)}
               narrow={narrow}
               onPress={() => onOpen(work)}
             />

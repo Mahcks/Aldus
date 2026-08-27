@@ -1,4 +1,9 @@
-import type { CanonicalPosition, Library, WorkSummary } from '../generated/api';
+import type {
+  CanonicalPosition,
+  Library,
+  RepresentationState,
+  WorkSummary,
+} from '../generated/api';
 import type { OfflineWork } from './offline-library.native';
 
 export type { OfflineWork };
@@ -20,3 +25,10 @@ export async function downloadOfflineWork(_value: Omit<OfflineWork, 'downloaded_
 }
 export async function removeOfflineWork(_workID: string) {}
 export async function updateOfflineProgress(_workID: string, _progress: CanonicalPosition) {}
+export async function updateOfflineRepresentationState(
+  _workID: string,
+  _kind: 'epub' | 'audio',
+  _state: RepresentationState,
+) {
+  return false;
+}

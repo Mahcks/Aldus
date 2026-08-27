@@ -11,7 +11,7 @@ A download is more than just the file:
 
 - The ebook and/or audiobook edition you selected, including chapter and cover metadata.
 - If the title has a **Read & Listen** alignment, the alignment data itself — so switching between formats works offline exactly the way it does online, landing on the same sentence rather than an estimate.
-- Your current progress at the moment of download, and a local queue for progress you make while offline.
+- Your current progress at the moment of download. Edition-specific ebook and audio locations continue saving on the device. Shared progress for synchronized titles is queued while offline.
 
 Because the alignment travels with the download, exact synchronization isn't an online-only feature — a fully downloaded synchronized title keeps working the same way with no connection at all.
 
@@ -21,7 +21,7 @@ Anything not downloaded — other titles in the library, cover art you haven't o
 
 ## How progress reconciles
 
-Progress you make offline — pages turned, audio position, time spent — is queued on the device rather than lost. The next time Aldus can reach the server, it sends the queued progress and reconciles it against whatever was most recently saved there, so picking up on another device in the meantime doesn't get silently overwritten by a stale offline session.
+For synchronized titles, the latest shared segment and offset is queued on the device rather than lost. The next time Aldus can reach the server, it sends that position and reconciles it against whatever was most recently saved there, so picking up on another device in the meantime doesn't get silently overwritten by a stale offline session. The downloaded edition locator also remains available locally, including for books that do not have an alignment.
 
 ## Shared or public devices
 

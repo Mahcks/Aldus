@@ -22,6 +22,7 @@ import {
   sleepTimerDeadline,
   sleepTimerRemainingSeconds,
   synchronizationLabel,
+  workProgressLabel,
 } from './consumption';
 
 it('loads only the media needed by the active consumption mode', () => {
@@ -126,6 +127,12 @@ it('labels saved progress without exposing raw device identifiers', () => {
   expect(progressSourceLabel('unexpected-device-id')).toBe('another device');
   expect(resumedProgressLabel('koreader:max:kindle')).toBe('Resumed from KOReader');
   expect(resumedProgressLabel('android', 3522)).toBe('Resumed from Aldus on Android at 58:42');
+});
+
+it('labels aligned and format-only reading progress honestly', () => {
+  expect(workProgressLabel(false, 0)).toBeUndefined();
+  expect(workProgressLabel(true, 0)).toBe('In progress');
+  expect(workProgressLabel(true, 27)).toBe('27% complete');
 });
 
 it('only claims progress is saved after confirmation', () => {

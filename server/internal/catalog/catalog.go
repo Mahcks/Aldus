@@ -340,8 +340,8 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`),
 			EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`),
-			EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id),
-			COALESCE((SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id),''),
+			(EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id) OR EXISTS(SELECT 1 FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL))),
+			MAX(COALESCE((SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id),''),COALESCE((SELECT MAX(rs.updated_at) FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL)),'')),
 			COALESCE((SELECT CAST(((s.ordinal + p.offset/1000000.0) * 100) / MAX(1,(SELECT MAX(last.ordinal)+1 FROM alignment_segments last WHERE last.alignment_id=p.alignment_id AND last.highlightable=1)) AS INTEGER) FROM progress p JOIN alignment_segments s ON s.alignment_id=p.alignment_id AND s.id=p.segment_id WHERE p.user_id=? AND p.work_id=w.id),0),
 			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id),0),
 			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id AND a.mode='read'),0),
@@ -358,21 +358,21 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 				OR (?='readable' AND EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`))
 				OR (?='listenable' AND EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`))
 				OR (?='synchronized' AND EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`))
-				OR (?='in_progress' AND EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id)))
+				OR (?='in_progress' AND (EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id) OR EXISTS(SELECT 1 FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL)))))
 			AND (?='' OR EXISTS(SELECT 1 FROM user_work_statuses s WHERE s.user_id=? AND s.work_id=w.id AND s.status=?))
 		ORDER BY
 			CASE WHEN ?='title' THEN lower(w.title) END ASC,
 			CASE WHEN ?='author' THEN lower(COALESCE(w.author,'')) END ASC,
 			CASE WHEN ?='updated' THEN w.updated_at END DESC,
 			CASE WHEN ?='recent' THEN w.created_at END DESC,
-			CASE WHEN ?='progress' THEN (SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id) END DESC,
+			CASE WHEN ?='progress' THEN MAX(COALESCE((SELECT p.updated_at FROM progress p WHERE p.user_id=? AND p.work_id=w.id),''),COALESCE((SELECT MAX(rs.updated_at) FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL)),'')) END DESC,
 		w.id ASC
 		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID,
-		actor.ID, actor.ID, actor.Admin, actor.ID,
+		actor.ID, actor.ID, actor.ID, actor.ID, actor.Admin, actor.ID,
 		options.LibraryID, options.LibraryID, pattern, pattern, pattern,
-		options.Availability, options.Availability, options.Availability, options.Availability, options.Availability, actor.ID,
+		options.Availability, options.Availability, options.Availability, options.Availability, options.Availability, actor.ID, actor.ID,
 		options.Status, actor.ID, options.Status,
-		options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, actor.ID, limit+1, offset)
+		options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, actor.ID, actor.ID, limit+1, offset)
 	if err != nil {
 		return nil, false, fmt.Errorf("browse works: %w", err)
 	}
@@ -426,7 +426,8 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 	}
 	var updated string
 	err = s.db.QueryRowContext(ctx, `
-		SELECT p.work_id IS NOT NULL,COALESCE(p.updated_at,''),
+		SELECT (p.work_id IS NOT NULL OR EXISTS(SELECT 1 FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL))),
+			MAX(COALESCE(p.updated_at,''),COALESCE((SELECT MAX(rs.updated_at) FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL)),'')),
 			COALESCE(CAST(((s.ordinal + p.offset/1000000.0) * 100) / MAX(1,(SELECT MAX(last.ordinal)+1 FROM alignment_segments last WHERE last.alignment_id=p.alignment_id AND last.highlightable=1)) AS INTEGER),0),
 			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id),0),
 			COALESCE((SELECT SUM(a.active_seconds) FROM reading_activity_sessions a WHERE a.user_id=? AND a.work_id=w.id AND a.mode='read'),0),
@@ -436,7 +437,7 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 		FROM works w
 		LEFT JOIN progress p ON p.work_id=w.id AND p.user_id=?
 		LEFT JOIN alignment_segments s ON s.alignment_id=p.alignment_id AND s.id=p.segment_id
-		WHERE w.id=?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, id).Scan(&value.InProgress, &updated, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode, &value.ReadingStatus)
+		WHERE w.id=?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, id).Scan(&value.InProgress, &updated, &value.CompletionPercent, &value.ActiveSeconds, &value.ReadingSeconds, &value.ListeningSeconds, &value.LastMode, &value.ReadingStatus)
 	if err != nil {
 		return WorkDetail{}, fmt.Errorf("get work progress summary: %w", err)
 	}
