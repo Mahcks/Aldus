@@ -280,6 +280,44 @@ func TestRepresentationStateIsIndependentAndOptimistic(t *testing.T) {
 	}
 }
 
+func TestReaderPreferencesAreDefaultedScopedAndOptimistic(t *testing.T) {
+	ctx := context.Background()
+	store := testStore(t)
+	userID := addFixtureUser(t, store)
+
+	defaults, err := store.ReaderPreferences(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaults.Revision != 0 || defaults.FontFamily != "serif" || defaults.ReaderLayout != "paginated" {
+		t.Fatalf("defaults = %#v", defaults)
+	}
+
+	updated, err := store.UpdateReaderPreferences(ctx, userID, ReaderPreferencesUpdate{
+		ReaderLayout: "scrolled", Zoom: 1.2, ReaderTheme: "sepia", LineHeight: 1.9,
+		Margin: 1, FontFamily: "sans", ExpectedRevision: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Revision != 1 || updated.FontFamily != "sans" || updated.ReaderTheme != "sepia" {
+		t.Fatalf("updated = %#v", updated)
+	}
+
+	current, err := store.UpdateReaderPreferences(ctx, userID, ReaderPreferencesUpdate{
+		ReaderLayout: "paginated", Zoom: 1, ReaderTheme: "paper", LineHeight: 1.72,
+		Margin: 2, FontFamily: "serif", ExpectedRevision: 0,
+	})
+	if !errors.Is(err, ErrConflict) || current.Revision != updated.Revision {
+		t.Fatalf("conflict = %#v, %v", current, err)
+	}
+
+	other, err := store.ReaderPreferences(ctx, addFixtureUserNamed(t, store, "other-reader", "other-reader"))
+	if err != nil || other.Revision != 0 || other.FontFamily != "serif" {
+		t.Fatalf("other reader defaults = %#v, %v", other, err)
+	}
+}
+
 func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "aldus.db")
@@ -299,7 +337,8 @@ func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 	}
 	locator := json.RawMessage(`{"href":"text/chapter-1.xhtml","locations":{"cfi":"epubcfi(/6/2!/4/2:3)"}}`)
 	zoom, lineHeight, margin := 1.2, 1.8, 2.0
-	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", Zoom: &zoom, ReaderTheme: "night", LineHeight: &lineHeight, Margin: &margin, ExpectedRevision: 0}); err != nil {
+	override := true
+	if _, err := store.UpdateRepresentationState(ctx, userID, "fixture-epub-representation", RepresentationUpdate{EPUBLocator: locator, ReaderLayout: "paginated", Zoom: &zoom, ReaderTheme: "night", LineHeight: &lineHeight, Margin: &margin, FontFamily: "dyslexic", ReaderPreferencesOverride: &override, ExpectedRevision: 0}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -314,7 +353,7 @@ func TestNativeStateSurvivesUnresolvedPositionAndDatabaseReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" || state.ReaderTheme != "night" || state.Zoom == nil || *state.Zoom != zoom || state.LineHeight == nil || *state.LineHeight != lineHeight || state.Margin == nil || *state.Margin != margin {
+	if string(state.EPUBLocator) != string(locator) || state.ReaderLayout != "paginated" || state.ReaderTheme != "night" || state.FontFamily != "dyslexic" || state.ReaderPreferencesOverride == nil || !*state.ReaderPreferencesOverride || state.Zoom == nil || *state.Zoom != zoom || state.LineHeight == nil || *state.LineHeight != lineHeight || state.Margin == nil || *state.Margin != margin {
 		t.Fatalf("reopened EPUB state = %#v", state)
 	}
 	updatedMargin := 1.0

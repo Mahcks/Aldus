@@ -151,10 +151,24 @@ func TestRouteContract(t *testing.T) {
 	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /me/acquisition-tracker", "POST /me/acquisition-tracker/seen", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/retry", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/cancel", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", "POST /libraries/{libraryID}/acquisition-discoveries", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair")
 	want = append(want, "GET /search/titles")
 	want = append(want, "PATCH /auth/me", "POST /auth/claim", "POST /auth/logout-all", "POST /users/{userID}/reset-password", "PUT /auth/me/password")
+	want = append(want, "GET /reader-preferences", "PUT /reader-preferences")
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Fatalf("routes = %#v\nwant %#v", got, want)
+	}
+}
+
+func TestReaderPreferencesContract(t *testing.T) {
+	handler, token := testHandler(t)
+	defaults := request(t, handler, token, http.MethodGet, "/reader-preferences", "")
+	if defaults.Code != http.StatusOK || !strings.Contains(defaults.Body.String(), `"font_family":"serif"`) || !strings.Contains(defaults.Body.String(), `"revision":0`) {
+		t.Fatalf("default reader preferences = %d %s", defaults.Code, defaults.Body.String())
+	}
+
+	updated := request(t, handler, token, http.MethodPut, "/reader-preferences", `{"reader_layout":"scrolled","zoom":1.2,"reader_theme":"sepia","line_height":1.9,"margin":1,"font_family":"dyslexic","expected_revision":0}`)
+	if updated.Code != http.StatusOK || !strings.Contains(updated.Body.String(), `"font_family":"dyslexic"`) || !strings.Contains(updated.Body.String(), `"revision":1`) {
+		t.Fatalf("updated reader preferences = %d %s", updated.Code, updated.Body.String())
 	}
 }
 

@@ -19,29 +19,54 @@ type CanonicalPosition struct {
 }
 
 type RepresentationState struct {
-	RepresentationID string          `json:"representation_id"`
-	EPUBLocator      json.RawMessage `json:"epub_locator,omitempty"`
-	AudioTimestampMS *int64          `json:"audio_timestamp_ms,omitempty"`
-	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
-	ReaderLayout     string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
-	Zoom             *float64        `json:"zoom,omitempty"`
-	ReaderTheme      string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia' | 'night'"`
-	LineHeight       *float64        `json:"line_height,omitempty"`
-	Margin           *float64        `json:"margin,omitempty"`
-	Revision         int64           `json:"revision"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	RepresentationID          string          `json:"representation_id"`
+	EPUBLocator               json.RawMessage `json:"epub_locator,omitempty"`
+	AudioTimestampMS          *int64          `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed             *float64        `json:"playback_speed,omitempty"`
+	ReaderLayout              string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
+	Zoom                      *float64        `json:"zoom,omitempty"`
+	ReaderTheme               string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia' | 'night'"`
+	LineHeight                *float64        `json:"line_height,omitempty"`
+	Margin                    *float64        `json:"margin,omitempty"`
+	FontFamily                string          `json:"font_family,omitempty" tstype:"'publisher' | 'serif' | 'sans' | 'dyslexic'"`
+	ReaderPreferencesOverride *bool           `json:"reader_preferences_override,omitempty"`
+	Revision                  int64           `json:"revision"`
+	UpdatedAt                 time.Time       `json:"updated_at"`
 }
 
 type RepresentationStateUpdate struct {
-	EPUBLocator      json.RawMessage `json:"epub_locator,omitempty"`
-	AudioTimestampMS *int64          `json:"audio_timestamp_ms,omitempty"`
-	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
-	ReaderLayout     string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
-	Zoom             *float64        `json:"zoom,omitempty"`
-	ReaderTheme      string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia' | 'night'"`
-	LineHeight       *float64        `json:"line_height,omitempty"`
-	Margin           *float64        `json:"margin,omitempty"`
-	ExpectedRevision int64           `json:"expected_revision"`
+	EPUBLocator               json.RawMessage `json:"epub_locator,omitempty"`
+	AudioTimestampMS          *int64          `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed             *float64        `json:"playback_speed,omitempty"`
+	ReaderLayout              string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
+	Zoom                      *float64        `json:"zoom,omitempty"`
+	ReaderTheme               string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia' | 'night'"`
+	LineHeight                *float64        `json:"line_height,omitempty"`
+	Margin                    *float64        `json:"margin,omitempty"`
+	FontFamily                string          `json:"font_family,omitempty" tstype:"'publisher' | 'serif' | 'sans' | 'dyslexic'"`
+	ReaderPreferencesOverride *bool           `json:"reader_preferences_override,omitempty"`
+	ExpectedRevision          int64           `json:"expected_revision"`
+}
+
+type ReaderPreferences struct {
+	ReaderLayout string    `json:"reader_layout" tstype:"'paginated' | 'scrolled'"`
+	Zoom         float64   `json:"zoom"`
+	ReaderTheme  string    `json:"reader_theme" tstype:"'paper' | 'sepia' | 'night'"`
+	LineHeight   float64   `json:"line_height"`
+	Margin       float64   `json:"margin"`
+	FontFamily   string    `json:"font_family" tstype:"'publisher' | 'serif' | 'sans' | 'dyslexic'"`
+	Revision     int64     `json:"revision"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+}
+
+type ReaderPreferencesUpdate struct {
+	ReaderLayout     string  `json:"reader_layout" tstype:"'paginated' | 'scrolled'"`
+	Zoom             float64 `json:"zoom"`
+	ReaderTheme      string  `json:"reader_theme" tstype:"'paper' | 'sepia' | 'night'"`
+	LineHeight       float64 `json:"line_height"`
+	Margin           float64 `json:"margin"`
+	FontFamily       string  `json:"font_family" tstype:"'publisher' | 'serif' | 'sans' | 'dyslexic'"`
+	ExpectedRevision int64   `json:"expected_revision"`
 }
 
 type ProgressUpdate struct {

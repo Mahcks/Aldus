@@ -70,9 +70,55 @@ func (q *Queries) GetProgressRevision(ctx context.Context, arg GetProgressRevisi
 	return revision, err
 }
 
+const getReaderPreferences = `-- name: GetReaderPreferences :one
+SELECT reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli,
+       font_family, revision, updated_at
+FROM reader_preferences
+WHERE user_id = ?
+`
+
+type GetReaderPreferencesRow struct {
+	ReaderLayout    string
+	ZoomMilli       int64
+	ReaderTheme     string
+	LineHeightMilli int64
+	MarginMilli     int64
+	FontFamily      string
+	Revision        int64
+	UpdatedAt       string
+}
+
+func (q *Queries) GetReaderPreferences(ctx context.Context, userID string) (GetReaderPreferencesRow, error) {
+	row := q.db.QueryRowContext(ctx, getReaderPreferences, userID)
+	var i GetReaderPreferencesRow
+	err := row.Scan(
+		&i.ReaderLayout,
+		&i.ZoomMilli,
+		&i.ReaderTheme,
+		&i.LineHeightMilli,
+		&i.MarginMilli,
+		&i.FontFamily,
+		&i.Revision,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getReaderPreferencesRevision = `-- name: GetReaderPreferencesRevision :one
+SELECT revision FROM reader_preferences WHERE user_id = ?
+`
+
+func (q *Queries) GetReaderPreferencesRevision(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getReaderPreferencesRevision, userID)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
+}
+
 const getRepresentationState = `-- name: GetRepresentationState :one
 SELECT representation_id, epub_locator, audio_timestamp_ms, playback_speed_milli,
-       reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli, revision, updated_at
+       reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli,
+       font_family, reader_preferences_override, revision, updated_at
 FROM representation_state
 WHERE user_id = ? AND representation_id = ?
 `
@@ -83,17 +129,19 @@ type GetRepresentationStateParams struct {
 }
 
 type GetRepresentationStateRow struct {
-	RepresentationID   string
-	EpubLocator        sql.NullString
-	AudioTimestampMs   sql.NullInt64
-	PlaybackSpeedMilli sql.NullInt64
-	ReaderLayout       sql.NullString
-	ZoomMilli          sql.NullInt64
-	ReaderTheme        sql.NullString
-	LineHeightMilli    sql.NullInt64
-	MarginMilli        sql.NullInt64
-	Revision           int64
-	UpdatedAt          string
+	RepresentationID          string
+	EpubLocator               sql.NullString
+	AudioTimestampMs          sql.NullInt64
+	PlaybackSpeedMilli        sql.NullInt64
+	ReaderLayout              sql.NullString
+	ZoomMilli                 sql.NullInt64
+	ReaderTheme               sql.NullString
+	LineHeightMilli           sql.NullInt64
+	MarginMilli               sql.NullInt64
+	FontFamily                sql.NullString
+	ReaderPreferencesOverride sql.NullInt64
+	Revision                  int64
+	UpdatedAt                 string
 }
 
 func (q *Queries) GetRepresentationState(ctx context.Context, arg GetRepresentationStateParams) (GetRepresentationStateRow, error) {
@@ -109,6 +157,8 @@ func (q *Queries) GetRepresentationState(ctx context.Context, arg GetRepresentat
 		&i.ReaderTheme,
 		&i.LineHeightMilli,
 		&i.MarginMilli,
+		&i.FontFamily,
+		&i.ReaderPreferencesOverride,
 		&i.Revision,
 		&i.UpdatedAt,
 	)
@@ -168,12 +218,56 @@ func (q *Queries) UpsertProgress(ctx context.Context, arg UpsertProgressParams) 
 	return err
 }
 
+const upsertReaderPreferences = `-- name: UpsertReaderPreferences :exec
+INSERT INTO reader_preferences (
+    user_id, reader_layout, zoom_milli, reader_theme, line_height_milli,
+    margin_milli, font_family, revision, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(user_id) DO UPDATE SET
+    reader_layout = excluded.reader_layout,
+    zoom_milli = excluded.zoom_milli,
+    reader_theme = excluded.reader_theme,
+    line_height_milli = excluded.line_height_milli,
+    margin_milli = excluded.margin_milli,
+    font_family = excluded.font_family,
+    revision = excluded.revision,
+    updated_at = excluded.updated_at
+`
+
+type UpsertReaderPreferencesParams struct {
+	UserID          string
+	ReaderLayout    string
+	ZoomMilli       int64
+	ReaderTheme     string
+	LineHeightMilli int64
+	MarginMilli     int64
+	FontFamily      string
+	Revision        int64
+	UpdatedAt       string
+}
+
+func (q *Queries) UpsertReaderPreferences(ctx context.Context, arg UpsertReaderPreferencesParams) error {
+	_, err := q.db.ExecContext(ctx, upsertReaderPreferences,
+		arg.UserID,
+		arg.ReaderLayout,
+		arg.ZoomMilli,
+		arg.ReaderTheme,
+		arg.LineHeightMilli,
+		arg.MarginMilli,
+		arg.FontFamily,
+		arg.Revision,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const upsertRepresentationState = `-- name: UpsertRepresentationState :exec
 INSERT INTO representation_state (
     user_id, representation_id, epub_locator, audio_timestamp_ms,
     playback_speed_milli, reader_layout, zoom_milli, reader_theme,
-    line_height_milli, margin_milli, revision, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    line_height_milli, margin_milli, font_family, reader_preferences_override,
+    revision, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(user_id, representation_id) DO UPDATE SET
     epub_locator = COALESCE(excluded.epub_locator, representation_state.epub_locator),
     audio_timestamp_ms = COALESCE(excluded.audio_timestamp_ms, representation_state.audio_timestamp_ms),
@@ -183,23 +277,27 @@ ON CONFLICT(user_id, representation_id) DO UPDATE SET
     reader_theme = COALESCE(excluded.reader_theme, representation_state.reader_theme),
     line_height_milli = COALESCE(excluded.line_height_milli, representation_state.line_height_milli),
     margin_milli = COALESCE(excluded.margin_milli, representation_state.margin_milli),
+    font_family = COALESCE(excluded.font_family, representation_state.font_family),
+    reader_preferences_override = COALESCE(excluded.reader_preferences_override, representation_state.reader_preferences_override),
     revision = excluded.revision,
     updated_at = excluded.updated_at
 `
 
 type UpsertRepresentationStateParams struct {
-	UserID             string
-	RepresentationID   string
-	EpubLocator        sql.NullString
-	AudioTimestampMs   sql.NullInt64
-	PlaybackSpeedMilli sql.NullInt64
-	ReaderLayout       sql.NullString
-	ZoomMilli          sql.NullInt64
-	ReaderTheme        sql.NullString
-	LineHeightMilli    sql.NullInt64
-	MarginMilli        sql.NullInt64
-	Revision           int64
-	UpdatedAt          string
+	UserID                    string
+	RepresentationID          string
+	EpubLocator               sql.NullString
+	AudioTimestampMs          sql.NullInt64
+	PlaybackSpeedMilli        sql.NullInt64
+	ReaderLayout              sql.NullString
+	ZoomMilli                 sql.NullInt64
+	ReaderTheme               sql.NullString
+	LineHeightMilli           sql.NullInt64
+	MarginMilli               sql.NullInt64
+	FontFamily                sql.NullString
+	ReaderPreferencesOverride sql.NullInt64
+	Revision                  int64
+	UpdatedAt                 string
 }
 
 func (q *Queries) UpsertRepresentationState(ctx context.Context, arg UpsertRepresentationStateParams) error {
@@ -214,6 +312,8 @@ func (q *Queries) UpsertRepresentationState(ctx context.Context, arg UpsertRepre
 		arg.ReaderTheme,
 		arg.LineHeightMilli,
 		arg.MarginMilli,
+		arg.FontFamily,
+		arg.ReaderPreferencesOverride,
 		arg.Revision,
 		arg.UpdatedAt,
 	)

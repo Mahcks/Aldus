@@ -13,6 +13,10 @@ Aldus on Android is the same app and library as every other platform, with a cou
 
 Connect to your server, open a title, and choose **Read** or **Listen**. The ebook saves its native reading locator after navigation settles. Audio saves approximately every two seconds and immediately when you pause, leave, switch formats, or background the app.
 
+## Reading settings
+
+Open the reading-settings control to choose the publisher font, serif, sans, or OpenDyslexic; adjust text size, line spacing, margins, page color, and page-turning or continuous-scroll flow. **All books** saves the choices to your Aldus account and syncs them across devices. Choose **This book** when one edition needs its own settings without changing the rest of your library.
+
 ## Background listening
 
 Aldus runs audio through a foreground media playback service, which is what lets listening continue after you switch apps, lock the screen, or the device sleeps — Android requires an app to declare this explicitly, and Aldus does. You'll see a persistent media notification while audio is playing, with the book, chapter, and transport controls; use it or your device's lock-screen media controls to pause, resume, or skip.

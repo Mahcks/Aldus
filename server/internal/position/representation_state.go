@@ -69,6 +69,7 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 		AudioTimestampMs: audio, PlaybackSpeedMilli: speed,
 		ReaderLayout: sql.NullString{String: update.ReaderLayout, Valid: update.ReaderLayout != ""}, ZoomMilli: zoom,
 		ReaderTheme: sql.NullString{String: update.ReaderTheme, Valid: update.ReaderTheme != ""}, LineHeightMilli: lineHeight, MarginMilli: margin,
+		FontFamily: sql.NullString{String: update.FontFamily, Valid: update.FontFamily != ""}, ReaderPreferencesOverride: nullableBool(update.ReaderPreferencesOverride),
 		Revision: currentRevision + 1, UpdatedAt: now.Format(time.RFC3339Nano),
 	})
 	if err != nil {
@@ -81,10 +82,10 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 }
 
 func validRepresentationUpdate(update RepresentationUpdate) bool {
-	if len(update.EPUBLocator) > 0 && !json.Valid(update.EPUBLocator) || update.AudioTimestampMS != nil && *update.AudioTimestampMS < 0 || update.PlaybackSpeed != nil && (*update.PlaybackSpeed < .25 || *update.PlaybackSpeed > 4) || update.Zoom != nil && (*update.Zoom < .5 || *update.Zoom > 3) || update.LineHeight != nil && (*update.LineHeight < 1.2 || *update.LineHeight > 2.2) || update.Margin != nil && (*update.Margin < 0 || *update.Margin > 4) || update.ReaderLayout != "" && update.ReaderLayout != "paginated" && update.ReaderLayout != "scrolled" || update.ReaderTheme != "" && update.ReaderTheme != "paper" && update.ReaderTheme != "sepia" && update.ReaderTheme != "night" {
+	if len(update.EPUBLocator) > 0 && !json.Valid(update.EPUBLocator) || update.AudioTimestampMS != nil && *update.AudioTimestampMS < 0 || update.PlaybackSpeed != nil && (*update.PlaybackSpeed < .25 || *update.PlaybackSpeed > 4) || update.Zoom != nil && (*update.Zoom < .5 || *update.Zoom > 3) || update.LineHeight != nil && (*update.LineHeight < 1.2 || *update.LineHeight > 2.2) || update.Margin != nil && (*update.Margin < 0 || *update.Margin > 4) || update.ReaderLayout != "" && update.ReaderLayout != "paginated" && update.ReaderLayout != "scrolled" || update.ReaderTheme != "" && update.ReaderTheme != "paper" && update.ReaderTheme != "sepia" && update.ReaderTheme != "night" || update.FontFamily != "" && !validFontFamily(update.FontFamily) {
 		return false
 	}
-	return len(update.EPUBLocator) > 0 || update.AudioTimestampMS != nil || update.PlaybackSpeed != nil || update.Zoom != nil || update.LineHeight != nil || update.Margin != nil || update.ReaderLayout != "" || update.ReaderTheme != ""
+	return len(update.EPUBLocator) > 0 || update.AudioTimestampMS != nil || update.PlaybackSpeed != nil || update.Zoom != nil || update.LineHeight != nil || update.Margin != nil || update.ReaderLayout != "" || update.ReaderTheme != "" || update.FontFamily != "" || update.ReaderPreferencesOverride != nil
 }
 
 func representationStateRow(row dbsql.GetRepresentationStateRow, err error) (RepresentationState, error) {
@@ -120,9 +121,28 @@ func representationStateRow(row dbsql.GetRepresentationStateRow, err error) (Rep
 	}
 	state.ReaderLayout = row.ReaderLayout.String
 	state.ReaderTheme = row.ReaderTheme.String
+	state.FontFamily = row.FontFamily.String
+	if row.ReaderPreferencesOverride.Valid {
+		value := row.ReaderPreferencesOverride.Int64 != 0
+		state.ReaderPreferencesOverride = &value
+	}
 	state.UpdatedAt, err = time.Parse(time.RFC3339Nano, row.UpdatedAt)
 	if err != nil {
 		return RepresentationState{}, fmt.Errorf("parse representation-state time: %w", err)
 	}
 	return state, nil
+}
+
+func nullableBool(value *bool) sql.NullInt64 {
+	if value == nil {
+		return sql.NullInt64{}
+	}
+	if *value {
+		return sql.NullInt64{Int64: 1, Valid: true}
+	}
+	return sql.NullInt64{Valid: true}
+}
+
+func validFontFamily(value string) bool {
+	return value == "publisher" || value == "serif" || value == "sans" || value == "dyslexic"
 }

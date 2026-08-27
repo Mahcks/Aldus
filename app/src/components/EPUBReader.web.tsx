@@ -1,3 +1,4 @@
+import { Asset } from 'expo-asset';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
 import { IconButton } from '../features/ui';
@@ -15,6 +16,12 @@ import {
   relocationCursor,
   segmentRangeMode,
 } from './reader-location';
+
+const openDyslexicURL = Asset.fromModule(
+  // Metro resolves bundled font assets through its static CommonJS lookup.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@fontsource/opendyslexic/files/opendyslexic-latin-400-normal.woff2'),
+).uri;
 
 export type RangeBoundary = { dom_path: string; node_offset: number };
 export type ReaderCapture = {
@@ -51,6 +58,7 @@ export type ReaderPreferences = {
   lineHeight: number;
   margin: number;
   theme: 'paper' | 'sepia' | 'night';
+  fontFamily: 'publisher' | 'serif' | 'sans' | 'dyslexic';
 };
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   layout: 'paginated',
@@ -58,6 +66,7 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   lineHeight: 1.72,
   margin: 2,
   theme: 'paper',
+  fontFamily: 'serif',
 };
 
 type Props = {
@@ -674,7 +683,19 @@ function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
       : colors.paper;
   const ink = night ? colors.readerNightInk : colors.ink;
   const selection = night ? colors.readerNightSelection : colors.accentSoft;
-  style.textContent = `html { color: ${ink}; background: ${background}; } body { font-family: Georgia, 'Times New Roman', serif; font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } h1, h2, h3 { font-family: Georgia, 'Times New Roman', serif; line-height: 1.2; } a { color: inherit; } ::selection { background: ${selection}; color: ${ink}; }`;
+  const fontFamily =
+    preferences.fontFamily === 'publisher'
+      ? ''
+      : preferences.fontFamily === 'sans'
+        ? "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;"
+        : preferences.fontFamily === 'dyslexic'
+          ? "font-family: 'OpenDyslexic', sans-serif;"
+          : "font-family: Georgia, 'Times New Roman', serif;";
+  const fontFace =
+    preferences.fontFamily === 'dyslexic'
+      ? `@font-face { font-family: 'OpenDyslexic'; src: url('${openDyslexicURL}') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }`
+      : '';
+  style.textContent = `${fontFace} html { color: ${ink}; background: ${background}; } body { ${fontFamily} font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } a { color: inherit; } ::selection { background: ${selection}; color: ${ink}; }`;
 }
 
 function serializeRange(view: any, index: number, range: Range): ReaderCapture {

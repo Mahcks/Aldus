@@ -661,6 +661,8 @@ export interface RepresentationState {
   reader_theme?: 'paper' | 'sepia' | 'night';
   line_height?: number /* float64 */;
   margin?: number /* float64 */;
+  font_family?: 'publisher' | 'serif' | 'sans' | 'dyslexic';
+  reader_preferences_override?: boolean;
   revision: number /* int64 */;
   updated_at: string;
 }
@@ -673,6 +675,27 @@ export interface RepresentationStateUpdate {
   reader_theme?: 'paper' | 'sepia' | 'night';
   line_height?: number /* float64 */;
   margin?: number /* float64 */;
+  font_family?: 'publisher' | 'serif' | 'sans' | 'dyslexic';
+  reader_preferences_override?: boolean;
+  expected_revision: number /* int64 */;
+}
+export interface ReaderPreferences {
+  reader_layout: 'paginated' | 'scrolled';
+  zoom: number /* float64 */;
+  reader_theme: 'paper' | 'sepia' | 'night';
+  line_height: number /* float64 */;
+  margin: number /* float64 */;
+  font_family: 'publisher' | 'serif' | 'sans' | 'dyslexic';
+  revision: number /* int64 */;
+  updated_at?: string;
+}
+export interface ReaderPreferencesUpdate {
+  reader_layout: 'paginated' | 'scrolled';
+  zoom: number /* float64 */;
+  reader_theme: 'paper' | 'sepia' | 'night';
+  line_height: number /* float64 */;
+  margin: number /* float64 */;
+  font_family: 'publisher' | 'serif' | 'sans' | 'dyslexic';
   expected_revision: number /* int64 */;
 }
 export interface ProgressUpdate {

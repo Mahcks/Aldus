@@ -12,6 +12,7 @@ A download is more than just the file:
 - The ebook and/or audiobook edition you selected, including chapter and cover metadata.
 - If the title has a **Read & Listen** alignment, the alignment data itself — so switching between formats works offline exactly the way it does online, landing on the same sentence rather than an estimate.
 - Your current progress at the moment of download. Edition-specific ebook and audio locations continue saving on the device. Shared progress for synchronized titles is queued while offline.
+- Your most recently synced reading defaults and any settings saved specifically for the downloaded edition.
 
 Because the alignment travels with the download, exact synchronization isn't an online-only feature — a fully downloaded synchronized title keeps working the same way with no connection at all.
 

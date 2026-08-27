@@ -3,6 +3,7 @@ import type {
   AudioChapter,
   AudioLocator,
   CanonicalPosition,
+  ReaderPreferences as ReaderPreferencesDTO,
   RepresentationState,
   Work,
 } from '../../../generated/api';
@@ -26,6 +27,11 @@ import {
 import { commitsReadingProgress } from '../../../components/reader-location';
 import { BookCover, coverPresentation } from '../../../features/bookshelf';
 import { ReaderSettings } from '../../../features/reader-settings';
+import {
+  readerPreferencesUpdate,
+  readerSettingsFromDTO,
+  readerSettingsFromState,
+} from '../../../features/reader-settings-values';
 import {
   applyPlaybackRate,
   audioChapterAt,
@@ -67,6 +73,10 @@ import {
 import { AppIcon } from '../../../features/icons';
 import { Pressable, ScrollView, Text, View } from '../../../features/tw';
 import { APIError, api, errorMessage } from '../../../lib/api';
+import {
+  cachedReaderPreferences,
+  cacheReaderPreferences,
+} from '../../../lib/reader-preferences-cache';
 import { productEPUBSource } from '../../../lib/epub-source';
 import { goBackOr } from '../../../lib/navigation';
 import { productAudioSource } from '../../../lib/media';
@@ -168,6 +178,12 @@ export default function ConsumeWorkScreen() {
   const [readerPreferences, setReaderPreferences] = useState<ReaderPreferences>(
     DEFAULT_READER_PREFERENCES,
   );
+  const [readerDefaults, setReaderDefaults] = useState<ReaderPreferences>(
+    DEFAULT_READER_PREFERENCES,
+  );
+  const readerDefaultsRef = useRef<ReaderPreferences>(DEFAULT_READER_PREFERENCES);
+  const [readerDefaultsRevision, setReaderDefaultsRevision] = useState(0);
+  const [readerCustomized, setReaderCustomized] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [readerContents, setReaderContents] = useState<ReaderNavigationItem[]>([]);
@@ -236,6 +252,13 @@ export default function ConsumeWorkScreen() {
   const currentPlaybackRate = playbackRate(status.playbackRate);
   const playbackRateIndex = PLAYBACK_RATES.indexOf(currentPlaybackRate);
   const canAdjustPlaybackRate = Boolean(source) && !status.error;
+
+  const applyReaderDefaults = useCallback((value: ReaderPreferencesDTO) => {
+    const next = readerSettingsFromDTO(value);
+    readerDefaultsRef.current = next;
+    setReaderDefaults(next);
+    setReaderDefaultsRevision(value.revision);
+  }, []);
 
   useEffect(() => {
     epubStateRef.current = epubState;
@@ -357,6 +380,8 @@ export default function ConsumeWorkScreen() {
       setReaderContents([]);
       restoredReaderTarget.current = undefined;
       restoringReaderTarget.current = undefined;
+      const cachedPreferences = await cachedReaderPreferences().catch(() => null);
+      if (cachedPreferences && !canceled) applyReaderDefaults(cachedPreferences);
       const stored = Platform.OS === 'web' ? null : await offlineWork(params.id);
       if (stored && !canceled) {
         const pending = await pendingProgress(params.id);
@@ -386,13 +411,15 @@ export default function ConsumeWorkScreen() {
         setLoading(false);
       }
       try {
-        const [nextWork, representations, nextJobs, nextProgress, preference] = await Promise.all([
-          api.work(params.id),
-          api.representations(params.id),
-          api.alignmentJobs(params.id),
-          api.workProgress(params.id),
-          api.workPreference(params.id),
-        ]);
+        const [nextWork, representations, nextJobs, nextProgress, preference, nextReaderDefaults] =
+          await Promise.all([
+            api.work(params.id),
+            api.representations(params.id),
+            api.alignmentJobs(params.id),
+            api.workProgress(params.id),
+            api.workPreference(params.id),
+            api.readerPreferences(),
+          ]);
         const revisions = (
           await Promise.all(
             representations.map((representation) =>
@@ -420,6 +447,8 @@ export default function ConsumeWorkScreen() {
             }
           : nextProgress;
         if (canceled) return;
+        applyReaderDefaults(nextReaderDefaults);
+        void cacheReaderPreferences(nextReaderDefaults).catch(() => {});
         progressRef.current = effectiveProgress;
         setWork(nextWork);
         setEPUBs(nextEPUBs);
@@ -442,7 +471,7 @@ export default function ConsumeWorkScreen() {
     return () => {
       canceled = true;
     };
-  }, [params.id, params.epub, params.audio]);
+  }, [applyReaderDefaults, params.id, params.epub, params.audio]);
 
   useEffect(() => {
     let canceled = false;
@@ -493,7 +522,12 @@ export default function ConsumeWorkScreen() {
             );
             audioSourceID.current = selectedAudioChoice.id;
           }
-          if (loadEPUB) setReaderPreferences(preferencesFromState(stored.epub_state));
+          if (loadEPUB) {
+            setReaderCustomized(Boolean(stored.epub_state?.reader_preferences_override));
+            setReaderPreferences(
+              readerSettingsFromState(stored.epub_state, readerDefaultsRef.current),
+            );
+          }
           const storedEPUBTarget =
             canonical && stored.alignment
               ? offlineCanonicalToEPUB(stored.alignment, canonical)
@@ -547,7 +581,10 @@ export default function ConsumeWorkScreen() {
           setSource(audioSource);
           audioSourceID.current = selectedAudio?.id ?? '';
         }
-        if (loadEPUB) setReaderPreferences(preferencesFromState(nextEPUBState));
+        if (loadEPUB) {
+          setReaderCustomized(Boolean(nextEPUBState?.reader_preferences_override));
+          setReaderPreferences(readerSettingsFromState(nextEPUBState, readerDefaultsRef.current));
+        }
         const canonical =
           progress?.resolvable && progress.alignment_id === selectedJob?.alignment_id
             ? progress
@@ -1059,25 +1096,62 @@ export default function ConsumeWorkScreen() {
   }
 
   async function updateReaderPreferences(next: ReaderPreferences) {
-    if (!selectedEPUB || settingsBusy) return;
+    if (settingsBusy || (readerCustomized && !selectedEPUB)) return;
+    setSettingsBusy(true);
+    try {
+      if (readerCustomized && selectedEPUB) {
+        const state = await api.updateRepresentationState(selectedEPUB.representation.id, {
+          ...readerPreferencesUpdate(next, epubState?.revision ?? 0),
+          reader_preferences_override: true,
+        });
+        setEPUBState(state);
+      } else {
+        const saved = await api.updateReaderPreferences(
+          readerPreferencesUpdate(next, readerDefaultsRevision),
+        );
+        applyReaderDefaults(saved);
+        void cacheReaderPreferences(saved).catch(() => {});
+      }
+      setReaderPreferences(next);
+      setNotice('');
+    } catch (error) {
+      if (error instanceof APIError && error.status === 409) {
+        if (readerCustomized && selectedEPUB) {
+          const current = await api.representationState(selectedEPUB.representation.id);
+          setEPUBState(current);
+          setReaderPreferences(readerSettingsFromState(current, readerDefaultsRef.current));
+        } else {
+          const current = await api.readerPreferences();
+          applyReaderDefaults(current);
+          setReaderPreferences(readerSettingsFromDTO(current));
+          void cacheReaderPreferences(current).catch(() => {});
+        }
+        setNotice('Reader settings changed on another device. Reloaded the newer settings.');
+      } else setNotice(errorMessage(error));
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function updateReaderCustomization(customized: boolean) {
+    if (!selectedEPUB || settingsBusy || customized === readerCustomized) return;
     setSettingsBusy(true);
     try {
       const state = await api.updateRepresentationState(selectedEPUB.representation.id, {
-        reader_layout: next.layout,
-        zoom: next.zoom,
-        reader_theme: next.theme,
-        line_height: next.lineHeight,
-        margin: next.margin,
+        ...(customized ? readerPreferencesUpdate(readerPreferences, 0) : {}),
+        reader_preferences_override: customized,
         expected_revision: epubState?.revision ?? 0,
       });
       setEPUBState(state);
-      setReaderPreferences(next);
+      setReaderCustomized(customized);
+      if (!customized) setReaderPreferences(readerDefaultsRef.current);
       setNotice('');
     } catch (error) {
       if (error instanceof APIError && error.status === 409) {
         const current = await api.representationState(selectedEPUB.representation.id);
         setEPUBState(current);
-        setReaderPreferences(preferencesFromState(current));
+        setReaderCustomized(Boolean(current?.reader_preferences_override));
+        setReaderPreferences(readerSettingsFromState(current, readerDefaultsRef.current));
         setNotice('Reader settings changed on another device. Reloaded the newer settings.');
       } else setNotice(errorMessage(error));
     } finally {
@@ -1500,8 +1574,11 @@ export default function ConsumeWorkScreen() {
         <Animated.View entering={passageEntrance}>
           <ReaderSettings
             value={readerPreferences}
+            resetValue={readerCustomized ? readerDefaults : DEFAULT_READER_PREFERENCES}
+            customized={readerCustomized}
             disabled={settingsBusy}
             onChange={(next) => void updateReaderPreferences(next)}
+            onCustomizedChange={(customized) => void updateReaderCustomization(customized)}
           />
         </Animated.View>
       ) : null}
@@ -1513,8 +1590,11 @@ export default function ConsumeWorkScreen() {
         <ReaderSettings
           compact
           value={readerPreferences}
+          resetValue={readerCustomized ? readerDefaults : DEFAULT_READER_PREFERENCES}
+          customized={readerCustomized}
           disabled={settingsBusy}
           onChange={(next) => void updateReaderPreferences(next)}
+          onCustomizedChange={(customized) => void updateReaderCustomization(customized)}
         />
       </Dialog>
       <Dialog
@@ -1957,14 +2037,4 @@ export default function ConsumeWorkScreen() {
       ) : null}
     </View>
   );
-}
-
-function preferencesFromState(state?: RepresentationState | null): ReaderPreferences {
-  return {
-    layout: state?.reader_layout ?? DEFAULT_READER_PREFERENCES.layout,
-    zoom: state?.zoom ?? DEFAULT_READER_PREFERENCES.zoom,
-    lineHeight: state?.line_height ?? DEFAULT_READER_PREFERENCES.lineHeight,
-    margin: state?.margin ?? DEFAULT_READER_PREFERENCES.margin,
-    theme: state?.reader_theme ?? DEFAULT_READER_PREFERENCES.theme,
-  };
 }

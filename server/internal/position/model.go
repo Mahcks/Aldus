@@ -26,28 +26,51 @@ type Canonical struct {
 	Resolvable     *bool     `json:"resolvable,omitempty"`
 }
 type RepresentationState struct {
-	RepresentationID string          `json:"representation_id"`
-	EPUBLocator      json.RawMessage `json:"epub_locator,omitempty"`
-	AudioTimestampMS *int64          `json:"audio_timestamp_ms,omitempty"`
-	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
-	ReaderLayout     string          `json:"reader_layout,omitempty"`
-	Zoom             *float64        `json:"zoom,omitempty"`
-	ReaderTheme      string          `json:"reader_theme,omitempty"`
-	LineHeight       *float64        `json:"line_height,omitempty"`
-	Margin           *float64        `json:"margin,omitempty"`
-	Revision         int64           `json:"revision"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	RepresentationID          string          `json:"representation_id"`
+	EPUBLocator               json.RawMessage `json:"epub_locator,omitempty"`
+	AudioTimestampMS          *int64          `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed             *float64        `json:"playback_speed,omitempty"`
+	ReaderLayout              string          `json:"reader_layout,omitempty"`
+	Zoom                      *float64        `json:"zoom,omitempty"`
+	ReaderTheme               string          `json:"reader_theme,omitempty"`
+	LineHeight                *float64        `json:"line_height,omitempty"`
+	Margin                    *float64        `json:"margin,omitempty"`
+	FontFamily                string          `json:"font_family,omitempty"`
+	ReaderPreferencesOverride *bool           `json:"reader_preferences_override,omitempty"`
+	Revision                  int64           `json:"revision"`
+	UpdatedAt                 time.Time       `json:"updated_at"`
 }
 type RepresentationUpdate struct {
-	EPUBLocator      json.RawMessage `json:"epub_locator,omitempty"`
-	AudioTimestampMS *int64          `json:"audio_timestamp_ms,omitempty"`
-	PlaybackSpeed    *float64        `json:"playback_speed,omitempty"`
-	ReaderLayout     string          `json:"reader_layout,omitempty"`
-	Zoom             *float64        `json:"zoom,omitempty"`
-	ReaderTheme      string          `json:"reader_theme,omitempty"`
-	LineHeight       *float64        `json:"line_height,omitempty"`
-	Margin           *float64        `json:"margin,omitempty"`
-	ExpectedRevision int64           `json:"expected_revision"`
+	EPUBLocator               json.RawMessage `json:"epub_locator,omitempty"`
+	AudioTimestampMS          *int64          `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed             *float64        `json:"playback_speed,omitempty"`
+	ReaderLayout              string          `json:"reader_layout,omitempty"`
+	Zoom                      *float64        `json:"zoom,omitempty"`
+	ReaderTheme               string          `json:"reader_theme,omitempty"`
+	LineHeight                *float64        `json:"line_height,omitempty"`
+	Margin                    *float64        `json:"margin,omitempty"`
+	FontFamily                string          `json:"font_family,omitempty"`
+	ReaderPreferencesOverride *bool           `json:"reader_preferences_override,omitempty"`
+	ExpectedRevision          int64           `json:"expected_revision"`
+}
+type ReaderPreferences struct {
+	ReaderLayout string    `json:"reader_layout"`
+	Zoom         float64   `json:"zoom"`
+	ReaderTheme  string    `json:"reader_theme"`
+	LineHeight   float64   `json:"line_height"`
+	Margin       float64   `json:"margin"`
+	FontFamily   string    `json:"font_family"`
+	Revision     int64     `json:"revision"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+}
+type ReaderPreferencesUpdate struct {
+	ReaderLayout     string  `json:"reader_layout"`
+	Zoom             float64 `json:"zoom"`
+	ReaderTheme      string  `json:"reader_theme"`
+	LineHeight       float64 `json:"line_height"`
+	Margin           float64 `json:"margin"`
+	FontFamily       string  `json:"font_family"`
+	ExpectedRevision int64   `json:"expected_revision"`
 }
 type EPUBLocator struct {
 	Href    string          `json:"href"`

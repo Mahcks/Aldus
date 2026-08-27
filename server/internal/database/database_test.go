@@ -154,9 +154,9 @@ VALUES('reader','epub','{"href":"chapter.xhtml"}','sepia',3,'2026-01-01T00:00:00
 	}
 	defer db.Close()
 	var locator, theme string
-	var revision int
-	if err := db.QueryRowContext(ctx, `SELECT epub_locator,reader_theme,revision FROM representation_state WHERE user_id='reader'`).Scan(&locator, &theme, &revision); err != nil || locator != `{"href":"chapter.xhtml"}` || theme != "sepia" || revision != 3 {
-		t.Fatalf("reading state = %q %q %d, %v", locator, theme, revision, err)
+	var revision, override int
+	if err := db.QueryRowContext(ctx, `SELECT epub_locator,reader_theme,reader_preferences_override,revision FROM representation_state WHERE user_id='reader'`).Scan(&locator, &theme, &override, &revision); err != nil || locator != `{"href":"chapter.xhtml"}` || theme != "sepia" || override != 1 || revision != 3 {
+		t.Fatalf("reading state = %q %q override=%d revision=%d, %v", locator, theme, override, revision, err)
 	}
 	if _, err := db.ExecContext(ctx, `UPDATE representation_state SET reader_theme='night' WHERE user_id='reader'`); err != nil {
 		t.Fatalf("persist night theme: %v", err)

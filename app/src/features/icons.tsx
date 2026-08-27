@@ -31,6 +31,8 @@ const names = {
   moveDown: 'arrow-down',
   chevron: 'chevron-right',
   add: 'plus',
+  decrease: 'minus',
+  scroll: 'format-align-justify',
   users: 'account-group-outline',
   system: 'server-outline',
   backup: 'database-arrow-up-outline',

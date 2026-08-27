@@ -11,6 +11,8 @@ import (
 )
 
 func registerProgressRoutes(router chi.Router, store *position.Store, catalogStore *catalog.Store) {
+	router.Get("/reader-preferences", readerPreferences(store))
+	router.Put("/reader-preferences", updateReaderPreferences(store))
 	router.Get("/works/{workID}/progress", workProgress(store, catalogStore))
 	router.Put("/works/{workID}/progress", updateWorkProgress(store, catalogStore))
 	router.Get("/works/{workID}/preference", workPreference(catalogStore))
@@ -19,6 +21,28 @@ func registerProgressRoutes(router chi.Router, store *position.Store, catalogSto
 	router.Put("/representations/{representationID}/state", updateRepresentationState(store, catalogStore))
 	router.Post("/works/{workID}/activity", startActivity(store, catalogStore))
 	router.Put("/activity/{sessionID}", updateActivity(store))
+}
+
+func readerPreferences(store *position.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := store.ReaderPreferences(r.Context(), actor(r).ID)
+		writePositionResult(w, readerPreferencesDTO(value), err)
+	}
+}
+
+func updateReaderPreferences(store *position.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request contracts.ReaderPreferencesUpdate
+		if !decode(w, r, &request) {
+			return
+		}
+		value, err := store.UpdateReaderPreferences(r.Context(), actor(r).ID, position.ReaderPreferencesUpdate{
+			ReaderLayout: request.ReaderLayout, Zoom: request.Zoom, ReaderTheme: request.ReaderTheme,
+			LineHeight: request.LineHeight, Margin: request.Margin, FontFamily: request.FontFamily,
+			ExpectedRevision: request.ExpectedRevision,
+		})
+		writePositionResult(w, readerPreferencesDTO(value), err)
+	}
 }
 
 func workPreference(store *catalog.Store) http.HandlerFunc {
@@ -134,7 +158,7 @@ func updateRepresentationState(store *position.Store, catalogStore *catalog.Stor
 		if !decode(w, r, &request) {
 			return
 		}
-		update := position.RepresentationUpdate{EPUBLocator: request.EPUBLocator, AudioTimestampMS: request.AudioTimestampMS, PlaybackSpeed: request.PlaybackSpeed, ReaderLayout: request.ReaderLayout, Zoom: request.Zoom, ReaderTheme: request.ReaderTheme, LineHeight: request.LineHeight, Margin: request.Margin, ExpectedRevision: request.ExpectedRevision}
+		update := position.RepresentationUpdate{EPUBLocator: request.EPUBLocator, AudioTimestampMS: request.AudioTimestampMS, PlaybackSpeed: request.PlaybackSpeed, ReaderLayout: request.ReaderLayout, Zoom: request.Zoom, ReaderTheme: request.ReaderTheme, LineHeight: request.LineHeight, Margin: request.Margin, FontFamily: request.FontFamily, ReaderPreferencesOverride: request.ReaderPreferencesOverride, ExpectedRevision: request.ExpectedRevision}
 		value, err := store.UpdateRepresentationState(r.Context(), actor(r).ID, id, update)
 		writePositionResult(w, representationStateDTO(value), err)
 	}

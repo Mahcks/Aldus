@@ -74,6 +74,8 @@ import type {
   UpdateWorkRequest,
   UpdateCoverSettingsRequest,
   ReaderCredential,
+  ReaderPreferences,
+  ReaderPreferencesUpdate,
   CreateReaderCredentialRequest,
   User,
   Work,
@@ -596,6 +598,12 @@ export const api = {
   },
   updateRepresentationState: (id: string, body: RepresentationStateUpdate) =>
     request<RepresentationState>(`/representations/${id}/state`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  readerPreferences: () => request<ReaderPreferences>('/reader-preferences'),
+  updateReaderPreferences: (body: ReaderPreferencesUpdate) =>
+    request<ReaderPreferences>('/reader-preferences', {
       method: 'PUT',
       body: JSON.stringify(body),
     }),

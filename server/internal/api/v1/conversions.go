@@ -57,7 +57,10 @@ func activityDTO(v position.ActivitySession) contracts.ActivitySession {
 	return contracts.ActivitySession{ID: v.ID, WorkID: v.WorkID, Mode: v.Mode, StartedAt: v.StartedAt, LastSeenAt: v.LastSeenAt, EndedAt: v.EndedAt, ActiveSeconds: v.ActiveSeconds}
 }
 func representationStateDTO(v position.RepresentationState) contracts.RepresentationState {
-	return contracts.RepresentationState{RepresentationID: v.RepresentationID, EPUBLocator: v.EPUBLocator, AudioTimestampMS: v.AudioTimestampMS, PlaybackSpeed: v.PlaybackSpeed, ReaderLayout: v.ReaderLayout, Zoom: v.Zoom, ReaderTheme: v.ReaderTheme, LineHeight: v.LineHeight, Margin: v.Margin, Revision: v.Revision, UpdatedAt: v.UpdatedAt}
+	return contracts.RepresentationState{RepresentationID: v.RepresentationID, EPUBLocator: v.EPUBLocator, AudioTimestampMS: v.AudioTimestampMS, PlaybackSpeed: v.PlaybackSpeed, ReaderLayout: v.ReaderLayout, Zoom: v.Zoom, ReaderTheme: v.ReaderTheme, LineHeight: v.LineHeight, Margin: v.Margin, FontFamily: v.FontFamily, ReaderPreferencesOverride: v.ReaderPreferencesOverride, Revision: v.Revision, UpdatedAt: v.UpdatedAt}
+}
+func readerPreferencesDTO(v position.ReaderPreferences) contracts.ReaderPreferences {
+	return contracts.ReaderPreferences{ReaderLayout: v.ReaderLayout, Zoom: v.Zoom, ReaderTheme: v.ReaderTheme, LineHeight: v.LineHeight, Margin: v.Margin, FontFamily: v.FontFamily, Revision: v.Revision, UpdatedAt: v.UpdatedAt}
 }
 func epubLocatorDTO(v position.EPUBLocator) contracts.EPUBLocator {
 	return contracts.EPUBLocator{Href: v.Href, Locator: v.Locator, Offset: v.Offset}

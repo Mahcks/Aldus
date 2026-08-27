@@ -42,6 +42,7 @@ type ReaderPreferences = {
   lineHeight: number;
   margin: number;
   theme: 'paper' | 'sepia' | 'night';
+  fontFamily: 'publisher' | 'serif' | 'sans' | 'dyslexic';
 };
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   layout: 'paginated',
@@ -49,6 +50,7 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   lineHeight: 1.72,
   margin: 2,
   theme: 'paper',
+  fontFamily: 'serif',
 };
 export type ReaderNavigationItem = { title: string; location: unknown; depth: number };
 export type ReaderSearchResult = { title: string; excerpt: string; location: unknown };
@@ -403,6 +405,14 @@ export const EPUBReader = forwardRef<
             textColor: preferences?.theme === 'night' ? colors.readerNightInk : colors.ink,
             scroll: preferences?.layout === 'scrolled',
             fontSize: preferences?.zoom,
+            fontFamily:
+              preferences?.fontFamily === 'publisher'
+                ? undefined
+                : preferences?.fontFamily === 'sans'
+                  ? 'sans-serif'
+                  : preferences?.fontFamily === 'dyslexic'
+                    ? 'OpenDyslexic'
+                    : 'serif',
             lineHeight: preferences?.lineHeight,
             pageMargins: preferences?.margin,
             theme:

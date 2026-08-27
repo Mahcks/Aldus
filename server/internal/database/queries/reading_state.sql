@@ -30,7 +30,8 @@ ON CONFLICT(user_id, work_id) DO UPDATE SET
 
 -- name: GetRepresentationState :one
 SELECT representation_id, epub_locator, audio_timestamp_ms, playback_speed_milli,
-       reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli, revision, updated_at
+       reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli,
+       font_family, reader_preferences_override, revision, updated_at
 FROM representation_state
 WHERE user_id = ? AND representation_id = ?;
 
@@ -41,8 +42,9 @@ SELECT revision FROM representation_state WHERE user_id = ? AND representation_i
 INSERT INTO representation_state (
     user_id, representation_id, epub_locator, audio_timestamp_ms,
     playback_speed_milli, reader_layout, zoom_milli, reader_theme,
-    line_height_milli, margin_milli, revision, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    line_height_milli, margin_milli, font_family, reader_preferences_override,
+    revision, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(user_id, representation_id) DO UPDATE SET
     epub_locator = COALESCE(excluded.epub_locator, representation_state.epub_locator),
     audio_timestamp_ms = COALESCE(excluded.audio_timestamp_ms, representation_state.audio_timestamp_ms),
@@ -52,5 +54,31 @@ ON CONFLICT(user_id, representation_id) DO UPDATE SET
     reader_theme = COALESCE(excluded.reader_theme, representation_state.reader_theme),
     line_height_milli = COALESCE(excluded.line_height_milli, representation_state.line_height_milli),
     margin_milli = COALESCE(excluded.margin_milli, representation_state.margin_milli),
+    font_family = COALESCE(excluded.font_family, representation_state.font_family),
+    reader_preferences_override = COALESCE(excluded.reader_preferences_override, representation_state.reader_preferences_override),
+    revision = excluded.revision,
+    updated_at = excluded.updated_at;
+
+-- name: GetReaderPreferences :one
+SELECT reader_layout, zoom_milli, reader_theme, line_height_milli, margin_milli,
+       font_family, revision, updated_at
+FROM reader_preferences
+WHERE user_id = ?;
+
+-- name: GetReaderPreferencesRevision :one
+SELECT revision FROM reader_preferences WHERE user_id = ?;
+
+-- name: UpsertReaderPreferences :exec
+INSERT INTO reader_preferences (
+    user_id, reader_layout, zoom_milli, reader_theme, line_height_milli,
+    margin_milli, font_family, revision, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(user_id) DO UPDATE SET
+    reader_layout = excluded.reader_layout,
+    zoom_milli = excluded.zoom_milli,
+    reader_theme = excluded.reader_theme,
+    line_height_milli = excluded.line_height_milli,
+    margin_milli = excluded.margin_milli,
+    font_family = excluded.font_family,
     revision = excluded.revision,
     updated_at = excluded.updated_at;
