@@ -1105,10 +1105,12 @@ export function Page({
   editorial?: boolean;
 }>) {
   const compact = useWindowDimensions().width < 600;
-  const contentPaddingClass = compact ? 'gap-6 px-4 py-6' : 'gap-8 px-6 py-8';
+  const contentPaddingClass = compact
+    ? `gap-6 px-4 pb-6 ${hideHeader ? 'pt-3' : 'pt-6'}`
+    : 'gap-8 px-6 py-8';
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView edges={['left', 'right']} style={{ flex: 1 }}>
       {Platform.OS === 'web' ? (
         <Head>
           <title>{`${title} · Aldus`}</title>

@@ -19,6 +19,15 @@ export function shouldLoadConsumptionMedia(mode: 'read' | 'listen', kind: 'epub'
   return (mode === 'read' && kind === 'epub') || (mode === 'listen' && kind === 'audio');
 }
 
+export function readerControlsReady(
+  navigationReady: boolean,
+  mediaLoading: boolean,
+  restoring: boolean,
+  hasLocation: boolean,
+) {
+  return navigationReady && !mediaLoading && !restoring && hasLocation;
+}
+
 export function sleepTimerDeadline(minutes?: number, nowMS = Date.now()) {
   if (minutes == null) return undefined;
   if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(nowMS)) return undefined;

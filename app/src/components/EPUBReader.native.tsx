@@ -1,5 +1,5 @@
 import { File, Paths } from 'expo-file-system';
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -7,6 +7,7 @@ import {
   type DecorationGroup,
   type Link,
   type Locator,
+  type Preferences,
   type PublicationReadyEvent,
   type ReadiumViewRef,
   type SearchResult,
@@ -111,6 +112,38 @@ export const EPUBReader = forwardRef<
   const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
   const [fileURL, setFileURL] = useState('');
   const [resumeDecorations, setResumeDecorations] = useState<DecorationGroup[]>([]);
+  const readiumPreferences = useMemo<Preferences>(
+    () => ({
+      backgroundColor: preferences.theme === 'night' ? colors.readerNightPaper : colors.paper,
+      textColor: preferences.theme === 'night' ? colors.readerNightInk : colors.ink,
+      scroll: preferences.layout === 'scrolled',
+      fontSize: preferences.zoom,
+      fontFamily:
+        preferences.fontFamily === 'publisher'
+          ? undefined
+          : preferences.fontFamily === 'sans'
+            ? 'sans-serif'
+            : preferences.fontFamily === 'dyslexic'
+              ? 'OpenDyslexic'
+              : 'serif',
+      lineHeight: preferences.lineHeight,
+      pageMargins: preferences.margin,
+      theme:
+        preferences.theme === 'night'
+          ? ('dark' as const)
+          : preferences.theme === 'sepia'
+            ? ('sepia' as const)
+            : ('light' as const),
+    }),
+    [
+      preferences.fontFamily,
+      preferences.layout,
+      preferences.lineHeight,
+      preferences.margin,
+      preferences.theme,
+      preferences.zoom,
+    ],
+  );
   onErrorRef.current = onError;
   segmentsRef.current = segments;
 
@@ -399,29 +432,7 @@ export const EPUBReader = forwardRef<
           key={fileURL}
           ref={reader}
           file={{ url: fileURL }}
-          preferences={{
-            backgroundColor:
-              preferences?.theme === 'night' ? colors.readerNightPaper : colors.paper,
-            textColor: preferences?.theme === 'night' ? colors.readerNightInk : colors.ink,
-            scroll: preferences?.layout === 'scrolled',
-            fontSize: preferences?.zoom,
-            fontFamily:
-              preferences?.fontFamily === 'publisher'
-                ? undefined
-                : preferences?.fontFamily === 'sans'
-                  ? 'sans-serif'
-                  : preferences?.fontFamily === 'dyslexic'
-                    ? 'OpenDyslexic'
-                    : 'serif',
-            lineHeight: preferences?.lineHeight,
-            pageMargins: preferences?.margin,
-            theme:
-              preferences?.theme === 'night'
-                ? 'dark'
-                : preferences?.theme === 'sepia'
-                  ? 'sepia'
-                  : 'light',
-          }}
+          preferences={readiumPreferences}
           decorations={resumeDecorations}
           selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
           onLocationChange={handleLocation}

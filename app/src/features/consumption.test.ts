@@ -14,6 +14,7 @@ import {
   PLAYBACK_RATES,
   progressSaveLabel,
   progressSourceLabel,
+  readerControlsReady,
   readToListen,
   readyJob,
   resumedProgressLabel,
@@ -30,6 +31,14 @@ it('loads only the media needed by the active consumption mode', () => {
   expect(shouldLoadConsumptionMedia('read', 'audio')).toBe(false);
   expect(shouldLoadConsumptionMedia('listen', 'epub')).toBe(false);
   expect(shouldLoadConsumptionMedia('listen', 'audio')).toBe(true);
+});
+
+it('keeps reader controls locked until the restored location is published', () => {
+  expect(readerControlsReady(false, false, false, true)).toBe(false);
+  expect(readerControlsReady(true, true, false, true)).toBe(false);
+  expect(readerControlsReady(true, false, true, true)).toBe(false);
+  expect(readerControlsReady(true, false, false, false)).toBe(false);
+  expect(readerControlsReady(true, false, false, true)).toBe(true);
 });
 
 const passageSegments = [

@@ -45,6 +45,7 @@ import {
   playbackRate,
   progressSaveLabel,
   progressSourceLabel,
+  readerControlsReady,
   resumedProgressLabel,
   readToListen,
   readyJob,
@@ -185,6 +186,7 @@ export default function ConsumeWorkScreen() {
   const readerDefaultsRef = useRef<ReaderPreferences>(DEFAULT_READER_PREFERENCES);
   const [readerDefaultsRevision, setReaderDefaultsRevision] = useState(0);
   const [readerCustomized, setReaderCustomized] = useState(false);
+  const [readerRestoring, setReaderRestoring] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [readerContents, setReaderContents] = useState<ReaderNavigationItem[]>([]);
@@ -216,6 +218,7 @@ export default function ConsumeWorkScreen() {
   const readerReady = useRef(false);
   const restoredReaderTarget = useRef<unknown>(undefined);
   const restoringReaderTarget = useRef<unknown>(undefined);
+  const awaitingReaderLocation = useRef<unknown>(undefined);
   const epubSourceID = useRef('');
   const audioSourceID = useRef('');
   const restoredAudio = useRef('');
@@ -253,12 +256,33 @@ export default function ConsumeWorkScreen() {
   const currentPlaybackRate = playbackRate(status.playbackRate);
   const playbackRateIndex = PLAYBACK_RATES.indexOf(currentPlaybackRate);
   const canAdjustPlaybackRate = Boolean(source) && !status.error;
+  const readerInteractionReady = readerControlsReady(
+    readerNavigationReady,
+    mediaLoading,
+    readerRestoring,
+    Boolean(readerLocation),
+  );
+  const formatSwitchBusy =
+    modeSwitching ||
+    mediaLoading ||
+    (mode === 'read'
+      ? !readerInteractionReady
+      : Boolean(
+          source && !status.error && (!status.isLoaded || (initialAudioMS != null && !audioReady)),
+        ));
 
   const applyReaderDefaults = useCallback((value: ReaderPreferencesDTO) => {
     const next = readerSettingsFromDTO(value);
     readerDefaultsRef.current = next;
     setReaderDefaults(next);
     setReaderDefaultsRevision(value.revision);
+  }, []);
+
+  const queueReaderRestore = useCallback((target: unknown) => {
+    awaitingReaderLocation.current = undefined;
+    setReaderLocation(undefined);
+    setReaderRestoring(true);
+    setReaderTarget(target);
   }, []);
 
   useEffect(() => {
@@ -372,8 +396,7 @@ export default function ConsumeWorkScreen() {
       epubSourceID.current = '';
       audioSourceID.current = '';
       setAlignment(undefined);
-      setReaderTarget(undefined);
-      setReaderLocation(undefined);
+      queueReaderRestore(undefined);
       setReaderCommit(undefined);
       setInitialAudioMS(undefined);
       readerReady.current = false;
@@ -472,7 +495,7 @@ export default function ConsumeWorkScreen() {
     return () => {
       canceled = true;
     };
-  }, [applyReaderDefaults, params.id, params.epub, params.audio]);
+  }, [applyReaderDefaults, params.id, params.epub, params.audio, queueReaderRestore]);
 
   useEffect(() => {
     let canceled = false;
@@ -480,6 +503,7 @@ export default function ConsumeWorkScreen() {
       const loadEPUB = Platform.OS === 'web' || shouldLoadConsumptionMedia(mode, 'epub');
       const loadAudio = shouldLoadConsumptionMedia(mode, 'audio');
       if (loadEPUB) {
+        setReaderRestoring(true);
         readerReady.current = false;
         setReaderNavigationReady(false);
         setReaderContents([]);
@@ -537,7 +561,7 @@ export default function ConsumeWorkScreen() {
             canonical && stored.alignment
               ? offlineCanonicalToAudio(stored.alignment, canonical)?.timestamp_ms
               : stored.audio_state?.audio_timestamp_ms;
-          setReaderTarget(loadEPUB ? storedEPUBTarget : undefined);
+          if (loadEPUB) queueReaderRestore(storedEPUBTarget);
           setInitialAudioMS(loadAudio ? storedAudioTarget : undefined);
           setSyncAvailable(Boolean(canonical && stored.alignment));
         }
@@ -595,7 +619,7 @@ export default function ConsumeWorkScreen() {
             let resumedAudioMS: number | undefined;
             if (loadEPUB) {
               const epubTarget = await api.canonicalToEPUB(selectedJob.alignment_id, canonical);
-              if (!canceled) setReaderTarget(epubTarget);
+              if (!canceled) queueReaderRestore(epubTarget);
             } else {
               const audioTarget = await api.canonicalToAudio(selectedJob.alignment_id, canonical);
               resumedAudioMS = audioTarget.timestamp_ms;
@@ -612,12 +636,12 @@ export default function ConsumeWorkScreen() {
             }
           } catch {
             if (!canceled) {
-              if (loadEPUB) setReaderTarget(nextEPUBState?.epub_locator);
+              if (loadEPUB) queueReaderRestore(nextEPUBState?.epub_locator);
               if (loadAudio) setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
             }
           }
         } else {
-          if (loadEPUB) setReaderTarget(nextEPUBState?.epub_locator);
+          if (loadEPUB) queueReaderRestore(nextEPUBState?.epub_locator);
           if (loadAudio) setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
         }
       } catch (error) {
@@ -644,18 +668,27 @@ export default function ConsumeWorkScreen() {
     };
     // Selection changes reload media; progress revision changes must not reload active playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [work, mode, epubID, audioID, jobs, progress?.alignment_id, progress?.resolvable]);
+  }, [
+    work,
+    mode,
+    epubID,
+    audioID,
+    jobs,
+    progress?.alignment_id,
+    progress?.resolvable,
+    queueReaderRestore,
+  ]);
 
   const restoreReader = useCallback(
     async (target: unknown) => {
-      if (
-        !readerReady.current ||
-        !target ||
-        restoredReaderTarget.current === target ||
-        restoringReaderTarget.current === target
-      )
+      if (!readerReady.current || !target || restoringReaderTarget.current === target) return;
+      if (restoredReaderTarget.current === target) {
+        setReaderRestoring(false);
         return;
+      }
       restoringReaderTarget.current = target;
+      awaitingReaderLocation.current = target;
+      setReaderRestoring(true);
       let restored = false;
       try {
         for (let attempt = 0; attempt < 3 && readerReady.current; attempt += 1) {
@@ -674,17 +707,23 @@ export default function ConsumeWorkScreen() {
       if (restoringReaderTarget.current !== target) return;
       restoringReaderTarget.current = undefined;
       if (restored) restoredReaderTarget.current = target;
-      else
+      else {
+        awaitingReaderLocation.current = undefined;
+        setReaderRestoring(false);
         setNotice('Couldn\u2019t restore your saved page. You can keep reading and retry later.');
+      }
     },
     [progress?.resolvable, progress?.alignment_id, alignmentID],
   );
 
   useEffect(() => {
-    if (!readerReady.current || !readerTarget || restoredReaderTarget.current === readerTarget)
+    if (mode !== 'read' || mediaLoading || !readerNavigationReady || !readerReady.current) return;
+    if (!readerTarget || restoredReaderTarget.current === readerTarget) {
+      setReaderRestoring(false);
       return;
+    }
     void restoreReader(readerTarget);
-  }, [readerTarget, restoreReader]);
+  }, [mediaLoading, mode, readerNavigationReady, readerTarget, restoreReader]);
 
   useEffect(() => {
     if (!work) return;
@@ -725,7 +764,7 @@ export default function ConsumeWorkScreen() {
         if (mode === 'read') {
           const target = await api.canonicalToEPUB(alignmentID, next);
           if (!active) return;
-          setReaderTarget(target);
+          queueReaderRestore(target);
         } else {
           const target = await api.canonicalToAudio(alignmentID, next);
           if (!active) return;
@@ -762,7 +801,7 @@ export default function ConsumeWorkScreen() {
       subscription.remove();
       if (Platform.OS === 'web') window.removeEventListener('focus', onFocus);
     };
-  }, [work, alignmentID, mode]);
+  }, [work, alignmentID, mode, queueReaderRestore]);
 
   useEffect(() => {
     if (mode !== 'listen') return;
@@ -796,21 +835,19 @@ export default function ConsumeWorkScreen() {
   ]);
 
   const onReaderLocation = useCallback((location: ReaderLocation) => {
+    if (awaitingReaderLocation.current !== undefined) {
+      awaitingReaderLocation.current = undefined;
+      setReaderRestoring(false);
+    }
     setReaderLocation(location);
     if (commitsReadingProgress(location.reason)) setReaderCommit(location);
     setSyncAvailable(Boolean(location.sync));
   }, []);
-  const onReaderReady = useCallback(
-    (contents: ReaderNavigationItem[]) => {
-      readerReady.current = true;
-      setReaderNavigationReady(true);
-      setReaderContents(contents);
-      if (readerTarget && restoredReaderTarget.current !== readerTarget) {
-        void restoreReader(readerTarget);
-      }
-    },
-    [readerTarget, restoreReader],
-  );
+  const onReaderReady = useCallback((contents: ReaderNavigationItem[]) => {
+    readerReady.current = true;
+    setReaderNavigationReady(true);
+    setReaderContents(contents);
+  }, []);
 
   async function runReaderSearch() {
     const query = readerSearchQuery.trim();
@@ -1071,7 +1108,7 @@ export default function ConsumeWorkScreen() {
 
   async function restoreCanonical(next: CanonicalPosition) {
     if (!alignmentID || !next.resolvable || next.alignment_id !== alignmentID) return;
-    if (mode === 'read') setReaderTarget(await api.canonicalToEPUB(alignmentID, next));
+    if (mode === 'read') queueReaderRestore(await api.canonicalToEPUB(alignmentID, next));
     else {
       const target = await api.canonicalToAudio(alignmentID, next);
       restoredAudio.current = '';
@@ -1097,7 +1134,7 @@ export default function ConsumeWorkScreen() {
   }
 
   async function updateReaderPreferences(next: ReaderPreferences) {
-    if (settingsBusy || (readerCustomized && !selectedEPUB)) return;
+    if (!readerInteractionReady || settingsBusy || (readerCustomized && !selectedEPUB)) return;
     setSettingsBusy(true);
     try {
       if (readerCustomized && selectedEPUB) {
@@ -1135,7 +1172,8 @@ export default function ConsumeWorkScreen() {
   }
 
   async function updateReaderCustomization(customized: boolean) {
-    if (!selectedEPUB || settingsBusy || customized === readerCustomized) return;
+    if (!readerInteractionReady || !selectedEPUB || settingsBusy || customized === readerCustomized)
+      return;
     setSettingsBusy(true);
     try {
       const state = await api.updateRepresentationState(selectedEPUB.representation.id, {
@@ -1309,7 +1347,7 @@ export default function ConsumeWorkScreen() {
       progressRef.current = next;
       setProgress(next);
       player.pause();
-      setReaderTarget(target);
+      queueReaderRestore(target);
       setMode('read');
       setNotice('');
       setSyncAvailable(true);
@@ -1323,7 +1361,7 @@ export default function ConsumeWorkScreen() {
         if (canonical && target) {
           await saveCanonical(canonical);
           player.pause();
-          setReaderTarget(target);
+          queueReaderRestore(target);
           setMode('read');
           setNotice('Offline mode · changes will sync when Aldus is reachable.');
           setSyncAvailable(true);
@@ -1431,10 +1469,13 @@ export default function ConsumeWorkScreen() {
     else if (event.nativeEvent.actionName === 'decrement') stepPlaybackRate(-1);
   }
   function handleReadMode() {
+    if (formatSwitchBusy) return;
     if (mode === 'listen' && alignmentID && status.isLoaded) void switchToRead();
     else setMode('read');
   }
   function handleListenMode() {
+    if (formatSwitchBusy) return;
+    setSettingsOpen(false);
     if (mode === 'read' && readerLocation?.sync && alignmentID) void switchToListen();
     else setMode('listen');
   }
@@ -1515,19 +1556,21 @@ export default function ConsumeWorkScreen() {
                   />
                 </>
               ) : null}
-              <IconButton
-                icon="settings"
-                label={settingsOpen ? 'Close reader settings' : 'Open reader settings'}
-                kind="quiet"
-                selected={settingsOpen}
-                onPress={() => setSettingsOpen((open) => !open)}
-              />
+              {readerInteractionReady ? (
+                <IconButton
+                  icon="settings"
+                  label={settingsOpen ? 'Close reader settings' : 'Open reader settings'}
+                  kind="quiet"
+                  selected={settingsOpen}
+                  onPress={() => setSettingsOpen((open) => !open)}
+                />
+              ) : null}
             </>
           ) : null}
           {selectedEPUB && selectedAudio ? (
             <PassageHandoff
               mode={mode}
-              busy={modeSwitching}
+              busy={formatSwitchBusy}
               synchronized={
                 mode === 'read'
                   ? Boolean(readerLocation?.sync && alignmentID)
@@ -1571,7 +1614,7 @@ export default function ConsumeWorkScreen() {
           </View>
         </View>
       ) : null}
-      {mode === 'read' && settingsOpen && !fullScreenSettings ? (
+      {mode === 'read' && settingsOpen && readerInteractionReady && !fullScreenSettings ? (
         <Animated.View entering={passageEntrance}>
           <ReaderSettings
             value={readerPreferences}
@@ -1584,7 +1627,7 @@ export default function ConsumeWorkScreen() {
         </Animated.View>
       ) : null}
       <Dialog
-        visible={fullScreenSettings && mode === 'read' && settingsOpen}
+        visible={fullScreenSettings && mode === 'read' && settingsOpen && readerInteractionReady}
         onClose={() => setSettingsOpen(false)}
         title="Reading settings"
         fullScreen
