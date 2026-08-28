@@ -129,20 +129,22 @@ export default function CollectionsScreen() {
     <Page title="Collections" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
       {items.length === 0 ? (
-        <EmptyState
-          icon="collections"
-          title="Make your first collection"
-          action={
-            <Button
-              label="New collection"
-              icon="add"
-              kind="primary"
-              onPress={() => setCreateOpen(true)}
-            />
-          }
-        >
-          Keep books together for a trip, a reading goal, or simply because they belong together.
-        </EmptyState>
+        <View className="w-full flex-1 items-center justify-center">
+          <EmptyState
+            icon="collections"
+            title="Make your first collection"
+            action={
+              <Button
+                label="New collection"
+                icon="add"
+                kind="primary"
+                onPress={() => setCreateOpen(true)}
+              />
+            }
+          >
+            Keep books together for a trip, a reading goal, or simply because they belong together.
+          </EmptyState>
+        </View>
       ) : (
         <Section
           title="Your collections"

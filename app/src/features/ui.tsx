@@ -1139,7 +1139,7 @@ export function Page({
         <ScrollView
           role="main"
           className="flex-1"
-          contentContainerClassName={`w-full max-w-[1240px] flex-grow ${contentPaddingClass}`}
+          contentContainerClassName={`w-full max-w-[1240px] flex-grow self-center ${contentPaddingClass}`}
         >
           {children}
         </ScrollView>

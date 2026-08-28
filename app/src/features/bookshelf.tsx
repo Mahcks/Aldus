@@ -325,7 +325,6 @@ export function WorkCard({
             </Text>
           </View>
         ) : null}
-        {availability ? <AvailabilityBadge value={availability} /> : null}
       </View>
       <Text numberOfLines={2} className="mt-1 font-editorial-bold text-base leading-5 text-ink">
         {title}
@@ -333,6 +332,7 @@ export function WorkCard({
       <Text numberOfLines={1} className="text-sm leading-[18px] text-muted">
         {author || 'Unknown author'}
       </Text>
+      {availability ? <AvailabilityLabel value={availability} /> : null}
     </Pressable>
   );
 }
@@ -447,33 +447,30 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
 }
 
 /**
- * Icon-only badge overlaid on the cover itself (bottom-right), for grid
- * cards (`WorkCard`) — an icon+label row under the cover is one more line
- * stacked on top of title/author, and adds up fast across a whole shelf of
- * cards. The progress ribbon already established the cover as fair game for
- * status (top-left); this uses the opposite corner so the two never
- * collide. A dark scrim behind the icon(s) keeps them legible against any
- * cover art, light or dark — unlike the muted-gray icon color `AvailabilityIcons`
- * uses against the app's own paper background.
- *
- * Hidden entirely for plain read-only Works — in most libraries that's the
- * overwhelming majority, so stamping every cover with the same "read" icon
- * added zero information and just read as visual noise across a shelf. The
- * badge now only appears for the exceptional case: a Work that also has
- * (or only has) audio.
+ * Two boxed-chip treatments were tried here before this (a dark cover-overlay
+ * pill, then a `StatusBadge` spine-label) and both read as a generic
+ * component slapped onto the card rather than something that belongs to it —
+ * the colored corner/spine is the same "AI slop" tell that landed on the
+ * auth card earlier in this app's history. This drops the container
+ * entirely: just an icon and a word, the same visual weight as the author
+ * line above it, not a status widget. Only the synced case gets any color at
+ * all (`text-accent`) — it's this app's actual signature feature and earns
+ * standing out; read-only and listen-only stay fully muted so the common
+ * case doesn't compete with the title/author for attention.
  */
-function AvailabilityBadge({ value }: { value: WorkAvailability }) {
-  if (!value.listenable && !value.synchronized) return null;
-  const available = availabilityItems(value);
+function AvailabilityLabel({ value }: { value: WorkAvailability }) {
+  const synced = value.synchronized;
+  const icon = synced ? 'synced' : value.listenable ? 'listen' : value.readable ? 'read' : null;
+  if (!icon) return null;
+  const label = synced ? 'Read & Listen' : value.listenable ? 'Listen' : 'Read';
+  const color = synced ? colors.accent : colors.subtle;
+
   return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      className="absolute bottom-1.5 right-1.5 flex-row items-center gap-1 rounded-pill bg-ink/70 px-1.5 py-1"
-    >
-      {available.map((item) => (
-        <AppIcon key={item.label} name={item.icon} size={13} color={colors.paper} />
-      ))}
+    <View className="mt-0.5 flex-row items-center gap-1">
+      <AppIcon name={icon} size={13} color={color} />
+      <Text className={`text-[11px] font-sans-semibold ${synced ? 'text-accent' : 'text-subtle'}`}>
+        {label}
+      </Text>
     </View>
   );
 }
