@@ -9,6 +9,7 @@ test('a new administrator can open Alice and switch reading modes safely', async
   await page.getByLabel('Password (12 characters minimum)').fill('beta-password-123');
   await page.getByLabel('Confirm password').fill('beta-password-123');
   await page.getByRole('button', { name: 'Create administrator' }).click();
+  await expect(page).toHaveURL(/\/libraries$/);
 
   await page.goto('/work/alice-gutenberg-11-work');
   await expect(
