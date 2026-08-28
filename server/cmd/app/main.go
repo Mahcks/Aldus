@@ -239,6 +239,7 @@ func main() {
 			},
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	errCh := make(chan error, 1)

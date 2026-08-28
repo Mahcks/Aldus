@@ -24,6 +24,8 @@ export async function updateOfflineRepresentationState(
   _workID: string,
   _kind: 'epub' | 'audio',
   _state: RepresentationState,
+  _pending = false,
 ) {
   return false;
 }
+export async function reconcileOfflineRepresentationStates() {}

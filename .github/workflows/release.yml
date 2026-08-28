@@ -5,11 +5,30 @@ on:
     tags: ['v[0-9]+.[0-9]+.[0-9]+*']
 
 permissions:
-  contents: read
+  actions: read
+  contents: write
   packages: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful CI for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+            -f head_sha="${GITHUB_SHA}" \
+            -f status=success \
+            --jq '.total_count')
+          test "$count" -gt 0 || {
+            echo "CI has not succeeded for ${GITHUB_SHA}" >&2
+            exit 1
+          }
+
   publish:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,3 +79,11 @@ jobs:
           build-args: VERSION=${{ github.ref_name }}
           cache-from: type=gha,scope=alignment-nvidia
           cache-to: type=gha,mode=max,scope=alignment-nvidia
+      - name: Publish release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          [[ "${GITHUB_REF_NAME}" == *-* ]] && prerelease=(--prerelease)
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
+            gh release create "${GITHUB_REF_NAME}" --verify-tag --generate-notes "${prerelease[@]}"

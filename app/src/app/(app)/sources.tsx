@@ -119,10 +119,31 @@ export default function SourcesAdministration() {
 
   useEffect(() => {
     if (!activeScan) return;
-    const timer = setInterval(() => void loadAdministration(), 2000);
+    const timer = setInterval(() => {
+      void Promise.all(
+        sources.map(
+          async (source) =>
+            [source.id, await api.sourceScans(selectedLibraryID, source.id)] as const,
+        ),
+      )
+        .then(async (scansBySource) => {
+          const stillActive = scansBySource.some(([, scans]) =>
+            ['pending', 'scanning'].includes(scans[0]?.state),
+          );
+          setDetails((current) => {
+            const next = { ...current };
+            for (const [sourceID, scans] of scansBySource) {
+              next[sourceID] = { scans, entries: current[sourceID]?.entries ?? [] };
+            }
+            return next;
+          });
+          if (!stillActive) await loadAdministration();
+        })
+        .catch((value: unknown) => setError(errorMessage(value)));
+    }, 2000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeScan, selectedLibraryID]);
+  }, [activeScan, selectedLibraryID, sources]);
 
   function openNewSource() {
     setEditingSource('new');

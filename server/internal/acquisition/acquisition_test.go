@@ -787,6 +787,9 @@ func TestRejectsUnsafeConfigurationAndDownload(t *testing.T) {
 	if _, err := New(Options{IndexerURL: "file:///etc/passwd"}); err == nil {
 		t.Fatal("accepted unsafe indexer URL")
 	}
+	if _, err := New(Options{IndexerURL: "https://user:password@indexer.test"}); err == nil {
+		t.Fatal("accepted credentials embedded in connector URL")
+	}
 	client, _ := New(Options{QBitURL: "https://qbit.test"})
 	for _, unsafe := range []string{"file:///tmp/book", "https://user:pass@example.test/book", "magnet:?dn=missing-hash"} {
 		if err := client.Add(context.Background(), unsafe); err == nil || !strings.Contains(err.Error(), "invalid") {

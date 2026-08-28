@@ -12,6 +12,8 @@ import type {
 } from '@/generated/api';
 import type { MediaChoice } from '@/features/consumption';
 import { offlineAudioChapters } from '@/features/offline-chapters';
+import { representationStateUpdate } from '@/features/offline-representation';
+import { APIError, api } from './api';
 import { productEPUBSource } from './epub-source';
 import { downloadProductAudio } from './media';
 import { pendingProgress } from './progress-outbox';
@@ -29,6 +31,7 @@ export type OfflineWork = {
   progress: CanonicalPosition | null;
   epub_state: RepresentationState | null;
   audio_state: RepresentationState | null;
+  pending_representation_states?: Partial<Record<'epub' | 'audio', boolean>>;
   audio_chapters: Record<string, AudioChapter[]>;
   downloaded_at: string;
 };
@@ -196,6 +199,7 @@ export async function updateOfflineRepresentationState(
   workID: string,
   kind: 'epub' | 'audio',
   state: RepresentationState,
+  pending = false,
 ) {
   const scope = activeStorageScope();
   const value = await offlineWork(workID);
@@ -205,7 +209,38 @@ export async function updateOfflineRepresentationState(
     JSON.stringify({
       ...value,
       [kind === 'epub' ? 'epub_state' : 'audio_state']: state,
+      pending_representation_states: {
+        ...value.pending_representation_states,
+        [kind]: pending,
+      },
     }),
   );
   return true;
+}
+
+export async function reconcileOfflineRepresentationStates() {
+  for (const work of await offlineWorks()) {
+    for (const kind of ['epub', 'audio'] as const) {
+      if (!work.pending_representation_states?.[kind]) continue;
+      const local = kind === 'epub' ? work.epub_state : work.audio_state;
+      if (!local) continue;
+      try {
+        let expectedRevision = local.revision;
+        try {
+          const remote = await api.representationState(local.representation_id);
+          expectedRevision = remote?.revision ?? 0;
+        } catch (error) {
+          if (!(error instanceof APIError && error.status === 404)) throw error;
+          expectedRevision = 0;
+        }
+        const saved = await api.updateRepresentationState(
+          local.representation_id,
+          representationStateUpdate(local, expectedRevision),
+        );
+        await updateOfflineRepresentationState(work.work.id, kind, saved);
+      } catch {
+        // Leave the local state pending for the next foreground attempt.
+      }
+    }
+  }
 }

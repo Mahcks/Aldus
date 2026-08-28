@@ -5,6 +5,8 @@ description: Read and listen with Aldus on Android.
 
 Aldus on Android is the same app and library as every other platform, with a couple of Android-specific behaviors worth knowing: how background audio keeps running, and what to do before you lose signal.
 
+> **Availability:** Android is currently a development build, not a published beta. These instructions describe implemented behavior for contributors and future testers; ordinary users should use the web app until an Android download is announced.
+
 <img
   class="docs-shot"
   src="/images/reader-epub.png"

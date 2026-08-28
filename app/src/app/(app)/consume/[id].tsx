@@ -89,7 +89,12 @@ import {
   offlineCanonicalToEPUB,
   offlineEPUBToCanonical,
 } from '@/features/offline-position';
-import { pendingProgress, reconcilePendingProgress, saveWorkProgress } from '@/lib/progress-outbox';
+import {
+  discardPendingProgress,
+  pendingProgress,
+  reconcilePendingProgress,
+  saveWorkProgress,
+} from '@/lib/progress-outbox';
 
 type Mode = 'read' | 'listen';
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
@@ -699,8 +704,10 @@ export default function ConsumeWorkScreen() {
       }
       if (restoringReaderTarget.current !== target) return;
       restoringReaderTarget.current = undefined;
-      if (restored) restoredReaderTarget.current = target;
-      else {
+      if (restored) {
+        restoredReaderTarget.current = target;
+        setReaderRestoring(false);
+      } else {
         awaitingReaderLocation.current = undefined;
         setReaderRestoring(false);
         setNotice('Couldn\u2019t restore your saved page. You can keep reading and retry later.');
@@ -990,7 +997,7 @@ export default function ConsumeWorkScreen() {
             ? { epub_locator: value, reader_layout: readerPreferences.layout }
             : { audio_timestamp_ms: value as number, playback_speed: playbackSpeed }),
         };
-        const stored = await updateOfflineRepresentationState(work.id, kind, local).catch(
+        const stored = await updateOfflineRepresentationState(work.id, kind, local, true).catch(
           () => false,
         );
         if (stored) {
@@ -1111,8 +1118,12 @@ export default function ConsumeWorkScreen() {
   }
 
   async function acceptRemoteProgress() {
-    if (!progressConflict) return;
+    if (!progressConflict || !work) return;
     const remote = progressConflict.remote;
+    await discardPendingProgress(work.id);
+    progressRef.current = remote;
+    setProgress(remote);
+    await updateOfflineProgress(work.id, remote);
     setProgressConflict(undefined);
     setSaveState('saved');
     await restoreCanonical(remote);
@@ -1120,10 +1131,26 @@ export default function ConsumeWorkScreen() {
   }
 
   async function keepLocalProgress() {
-    if (!progressConflict) return;
+    if (!progressConflict || !work || !alignmentID) return;
     const local = progressConflict.local;
-    setProgressConflict(undefined);
-    await saveCanonical(local);
+    try {
+      const saved = await api.updateWorkProgress(work.id, {
+        alignment_id: alignmentID,
+        segment_id: local.segment_id,
+        offset: local.offset,
+        expected_revision: progressConflict.remote.revision ?? 0,
+        source_device: Platform.OS,
+      });
+      await discardPendingProgress(work.id);
+      progressRef.current = saved;
+      setProgress(saved);
+      await updateOfflineProgress(work.id, saved);
+      setProgressConflict(undefined);
+      setSaveState('saved');
+    } catch (error) {
+      setSaveState('error');
+      setNotice(errorMessage(error));
+    }
   }
 
   async function updateReaderPreferences(next: ReaderPreferences) {

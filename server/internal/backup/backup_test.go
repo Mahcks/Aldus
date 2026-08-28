@@ -72,8 +72,9 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	const indexerSecret, qbitSecret = "prowlarr-secret-that-must-not-leak", "qbittorrent-secret-that-must-not-leak"
+	const urlSecret = "url-secret-that-must-not-leak"
 	const downloadSecret = "download-secret-that-must-not-leak"
-	if _, err := db.Exec(`INSERT INTO acquisition_settings(id,indexer_url,indexer_api_key,qbittorrent_url,qbittorrent_username,qbittorrent_password,qbittorrent_category,updated_at) VALUES(1,'http://prowlarr',?,'http://qbittorrent','aldus',?,'aldus','2026-01-01')`, indexerSecret, qbitSecret); err != nil {
+	if _, err := db.Exec(`INSERT INTO acquisition_settings(id,indexer_url,indexer_api_key,qbittorrent_url,qbittorrent_username,qbittorrent_password,qbittorrent_category,updated_at) VALUES(1,?,?,'http://qbittorrent','aldus',?,'aldus','2026-01-01')`, "http://user:"+urlSecret+"@prowlarr", indexerSecret, qbitSecret); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dataDir, "media", "book.bin"), []byte("immutable media"), 0o640); err != nil {
@@ -132,7 +133,7 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(snapshotBytes), indexerSecret) || strings.Contains(string(snapshotBytes), qbitSecret) || strings.Contains(string(snapshotBytes), downloadSecret) {
+	if strings.Contains(string(snapshotBytes), indexerSecret) || strings.Contains(string(snapshotBytes), qbitSecret) || strings.Contains(string(snapshotBytes), downloadSecret) || strings.Contains(string(snapshotBytes), urlSecret) {
 		t.Fatal("backup database retains connector secret bytes")
 	}
 	db.Close()

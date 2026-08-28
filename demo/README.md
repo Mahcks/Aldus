@@ -20,7 +20,7 @@ Open `https://aldus-demo.fly.dev` for initial setup. The volume stores Aldus dat
 
 1. Open `https://demo.aldus.media` and create the owner.
 2. Create a library named **Aldus Demo**.
-3. Add `/library/demo` as a Source and enable automatic import for clear matches.
+3. Add `/data/demo-media` as a Source and enable automatic import for clear matches.
 4. Scan it. The manifest contains 12 complete EPUBs and six complete audiobooks. Review ambiguous audiobook matches into the corresponding existing ebook Work; do not create duplicate Works.
 5. Confirm covers, descriptions, chapter lists, seeking, and resume behavior for every imported Work. Use **Manage this work → Refresh metadata** and select the correct cover anywhere metadata is incomplete.
 6. Generate the complete Alice read/listen alignment and exercise both handoff directions after a restart.

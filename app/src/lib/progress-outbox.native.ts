@@ -34,6 +34,11 @@ export async function pendingProgress(workID: string, scope = activeStorageScope
   return progress;
 }
 
+export async function discardPendingProgress(workID: string, scope = activeStorageScope()) {
+  await AsyncStorage.removeItem(key(scope, workID));
+  await track(scope, workID, false);
+}
+
 export async function saveWorkProgress(
   workID: string,
   update: WorkProgressUpdate,
@@ -41,8 +46,7 @@ export async function saveWorkProgress(
   const scope = activeStorageScope();
   try {
     const saved = await api.updateWorkProgress(workID, update);
-    await AsyncStorage.removeItem(key(scope, workID));
-    await track(scope, workID, false);
+    await discardPendingProgress(workID, scope);
     return saved;
   } catch (error) {
     if (!(error instanceof APIError) || error.status !== 0) throw error;
@@ -67,8 +71,7 @@ export async function reconcilePendingProgress(
   if ((remote?.revision ?? 0) !== local.expected_revision && remote) return { local, remote };
   if (origin !== getAPIBaseURL()) throw new Error('Aldus server changed during progress sync.');
   await api.updateWorkProgress(workID, local);
-  await AsyncStorage.removeItem(key(scope, workID));
-  await track(scope, workID, false);
+  await discardPendingProgress(workID, scope);
   return null;
 }
 

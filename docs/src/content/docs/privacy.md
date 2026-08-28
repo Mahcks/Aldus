@@ -37,7 +37,7 @@ The public demo is operated by the Aldus developer. It creates a randomly named 
 
 Guest access expires 24 hours after creation. Expired guest records and their personal activity are removed during automated cleanup, which may occur after access has expired rather than at the exact 24-hour mark. Shared acquisition history that must remain for server integrity is kept without the requesting account attached.
 
-Demo operational request logs may contain a request identifier, method, path, response status, duration, byte count, and network address. These logs are used to operate, troubleshoot, and protect the shared service and are retained for 30 days.
+Demo operational request logs may contain a request identifier, method, path, response status, duration, byte count, and network address. These logs are used to operate, troubleshoot, and protect the shared service. Aldus does not export them to a separate log service; Fly.io's managed searchable logs are [currently retained for about seven days](https://fly.io/docs/monitoring/search-logs/).
 
 Do not upload personal media or use the demo to store information you need to keep.
 

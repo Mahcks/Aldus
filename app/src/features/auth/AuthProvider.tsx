@@ -2,7 +2,13 @@ import type { User } from '@/generated/api';
 import { APIError, api, onUnauthorized } from '@/lib/api';
 import { getAPIBaseURL } from '@/lib/api-base';
 import { clearToken } from '@/lib/auth-token';
+import {
+  finishAccountCleanup,
+  rememberAccountCleanup,
+  retryAccountCleanups,
+} from '@/lib/account-cleanup';
 import { lastUser, rememberUser } from '@/lib/last-user';
+import { reconcileOfflineRepresentationStates } from '@/lib/offline-library';
 import { reconcileAllPendingProgress } from '@/lib/progress-outbox';
 import {
   createContext,
@@ -45,8 +51,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   });
   const refresh = useCallback(async () => {
     const origin = getAPIBaseURL();
+    const serverOrigin = server.origin;
     if (server.loading) return;
-    if (!server.connected) {
+    if (!server.connected || (Platform.OS !== 'web' && !serverOrigin)) {
       setStorageUserID('');
       setState({
         loading: false,
@@ -57,6 +64,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       });
       return;
     }
+    setStorageUserID('');
+    setState((value) => ({ ...value, loading: true, user: null, error: null }));
     try {
       const user = await api.me();
       const setup = await api.setupStatus();
@@ -136,11 +145,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
       }
     }
-  }, [server.connected, server.loading]);
+  }, [server.connected, server.loading, server.origin]);
   useEffect(() => {
     setStorageUserID('');
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refresh();
+    void retryAccountCleanups()
+      .catch(() => {})
+      .then(refresh);
   }, [refresh]);
   useEffect(() => {
     onUnauthorized(() => {
@@ -157,9 +167,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [server.origin, state.user]);
   useEffect(() => {
     if (!state.user || Platform.OS === 'web') return;
-    void reconcileAllPendingProgress();
+    void Promise.all([reconcileAllPendingProgress(), reconcileOfflineRepresentationStates()]);
     const subscription = AppState.addEventListener('change', (value) => {
-      if (value === 'active') void reconcileAllPendingProgress();
+      if (value === 'active')
+        void Promise.all([reconcileAllPendingProgress(), reconcileOfflineRepresentationStates()]);
     });
     return () => subscription.remove();
   }, [state.user]);
@@ -217,8 +228,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const origin = getAPIBaseURL();
         const user = state.user;
         if (!user) return;
-        await deleteAccountAndClearState(
-          () => api.deleteAccount({ password }),
+        await api.deleteAccount({ password });
+        await rememberAccountCleanup(origin, user.id).catch(() => {});
+        const cleaned = await deleteAccountAndClearState(
+          async () => {},
           [
             () => clearToken(origin),
             () => rememberUser(null, origin),
@@ -235,6 +248,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             });
           },
         );
+        if (cleaned) await finishAccountCleanup(origin, user.id).catch(() => {});
       },
     }),
     [state, refresh],

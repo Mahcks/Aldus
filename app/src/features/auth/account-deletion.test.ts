@@ -8,7 +8,7 @@ describe('deleteAccountAndClearState', () => {
     console.warn = mock(() => {});
 
     try {
-      await deleteAccountAndClearState(
+      const cleaned = await deleteAccountAndClearState(
         async () => {
           calls.push('delete');
         },
@@ -28,6 +28,7 @@ describe('deleteAccountAndClearState', () => {
           calls.push('finalize');
         },
       );
+      expect(cleaned).toBe(false);
     } finally {
       console.warn = warn;
     }
@@ -35,6 +36,15 @@ describe('deleteAccountAndClearState', () => {
     expect(calls[0]).toBe('delete');
     expect(calls.slice(1, 4).sort()).toEqual(['storage', 'token', 'user']);
     expect(calls[4]).toBe('finalize');
+  });
+
+  test('reports complete local cleanup', async () => {
+    const cleaned = await deleteAccountAndClearState(
+      async () => {},
+      [async () => {}],
+      () => {},
+    );
+    expect(cleaned).toBe(true);
   });
 
   test('does not clean up or finalize when server deletion fails', async () => {

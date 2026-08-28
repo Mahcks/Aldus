@@ -82,7 +82,7 @@ func New(options Options) (*Client, error) {
 			continue
 		}
 		u, err := url.Parse(raw)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 			return nil, fmt.Errorf("invalid acquisition URL %q", raw)
 		}
 	}

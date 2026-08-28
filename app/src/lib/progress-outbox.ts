@@ -16,4 +16,6 @@ export async function pendingProgress(_workID: string): Promise<WorkProgressUpda
   return null;
 }
 
+export async function discardPendingProgress(_workID: string) {}
+
 export async function reconcileAllPendingProgress() {}

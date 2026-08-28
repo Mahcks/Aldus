@@ -7,9 +7,10 @@ import type {
   WorkSummary,
 } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { BrowseControls, WorkGrid } from '@/features/browse';
+import { offlineBrowseWorks } from '@/features/offline-browse';
 import {
   formatSizeLimit,
   parseFormats,
@@ -138,6 +139,7 @@ export default function LibraryScreen() {
   const [deletingLibrary, setDeletingLibrary] = useState(false);
   const [offline, setOffline] = useState(false);
   const [libraryCount, setLibraryCount] = useState(1);
+  const browseSequence = useRef(0);
 
   async function load() {
     if (!id) return;
@@ -214,6 +216,7 @@ export default function LibraryScreen() {
 
   async function loadWorks(offset = 0) {
     if (!id) return;
+    const sequence = ++browseSequence.current;
     setLoadingWorks(true);
     try {
       const page = await api.browseWorks({
@@ -224,9 +227,11 @@ export default function LibraryScreen() {
         limit: 24,
         offset,
       });
+      if (sequence !== browseSequence.current) return;
       setWorks((current) => (offset ? [...current, ...page.items] : page.items));
       setHasMore(page.has_more);
     } catch (value) {
+      if (sequence !== browseSequence.current) return;
       if (!(value instanceof APIError && value.status === 0)) {
         setError(errorMessage(value));
         return;
@@ -239,17 +244,14 @@ export default function LibraryScreen() {
           !`${work.title} ${work.author ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)
         )
           return false;
-        if (availability === 'readable') return work.readable;
-        if (availability === 'listenable') return work.listenable;
-        if (availability === 'synchronized') return work.synchronized;
         return true;
       });
-      setWorks(filtered);
+      setWorks(offlineBrowseWorks(filtered, { availability, sort, status: '' }));
       setHasMore(false);
       setOffline(filtered.length > 0 || saved.length > 0);
       if (!saved.length) setError(errorMessage(value));
     } finally {
-      setLoadingWorks(false);
+      if (sequence === browseSequence.current) setLoadingWorks(false);
     }
   }
 

@@ -11,7 +11,7 @@
 [![Docker Image](https://img.shields.io/badge/ghcr.io-mahcks%2Faldus-8a3c24?logo=docker&logoColor=white)](https://github.com/mahcks/aldus/pkgs/container/aldus)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8a3c24)](LICENSE)
 
-[Live demo](https://demo.aldus.media) · [Quickstart](#run-it-in-under-a-minute) · [Screenshots](#what-it-looks-like)
+[Live demo](https://demo.aldus.media) · [Quickstart](#run-the-server) · [Screenshots](#what-it-looks-like)
 
 </div>
 
@@ -29,7 +29,7 @@ It's built for the way a household actually keeps books. One person hosts it. Ev
 
 <br>
 
-## Run it in under a minute
+## Run the server
 
 Every tagged release publishes a ready-to-run, multi-architecture image to GitHub Container Registry. **There is nothing to build.** `docker compose up -d` pulls `ghcr.io/mahcks/aldus` and starts serving — no Go toolchain, no Node, no local Dockerfile.
 
@@ -41,6 +41,8 @@ docker compose up -d
 ```
 
 The example pins a published release and listens only on `127.0.0.1`. Open [http://localhost:8080](http://localhost:8080) and create the first account — it becomes the administrator. Do that before exposing Aldus to another machine.
+
+> **Current beta note:** the pinned beta.14 image predates built-in CPU alignment and the CUDA image. Those capabilities are present on `main` and will become part of the supported quickstart with the next verified release. Image downloads are large, so first startup time depends on your connection and host.
 
 Prefer to look before you clone anything? [demo.aldus.media](https://demo.aldus.media) runs the current build against a small public-domain catalog — no account required.
 
@@ -113,7 +115,7 @@ Indexer names, file sizes, and release strings never surface to someone who just
 | **A household, not just a user** | Libraries are access grants, not walls. Most setups need zero configuration; multi-library households — a shared collection plus a kids' library — get real isolation when they need it. |
 | **Bring what you already have** | Point Aldus at a folder of EPUBs and audio files and it imports them without renaming or rewriting a single file. Nothing you already own gets touched. |
 | **Two ways to store media** | External Sources stay exactly where they are, referenced read-only. Managed media from acquisitions is copied in, checksummed, and verified on import. |
-| **Read anywhere** | Native apps for iOS and Android, a full web app, and OPDS + KOReader credentials for e-ink devices — all backed by the same server and the same progress. |
+| **Read anywhere** | The web app ships with every server. The iOS app is currently available to invited TestFlight testers. Android is implemented but does not yet have a public beta distribution channel. OPDS + KOReader credentials support e-ink devices. |
 | **Verified backups** | `docker compose run --rm aldus backup` produces a checksummed archive of the database, managed media, covers, and alignment artifacts. Connector secrets and active sessions are removed from the archive. |
 | **It's yours** | Self-hosted, your data, on your hardware. No account required anywhere but your own server. |
 

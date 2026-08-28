@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/mahcks/aldus/server/internal/position"
 )
@@ -31,6 +32,9 @@ func ready(check func(context.Context) error) http.HandlerFunc {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
+	controller := http.NewResponseController(w)
+	_ = controller.SetReadDeadline(time.Now().Add(30 * time.Second))
+	defer controller.SetReadDeadline(time.Time{})
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()

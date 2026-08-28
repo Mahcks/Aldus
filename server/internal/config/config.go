@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +84,23 @@ func Load() (Config, error) {
 	if cfg.Environment == "production" && !cfg.SecureCookies && !cfg.AllowInsecureHTTP && !isLoopbackHost(exposureHost) {
 		return Config{}, fmt.Errorf("plain HTTP on non-loopback host %q requires ALDUS_ALLOW_INSECURE_HTTP=true", exposureHost)
 	}
+	if cfg.MediaDir != "" && !within(cfg.DataDir, cfg.MediaDir) {
+		return Config{}, fmt.Errorf("ALDUS_MEDIA_DIR must be inside ALDUS_DATA_DIR so verified backups include managed media")
+	}
 	return cfg, nil
+}
+
+func within(parent, child string) bool {
+	parent, err := filepath.Abs(parent)
+	if err != nil {
+		return false
+	}
+	child, err = filepath.Abs(child)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(parent, child)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func listenerHost(addr string) string {

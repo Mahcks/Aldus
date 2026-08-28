@@ -17,4 +17,5 @@ export async function deleteAccountAndClearState(
   }
 
   finalize();
+  return results.every((result) => result.status === 'fulfilled');
 }
