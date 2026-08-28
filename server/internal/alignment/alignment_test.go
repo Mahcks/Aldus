@@ -248,6 +248,25 @@ func TestFailuresTimeoutAndSafeConfidence(t *testing.T) {
 	}
 }
 
+func TestFailedJobCanBeRetried(t *testing.T) {
+	s := setupManager(t, "failure", time.Second)
+	ctx := context.Background()
+	job, err := s.manager.Enqueue(ctx, s.admin, s.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, ok, err := s.manager.claim(ctx)
+	if err != nil || !ok {
+		t.Fatalf("claim = %#v, %v, %v", claimed, ok, err)
+	}
+	s.manager.run(ctx, claimed)
+
+	retried, err := s.manager.Enqueue(ctx, s.admin, s.request)
+	if err != nil || retried.ID != job.ID || retried.State != "pending" || retried.Attempts != 0 || retried.Error != "" {
+		t.Fatalf("retried = %#v, %v", retried, err)
+	}
+}
+
 func TestValidateRejectsNonMonotonicTimings(t *testing.T) {
 	input := workerInput{EPUBSHA256: strings.Repeat("a", 64), AudioSHA256: strings.Repeat("b", 64), AudioResource: "book.mp3", AudioDuration: 1000, Model: "base.en", Segments: []inputSegment{{ID: "one", Ordinal: 0, Text: "One", Href: "chapter.xhtml", DOMPath: "html[1]/body[1]/p[1]"}, {ID: "two", Ordinal: 1, Text: "Two", Href: "chapter.xhtml", DOMPath: "html[1]/body[1]/p[2]"}}}
 	artifact := Artifact{Version: ContractVersion, Tool: "whisperx 3.8.6", Model: input.Model, EPUBSHA256: input.EPUBSHA256, AudioSHA256: input.AudioSHA256}

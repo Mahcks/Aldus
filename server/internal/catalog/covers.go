@@ -24,7 +24,8 @@ type CoverCandidate struct {
 	Source, SourceID, ImageURL, Title, Author, Publisher, ISBN string
 	WorkID                                                     string
 	FirstPublishYear                                           int
-	Language, Subjects                                         string
+	Language                                                   string
+	Subjects                                                   []string
 }
 
 type CoverAsset struct {
@@ -52,19 +53,20 @@ type openLibraryResult struct {
 	} `json:"docs"`
 }
 
-const maxWorkSubjects = 5
+const maxWorkSubjects = 25
 
-// Open Library's `subject` field mixes real subject/genre tags ("Fiction",
-// "New York Times bestseller") with internal facet keys used for their own
-// browse UI ("series:Twilight", "nyt:series_books=2008-03-15", "person:...",
-// "place:...", "time:..."). Every one of those facet keys is namespaced with
-// a colon; genuine subjects never contain one, so that's the reliable tell.
+var openLibraryHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 func cleanOpenLibrarySubjects(subjects []string) []string {
 	cleaned := make([]string, 0, min(len(subjects), maxWorkSubjects))
+	seen := make(map[string]bool, min(len(subjects), maxWorkSubjects))
 	for _, subject := range subjects {
-		if strings.Contains(subject, ":") {
+		subject = strings.TrimSpace(subject)
+		normalized := strings.ToLower(subject)
+		if subject == "" || seen[normalized] || strings.HasPrefix(normalized, "series:") || strings.HasPrefix(normalized, "nyt:") || strings.HasPrefix(normalized, "person:") || strings.HasPrefix(normalized, "place:") || strings.HasPrefix(normalized, "time:") {
 			continue
 		}
+		seen[normalized] = true
 		cleaned = append(cleaned, subject)
 		if len(cleaned) == maxWorkSubjects {
 			break
@@ -76,8 +78,9 @@ func cleanOpenLibrarySubjects(subjects []string) []string {
 const maxWorkDescriptionRunes = 4000
 
 type refreshedMetadata struct {
-	CoverID, Description, ISBN, Publisher, Language, Subjects string
-	FirstPublishYear                                          int
+	CoverID, Description, ISBN, Publisher, Language string
+	Subjects                                        []string
+	FirstPublishYear                                int
 }
 
 func (s *Store) RefreshMetadata(ctx context.Context, actor auth.User, workID string) (WorkDetail, error) {
@@ -87,7 +90,7 @@ func (s *Store) RefreshMetadata(ctx context.Context, actor auth.User, workID str
 	}
 	query := strings.TrimSpace(work.Title + " " + work.Author)
 	endpoint := "https://openlibrary.org/search.json?limit=12&fields=key,cover_i,title,author_name,first_publish_year,publisher,isbn,language,subject&q=" + url.QueryEscape(query)
-	metadata, err := refreshOpenLibraryMetadata(ctx, &http.Client{Timeout: 10 * time.Second}, endpoint, work.Title, work.Author, func(id string) string {
+	metadata, err := refreshOpenLibraryMetadata(ctx, openLibraryHTTPClient, endpoint, work.Title, work.Author, func(id string) string {
 		return "https://openlibrary.org/works/" + url.PathEscape(id) + ".json"
 	}, func(id string) string {
 		return "https://openlibrary.org/works/" + url.PathEscape(id) + "/editions.json?limit=50"
@@ -118,8 +121,21 @@ func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metada
 			language=CASE WHEN work_metadata.language='' THEN excluded.language ELSE work_metadata.language END,
 			subjects=CASE WHEN work_metadata.subjects='' THEN excluded.subjects ELSE work_metadata.subjects END,
 			updated_at=excluded.updated_at`,
-		workID, openLibraryCoverURL(metadata.CoverID), metadata.Description, metadata.ISBN, metadata.FirstPublishYear, metadata.Publisher, metadata.Language, metadata.Subjects, now); err != nil {
+		workID, openLibraryCoverURL(metadata.CoverID), metadata.Description, metadata.ISBN, metadata.FirstPublishYear, metadata.Publisher, metadata.Language, strings.Join(metadata.Subjects, ","), now); err != nil {
 		return fmt.Errorf("save refreshed metadata: %w", err)
+	}
+	if len(metadata.Subjects) > 0 {
+		var subjectCount int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_subjects WHERE work_id=?`, workID).Scan(&subjectCount); err != nil {
+			return fmt.Errorf("count work subjects: %w", err)
+		}
+		if subjectCount == 0 {
+			for ordinal, subject := range metadata.Subjects {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO work_subjects(work_id,ordinal,subject) VALUES(?,?,?)`, workID, ordinal, subject); err != nil {
+					return fmt.Errorf("save work subject: %w", err)
+				}
+			}
+		}
 	}
 	coverRecordID, err := randomID()
 	if err != nil {
@@ -138,12 +154,7 @@ func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metada
 }
 
 func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, searchEndpoint, title, author string, workEndpoint, editionsEndpoint func(string) string) (refreshedMetadata, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, searchEndpoint, nil)
-	if err != nil {
-		return refreshedMetadata{}, err
-	}
-	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
-	response, err := client.Do(request)
+	response, err := openLibraryGET(ctx, client, searchEndpoint)
 	if err != nil {
 		return refreshedMetadata{}, fmt.Errorf("search Open Library: %w", err)
 	}
@@ -200,12 +211,7 @@ type openLibraryEdition struct {
 // Open Library have no language tag at all, so "not explicitly foreign" is
 // the reliable signal here, not "explicitly English."
 func openLibraryEnglishEdition(ctx context.Context, client *http.Client, endpoint string) (openLibraryEdition, bool) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return openLibraryEdition{}, false
-	}
-	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
-	response, err := client.Do(request)
+	response, err := openLibraryGET(ctx, client, endpoint)
 	if err != nil || response.StatusCode != http.StatusOK {
 		if response != nil {
 			response.Body.Close()
@@ -257,12 +263,7 @@ func openLibraryEnglishEdition(ctx context.Context, client *http.Client, endpoin
 }
 
 func openLibraryDescription(ctx context.Context, client *http.Client, endpoint string) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return "", err
-	}
-	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
-	response, err := client.Do(request)
+	response, err := openLibraryGET(ctx, client, endpoint)
 	if err != nil {
 		return "", fmt.Errorf("load Open Library work: %w", err)
 	}
@@ -315,12 +316,7 @@ func (s *Store) SearchCovers(ctx context.Context, actor auth.User, workID, query
 		return nil, ErrInvalid
 	}
 	endpoint := "https://openlibrary.org/search.json?limit=12&fields=cover_i,title,author_name,first_publish_year,publisher,isbn&q=" + url.QueryEscape(query)
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
-	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(request)
+	response, err := openLibraryGET(ctx, openLibraryHTTPClient, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("search Open Library: %w", err)
 	}
@@ -333,6 +329,31 @@ func (s *Store) SearchCovers(ctx context.Context, actor auth.User, workID, query
 		return nil, fmt.Errorf("decode Open Library search: %w", err)
 	}
 	return candidates, nil
+}
+
+func openLibraryGET(ctx context.Context, client *http.Client, endpoint string) (*http.Response, error) {
+	var lastErr error
+	for range 2 {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("User-Agent", "Aldus/1.0 (self-hosted book library)")
+		response, err := client.Do(request)
+		if err == nil && response.StatusCode != http.StatusTooManyRequests && response.StatusCode < http.StatusInternalServerError {
+			return response, nil
+		}
+		if response != nil {
+			response.Body.Close()
+			lastErr = fmt.Errorf("unexpected status %d", response.StatusCode)
+		} else {
+			lastErr = err
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+	}
+	return nil, fmt.Errorf("%w: %v", ErrMetadataUnavailable, lastErr)
 }
 
 func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
@@ -360,9 +381,7 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 		if len(doc.Languages) > 0 {
 			candidate.Language = doc.Languages[0]
 		}
-		if subjects := cleanOpenLibrarySubjects(doc.Subjects); len(subjects) > 0 {
-			candidate.Subjects = strings.Join(subjects, ",")
-		}
+		candidate.Subjects = cleanOpenLibrarySubjects(doc.Subjects)
 		candidates = append(candidates, candidate)
 	}
 	return candidates, nil

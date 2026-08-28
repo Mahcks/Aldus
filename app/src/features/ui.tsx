@@ -17,7 +17,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 import Head from 'expo-router/head';
-import { AppIcon, type AppIconName } from './icons';
+import { AppIcon, isAppIconName, type AppIconName } from './icons';
 import { fadeIn } from './motion';
 import { colors } from './theme';
 import { Pressable, ScrollView, Text, TextInput, View, type TextInputProps } from './tw';
@@ -344,6 +344,15 @@ export function Select({
           />
         ))}
       </View>
+    </View>
+  );
+}
+
+export function GenreTagChip({ icon, label }: { icon: string; label: string }) {
+  return (
+    <View className="flex-row items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5">
+      <AppIcon name={isAppIconName(icon) ? icon : 'genres'} size={15} color={colors.muted} />
+      <Text className="text-sm font-sans-semibold text-muted">{label}</Text>
     </View>
   );
 }
@@ -786,6 +795,7 @@ export function Notice({
   return (
     <Text
       accessibilityRole={resolvedTone === 'danger' ? 'alert' : undefined}
+      accessibilityLiveRegion={resolvedTone === 'success' ? 'polite' : undefined}
       className={`text-base leading-5 ${textClass}`}
     >
       {children}

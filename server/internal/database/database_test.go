@@ -121,6 +121,44 @@ func TestMigrationRejectsNewerDatabase(t *testing.T) {
 	}
 }
 
+func TestWorkSubjectMigrationDoesNotInventCommaBoundaries(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := strings.Join(migrations[:47], "\n") + `
+PRAGMA user_version=47;
+INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01','2026-01-01');
+INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES
+	('ambiguous','library','Ambiguous','2026-01-01','2026-01-01'),
+	('exact','library','Exact','2026-01-01','2026-01-01');
+INSERT INTO work_metadata(work_id,subjects,updated_at) VALUES
+	('ambiguous','Fiction, fantasy, general','2026-01-01'),
+	('exact','Classics','2026-01-01');`
+	if _, err := db.ExecContext(ctx, fixture); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var ambiguous int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM work_subjects WHERE work_id='ambiguous'`).Scan(&ambiguous); err != nil || ambiguous != 0 {
+		t.Fatalf("ambiguous subject rows = %d, %v", ambiguous, err)
+	}
+	var exact string
+	if err := db.QueryRowContext(ctx, `SELECT subject FROM work_subjects WHERE work_id='exact'`).Scan(&exact); err != nil || exact != "Classics" {
+		t.Fatalf("exact subject = %q, %v", exact, err)
+	}
+}
+
 func TestReaderNightThemeMigrationPreservesReadingState(t *testing.T) {
 	ctx := context.Background()
 	path := t.TempDir() + "/aldus.db"

@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	ErrNotFound  = errors.New("catalog resource not found")
-	ErrForbidden = errors.New("catalog operation forbidden")
-	ErrInvalid   = errors.New("invalid catalog input")
-	ErrLastOwner = errors.New("cannot remove last owner")
+	ErrNotFound            = errors.New("catalog resource not found")
+	ErrForbidden           = errors.New("catalog operation forbidden")
+	ErrInvalid             = errors.New("invalid catalog input")
+	ErrLastOwner           = errors.New("cannot remove last owner")
+	ErrMetadataUnavailable = errors.New("metadata provider unavailable")
 )
 
 type Store struct{ db *sql.DB }
@@ -66,6 +67,7 @@ type WorkDetail struct {
 	ISBN                                                               string
 	FirstPublishYear                                                   int
 	Publisher, Language, Subjects                                      string
+	SubjectValues                                                      []string
 	InProgress                                                         bool
 	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
 	LastMode                                                           string
@@ -424,6 +426,28 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return WorkDetail{}, fmt.Errorf("get work metadata: %w", err)
 	}
+	rows, err := s.db.QueryContext(ctx, `SELECT subject FROM work_subjects WHERE work_id=? ORDER BY ordinal`, id)
+	if err != nil {
+		return WorkDetail{}, fmt.Errorf("list work subjects: %w", err)
+	}
+	for rows.Next() {
+		var subject string
+		if err := rows.Scan(&subject); err != nil {
+			rows.Close()
+			return WorkDetail{}, fmt.Errorf("scan work subject: %w", err)
+		}
+		value.SubjectValues = append(value.SubjectValues, subject)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return WorkDetail{}, fmt.Errorf("iterate work subjects: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return WorkDetail{}, fmt.Errorf("close work subjects: %w", err)
+	}
+	if len(value.SubjectValues) == 0 && value.Subjects != "" {
+		value.SubjectValues = strings.Split(value.Subjects, ",")
+	}
 	var updated string
 	err = s.db.QueryRowContext(ctx, `
 		SELECT (p.work_id IS NOT NULL OR EXISTS(SELECT 1 FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL))),
@@ -448,7 +472,7 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 func (s *Store) CreateRepresentation(ctx context.Context, actor auth.User, workID, kind, label string) (Representation, error) {
 	kind = strings.TrimSpace(kind)
 	label = strings.TrimSpace(label)
-	if kind == "" || label == "" || len(kind) > 100 || len(label) > 300 {
+	if !validRepresentationKind(kind) || label == "" || len(label) > 300 {
 		return Representation{}, ErrInvalid
 	}
 	var libraryID string
@@ -469,6 +493,10 @@ func (s *Store) CreateRepresentation(ctx context.Context, actor auth.User, workI
 		return Representation{}, err
 	}
 	return Representation{ID: id, WorkID: workID, Kind: kind, Label: label, CreatedAt: now, UpdatedAt: now}, nil
+}
+
+func validRepresentationKind(kind string) bool {
+	return kind == "epub" || kind == "audio" || kind == "audiobook"
 }
 
 func (s *Store) Representations(ctx context.Context, actor auth.User, workID string, limit, offset int) ([]Representation, error) {

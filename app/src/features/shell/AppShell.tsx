@@ -20,6 +20,7 @@ function isActive(path: string, href: string) {
     (href === '/collections' && path.startsWith('/collections')) ||
     (href === '/activity' && path.startsWith('/activity')) ||
     (href === '/system' && path.startsWith('/system')) ||
+    (href === '/genre-tags' && path.startsWith('/genre-tags')) ||
     (href === '/libraries' &&
       ['/library/', '/representation/'].some((prefix) => path.startsWith(prefix)))
   );
@@ -59,6 +60,7 @@ function AppShellChrome() {
         { label: 'Acquisitions', href: '/acquisitions', icon: 'acquire' },
         { label: 'Sources', href: '/sources', icon: 'folder' },
         { label: 'Users', href: '/users', icon: 'users' },
+        { label: 'Genres', href: '/genre-tags', icon: 'genres' },
         { label: 'System', href: '/system', icon: 'system' },
       ]
     : [];

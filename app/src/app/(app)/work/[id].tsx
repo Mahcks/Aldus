@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '../../../features/auth/AuthProvider';
-import { Badge, BookCover, coverPresentation } from '../../../features/bookshelf';
+import { BookCover, coverPresentation } from '../../../features/bookshelf';
 import {
   choices,
   defaultPair,
@@ -36,6 +36,7 @@ import {
   Dialog,
   EmptyState,
   ErrorState,
+  GenreTagChip,
   IconButton,
   LoadingState,
   Notice,
@@ -217,16 +218,13 @@ export default function WorkScreen() {
   const secondaryAvailable =
     secondaryMode === 'read' ? Boolean(selectedEPUB) : Boolean(selectedAudio);
   const description = work.description?.trim();
+  const genreTags = work.genre_tags ?? [];
   const details = [
     work.first_publish_year ? `First published ${work.first_publish_year}` : '',
     work.publisher ? work.publisher : '',
     work.language ? languageName(work.language) : '',
     work.isbn ? `ISBN ${work.isbn}` : '',
   ].filter(Boolean);
-  const subjects = (work.subjects || '')
-    .split(',')
-    .map((subject) => subject.trim())
-    .filter(Boolean);
   const formatLabel = selectedEPUB
     ? selectedAudio
       ? 'Ebook and audiobook'
@@ -546,7 +544,7 @@ export default function WorkScreen() {
         </View>
       </Animated.View>
 
-      {description || details.length || canEdit ? (
+      {description || details.length || genreTags.length || canEdit ? (
         <View
           className={`mx-auto w-full max-w-[1000px] gap-3 ${narrow ? 'pb-6' : 'border-t border-line py-8'}`}
         >
@@ -578,7 +576,7 @@ export default function WorkScreen() {
                   label="Fill in details from Open Library"
                   icon="scan"
                   kind="secondary"
-                  onPress={() => router.push(`/work/${id}/manage?tab=cover`)}
+                  onPress={() => router.push(`/work/${id}/manage?tab=artwork`)}
                 />
               </View>
             </View>
@@ -586,10 +584,10 @@ export default function WorkScreen() {
           {details.length ? (
             <Text className="text-sm text-subtle">{details.join(' · ')}</Text>
           ) : null}
-          {subjects.length ? (
+          {genreTags.length ? (
             <View className="flex-row flex-wrap gap-1.5 pt-1">
-              {subjects.map((subject) => (
-                <Badge key={subject}>{subject}</Badge>
+              {genreTags.map((tag) => (
+                <GenreTagChip key={tag.id} icon={tag.icon} label={tag.label} />
               ))}
             </View>
           ) : null}

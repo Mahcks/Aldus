@@ -302,6 +302,9 @@ export interface WorkDetail extends Work {
   publisher?: string;
   language?: string;
   subjects?: string;
+  subject_values: string[];
+  genre_tags: GenreTag[];
+  genre_tags_manual: boolean;
   in_progress: boolean;
   progress_updated_at?: string;
   completion_percent: number /* int */;
@@ -310,6 +313,21 @@ export interface WorkDetail extends Work {
   listening_seconds: number /* int */;
   last_mode?: 'read' | 'listen' | '';
   reading_status: 'want_to_read' | 'reading' | 'finished' | '';
+}
+export interface GenreTag {
+  id: string;
+  label: string;
+  icon: string;
+  keywords?: string[];
+}
+export interface UnmatchedGenreSubject {
+  subject: string;
+  work_count: number /* int */;
+}
+export interface UnmatchedGenreSubjectPage {
+  items: UnmatchedGenreSubject[];
+  offset: number /* int */;
+  has_more: boolean;
 }
 export interface WorkSummary {
   id: string;
@@ -371,6 +389,25 @@ export interface CreateWorkRequest {
 export interface UpdateWorkRequest {
   title: string;
   author: string;
+  description?: string;
+  isbn?: string;
+  first_publish_year?: number /* int */;
+  publisher?: string;
+  language?: string;
+  subjects?: string[];
+}
+export interface CreateGenreTagRequest {
+  label: string;
+  icon: string;
+  keywords: string[];
+}
+export interface UpdateGenreTagRequest {
+  label: string;
+  icon: string;
+  keywords: string[];
+}
+export interface SetWorkGenreTagsRequest {
+  genre_tag_ids: string[];
 }
 export interface SetWorkStatusRequest {
   status: 'want_to_read' | 'reading' | 'finished' | '';

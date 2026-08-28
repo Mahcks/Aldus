@@ -42,6 +42,14 @@ func TestResolveAudioAndUpdateProgress(t *testing.T) {
 	}
 }
 
+func TestMetadataProviderFailureIsServiceUnavailable(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeCatalogResult(response, nil, fmt.Errorf("refresh metadata: %w", catalog.ErrMetadataUnavailable))
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "Open Library is temporarily unavailable") {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
+
 func TestSystemDiagnosticsAreAuthenticatedAndAdminOnly(t *testing.T) {
 	handler, token := testHandler(t)
 	response := request(t, handler, token, http.MethodGet, "/system/diagnostics", "")

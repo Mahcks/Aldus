@@ -2,25 +2,30 @@ import type {
   AlignmentJob,
   CoverAsset,
   CoverCandidate,
+  GenreTag,
   Library,
   Representation,
   Work,
+  WorkDetail,
 } from '../../../../generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { choices, type MediaChoice } from '../../../../features/consumption';
 import { BookCover, coverPresentation } from '../../../../features/bookshelf';
 import { useAuth } from '../../../../features/auth/AuthProvider';
-import { representationKinds } from '../../../../features/source-administration';
 import { TechnicalDetails } from '../../../../features/sources/TechnicalDetails';
-import { Pressable, Text, View } from '../../../../features/tw';
+import { Pressable, ScrollView, Text, View } from '../../../../features/tw';
 import {
   Button,
+  Checkbox,
   ConfirmDialog,
+  Dialog,
   EmptyState,
   Empty,
   Field,
+  GenreTagChip,
   Loading,
   Notice,
   Page,
@@ -36,13 +41,32 @@ import { api, errorMessage } from '../../../../lib/api';
 import { goBackOr } from '../../../../lib/navigation';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
+const focalPoints = [
+  { value: '0:0', label: 'Top left' },
+  { value: '50:0', label: 'Top center' },
+  { value: '100:0', label: 'Top right' },
+  { value: '0:50', label: 'Middle left' },
+  { value: '50:50', label: 'Center' },
+  { value: '100:50', label: 'Middle right' },
+  { value: '0:100', label: 'Bottom left' },
+  { value: '50:100', label: 'Bottom center' },
+  { value: '100:100', label: 'Bottom right' },
+];
 const manageTabs = [
-  { value: 'cover', label: 'Cover' },
-  { value: 'representations', label: 'Representations' },
-  { value: 'alignment', label: 'Alignment' },
-  { value: 'settings', label: 'Settings' },
+  { value: 'details', label: 'Details' },
+  { value: 'artwork', label: 'Artwork' },
+  { value: 'files', label: 'Files' },
+  { value: 'sync', label: 'Sync' },
 ] as const;
 type ManageTab = (typeof manageTabs)[number]['value'];
+
+function manageTab(value?: string): ManageTab {
+  if (value === 'cover') return 'artwork';
+  if (value === 'representations') return 'files';
+  if (value === 'alignment') return 'sync';
+  if (value === 'settings') return 'details';
+  return manageTabs.some((entry) => entry.value === value) ? (value as ManageTab) : 'details';
+}
 
 function alignmentJobTone(state: string): 'neutral' | 'info' | 'success' | 'warning' | 'danger' {
   if (state === 'ready') return 'success';
@@ -53,12 +77,27 @@ function alignmentJobTone(state: string): 'neutral' | 'info' | 'success' | 'warn
 }
 
 function alignmentJobHint(state: string) {
-  if (state === 'ready') return 'Ready — readers can switch between reading and listening in sync.';
+  if (state === 'ready') return 'Readers can switch between reading and listening in sync.';
   if (state === 'failed') return 'Alignment failed. See technical details, then try again.';
   if (state === 'stale')
     return 'One of the source files changed since this finished. Start a new alignment to keep sync accurate.';
-  if (state === 'processing') return 'Aligning now — this can take a few minutes.';
+  if (state === 'processing') return 'Aligning now. This can take a few minutes.';
   return 'Queued to begin shortly.';
+}
+
+function alignmentJobLabel(state: string) {
+  if (state === 'ready') return 'Ready';
+  if (state === 'failed') return 'Needs attention';
+  if (state === 'stale') return 'Out of date';
+  if (state === 'processing') return 'Aligning';
+  return 'Queued';
+}
+
+function alignmentNoticeTone(state: string): 'info' | 'warning' | 'success' | 'danger' {
+  if (state === 'ready') return 'success';
+  if (state === 'failed') return 'danger';
+  if (state === 'stale') return 'warning';
+  return 'info';
 }
 
 export default function ManageWorkScreen() {
@@ -67,12 +106,10 @@ export default function ManageWorkScreen() {
     tab?: string;
   }>();
   const auth = useAuth();
-  const initialTab: ManageTab = manageTabs.some((entry) => entry.value === tabParam)
-    ? (tabParam as ManageTab)
-    : 'cover';
+  const narrow = useWindowDimensions().width < 600;
+  const initialTab = manageTab(tabParam);
   const [activeTab, setActiveTab] = useState(initialTab);
-  const tabHistory = useRef<ManageTab[]>([initialTab]);
-  const [work, setWork] = useState<Work>();
+  const [work, setWork] = useState<WorkDetail>();
   const [library, setLibrary] = useState<Library>();
   const [representations, setRepresentations] = useState<Representation[]>([]);
   const [media, setMedia] = useState<MediaChoice[]>([]);
@@ -82,10 +119,25 @@ export default function ManageWorkScreen() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingCoverID, setDeletingCoverID] = useState('');
   const [deletingWork, setDeletingWork] = useState(false);
+  const [addFileOpen, setAddFileOpen] = useState(false);
+  const [addingFile, setAddingFile] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingGenres, setSavingGenres] = useState(false);
+  const [alignmentBusy, setAlignmentBusy] = useState(false);
+  const [cancelingJobID, setCancelingJobID] = useState('');
   const [kind, setKind] = useState('epub');
   const [label, setLabel] = useState('');
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [description, setDescription] = useState('');
+  const [isbn, setISBN] = useState('');
+  const [publishYear, setPublishYear] = useState('');
+  const [publisher, setPublisher] = useState('');
+  const [language, setLanguage] = useState('');
+  const [subjects, setSubjects] = useState('');
+  const [allGenreTags, setAllGenreTags] = useState<GenreTag[]>([]);
+  const [genreMode, setGenreMode] = useState<'automatic' | 'manual'>('automatic');
+  const [selectedGenreIDs, setSelectedGenreIDs] = useState<string[]>([]);
   const [epubID, setEPUBID] = useState('');
   const [audioID, setAudioID] = useState('');
   const [coverQuery, setCoverQuery] = useState('');
@@ -105,17 +157,28 @@ export default function ManageWorkScreen() {
     if (!id) return;
     try {
       const nextWork = await api.work(id);
-      const [nextLibrary, nextRepresentations, nextJobs, nextCovers] = await Promise.all([
-        api.library(nextWork.library_id),
-        api.representations(id),
-        api.alignmentJobs(id),
-        api.covers(id),
-      ]);
+      const [nextLibrary, nextRepresentations, nextJobs, nextCovers, nextGenreTags] =
+        await Promise.all([
+          api.library(nextWork.library_id),
+          api.representations(id),
+          api.alignmentJobs(id),
+          api.covers(id),
+          api.genreTags(),
+        ]);
       const revisions = await loadRevisions(nextWork.library_id, nextRepresentations);
       setWork(nextWork);
       setLibrary(nextLibrary);
       setTitle(nextWork.title);
       setAuthor(nextWork.author || '');
+      setDescription(nextWork.description || '');
+      setISBN(nextWork.isbn || '');
+      setPublishYear(nextWork.first_publish_year ? String(nextWork.first_publish_year) : '');
+      setPublisher(nextWork.publisher || '');
+      setLanguage(nextWork.language || '');
+      setSubjects((nextWork.subject_values ?? []).join('\n'));
+      setAllGenreTags(nextGenreTags);
+      setGenreMode(nextWork.genre_tags_manual ? 'manual' : 'automatic');
+      setSelectedGenreIDs(nextWork.genre_tags.map((tag) => tag.id));
       setCoverQuery((current) => current || `${nextWork.title} ${nextWork.author || ''}`.trim());
       setRepresentations(nextRepresentations);
       setMedia(revisions);
@@ -190,34 +253,69 @@ export default function ManageWorkScreen() {
   const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
   const selectedEPUB = epubs.find((item) => item.id === epubID);
   const selectedAudio = audio.find((item) => item.id === audioID);
+  const selectedPairJob = jobs.find(
+    (job) => job.epub_media_id === epubID && job.audio_media_id === audioID,
+  );
+  const selectedCoverAsset = coverAssets.find((asset) => asset.selected);
+  const syncRunning =
+    selectedPairJob?.state === 'pending' || selectedPairJob?.state === 'processing';
+  const syncReady = selectedPairJob?.state === 'ready';
+  const syncActionLabel = syncRunning
+    ? 'Sync in progress'
+    : syncReady
+      ? 'Sync ready'
+      : selectedPairJob?.state === 'failed'
+        ? 'Retry sync'
+        : selectedPairJob?.state === 'stale'
+          ? 'Rebuild sync'
+          : 'Create sync';
 
   function backToWork() {
-    if (activeTab !== 'cover') {
-      tabHistory.current.pop();
-      setActiveTab(tabHistory.current.at(-1) ?? 'cover');
-      return;
-    }
     goBackOr(`/work/${id}`);
   }
 
   function selectTab(next: ManageTab) {
     if (next === activeTab) return;
-    tabHistory.current.push(next);
     setActiveTab(next);
+    router.setParams({ tab: next });
   }
 
-  async function createRepresentation() {
+  async function addFile() {
+    if (addingFile || !label.trim() || !library) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      type: kind === 'epub' ? 'application/epub+zip' : 'audio/*',
+      multiple: false,
+    });
+    if (result.canceled) return;
+    setAddingFile(true);
+    setError('');
+    let representation: Representation | undefined;
     try {
-      await api.createRepresentation(id, { kind, label });
+      representation = await api.createRepresentation(id, { kind, label: label.trim() });
+      const asset = result.assets[0];
+      const blob = await fetch(asset.uri).then((response) => response.blob());
+      await api.uploadMedia(library.id, representation.id, blob, asset.name);
       setLabel('');
+      setAddFileOpen(false);
       await load();
     } catch (value) {
+      if (representation) {
+        try {
+          await api.deleteRepresentation(representation.id);
+        } catch {
+          // The upload may have succeeded before the response was interrupted; keep its data.
+        }
+      }
       setError(errorMessage(value));
+    } finally {
+      setAddingFile(false);
     }
   }
 
   async function enqueue() {
-    if (!selectedEPUB || !selectedAudio) return;
+    if (!selectedEPUB || !selectedAudio || alignmentBusy) return;
+    setAlignmentBusy(true);
+    setError('');
     try {
       const job = await api.enqueueAlignment({
         epub_media_id: selectedEPUB.id,
@@ -228,26 +326,82 @@ export default function ManageWorkScreen() {
       setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)]);
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      setAlignmentBusy(false);
     }
   }
 
   async function cancelJob(jobID: string) {
+    if (cancelingJobID) return;
+    setCancelingJobID(jobID);
     try {
       await api.cancelAlignment(jobID);
       const update = await api.alignmentJob(jobID);
       setJobs((current) => current.map((item) => (item.id === update.id ? update : item)));
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      setCancelingJobID('');
     }
   }
 
   async function saveWorkSettings() {
+    if (savingDetails || !title.trim()) return;
+    const year = publishYear.trim() ? Number(publishYear) : 0;
+    if (!Number.isInteger(year) || year < 0 || year > 9999) {
+      setError('Publication year must be a four-digit year.');
+      return;
+    }
+    setSavingDetails(true);
+    setError('');
+    setMetadataMessage('');
     try {
-      await api.updateWork(id, { title, author });
+      await api.updateWork(id, {
+        title,
+        author,
+        description,
+        isbn,
+        first_publish_year: year,
+        publisher,
+        language,
+        subjects: subjects
+          .split('\n')
+          .map((subject) => subject.trim())
+          .filter(Boolean),
+      });
       await load();
+      setMetadataMessage('Book details saved.');
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      setSavingDetails(false);
     }
+  }
+
+  async function saveGenres() {
+    if (savingGenres) return;
+    setSavingGenres(true);
+    setError('');
+    setMetadataMessage('');
+    try {
+      if (genreMode === 'manual') await api.setWorkGenreTags(id, selectedGenreIDs);
+      else await api.resetWorkGenreTags(id);
+      const nextWork = await api.work(id);
+      setWork(nextWork);
+      setGenreMode(nextWork.genre_tags_manual ? 'manual' : 'automatic');
+      setSelectedGenreIDs(nextWork.genre_tags.map((tag) => tag.id));
+      setMetadataMessage('Genres saved.');
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSavingGenres(false);
+    }
+  }
+
+  function toggleGenre(tagID: string) {
+    setSelectedGenreIDs((current) =>
+      current.includes(tagID) ? current.filter((id) => id !== tagID) : [...current, tagID],
+    );
   }
 
   async function searchCovers() {
@@ -273,8 +427,14 @@ export default function ManageWorkScreen() {
     try {
       const nextWork = await api.refreshWorkMetadata(id);
       setWork(nextWork);
+      setDescription(nextWork.description || '');
+      setISBN(nextWork.isbn || '');
+      setPublishYear(nextWork.first_publish_year ? String(nextWork.first_publish_year) : '');
+      setPublisher(nextWork.publisher || '');
+      setLanguage(nextWork.language || '');
+      setSubjects((nextWork.subject_values ?? []).join('\n'));
       setCoverAssets(await api.covers(id));
-      setMetadataMessage('Artwork and description refreshed where they were missing.');
+      setMetadataMessage('Missing details and artwork were refreshed.');
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -284,9 +444,12 @@ export default function ManageWorkScreen() {
 
   async function chooseCover(candidate: { source: string; source_id: string }) {
     setSavingCover(candidate.source_id);
+    setError('');
+    setMetadataMessage('');
     try {
       await api.selectCover(id, candidate.source, candidate.source_id);
       await load();
+      setMetadataMessage('Artwork selected.');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -296,9 +459,12 @@ export default function ManageWorkScreen() {
 
   async function restoreCover() {
     setSavingCover('restore');
+    setError('');
+    setMetadataMessage('');
     try {
       await api.restoreCover(id);
       await load();
+      setMetadataMessage('Generated cover restored.');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -309,6 +475,8 @@ export default function ManageWorkScreen() {
   async function saveCoverSettings() {
     const [focalX, focalY] = coverFocalPoint.split(':').map(Number);
     setSavingCover('settings');
+    setError('');
+    setMetadataMessage('');
     try {
       await api.updateCoverSettings(id, {
         fit: coverFit,
@@ -319,6 +487,7 @@ export default function ManageWorkScreen() {
         layout: generatedLayout,
       });
       await load();
+      setMetadataMessage('Artwork settings saved.');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -344,11 +513,13 @@ export default function ManageWorkScreen() {
     if (result.canceled) return;
     setSavingCover('upload');
     setError('');
+    setMetadataMessage('');
     try {
       const asset = result.assets[0];
       const blob = await fetch(asset.uri).then((response) => response.blob());
       await api.uploadCover(id, blob, asset.name);
       await load();
+      setMetadataMessage('Artwork uploaded.');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -381,390 +552,645 @@ export default function ManageWorkScreen() {
 
   return (
     <Page
-      title={`Manage · ${work.title}`}
+      title="Manage work"
       back={<Button label="Work" icon="back" kind="quiet" onPress={backToWork} />}
       editorial={false}
     >
-      {error ? <Notice danger>{error}</Notice> : null}
-      {metadataMessage ? <Notice>{metadataMessage}</Notice> : null}
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Manage section"
-        className="mb-5 flex-row flex-wrap gap-6 border-b border-line"
-      >
-        {manageTabs.map((tab) => (
-          <ManageTabItem
-            key={tab.value}
-            label={tab.label}
-            selected={activeTab === tab.value}
-            onPress={() => selectTab(tab.value)}
-          />
-        ))}
-      </View>
+      <View className="w-full max-w-[1000px] self-center gap-6">
+        <View className="gap-1 border-b border-line pb-4">
+          <Text numberOfLines={2} className="font-editorial-bold text-2xl text-ink">
+            {work.title}
+          </Text>
+          <Text className="text-sm text-muted">
+            {[work.author, library?.name].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        {error ? <Notice danger>{error}</Notice> : null}
+        {metadataMessage ? <Notice tone="success">{metadataMessage}</Notice> : null}
+        <ScrollView
+          horizontal
+          accessibilityRole="tablist"
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="min-w-full flex-row border-b border-line"
+        >
+          {manageTabs.map((tab) => (
+            <ManageTabItem
+              key={tab.value}
+              label={tab.label}
+              selected={activeTab === tab.value}
+              onPress={() => selectTab(tab.value)}
+            />
+          ))}
+        </ScrollView>
 
-      {activeTab === 'cover' ? (
-        <View className="gap-8">
-          <Section title="Cover">
-            <View className="gap-2">
-              <Text className={shared.itemMeta}>
-                Missing artwork, a description, publisher, language, or subjects? Aldus can match
-                this title and author with Open Library without replacing details you selected
-                yourself.
-              </Text>
-              <View className="self-start">
+        {activeTab === 'artwork' ? (
+          <View className="gap-8">
+            <Section
+              title="Cover studio"
+              action={
                 <Button
-                  label={refreshingMetadata ? 'Refreshing…' : 'Refresh metadata'}
+                  label={savingCover === 'upload' ? 'Uploading…' : 'Upload image'}
+                  icon="upload"
+                  kind="secondary"
+                  disabled={Boolean(savingCover)}
+                  onPress={() => void uploadCover()}
+                />
+              }
+            >
+              <View
+                className={`flex-row flex-wrap items-start gap-8 ${narrow ? 'justify-center' : ''}`}
+              >
+                <View className="w-[220px] items-center gap-3">
+                  <BookCover
+                    title={work.title}
+                    author={work.author}
+                    coverURL={work.cover_url}
+                    size="hero"
+                    coverFit={coverFit}
+                    coverFocalX={Number(coverFocalPoint.split(':')[0])}
+                    coverFocalY={Number(coverFocalPoint.split(':')[1])}
+                    generatedCoverStyle={generatedStyle}
+                    generatedCoverTone={Number(generatedTone)}
+                    generatedCoverLayout={generatedLayout}
+                  />
+                  <StatusBadge
+                    tone={work.cover_url ? 'success' : 'neutral'}
+                    label={work.cover_url ? 'Selected artwork' : 'Generated cover'}
+                  />
+                  <Text className="text-center text-xs text-muted">
+                    {selectedCoverAsset?.label ||
+                      (work.cover_url ? 'Custom artwork' : 'Aldus cover design')}
+                  </Text>
+                </View>
+                <View className="min-w-[280px] max-w-[640px] flex-1 gap-6">
+                  {work.cover_url ? (
+                    <View className="gap-5">
+                      <View className="gap-1">
+                        <Text className="text-base font-sans-bold text-ink">Image display</Text>
+                        <Text className={shared.itemMeta}>
+                          The preview updates immediately. Changes are published when you save.
+                        </Text>
+                      </View>
+                      <Select
+                        label="Fit"
+                        value={coverFit}
+                        options={[
+                          { value: 'cover', label: 'Fill cover' },
+                          { value: 'contain', label: 'Show full image' },
+                        ]}
+                        onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
+                      />
+                      <FocalPointPicker value={coverFocalPoint} onChange={setCoverFocalPoint} />
+                    </View>
+                  ) : null}
+                  <View className="gap-5 border-t border-line pt-5">
+                    <View className="gap-1">
+                      <Text className="text-base font-sans-bold text-ink">
+                        {work.cover_url ? 'Fallback cover' : 'Generated cover'}
+                      </Text>
+                      <Text className={shared.itemMeta}>
+                        {work.cover_url
+                          ? 'Used if the selected artwork is removed.'
+                          : 'Used now because no custom artwork is selected.'}
+                      </Text>
+                    </View>
+                    {work.cover_url ? (
+                      <BookCover
+                        title={work.title}
+                        author={work.author}
+                        size="small"
+                        generatedCoverStyle={generatedStyle}
+                        generatedCoverTone={Number(generatedTone)}
+                        generatedCoverLayout={generatedLayout}
+                      />
+                    ) : null}
+                    <Select
+                      label="Design"
+                      value={generatedStyle}
+                      options={[
+                        { value: 'classic', label: 'Classic' },
+                        { value: 'minimal', label: 'Minimal' },
+                        { value: 'framed', label: 'Framed' },
+                      ]}
+                      onChange={(value) =>
+                        setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')
+                      }
+                    />
+                    <Select
+                      label="Title position"
+                      value={generatedLayout}
+                      options={[
+                        { value: 'top', label: 'Top' },
+                        { value: 'center', label: 'Center' },
+                        { value: 'bottom', label: 'Bottom' },
+                      ]}
+                      onChange={(value) => setGeneratedLayout(value as 'top' | 'center' | 'bottom')}
+                    />
+                    <Select
+                      label="Cloth color"
+                      value={generatedTone}
+                      options={[
+                        { value: '-1', label: 'Automatic' },
+                        { value: '0', label: 'Ink' },
+                        { value: '1', label: 'Umber' },
+                        { value: '2', label: 'Terracotta' },
+                        { value: '3', label: 'Slate' },
+                        { value: '4', label: 'Sage' },
+                      ]}
+                      onChange={setGeneratedTone}
+                    />
+                  </View>
+                  <View className="gap-3 border-t border-line pt-5">
+                    <Text className={shared.itemMeta}>
+                      This cover is shared by reading and listening. Aldus never modifies the source
+                      ebook or audiobook.
+                    </Text>
+                    <Row>
+                      <Button
+                        label="Save artwork"
+                        kind="primary"
+                        loading={savingCover === 'settings'}
+                        disabled={Boolean(savingCover)}
+                        onPress={() => void saveCoverSettings()}
+                      />
+                      {work.cover_url ? (
+                        <Button
+                          label="Use generated cover"
+                          kind="secondary"
+                          loading={savingCover === 'restore'}
+                          disabled={Boolean(savingCover)}
+                          onPress={() => void restoreCover()}
+                        />
+                      ) : null}
+                    </Row>
+                  </View>
+                </View>
+              </View>
+            </Section>
+
+            <Section title="Artwork library">
+              <Text className={shared.itemMeta}>
+                Embedded, uploaded, and previously selected images stay available here.
+              </Text>
+              {coverAssets.length ? (
+                <View
+                  className={`flex-row flex-wrap items-start gap-5 ${narrow ? 'justify-center' : ''}`}
+                >
+                  {coverAssets.map((asset) => (
+                    <CoverAssetCard
+                      key={`${asset.source}-${asset.source_id}`}
+                      asset={asset}
+                      work={work}
+                      disabled={Boolean(savingCover)}
+                      selecting={savingCover === asset.source_id}
+                      onSelect={() =>
+                        void chooseCover({
+                          source: asset.source,
+                          source_id: asset.source_id,
+                        })
+                      }
+                      onDelete={
+                        asset.source === 'upload' && asset.id
+                          ? () => setDeletingCoverID(asset.id as string)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </View>
+              ) : (
+                <Text className={shared.itemMeta}>No source artwork was found for this Work.</Text>
+              )}
+            </Section>
+
+            <Section title="Find another edition">
+              <Text className={shared.itemMeta}>
+                Search Open Library by title, author, or ISBN.
+              </Text>
+              <View className={shared.form}>
+                <SearchField label="Search terms" value={coverQuery} onChangeText={setCoverQuery} />
+                <View className="self-start">
+                  <Button
+                    label={searchingCovers ? 'Searching…' : 'Search Open Library'}
+                    icon="search"
+                    kind="primary"
+                    disabled={searchingCovers || !coverQuery.trim()}
+                    onPress={() => void searchCovers()}
+                  />
+                </View>
+              </View>
+              {coverCandidates.length ? (
+                <View
+                  className={`flex-row flex-wrap items-start gap-5 ${narrow ? 'justify-center' : ''}`}
+                >
+                  {coverCandidates.map((candidate) => (
+                    <CoverCandidateCard
+                      key={`${candidate.source}-${candidate.source_id}`}
+                      candidate={candidate}
+                      fallbackTitle={work.title}
+                      fallbackAuthor={work.author}
+                      selecting={savingCover === candidate.source_id}
+                      disabled={Boolean(savingCover)}
+                      onPress={() => void chooseCover(candidate)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+              {!searchingCovers && coverCandidates.length === 0 ? (
+                <Text className={shared.itemMeta}>
+                  Results include edition details so you can avoid film tie-in artwork.
+                </Text>
+              ) : null}
+            </Section>
+          </View>
+        ) : null}
+
+        {activeTab === 'files' ? (
+          <Section
+            title="Files"
+            action={
+              <Button
+                label="Add file"
+                icon="add"
+                kind="primary"
+                onPress={() => setAddFileOpen(true)}
+              />
+            }
+          >
+            <Text className={shared.itemMeta}>
+              Keep reading editions and audiobook narrations together. Opening one lets you review
+              its immutable revisions or upload a newer file.
+            </Text>
+            {representations.length === 0 ? (
+              <EmptyState
+                icon="folder"
+                title="No ebook or audiobook files yet"
+                action={
+                  <Button label="Add file" kind="primary" onPress={() => setAddFileOpen(true)} />
+                }
+              >
+                Add an EPUB or audiobook to make this work available to readers.
+              </EmptyState>
+            ) : (
+              <View className="gap-6">
+                <RepresentationGroup
+                  title="Reading editions"
+                  items={representations.filter((item) => item.kind === 'epub')}
+                  media={media}
+                />
+                <RepresentationGroup
+                  title="Audiobook narrations"
+                  items={representations.filter(
+                    (item) => item.kind === 'audio' || item.kind === 'audiobook',
+                  )}
+                  media={media}
+                />
+              </View>
+            )}
+          </Section>
+        ) : null}
+
+        {activeTab === 'sync' ? (
+          <View className="gap-8">
+            <Section title="Read + Listen sync">
+              <Text className="max-w-[680px] text-base leading-6 text-muted">
+                Match one reading edition with one narration so readers can switch at the same
+                sentence.
+              </Text>
+              {!selectedEPUB || !selectedAudio ? (
+                <EmptyState
+                  icon="synced"
+                  title="An ebook and audiobook are required"
+                  action={
+                    <Button
+                      label="Review files"
+                      kind="primary"
+                      onPress={() => selectTab('files')}
+                    />
+                  }
+                >
+                  Add both formats in Files before creating synchronized reading and listening.
+                </EmptyState>
+              ) : (
+                <View className="gap-6">
+                  <View className="gap-4 border-y border-line py-5">
+                    <View className="flex-row flex-wrap items-center justify-between gap-3">
+                      <Text className="text-base font-sans-bold text-ink">Selected pair</Text>
+                      <StatusBadge
+                        tone={selectedPairJob ? alignmentJobTone(selectedPairJob.state) : 'neutral'}
+                        label={
+                          selectedPairJob ? alignmentJobLabel(selectedPairJob.state) : 'Not synced'
+                        }
+                      />
+                    </View>
+                    <View className={shared.split}>
+                      <SyncSourceSummary title="Reading edition" item={selectedEPUB} />
+                      <SyncSourceSummary title="Narration" item={selectedAudio} />
+                    </View>
+                    {selectedPairJob ? (
+                      <Notice tone={alignmentNoticeTone(selectedPairJob.state)}>
+                        {alignmentJobHint(selectedPairJob.state)}
+                      </Notice>
+                    ) : (
+                      <Text className={shared.itemMeta}>
+                        These files have not been synchronized yet.
+                      </Text>
+                    )}
+                  </View>
+
+                  {epubs.length > 1 || audio.length > 1 ? (
+                    <View className="gap-3">
+                      <Text className="text-base font-sans-bold text-ink">Choose source files</Text>
+                      <View className={shared.split}>
+                        <RevisionChoiceList
+                          title="Reading edition"
+                          items={epubs}
+                          selected={epubID}
+                          onSelect={setEPUBID}
+                        />
+                        <RevisionChoiceList
+                          title="Narration"
+                          items={audio}
+                          selected={audioID}
+                          onSelect={setAudioID}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View className="items-start gap-2">
+                    <Button
+                      label={syncActionLabel}
+                      kind="primary"
+                      loading={alignmentBusy}
+                      disabled={alignmentBusy || syncRunning || syncReady}
+                      onPress={() => void enqueue()}
+                    />
+                    <Text className={shared.itemMeta}>
+                      Alignment runs on the server. You can safely leave this page.
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </Section>
+
+            {jobs.length ? (
+              <Section title="Sync history">
+                {jobs.map((job) => {
+                  const epubMedia = media.find((item) => item.id === job.epub_media_id);
+                  const audioMedia = media.find((item) => item.id === job.audio_media_id);
+                  return (
+                    <View key={job.id} className={shared.listItem}>
+                      <View className="flex-row flex-wrap items-center gap-2">
+                        <StatusBadge
+                          tone={alignmentJobTone(job.state)}
+                          label={alignmentJobLabel(job.state)}
+                        />
+                        <Text className={shared.itemMeta}>
+                          {new Date(job.created_at).toLocaleString()}
+                        </Text>
+                      </View>
+                      <Text className={shared.itemTitle}>
+                        {epubMedia?.original_filename || epubMedia?.representation.label || 'EPUB'}
+                        {' + '}
+                        {audioMedia?.original_filename ||
+                          audioMedia?.representation.label ||
+                          'Audiobook'}
+                      </Text>
+                      <Text className={shared.itemMeta}>{alignmentJobHint(job.state)}</Text>
+                      <TechnicalDetails
+                        rows={[
+                          { label: 'Job ID', value: job.id, copyable: true },
+                          { label: 'EPUB media ID', value: job.epub_media_id, copyable: true },
+                          { label: 'Audio media ID', value: job.audio_media_id, copyable: true },
+                          ...(job.alignment_id
+                            ? [{ label: 'Alignment ID', value: job.alignment_id, copyable: true }]
+                            : []),
+                          ...(job.error
+                            ? [{ label: 'Error', value: job.error, copyable: true }]
+                            : []),
+                        ]}
+                      />
+                      {!terminal.has(job.state) ? (
+                        <View className="self-start">
+                          <Button
+                            label="Cancel"
+                            kind="danger"
+                            loading={cancelingJobID === job.id}
+                            disabled={Boolean(cancelingJobID)}
+                            onPress={() => void cancelJob(job.id)}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </Section>
+            ) : null}
+          </View>
+        ) : null}
+
+        {activeTab === 'details' ? (
+          <View className="gap-8">
+            <Section
+              title="Book details"
+              action={
+                <Button
+                  label="Fill missing details"
                   icon="scan"
                   kind="secondary"
                   loading={refreshingMetadata}
-                  disabled={refreshingMetadata || Boolean(savingCover)}
+                  disabled={refreshingMetadata || savingDetails}
                   onPress={() => void refreshMetadata()}
                 />
-              </View>
-            </View>
-            <View className="flex-row flex-wrap items-start gap-6">
-              <BookCover
-                title={work.title}
-                author={work.author}
-                coverURL={work.cover_url}
-                size="small"
-                coverFit={coverFit}
-                coverFocalX={Number(coverFocalPoint.split(':')[0])}
-                coverFocalY={Number(coverFocalPoint.split(':')[1])}
-                generatedCoverStyle={generatedStyle}
-                generatedCoverTone={Number(generatedTone)}
-                generatedCoverLayout={generatedLayout}
-              />
-              <View className="min-w-[280px] max-w-[680px] flex-1 gap-5">
-                <Text className={shared.itemMeta}>
-                  {work.cover_url
-                    ? 'Using custom artwork.'
-                    : 'Using the Aldus-generated cover — no artwork is selected.'}{' '}
-                  One cover is shared by reading and listening; source files are never modified.
-                </Text>
-
-                {work.cover_url ? (
-                  <View className="gap-5">
-                    <Select
-                      label="Image fit"
-                      value={coverFit}
-                      options={[
-                        { value: 'cover', label: 'Fill frame' },
-                        { value: 'contain', label: 'Show full image' },
-                      ]}
-                      onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
-                    />
-                    <Select
-                      label="Image focus"
-                      value={coverFocalPoint}
-                      options={[
-                        { value: '50:0', label: 'Top' },
-                        { value: '50:50', label: 'Center' },
-                        { value: '50:100', label: 'Bottom' },
-                        { value: '0:50', label: 'Left' },
-                        { value: '100:50', label: 'Right' },
-                      ]}
-                      onChange={setCoverFocalPoint}
+              }
+            >
+              <Text className={shared.itemMeta}>
+                Edit what readers see. Open Library only fills blank fields and never replaces your
+                changes.
+              </Text>
+              <View className="max-w-[760px] gap-4">
+                <Field label="Title" value={title} onChangeText={setTitle} />
+                <Field label="Author" value={author} onChangeText={setAuthor} />
+                <Field
+                  label="Description"
+                  value={description}
+                  multiline
+                  numberOfLines={6}
+                  className="min-h-32"
+                  onChangeText={setDescription}
+                />
+                <View className="flex-row flex-wrap gap-4">
+                  <View className="min-w-[220px] flex-grow basis-[280px]">
+                    <Field label="Publisher" value={publisher} onChangeText={setPublisher} />
+                  </View>
+                  <View className="min-w-[160px] flex-grow basis-[180px]">
+                    <Field
+                      label="Publication year"
+                      value={publishYear}
+                      keyboardType="number-pad"
+                      onChangeText={setPublishYear}
                     />
                   </View>
-                ) : null}
-
-                <View className="gap-1">
-                  <Text className={shared.itemTitle}>Generated cover design</Text>
-                  <Text className={shared.itemMeta}>
-                    {work.cover_url
-                      ? 'Used automatically if the custom artwork above is ever removed — worth setting up now.'
-                      : 'This is what readers see for this Work today.'}
-                  </Text>
                 </View>
-                <Select
-                  label="Design"
-                  value={generatedStyle}
-                  options={[
-                    { value: 'classic', label: 'Classic' },
-                    { value: 'minimal', label: 'Minimal' },
-                    { value: 'framed', label: 'Framed' },
-                  ]}
-                  onChange={(value) => setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')}
+                <View className="flex-row flex-wrap gap-4">
+                  <View className="min-w-[220px] flex-grow basis-[280px]">
+                    <Field label="ISBN" value={isbn} onChangeText={setISBN} />
+                  </View>
+                  <View className="min-w-[160px] flex-grow basis-[180px]">
+                    <Field label="Language" value={language} onChangeText={setLanguage} />
+                  </View>
+                </View>
+                <Field
+                  label="Subjects"
+                  help="One subject per line. Genres are assigned from these values."
+                  value={subjects}
+                  multiline
+                  numberOfLines={5}
+                  className="min-h-28"
+                  onChangeText={setSubjects}
                 />
+                <View className="self-start">
+                  <Button
+                    label="Save details"
+                    kind="primary"
+                    loading={savingDetails}
+                    disabled={savingDetails || !title.trim()}
+                    onPress={() => void saveWorkSettings()}
+                  />
+                </View>
+              </View>
+            </Section>
+            <Section title="Genres">
+              <View className="max-w-[760px] gap-5">
                 <Select
-                  label="Title position"
-                  value={generatedLayout}
+                  label="Assignment"
+                  value={genreMode}
                   options={[
-                    { value: 'top', label: 'Top' },
-                    { value: 'center', label: 'Center' },
-                    { value: 'bottom', label: 'Bottom' },
+                    { value: 'automatic', label: 'Match from subjects' },
+                    { value: 'manual', label: 'Choose manually' },
                   ]}
-                  onChange={(value) => setGeneratedLayout(value as 'top' | 'center' | 'bottom')}
+                  onChange={(value) => setGenreMode(value as 'automatic' | 'manual')}
                 />
-                <Select
-                  label="Cloth color"
-                  value={generatedTone}
-                  options={[
-                    { value: '-1', label: 'Automatic' },
-                    { value: '0', label: 'Ink' },
-                    { value: '1', label: 'Umber' },
-                    { value: '2', label: 'Terracotta' },
-                    { value: '3', label: 'Slate' },
-                    { value: '4', label: 'Sage' },
-                  ]}
-                  onChange={setGeneratedTone}
-                />
-
+                {genreMode === 'automatic' ? (
+                  <View className="gap-3 border-y border-line py-4">
+                    <Text className={shared.itemMeta}>
+                      Aldus matches the subjects above against the genre rules configured for this
+                      server.
+                    </Text>
+                    {work.genre_tags.length ? (
+                      <View className="flex-row flex-wrap gap-2">
+                        {work.genre_tags.map((tag) => (
+                          <GenreTagChip key={tag.id} icon={tag.icon} label={tag.label} />
+                        ))}
+                      </View>
+                    ) : (
+                      <Text className="text-sm text-muted">No genres currently match.</Text>
+                    )}
+                  </View>
+                ) : (
+                  <View className="gap-2">
+                    <Text className={shared.itemMeta}>
+                      This exact selection replaces automatic matching for this work.
+                    </Text>
+                    <View className="flex-row flex-wrap gap-x-6 gap-y-1 border-y border-line py-3">
+                      {allGenreTags.map((tag) => (
+                        <View key={tag.id} className="min-w-[180px] flex-grow basis-[220px]">
+                          <Checkbox
+                            label={tag.label}
+                            checked={selectedGenreIDs.includes(tag.id)}
+                            onPress={() => toggleGenre(tag.id)}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                    {!selectedGenreIDs.length ? (
+                      <Text className="text-sm text-muted">
+                        No genres selected. This work will appear without genre tags.
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+                <View className="self-start">
+                  <Button
+                    label="Save genres"
+                    kind="primary"
+                    loading={savingGenres}
+                    disabled={savingGenres}
+                    onPress={() => void saveGenres()}
+                  />
+                </View>
+              </View>
+            </Section>
+            <Section title="Delete work">
+              <View className="max-w-[760px] gap-3">
+                <Text className={shared.itemMeta}>
+                  {representations.length
+                    ? 'This work still has files. Remove its reading editions and narrations before deleting it.'
+                    : 'Permanently remove this work from the library.'}
+                </Text>
                 <Row>
-                  {work.cover_url ? (
+                  {representations.length ? (
                     <Button
-                      label="Remove artwork, use generated cover"
+                      label="Review files"
                       kind="secondary"
-                      loading={savingCover === 'restore'}
-                      disabled={Boolean(savingCover)}
-                      onPress={() => void restoreCover()}
+                      onPress={() => selectTab('files')}
                     />
                   ) : null}
                   <Button
-                    label="Save cover settings"
-                    kind="primary"
-                    loading={savingCover === 'settings'}
-                    disabled={Boolean(savingCover)}
-                    onPress={() => void saveCoverSettings()}
+                    label="Delete work"
+                    kind="danger"
+                    disabled={representations.length > 0}
+                    onPress={() => setConfirmingDelete(true)}
                   />
                 </Row>
               </View>
-            </View>
-          </Section>
-
-          <Section title="Cover library">
-            <Text className={shared.itemMeta}>
-              Embedded, uploaded, and previously selected artwork stays available here.
-            </Text>
-            <View className="self-start">
-              <Button
-                label={savingCover === 'upload' ? 'Uploading…' : 'Upload an image'}
-                icon="add"
-                kind="secondary"
-                disabled={Boolean(savingCover)}
-                onPress={() => void uploadCover()}
-              />
-            </View>
-            {coverAssets.length ? (
-              <View className="flex-row flex-wrap items-start gap-5">
-                {coverAssets.map((asset) => (
-                  <CoverAssetCard
-                    key={`${asset.source}-${asset.source_id}`}
-                    asset={asset}
-                    work={work}
-                    disabled={Boolean(savingCover)}
-                    selecting={savingCover === asset.source_id}
-                    onSelect={() =>
-                      void chooseCover({
-                        source: asset.source,
-                        source_id: asset.source_id,
-                      })
-                    }
-                    onDelete={
-                      asset.source === 'upload' && asset.id
-                        ? () => setDeletingCoverID(asset.id as string)
-                        : undefined
-                    }
-                  />
-                ))}
-              </View>
-            ) : (
-              <Text className={shared.itemMeta}>No source artwork was found for this Work.</Text>
-            )}
-          </Section>
-
-          <Section title="Find another edition">
-            <Text className={shared.itemMeta}>Search Open Library by title, author, or ISBN.</Text>
-            <SearchField label="Search terms" value={coverQuery} onChangeText={setCoverQuery} />
-            <View className="self-start">
-              <Button
-                label={searchingCovers ? 'Searching…' : 'Search Open Library'}
-                icon="search"
-                kind="primary"
-                disabled={searchingCovers || !coverQuery.trim()}
-                onPress={() => void searchCovers()}
-              />
-            </View>
-            {coverCandidates.length ? (
-              <View className="flex-row flex-wrap items-start gap-5">
-                {coverCandidates.map((candidate) => (
-                  <CoverCandidateCard
-                    key={`${candidate.source}-${candidate.source_id}`}
-                    candidate={candidate}
-                    fallbackTitle={work.title}
-                    fallbackAuthor={work.author}
-                    selecting={savingCover === candidate.source_id}
-                    disabled={Boolean(savingCover)}
-                    onPress={() => void chooseCover(candidate)}
-                  />
-                ))}
-              </View>
-            ) : null}
-            {!searchingCovers && coverCandidates.length === 0 ? (
-              <Text className={shared.itemMeta}>
-                Results include edition details so you can avoid film tie-in artwork.
-              </Text>
-            ) : null}
-          </Section>
-        </View>
-      ) : null}
-
-      {activeTab === 'representations' ? (
-        <View className="gap-8">
-          <Section title="Manage representations">
-            {representations.length === 0 ? (
-              <EmptyState icon="folder" title="No representations yet">
-                Add an EPUB or audio representation below to start building this Work.
-              </EmptyState>
-            ) : (
-              representations.map((item) => {
-                const revisions = media.filter(
-                  (revision) => revision.representation_id === item.id,
-                );
-                return (
-                  <Pressable
-                    accessibilityRole="link"
-                    key={item.id}
-                    className={shared.listItem}
-                    onPress={() => router.push(`/representation/${item.id}`)}
-                  >
-                    <Text className={shared.itemTitle}>{item.label}</Text>
-                    <Text className={shared.itemMeta}>
-                      {item.kind} · {revisions.length} immutable revision
-                      {revisions.length === 1 ? '' : 's'}
-                    </Text>
-                  </Pressable>
-                );
-              })
-            )}
-          </Section>
-          <Section title="Add representation">
-            <View className={shared.form}>
-              <Select label="Kind" options={representationKinds} value={kind} onChange={setKind} />
-              <Field
-                label="Label"
-                value={label}
-                onChangeText={setLabel}
-                placeholder="Narrated by… or 2026 EPUB"
-              />
-              <View className="self-start">
-                <Button
-                  label="Create representation"
-                  kind="primary"
-                  disabled={!kind.trim() || !label.trim()}
-                  onPress={createRepresentation}
-                />
-              </View>
-            </View>
-          </Section>
-        </View>
-      ) : null}
-
-      {activeTab === 'alignment' ? (
-        <Section title="Alignment management">
-          <Notice>
-            Alignment matches exact EPUB and audiobook revisions word-for-word, so readers can jump
-            between reading and listening at the same point. Pick one revision of each below.
-          </Notice>
-          <View className={shared.split}>
-            <RevisionChoiceList
-              title="EPUB revision"
-              items={epubs}
-              selected={epubID}
-              onSelect={setEPUBID}
-            />
-            <RevisionChoiceList
-              title="Audiobook revision"
-              items={audio}
-              selected={audioID}
-              onSelect={setAudioID}
-            />
+            </Section>
           </View>
-          <View className="items-start gap-2">
+        ) : null}
+      </View>
+
+      <Dialog
+        visible={addFileOpen}
+        title="Add file"
+        fullScreen={narrow}
+        onClose={() => !addingFile && setAddFileOpen(false)}
+      >
+        <View className="gap-5">
+          <Select
+            label="Format"
+            options={[
+              { value: 'epub', label: 'Ebook' },
+              { value: 'audiobook', label: 'Audiobook' },
+            ]}
+            value={kind}
+            onChange={setKind}
+          />
+          <Field
+            label={kind === 'epub' ? 'Edition label' : 'Narration label'}
+            value={label}
+            placeholder={kind === 'epub' ? 'Standard EPUB' : 'Narrated by…'}
+            onChangeText={setLabel}
+          />
+          <Text className={shared.itemMeta}>
+            You will choose the file next. Aldus validates it before adding anything to this work.
+          </Text>
+          <Row>
             <Button
-              label="Start alignment"
-              kind="primary"
-              disabled={!selectedEPUB || !selectedAudio}
-              onPress={enqueue}
+              label="Cancel"
+              kind="secondary"
+              disabled={addingFile}
+              onPress={() => setAddFileOpen(false)}
             />
-            <Text className={shared.itemMeta}>
-              Runs on the server — you can leave this page and check back later.
-            </Text>
-          </View>
-          {jobs.length === 0 ? (
-            <EmptyState icon="synced" title="No alignment jobs">
-              Start alignment above once an EPUB and audiobook revision are selected.
-            </EmptyState>
-          ) : (
-            jobs.map((job) => {
-              const epubMedia = media.find((item) => item.id === job.epub_media_id);
-              const audioMedia = media.find((item) => item.id === job.audio_media_id);
-              return (
-                <View key={job.id} className={shared.listItem}>
-                  <View className="flex-row flex-wrap items-center gap-2">
-                    <StatusBadge tone={alignmentJobTone(job.state)} label={job.state} />
-                    <Text className={shared.itemMeta}>
-                      {new Date(job.created_at).toLocaleString()}
-                    </Text>
-                  </View>
-                  <Text className={shared.itemTitle}>
-                    {epubMedia?.original_filename || epubMedia?.representation.label || 'EPUB'}
-                    {' + '}
-                    {audioMedia?.original_filename ||
-                      audioMedia?.representation.label ||
-                      'Audiobook'}
-                  </Text>
-                  <Text className={shared.itemMeta}>
-                    {alignmentJobHint(job.state)}
-                    {job.error ? ` (${job.error})` : ''}
-                  </Text>
-                  <TechnicalDetails
-                    rows={[
-                      { label: 'Job ID', value: job.id, copyable: true },
-                      { label: 'EPUB media ID', value: job.epub_media_id, copyable: true },
-                      { label: 'Audio media ID', value: job.audio_media_id, copyable: true },
-                      ...(job.alignment_id
-                        ? [{ label: 'Alignment ID', value: job.alignment_id, copyable: true }]
-                        : []),
-                    ]}
-                  />
-                  {!terminal.has(job.state) ? (
-                    <View className="self-start">
-                      <Button label="Cancel" kind="danger" onPress={() => void cancelJob(job.id)} />
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })
-          )}
-        </Section>
-      ) : null}
-
-      {activeTab === 'settings' ? (
-        <Section title="Work settings">
-          <View className={shared.form}>
-            <Field label="Title" value={title} onChangeText={setTitle} />
-            <Field label="Author" value={author} onChangeText={setAuthor} />
-            <View className="self-start">
-              <Button label="Save" kind="primary" onPress={() => void saveWorkSettings()} />
-            </View>
-            <View className="mt-4 gap-2 border-t border-line pt-4">
-              <Text className="text-sm font-sans-bold text-ink">Delete work</Text>
-              <Text className={shared.itemMeta}>
-                The work must have no representations before it can be deleted.
-              </Text>
-              <View className="self-start">
-                <Button
-                  label="Delete work"
-                  kind="danger"
-                  onPress={() => setConfirmingDelete(true)}
-                />
-              </View>
-            </View>
-          </View>
-        </Section>
-      ) : null}
+            <Button
+              label="Choose file"
+              kind="primary"
+              loading={addingFile}
+              disabled={addingFile || !label.trim()}
+              onPress={() => void addFile()}
+            />
+          </Row>
+        </View>
+      </Dialog>
 
       <ConfirmDialog
         visible={Boolean(deletingCoverID)}
@@ -790,7 +1216,7 @@ export default function ManageWorkScreen() {
   );
 }
 
-/** Flat underline tab, not a bordered button — matches the mobile tab bar's treatment (color, not a box). */
+/** Flat underline tab, kept on one horizontal row by the parent ScrollView. */
 function ManageTabItem({
   label,
   selected,
@@ -810,18 +1236,109 @@ function ManageTabItem({
 
   return (
     <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
       accessibilityLabel={label}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className={`min-h-11 items-center justify-center border-b-2 px-1 pb-3 ${borderClass} ${opacityClass}`}
+      className={`min-h-11 flex-1 items-center justify-center border-b-2 px-4 pb-3 ${borderClass} ${opacityClass}`}
     >
       <Text className={`text-sm font-sans-bold ${textClass}`}>{label}</Text>
     </Pressable>
+  );
+}
+
+function FocalPointPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const selected = focalPoints.find((point) => point.value === value) ?? focalPoints[4];
+  return (
+    <View className="gap-2">
+      <Text className="text-sm font-sans-semibold text-ink">Focus</Text>
+      <View className="flex-row items-center gap-3">
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Image focus"
+          className="self-start overflow-hidden rounded-control border border-line bg-control"
+        >
+          {[0, 3, 6].map((start) => (
+            <View key={start} className="flex-row">
+              {focalPoints.slice(start, start + 3).map((point) => {
+                const checked = point.value === value;
+                return (
+                  <Pressable
+                    key={point.value}
+                    accessibilityRole="radio"
+                    accessibilityLabel={point.label}
+                    accessibilityState={{ checked }}
+                    className={`h-12 w-12 items-center justify-center border border-line ${checked ? 'bg-accent-soft' : 'bg-control'}`}
+                    onPress={() => onChange(point.value)}
+                  >
+                    <View
+                      className={`rounded-full ${checked ? 'h-3 w-3 bg-accent' : 'h-1.5 w-1.5 bg-subtle'}`}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+        <Text className="text-sm text-muted">{selected.label}</Text>
+      </View>
+    </View>
+  );
+}
+
+function RepresentationGroup({
+  title,
+  items,
+  media,
+}: {
+  title: string;
+  items: Representation[];
+  media: MediaChoice[];
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-base font-sans-bold text-ink">{title}</Text>
+      {items.length ? (
+        <View className="border-t border-line">
+          {items.map((item) => {
+            const revisions = media.filter((revision) => revision.representation_id === item.id);
+            const newest = revisions[0];
+            const detail = newest
+              ? `${newest.original_filename || 'Unnamed file'} · ${formatBytes(newest.size_bytes)} · ${revisions.length} ${revisions.length === 1 ? 'revision' : 'revisions'}`
+              : 'No uploaded file';
+            return (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Manage ${item.label}`}
+                key={item.id}
+                className="min-h-14 flex-row items-center gap-4 border-b border-line py-3.5"
+                onPress={() => router.push(`/representation/${item.id}`)}
+              >
+                <View className="min-w-0 flex-1 gap-1">
+                  <Text className={shared.itemTitle}>{item.label}</Text>
+                  <Text numberOfLines={2} className={shared.itemMeta}>
+                    {detail}
+                  </Text>
+                </View>
+                <Text className="text-sm font-sans-bold text-accent">Manage</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <Text className={shared.itemMeta}>None added.</Text>
+      )}
+    </View>
   );
 }
 
@@ -986,6 +1503,20 @@ function RevisionChoiceList({
           );
         })
       )}
+    </View>
+  );
+}
+
+function SyncSourceSummary({ title, item }: { title: string; item: MediaChoice }) {
+  return (
+    <View className="min-w-[240px] flex-1 gap-1">
+      <Text className="text-xs font-sans-bold uppercase tracking-wide text-muted">{title}</Text>
+      <Text numberOfLines={2} className={shared.itemTitle}>
+        {item.original_filename || item.representation.label}
+      </Text>
+      <Text className={shared.itemMeta}>
+        {item.representation.label} · {formatBytes(item.size_bytes)}
+      </Text>
     </View>
   );
 }

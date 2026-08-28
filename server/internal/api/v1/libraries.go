@@ -110,6 +110,9 @@ func writeCatalogResult(w http.ResponseWriter, value any, err error) {
 		http.Error(w, "last owner", http.StatusConflict)
 	case errors.Is(err, catalog.ErrReferenced):
 		http.Error(w, "resource is referenced", http.StatusConflict)
+	case errors.Is(err, catalog.ErrMetadataUnavailable):
+		slog.Warn("metadata provider unavailable", "error", err)
+		http.Error(w, "Open Library is temporarily unavailable. Try again.", http.StatusServiceUnavailable)
 	case err != nil:
 		slog.Error("catalog request failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

@@ -146,7 +146,19 @@ var readerNightThemeSchema string
 //go:embed migrations/045_reader_defaults.sql
 var readerDefaultsSchema string
 
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema, workDescriptionsSchema, exclusiveLibraryGrantsSchema, workPublisherDetailsSchema, notificationWorkIDSchema, demoUsersSchema, demoPairingSchema, accountDeletionSchema, notificationRecipientIntegritySchema, accountCredentialsSchema, readerNightThemeSchema, readerDefaultsSchema}
+//go:embed migrations/046_genre_tags.sql
+var genreTagsSchema string
+
+//go:embed migrations/047_genre_tag_seed_corrections.sql
+var genreTagSeedCorrectionsSchema string
+
+//go:embed migrations/048_work_subjects.sql
+var workSubjectsSchema string
+
+//go:embed migrations/049_work_genre_overrides.sql
+var workGenreOverridesSchema string
+
+var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema, workDescriptionsSchema, exclusiveLibraryGrantsSchema, workPublisherDetailsSchema, notificationWorkIDSchema, demoUsersSchema, demoPairingSchema, accountDeletionSchema, notificationRecipientIntegritySchema, accountCredentialsSchema, readerNightThemeSchema, readerDefaultsSchema, genreTagsSchema, genreTagSeedCorrectionsSchema, workSubjectsSchema, workGenreOverridesSchema}
 
 func SupportedSchemaVersion() int { return len(migrations) }
 

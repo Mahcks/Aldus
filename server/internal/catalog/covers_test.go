@@ -4,11 +4,49 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestOpenLibraryGETRetriesTransientFailure(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	response, err := openLibraryGET(context.Background(), server.Client(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if requests != 2 {
+		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestOpenLibraryGETReportsUnavailableAfterRetry(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	response, err := openLibraryGET(context.Background(), server.Client(), server.URL)
+	if response != nil || requests != 2 || !errors.Is(err, ErrMetadataUnavailable) {
+		t.Fatalf("response = %#v, requests = %d, error = %v", response, requests, err)
+	}
+}
 
 func TestParseOpenLibraryCovers(t *testing.T) {
 	values, err := parseOpenLibraryCovers(strings.NewReader(`{"docs":[{"cover_i":42,"title":"Alice","author_name":["Lewis Carroll"],"publisher":["Macmillan"],"isbn":["123"],"first_publish_year":1865},{"cover_i":42,"title":"Duplicate"},{"title":"No cover"}]}`))
@@ -46,7 +84,19 @@ func TestParseOpenLibraryCoversDropsNamespacedFacetKeys(t *testing.T) {
 	if err != nil || len(values) != 1 {
 		t.Fatalf("covers = %#v, %v", values, err)
 	}
-	if got, want := values[0].Subjects, "New York Times bestseller,School & Education,Fiction,Vampires,Werewolves"; got != want {
+	want := []string{"New York Times bestseller", "School & Education", "Fiction", "Vampires", "Werewolves"}
+	if got := values[0].Subjects; !slices.Equal(got, want) {
+		t.Fatalf("subjects = %q, want %q", got, want)
+	}
+}
+
+func TestCleanOpenLibrarySubjectsPreservesUsefulExactValues(t *testing.T) {
+	input := []string{
+		"series:Twilight", "Fiction", "Fantasy", "Mystery", "Romance", "Drama", "Poetry",
+		"Civilization: history", "JUVENILE FICTION", "juvenile fiction", " time:Victorian ",
+	}
+	want := []string{"Fiction", "Fantasy", "Mystery", "Romance", "Drama", "Poetry", "Civilization: history", "JUVENILE FICTION"}
+	if got := cleanOpenLibrarySubjects(input); !slices.Equal(got, want) {
 		t.Fatalf("subjects = %q, want %q", got, want)
 	}
 }
@@ -101,6 +151,54 @@ func TestSaveRefreshedMetadataPreservesExistingValues(t *testing.T) {
 	detail, err = store.WorkDetail(ctx, admin, work.ID)
 	if err != nil || detail.CoverURL != openLibraryCoverURL("99") || detail.Description != "Curated" {
 		t.Fatalf("preserved refresh = %#v, %v", detail, err)
+	}
+}
+
+func TestSaveRefreshedMetadataPreservesSubjectBoundaries(t *testing.T) {
+	ctx := context.Background()
+	store, _, admin := testCatalog(t)
+	library, _ := store.CreateLibrary(ctx, admin, "Library")
+	work, _ := store.CreateWork(ctx, admin, library.ID, "Alice", "Lewis Carroll")
+	subjects := []string{"Fiction, fantasy, general", "JUVENILE FICTION", "Classics"}
+	if err := store.saveRefreshedMetadata(ctx, work.ID, refreshedMetadata{CoverID: "42", Subjects: subjects}); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := store.WorkDetail(ctx, admin, work.ID)
+	if err != nil || !slices.Equal(detail.SubjectValues, subjects) {
+		t.Fatalf("subjects = %q, %v", detail.SubjectValues, err)
+	}
+	if err := store.saveRefreshedMetadata(ctx, work.ID, refreshedMetadata{CoverID: "43", Subjects: []string{"Replacement"}}); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = store.WorkDetail(ctx, admin, work.ID)
+	if err != nil || !slices.Equal(detail.SubjectValues, subjects) {
+		t.Fatalf("subjects after second refresh = %q, %v", detail.SubjectValues, err)
+	}
+}
+
+func TestUpdateWorkDetailsReplacesEditableMetadata(t *testing.T) {
+	ctx := context.Background()
+	store, _, admin := testCatalog(t)
+	library, _ := store.CreateLibrary(ctx, admin, "Library")
+	work, _ := store.CreateWork(ctx, admin, library.ID, "Old title", "Old author")
+	update := WorkUpdate{
+		Title: "Treasure Island", Author: "Robert Louis Stevenson",
+		Description: "A sea adventure.", ISBN: "9780000000000", FirstPublishYear: 1883,
+		Publisher: "Cassell & Company", Language: "English",
+		Subjects: []string{"Adventure fiction", "Pirates", "adventure fiction"},
+	}
+	if err := store.UpdateWork(ctx, admin, work.ID, update); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := store.WorkDetail(ctx, admin, work.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Title != update.Title || detail.Author != update.Author || detail.Description != update.Description || detail.ISBN != update.ISBN || detail.FirstPublishYear != update.FirstPublishYear || detail.Publisher != update.Publisher || detail.Language != update.Language {
+		t.Fatalf("detail = %#v", detail)
+	}
+	if want := []string{"Adventure fiction", "Pirates"}; !slices.Equal(detail.SubjectValues, want) {
+		t.Fatalf("subjects = %q, want %q", detail.SubjectValues, want)
 	}
 }
 

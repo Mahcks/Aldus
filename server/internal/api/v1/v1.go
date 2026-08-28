@@ -16,6 +16,7 @@ func Handler(deps Dependencies) http.Handler {
 		registerSessionRoutes(router, deps.Auth)
 		router.Group(func(router chi.Router) {
 			router.Use(deps.Auth.RequireClaimed)
+			registerGenreTagRoutes(router, deps.GenreTags)
 			registerReaderCredentialRoutes(router, deps.Auth)
 			registerUserRoutes(router, deps.Auth)
 			registerLibraryRoutes(router, deps.Catalog)
@@ -23,7 +24,7 @@ func Handler(deps Dependencies) http.Handler {
 				registerCollectionRoutes(router, deps.Collections)
 			}
 			registerSourceRoutes(router, deps.Sources)
-			registerWorkRoutes(router, deps.Catalog, deps.Ingest)
+			registerWorkRoutes(router, deps.Catalog, deps.Ingest, deps.GenreTags)
 			registerRepresentationRoutes(router, deps.Catalog)
 			registerMediaRoutes(router, deps.Ingest)
 			registerAlignmentJobRoutes(router, deps.AlignmentJobs, deps.Catalog)

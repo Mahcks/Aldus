@@ -25,6 +25,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/config"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
+	"github.com/mahcks/aldus/server/internal/genretag"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/notification"
 	"github.com/mahcks/aldus/server/internal/position"
@@ -117,6 +118,7 @@ func main() {
 	slog.Debug("database ready", "path", databasePath)
 	store := position.New(db)
 	catalogStore := catalog.New(db)
+	genreTagStore := genretag.New(db)
 	collectionStore := collection.New(db)
 	mediaDir := cfg.MediaDir
 	if mediaDir == "" {
@@ -215,6 +217,7 @@ func main() {
 			TitleRequests:       titleRequestStore,
 			Notifications:       notificationStore,
 			Diagnostics:         diagnosticStore,
+			GenreTags:           genreTagStore,
 			Backups:             backupManager,
 			KOReader:            koreader.Credentials{User: cfg.KOReaderUser, Key: cfg.KOReaderKey}, AllowedOrigins: cfg.AllowedOrigins, TrustProxyHeaders: cfg.TrustProxyHeaders,
 			Ready: func(ctx context.Context) error {

@@ -1,20 +1,22 @@
 package v1
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/genretag"
 	"github.com/mahcks/aldus/server/internal/ingest"
 )
 
-func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.Store) {
+func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.Store, tags *genretag.Store) {
 	router.Get("/works", browseWorks(store))
 	router.Get("/libraries/{libraryID}/works", listWorks(store))
 	router.Post("/libraries/{libraryID}/works", createWork(store))
-	router.Get("/works/{workID}", getWork(store))
-	router.Post("/works/{workID}/metadata/refresh", refreshWorkMetadata(store))
+	router.Get("/works/{workID}", getWork(store, tags))
+	router.Post("/works/{workID}/metadata/refresh", refreshWorkMetadata(store, tags))
 	router.Put("/works/{workID}/status", setWorkStatus(store))
 	router.Get("/works/{workID}/covers/search", searchCovers(store, media))
 	router.Get("/works/{workID}/covers", listCovers(store, media))
@@ -28,10 +30,10 @@ func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.S
 	router.Delete("/works/{workID}", deleteWork(store))
 }
 
-func refreshWorkMetadata(s *catalog.Store) http.HandlerFunc {
+func refreshWorkMetadata(s *catalog.Store, tags *genretag.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		value, err := s.RefreshMetadata(r.Context(), actor(r), chi.URLParam(r, "workID"))
-		writeCatalogResult(w, workDetailDTO(value), err)
+		writeTaggedWorkDetail(w, r, tags, value, err)
 	}
 }
 
@@ -201,11 +203,33 @@ func createWork(s *catalog.Store) http.HandlerFunc {
 		writeCatalogResult(w, workDTO(v), e)
 	}
 }
-func getWork(s *catalog.Store) http.HandlerFunc {
+func getWork(s *catalog.Store, tags *genretag.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.WorkDetail(r.Context(), actor(r), chi.URLParam(r, "workID"))
-		writeCatalogResult(w, workDetailDTO(v), e)
+		writeTaggedWorkDetail(w, r, tags, v, e)
 	}
+}
+
+func writeTaggedWorkDetail(w http.ResponseWriter, r *http.Request, tags *genretag.Store, value catalog.WorkDetail, err error) {
+	if err != nil {
+		writeCatalogResult(w, nil, err)
+		return
+	}
+	out := workDetailDTO(value)
+	if tags != nil {
+		matched, manual, matchErr := tags.ForWork(r.Context(), value.ID, value.SubjectValues)
+		if matchErr != nil {
+			slog.Error("match work genre tags", "error", matchErr, "work_id", value.ID)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		out.GenreTags = make([]contracts.GenreTag, len(matched))
+		for i, tag := range matched {
+			out.GenreTags[i] = genreTagDTO(tag, false)
+		}
+		out.GenreTagsManual = manual
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 func updateWork(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +237,35 @@ func updateWork(s *catalog.Store) http.HandlerFunc {
 		if !decode(w, r, &b) {
 			return
 		}
-		writeNoContent(w, s.UpdateWork(r.Context(), actor(r), chi.URLParam(r, "workID"), b.Title, b.Author))
+		workID := chi.URLParam(r, "workID")
+		current, err := s.WorkDetail(r.Context(), actor(r), workID)
+		if err != nil {
+			writeCatalogResult(w, nil, err)
+			return
+		}
+		update := catalog.WorkUpdate{
+			Title: b.Title, Author: b.Author, Description: current.Description, ISBN: current.ISBN,
+			FirstPublishYear: current.FirstPublishYear, Publisher: current.Publisher, Language: current.Language, Subjects: current.SubjectValues,
+		}
+		if b.Description != nil {
+			update.Description = *b.Description
+		}
+		if b.ISBN != nil {
+			update.ISBN = *b.ISBN
+		}
+		if b.FirstPublishYear != nil {
+			update.FirstPublishYear = *b.FirstPublishYear
+		}
+		if b.Publisher != nil {
+			update.Publisher = *b.Publisher
+		}
+		if b.Language != nil {
+			update.Language = *b.Language
+		}
+		if b.Subjects != nil {
+			update.Subjects = *b.Subjects
+		}
+		writeNoContent(w, s.UpdateWork(r.Context(), actor(r), workID, update))
 	}
 }
 func deleteWork(s *catalog.Store) http.HandlerFunc {

@@ -12,6 +12,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/collection"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
+	"github.com/mahcks/aldus/server/internal/genretag"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/notification"
 	"github.com/mahcks/aldus/server/internal/position"
@@ -32,6 +33,7 @@ type Dependencies struct {
 	TitleRequests       *acquisition.TitleRequestStore
 	Notifications       *notification.Store
 	Diagnostics         *diagnostics.Store
+	GenreTags           *genretag.Store
 	Backups             *backup.Manager
 	KOReader            koreader.Credentials
 	AllowedOrigins      []string

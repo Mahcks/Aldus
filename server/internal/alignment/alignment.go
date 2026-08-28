@@ -315,6 +315,18 @@ func (m *Manager) Enqueue(ctx context.Context, actor auth.User, r Request) (Job,
 	if job, ok, err := m.findDuplicate(ctx, r); err != nil {
 		return Job{}, err
 	} else if ok {
+		if job.State == "failed" || job.State == "stale" {
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			result, updateErr := m.db.ExecContext(ctx, `UPDATE alignment_jobs SET alignment_id=NULL,state='pending',attempts=0,cancel_requested=0,artifact_id=NULL,error_summary='',created_at=?,started_at=NULL,finished_at=NULL WHERE id=? AND state IN ('failed','stale')`, now, job.ID)
+			if updateErr != nil {
+				return Job{}, updateErr
+			}
+			if updated, _ := result.RowsAffected(); updated == 1 {
+				m.signal()
+				return m.Job(ctx, actor, job.ID)
+			}
+			return m.Job(ctx, actor, job.ID)
+		}
 		return job, nil
 	}
 	id, err := randomID()

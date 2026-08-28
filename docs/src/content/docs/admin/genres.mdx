@@ -1,0 +1,39 @@
+---
+title: Genres and metadata
+description: Control how imported book subjects become reader-friendly genres.
+---
+
+Aldus normally derives genre labels from the subjects imported with each book. Administrators can override that result for an individual work when the source metadata is incomplete or misleading.
+
+## Choose genres for one work
+
+Open the book, choose **Manage this work → Details**, then find **Genres**.
+
+- **Match from subjects** applies the server-wide matching rules described below.
+- **Choose manually** lets you select the exact genres for this work. Saving an empty selection intentionally shows no genre tags.
+
+Switch back to **Match from subjects** and save to remove the override. The book immediately returns to the current server-wide rules.
+
+## Review genre rules
+
+Open **Administration → Genres** to see every genre and the phrases that assign it. A phrase matches whole words inside an imported subject. Capitalization and punctuation do not matter.
+
+For example, `fantasy` matches `Fiction, fantasy, general`, but `war` does not match `award winners`. Singular and plural forms are separate phrases so an unexpected word is never treated as equivalent.
+
+Editing a phrase changes the genre shown on every matching book. It does not modify the source metadata.
+
+## Map an unmatched subject
+
+The **Unmatched imported subjects** section lists source phrases that do not currently produce a genre, ordered by the number of affected books.
+
+1. Select **Map to genre** beside a subject.
+2. Search for and select the intended genre.
+3. Confirm **Map subject**.
+
+Aldus adds the exact source subject as a matching phrase. Every book with that phrase updates automatically. If no existing genre fits, choose **Create a new genre** instead.
+
+## Refresh older metadata
+
+Aldus now preserves imported subjects as exact values, including subjects that contain commas. Older databases stored these values in a single compatibility field, where a comma could be part of a subject or a separator. Aldus does not guess at those boundaries.
+
+If an older book is missing from the unmatched-subject list, open **Manage this work** and refresh its metadata. A successful refresh records exact subject values without replacing metadata that was already saved.

@@ -24,6 +24,7 @@ import type {
   CreateAlignmentJobRequest,
   CreateAcquisitionRequest,
   CreateLibraryRequest,
+  CreateGenreTagRequest,
   CreateLibrarySourceRequest,
   CreateRepresentationRequest,
   CreatedUser,
@@ -35,6 +36,8 @@ import type {
   DeleteAccountRequest,
   EPUBLocator,
   Library,
+  GenreTag,
+  UnmatchedGenreSubjectPage,
   LibrarySource,
   ImportProposal,
   LoginRequest,
@@ -66,6 +69,7 @@ import type {
   CreateTitleRequest,
   StartActivityRequest,
   UpdateLibraryRequest,
+  UpdateGenreTagRequest,
   UpdateActivityRequest,
   UpdateLibrarySourceRequest,
   UpdateRepresentationRequest,
@@ -305,6 +309,22 @@ export const api = {
     request<void>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   resetUserPassword: (id: string) =>
     request<ResetPasswordResponse>(`/users/${id}/reset-password`, { method: 'POST' }),
+
+  genreTags: () => request<GenreTag[]>('/genre-tags'),
+  unmatchedGenreSubjects: (offset = 0) =>
+    request<UnmatchedGenreSubjectPage>(`/genre-tags/unmatched-subjects?limit=50&offset=${offset}`),
+  createGenreTag: (body: CreateGenreTagRequest) =>
+    request<GenreTag>('/genre-tags', { method: 'POST', body: JSON.stringify(body) }),
+  updateGenreTag: (id: string, body: UpdateGenreTagRequest) =>
+    request<GenreTag>(`/genre-tags/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteGenreTag: (id: string) => request<void>(`/genre-tags/${id}`, { method: 'DELETE' }),
+  setWorkGenreTags: (workID: string, genreTagIDs: string[]) =>
+    request<void>(`/works/${workID}/genre-tags`, {
+      method: 'PUT',
+      body: JSON.stringify({ genre_tag_ids: genreTagIDs }),
+    }),
+  resetWorkGenreTags: (workID: string) =>
+    request<void>(`/works/${workID}/genre-tags`, { method: 'DELETE' }),
 
   libraries: () => request<Library[]>('/libraries'),
   library: (id: string) => request<Library>(`/libraries/${id}`),

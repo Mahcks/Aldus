@@ -60,6 +60,7 @@ export default defineConfig({
             { label: "Libraries and members", slug: "admin/libraries" },
             { label: "Users and recovery", slug: "admin/users" },
             { label: "Media sources", slug: "admin/sources" },
+            { label: "Genres and metadata", slug: "admin/genres" },
             { label: "Automatic requests", slug: "admin/acquisitions" },
             { label: "Backups and upgrades", slug: "admin/backups" },
           ],

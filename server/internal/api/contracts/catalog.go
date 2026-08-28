@@ -41,20 +41,38 @@ type Work struct {
 }
 type WorkDetail struct {
 	Work              `tstype:",extends,required"`
-	Description       string    `json:"description,omitempty"`
-	ISBN              string    `json:"isbn,omitempty"`
-	FirstPublishYear  int       `json:"first_publish_year,omitempty"`
-	Publisher         string    `json:"publisher,omitempty"`
-	Language          string    `json:"language,omitempty"`
-	Subjects          string    `json:"subjects,omitempty"`
-	InProgress        bool      `json:"in_progress"`
-	ProgressUpdatedAt time.Time `json:"progress_updated_at,omitempty"`
-	CompletionPercent int       `json:"completion_percent"`
-	ActiveSeconds     int       `json:"active_seconds"`
-	ReadingSeconds    int       `json:"reading_seconds"`
-	ListeningSeconds  int       `json:"listening_seconds"`
-	LastMode          string    `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
-	ReadingStatus     string    `json:"reading_status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`
+	Description       string     `json:"description,omitempty"`
+	ISBN              string     `json:"isbn,omitempty"`
+	FirstPublishYear  int        `json:"first_publish_year,omitempty"`
+	Publisher         string     `json:"publisher,omitempty"`
+	Language          string     `json:"language,omitempty"`
+	Subjects          string     `json:"subjects,omitempty"`
+	SubjectValues     []string   `json:"subject_values"`
+	GenreTags         []GenreTag `json:"genre_tags"`
+	GenreTagsManual   bool       `json:"genre_tags_manual"`
+	InProgress        bool       `json:"in_progress"`
+	ProgressUpdatedAt time.Time  `json:"progress_updated_at,omitempty"`
+	CompletionPercent int        `json:"completion_percent"`
+	ActiveSeconds     int        `json:"active_seconds"`
+	ReadingSeconds    int        `json:"reading_seconds"`
+	ListeningSeconds  int        `json:"listening_seconds"`
+	LastMode          string     `json:"last_mode,omitempty" tstype:"'read' | 'listen' | ''"`
+	ReadingStatus     string     `json:"reading_status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`
+}
+type GenreTag struct {
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Icon     string   `json:"icon"`
+	Keywords []string `json:"keywords,omitempty"`
+}
+type UnmatchedGenreSubject struct {
+	Subject   string `json:"subject"`
+	WorkCount int    `json:"work_count"`
+}
+type UnmatchedGenreSubjectPage struct {
+	Items   []UnmatchedGenreSubject `json:"items"`
+	Offset  int                     `json:"offset"`
+	HasMore bool                    `json:"has_more"`
 }
 type WorkSummary struct {
 	ID                   string    `json:"id"`
@@ -114,8 +132,27 @@ type CreateWorkRequest struct {
 	Author string `json:"author"`
 }
 type UpdateWorkRequest struct {
-	Title  string `json:"title"`
-	Author string `json:"author"`
+	Title            string    `json:"title"`
+	Author           string    `json:"author"`
+	Description      *string   `json:"description,omitempty"`
+	ISBN             *string   `json:"isbn,omitempty"`
+	FirstPublishYear *int      `json:"first_publish_year,omitempty"`
+	Publisher        *string   `json:"publisher,omitempty"`
+	Language         *string   `json:"language,omitempty"`
+	Subjects         *[]string `json:"subjects,omitempty"`
+}
+type CreateGenreTagRequest struct {
+	Label    string   `json:"label"`
+	Icon     string   `json:"icon"`
+	Keywords []string `json:"keywords"`
+}
+type UpdateGenreTagRequest struct {
+	Label    string   `json:"label"`
+	Icon     string   `json:"icon"`
+	Keywords []string `json:"keywords"`
+}
+type SetWorkGenreTagsRequest struct {
+	GenreTagIDs []string `json:"genre_tag_ids"`
 }
 type SetWorkStatusRequest struct {
 	Status string `json:"status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`

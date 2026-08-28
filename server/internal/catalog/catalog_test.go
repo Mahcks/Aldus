@@ -125,11 +125,14 @@ func TestLibrariesRolesAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateWork(ctx, reader, work.ID, "Tampered", ""); !errors.Is(err, ErrNotFound) {
+	if err := store.UpdateWork(ctx, reader, work.ID, WorkUpdate{Title: "Tampered"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reader update = %v", err)
 	}
 	if _, err := store.CreateRepresentation(ctx, reader, work.ID, "epub", "Tampered"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reader representation create = %v", err)
+	}
+	if _, err := store.CreateRepresentation(ctx, editor, work.ID, "pdf", "Unsupported"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid representation kind = %v", err)
 	}
 	if _, err := store.Work(ctx, outsider, work.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cross-library work = %v", err)
@@ -161,6 +164,12 @@ func TestLibrariesRolesAndIsolation(t *testing.T) {
 	}
 	if _, err := store.db.ExecContext(ctx, `INSERT INTO media(id,representation_id,kind,path,sha256,created_at) VALUES ('epub-media',?,'epub','alice.epub',?,'2026-01-01T00:00:00Z'),('audio-media',?,'audio','alice.mp3',?,'2026-01-01T00:00:00Z')`, epub.ID, strings.Repeat("a", 64), audio.ID, strings.Repeat("b", 64)); err != nil {
 		t.Fatal(err)
+	}
+	if err := store.UpdateRepresentation(ctx, editor, epub.ID, "audio", "Wrong kind"); !errors.Is(err, ErrReferenced) {
+		t.Fatalf("change populated representation kind = %v", err)
+	}
+	if err := store.UpdateRepresentation(ctx, editor, epub.ID, "epub", "Renamed edition"); err != nil {
+		t.Fatalf("rename populated representation = %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `INSERT INTO alignments(id,epub_media_id,audio_media_id,revision,state,created_at) VALUES ('alignment','epub-media','audio-media',1,'ready','2026-01-01T00:00:00Z'); INSERT INTO alignment_inputs(alignment_id,media_id,role) VALUES ('alignment','epub-media','epub'),('alignment','audio-media','audio')`); err != nil {
 		t.Fatal(err)

@@ -32,6 +32,7 @@ export default function RepresentationScreen() {
   const [label, setLabel] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -102,19 +103,25 @@ export default function RepresentationScreen() {
   }
 
   async function saveRepresentation() {
+    if (saving || !label.trim()) return;
+    setSaving(true);
+    setError('');
     try {
       await api.updateRepresentation(id, { kind, label });
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function deleteRepresentation() {
+    if (!representation) return;
     setDeleting(true);
     try {
       await api.deleteRepresentation(id);
-      goBackOr('/libraries');
+      goBackOr(`/work/${representation.work_id}/manage?tab=files`);
     } catch (value) {
       setError(errorMessage(value));
       setDeleting(false);
@@ -124,12 +131,19 @@ export default function RepresentationScreen() {
   return (
     <Page
       title={representation.label}
-      back={<Button label="Work" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />}
+      back={
+        <Button
+          label="Files"
+          icon="back"
+          kind="quiet"
+          onPress={() => goBackOr(`/work/${representation.work_id}/manage?tab=files`)}
+        />
+      }
       editorial={false}
     >
       {error ? <Notice danger>{error}</Notice> : null}
       <Section
-        title="Media revisions"
+        title="Revisions"
         action={
           canEdit ? (
             <Button
@@ -169,18 +183,47 @@ export default function RepresentationScreen() {
         )}
       </Section>
       {canEdit ? (
-        <Section title="Representation settings">
+        <Section title="File settings">
           <View className={shared.form}>
-            <Select label="Kind" options={representationKinds} value={kind} onChange={setKind} />
+            {media.length ? (
+              <View className="gap-1">
+                <Text className="text-sm font-sans-semibold text-ink">Format</Text>
+                <Text className="text-base text-ink">
+                  {kind === 'epub' ? 'Ebook' : 'Audiobook'}
+                </Text>
+                <Text className="text-xs text-muted">
+                  Format cannot change after a revision is uploaded.
+                </Text>
+              </View>
+            ) : (
+              <Select
+                label="Format"
+                options={representationKinds}
+                value={kind}
+                onChange={setKind}
+              />
+            )}
             <Field label="Label" value={label} onChangeText={setLabel} />
             <Row>
-              <Button label="Save" kind="primary" onPress={() => void saveRepresentation()} />
               <Button
-                label="Delete representation"
+                label="Save changes"
+                kind="primary"
+                loading={saving}
+                disabled={saving || !label.trim()}
+                onPress={() => void saveRepresentation()}
+              />
+              <Button
+                label="Delete file entry"
                 kind="danger"
+                disabled={media.length > 0}
                 onPress={() => setConfirmingDelete(true)}
               />
             </Row>
+            {media.length ? (
+              <Text className="text-sm text-muted">
+                Uploaded revisions currently prevent deleting this file entry.
+              </Text>
+            ) : null}
           </View>
         </Section>
       ) : null}
@@ -189,8 +232,8 @@ export default function RepresentationScreen() {
         visible={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         onConfirm={() => void deleteRepresentation()}
-        title="Delete representation?"
-        description="Representations with uploaded media cannot be deleted."
+        title="Delete file entry?"
+        description="This removes the empty file entry from the work."
         confirmLabel="Delete"
         danger
         busy={deleting}
