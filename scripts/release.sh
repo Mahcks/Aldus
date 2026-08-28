@@ -105,7 +105,7 @@ case ${1:-} in
     deploy_demo "$(tag_for "$2")"
     ;;
   self-test)
-    [[ $(tag_for 0.1.0-beta.15) == v0.1.0-beta.15 ]]
+    [[ $(tag_for 1.2.3-beta.4) == v1.2.3-beta.4 ]]
     [[ $(tag_for v1.2.3) == v1.2.3 ]]
     if (tag_for nope >/dev/null 2>&1); then
       fail "Invalid release versions must be rejected"

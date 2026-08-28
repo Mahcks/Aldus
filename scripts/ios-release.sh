@@ -38,12 +38,14 @@ let input=""; process.stdin.on("data", (chunk)=>input+=chunk); process.stdin.on(
 
 check_source() {
   local sha
+  local origin_sha
 
   [[ $(uname -s) == Darwin ]] || fail "iOS releases must run on the Mac mini"
   [[ -z $(git -C "$ROOT" status --porcelain) ]] || fail "Commit or stash local changes before building"
   git -C "$ROOT" fetch --quiet origin main
   sha=$(git -C "$ROOT" rev-parse HEAD)
-  git -C "$ROOT" merge-base --is-ancestor "$sha" origin/main || fail "Build a reviewed commit from origin/main"
+  origin_sha=$(git -C "$ROOT" rev-parse origin/main)
+  [[ $sha == "$origin_sha" ]] || fail "Build the exact current origin/main commit"
   printf '%s\n' "$sha"
 }
 
@@ -74,6 +76,8 @@ NODE
 testflight() (
   local sha
   local short_sha
+  local server_version
+  local test_notes
   local artifact_dir
   local ipa
   local -a ipas=()
@@ -96,6 +100,9 @@ testflight() (
   require_asc
   sha=$(check_source)
   short_sha=${sha:0:12}
+  server_version=$(sed -n 's/^ALDUS_VERSION=//p' "$ROOT/.env.example")
+  [[ -n $server_version ]] || fail ".env.example must pin ALDUS_VERSION"
+  test_notes="${BETA_WHATS_NEW:-Aldus beta} | server $server_version | commit $short_sha"
   artifact_dir="$ROOT/artifacts/ios/$short_sha-$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$artifact_dir"
 
@@ -124,12 +131,13 @@ NODE
   done < <(find "$artifact_dir" -type f -name '*.ipa' -print)
   [[ ${#ipas[@]} == 1 ]] || fail "Expected one IPA in $artifact_dir, found ${#ipas[@]}"
   ipa=${ipas[0]}
+  printf 'git_commit=%s\nserver_version=%s\n' "$sha" "$server_version" >"$artifact_dir/build-context.txt"
 
   asc publish testflight \
     --app "$ASC_APP_ID" \
     --ipa "$ipa" \
     --group "$INTERNAL_GROUP" \
-    --test-notes "${BETA_WHATS_NEW:-Aldus beta from $short_sha}" \
+    --test-notes "$test_notes" \
     --locale "${RELEASE_LOCALE:-en-US}" \
     --wait \
     --timeout "${ASC_UPLOAD_TIMEOUT:-45m}" | tee "$artifact_dir/asc-publish.json"
@@ -189,6 +197,7 @@ let input=""; process.stdin.on("data", (chunk)=>input+=chunk); process.stdin.on(
 remote() {
   local ref=${1:-HEAD}
   local sha
+  local origin_sha
 
   require_command ssh
   [[ -n ${MAC_BUILD_HOST:-} ]] || fail "Set MAC_BUILD_HOST in scripts/ios-release.env"
@@ -196,10 +205,11 @@ remote() {
   git -C "$ROOT" fetch --quiet origin main
   sha=$(git -C "$ROOT" rev-parse "$ref^{commit}")
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Could not resolve REF=$ref"
-  git -C "$ROOT" merge-base --is-ancestor "$sha" origin/main || fail "$sha is not on origin/main"
+  origin_sha=$(git -C "$ROOT" rev-parse origin/main)
+  [[ $sha == "$origin_sha" ]] || fail "REF must resolve to the exact current origin/main commit"
 
   ssh "$MAC_BUILD_HOST" \
-    "set -euo pipefail; cd '$MAC_BUILD_PATH'; test -z \"\$(git status --porcelain)\"; git fetch origin main; git merge-base --is-ancestor '$sha' origin/main; git checkout --detach '$sha'; make ios-testflight"
+    "set -euo pipefail; cd '$MAC_BUILD_PATH'; test -z \"\$(git status --porcelain)\"; git fetch origin main; test \"\$(git rev-parse origin/main)\" = '$sha'; git checkout --detach '$sha'; make ios-testflight"
 }
 
 case ${1:-} in

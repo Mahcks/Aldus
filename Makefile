@@ -43,16 +43,16 @@ ios-dev:
 	cd app && bun run ios:device
 
 release:
-	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release VERSION=0.1.0-beta.15" >&2; exit 1)
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release VERSION=0.1.0-beta.16" >&2; exit 1)
 	./scripts/release.sh release "$(VERSION)"
 
 release-all:
-	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release-all VERSION=0.1.0-beta.15" >&2; exit 1)
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release-all VERSION=0.1.0-beta.16" >&2; exit 1)
 	./scripts/release.sh release "$(VERSION)"
 	./scripts/ios-release.sh testflight
 
 demo-deploy:
-	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make demo-deploy VERSION=0.1.0-beta.15" >&2; exit 1)
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make demo-deploy VERSION=0.1.0-beta.16" >&2; exit 1)
 	./scripts/release.sh demo "$(VERSION)"
 
 ios-testflight:
