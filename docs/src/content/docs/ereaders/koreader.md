@@ -14,7 +14,7 @@ KOReader can sync reading progress against Aldus using its built-in progress-syn
 <img
   class="docs-shot"
   src="/images/koreader-credential.png"
-  alt="Aldus account screen showing a newly created reader credential with username, password, OPDS catalog URL, and KOReader sync server address"
+  alt="Aldus account screen showing a mock reader credential with username, password, OPDS catalog URL, and KOReader sync server address"
 />
 
 A credential grants access only to your own libraries and reading progress, not the whole server, and each device should get its own so you can revoke one without affecting another.

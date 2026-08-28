@@ -1,0 +1,50 @@
+---
+title: Manage a work
+description: Correct book details, control artwork and files, and prepare exact read-listen synchronization.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+Library editors, library owners, and global administrators can open a title and select **Manage this work**. Reader progress and personal collections are not changed by these controls.
+
+## Details
+
+Use **Details** to correct the title, author, description, publisher, publication year, ISBN, language, and imported subjects readers see. **Fill missing details** searches Open Library but fills only blank fields; it does not replace edits you already saved.
+
+Genres can follow the server's subject-matching rules or use an exact manual selection for this work. See [Genres and metadata](/admin/genres/) for the difference.
+
+## Artwork
+
+The **Artwork** tab keeps one cover shared by the ebook and audiobook without modifying either source file. You can:
+
+- Upload an image or select artwork already embedded in a source file.
+- Choose whether the image fills the cover or remains fully visible, then set its focal point.
+- Search Open Library for another edition's cover.
+- Use Aldus's generated cloth cover and choose its design, title position, and color.
+
+The preview updates immediately, but changes are published only when you select **Save artwork**.
+
+## Files
+
+The **Files** tab keeps reading editions and audiobook narrations under the same work. Open a file entry to review its immutable revisions or upload a newer file. Adding a revision never rewrites the original media file.
+
+<Aside type="note" title="One work, multiple editions">
+  Keep alternate EPUB editions or audiobook narrations as separate entries. Exact synchronization is created for one specific ebook-and-audio pair at a time.
+</Aside>
+
+## Read + Listen sync
+
+<Steps>
+
+1. Add at least one EPUB and one audiobook under **Files**.
+2. Open **Sync** and choose the reading edition and narration to pair.
+3. Select **Start synchronization**. Alignment runs on the server, so you can leave the page.
+4. Return to review the status. **Ready** means readers can switch formats at the matching sentence. **Needs attention** includes an error under technical details; **Out of date** means one of the source files changed and the pair must be synchronized again.
+
+</Steps>
+
+Long audiobooks may take hours on CPU. The rest of Aldus remains usable while a job is queued or processing. See [Exact synchronization](/read-listen/synchronization/) for how the resulting position behaves for readers.
+
+## Delete a work
+
+Deletion is intentionally last in **Details**. Aldus refuses to delete a work while it still has reading editions or narrations. Remove those file entries first, then confirm **Delete work**. This is permanent and does not delete files in a read-only external Source.

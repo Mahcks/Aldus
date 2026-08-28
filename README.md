@@ -7,8 +7,7 @@
 
 **A self-hosted home for the books you own — ebooks and audiobooks, read together.**
 
-[![Release](https://img.shields.io/github/v/release/mahcks/aldus?include_prereleases&label=release&color=8a3c24)](https://github.com/mahcks/aldus/releases)
-[![Docker Image](https://img.shields.io/badge/ghcr.io-mahcks%2Faldus-8a3c24?logo=docker&logoColor=white)](https://github.com/mahcks/aldus/pkgs/container/aldus)
+[![Status: beta](https://img.shields.io/badge/status-beta-8a3c24)](#current-beta-status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8a3c24)](LICENSE)
 
 [Live demo](https://demo.aldus.media) · [Quickstart](#run-the-server) · [Screenshots](#what-it-looks-like)
@@ -17,15 +16,15 @@
 
 <br>
 
-<p align="center">
-  <img src="docs/public/images/home.png" alt="Aldus home screen showing a continue-reading shelf and recently added books" width="850">
-</p>
-
-<br>
-
 Most people who own both an ebook and its audiobook edition live with two disconnected apps and no memory between them: close the book on your commute, lose your place when you pick up the audio that night. Aldus is a personal library server that finds your books, brings in the format you're missing, and keeps your exact position synchronized between reading and listening — down to the sentence, not just "roughly where you were."
 
 It's built for the way a household actually keeps books. One person hosts it. Everyone else opens a title and reads or listens, without ever needing to know what a library, a source, or an indexer is. The person running it gets real controls — storage, download policy, permissions, backups. Everyone else gets a calm, book-shaped app that gets out of the way.
+
+<br>
+
+## Current beta status
+
+Aldus is public beta software. The source, self-hosted server, web app, and public demo are available now; the iOS app is available to invited external TestFlight testers. Android is implemented but does not yet have a public build. Expect rough edges and take a verified backup before upgrading a server you depend on.
 
 <br>
 
@@ -53,22 +52,12 @@ Prefer to look before you clone anything? [demo.aldus.media](https://demo.aldus.
 <table>
 <tr>
 <td width="50%">
-<img src="docs/public/images/read-listen-sync.png" alt="Work page showing a synced ebook and audiobook with a shared progress bar">
-<p align="center"><sub>One title, two formats, one position kept in sync</sub></p>
+<img src="docs/public/images/reader-epub.png" alt="Aldus ebook reader showing a synchronized passage and a Listen from here action">
+<p align="center"><sub>Read with adjustable typography, layout, and an exact synchronized passage</sub></p>
 </td>
 <td width="50%">
-<img src="docs/public/images/metadata-enrichment.png" alt="Work page showing a description and subject tags pulled from Open Library">
-<p align="center"><sub>Missing description and genre tags, filled in from Open Library</sub></p>
-</td>
-</tr>
-<tr>
-<td width="50%">
-<img src="docs/public/images/discover.png" alt="Discover grid with sort and availability filters">
-<p align="center"><sub>Browse and filter by what's actually available to read or listen to</sub></p>
-</td>
-<td width="50%">
-<img src="docs/public/images/manage-cover.png" alt="Cover management screen with generated cover design controls">
-<p align="center"><sub>Generated cover art with adjustable design, position, and color when no artwork exists</sub></p>
+<img src="docs/public/images/reader-audio.png" alt="Aldus audiobook player showing chapters, playback controls, and a synchronized read-along passage">
+<p align="center"><sub>Listen with chapters, saved progress, and a live read-along passage</sub></p>
 </td>
 </tr>
 </table>
@@ -77,7 +66,7 @@ Prefer to look before you clone anything? [demo.aldus.media](https://demo.aldus.
 
 ## Read↔listen sync that means it
 
-When a book's ebook and audiobook are aligned, switching from reading to listening resumes at the *same point in the text* — not an approximate percentage rounded to the nearest chapter. The standard Aldus image runs WhisperX on CPU automatically in the background; an optional NVIDIA image accelerates the same work.
+When a book's ebook and audiobook are aligned, switching from reading to listening resumes at the *same point in the text* — not an approximate percentage rounded to the nearest chapter. Beginning with the next verified server release, the standard image runs WhisperX on CPU automatically in the background; an optional NVIDIA image accelerates the same work.
 
 ```mermaid
 flowchart LR
@@ -116,15 +105,8 @@ Indexer names, file sizes, and release strings never surface to someone who just
 | **Bring what you already have** | Point Aldus at a folder of EPUBs and audio files and it imports them without renaming or rewriting a single file. Nothing you already own gets touched. |
 | **Two ways to store media** | External Sources stay exactly where they are, referenced read-only. Managed media from acquisitions is copied in, checksummed, and verified on import. |
 | **Read anywhere** | The web app ships with every server. The iOS app is currently available to invited TestFlight testers. Android is implemented but does not yet have a public beta distribution channel. OPDS + KOReader credentials support e-ink devices. |
-| **Verified backups** | `docker compose run --rm aldus backup` produces a checksummed archive of the database, managed media, covers, and alignment artifacts. Connector secrets and active sessions are removed from the archive. |
+| **Verified backups** | `docker compose run --rm aldus backup` produces a checksummed archive of the database, managed media, covers, and alignment artifacts. The stored Prowlarr API key, qBittorrent password, and active sessions are removed from the archive. |
 | **It's yours** | Self-hosted, your data, on your hardware. No account required anywhere but your own server. |
-
-<br>
-
-<p align="center">
-  <img src="docs/public/images/library.png" alt="Aldus library administration screen" width="850">
-</p>
-<p align="center"><sub>Full control over sources, members, and acquisition policy per library</sub></p>
 
 <br>
 
@@ -184,7 +166,7 @@ The default Compose mapping is localhost-only. Before making it reachable elsewh
 
 ## Optional NVIDIA acceleration
 
-The standard Aldus image includes WhisperX and generates exact read/listen mappings on CPU without extra setup. CPU processing can take hours for a long audiobook. To accelerate it, install the NVIDIA driver and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), then run one command:
+Beginning with the next verified server release, the standard Aldus image includes WhisperX and generates exact read/listen mappings on CPU without extra setup. CPU processing can take hours for a long audiobook. To accelerate it, install the NVIDIA driver and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), then run one command:
 
 ```sh
 docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
@@ -254,13 +236,13 @@ make dev
 | `make generate` | Regenerate sqlc and public TypeScript contracts |
 | `make docker` | Build the production container locally |
 
-The repository stays small on purpose: `app/` is the universal Expo client, `server/` is the Go API and production web server, `tools/` is the optional alignment worker, `docs/` has contributor and architecture notes. The production image serves both the API and the exported web app from one binary.
+The repository stays small on purpose: `app/` is the universal Expo client, `server/` is the Go API and production web server, `tools/` is the alignment worker, and `docs/` is the Astro Starlight documentation site. The production image serves both the API and the exported web app from one binary.
 
 <br>
 
 ## Where this is headed
 
-The ambition is a complete, calm home for the books you own — one that treats reading and listening as one continuous act instead of two apps that happen to share a title. Acquisition, alignment, and the household permission model are the parts still hardening the fastest, so expect them to change shape a little before things settle. Aldus is public enough to use for real, not yet old enough to have found all its own edges — if you run into something that doesn't add up, that report is exactly what's useful right now.
+The ambition is a complete, calm home for the books you own — one that treats reading and listening as one continuous act instead of two apps that happen to share a title. Acquisition, alignment, and the household permission model are the parts still hardening the fastest, so expect them to change shape a little before things settle. Aldus is in beta and ready for focused real-world testing, but it is not yet a stable 1.0 release. If something doesn't add up, that report is exactly what's useful right now.
 
 <p align="center">
   <img src="docs/public/images/demo.png" alt="Aldus public demo landing page" width="850">

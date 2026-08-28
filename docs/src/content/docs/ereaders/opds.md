@@ -14,7 +14,7 @@ OPDS is an open catalog format that most dedicated e-reader apps understand — 
 <img
   class="docs-shot"
   src="/images/koreader-credential.png"
-  alt="Aldus account screen showing a newly created reader credential with username, password, OPDS catalog URL, and KOReader sync server address"
+  alt="Aldus account screen showing a mock reader credential with username, password, OPDS catalog URL, and KOReader sync server address"
 />
 
 ## Add it to your reader

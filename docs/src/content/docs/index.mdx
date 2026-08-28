@@ -23,8 +23,7 @@ import AudioPlayerPreview from "../../components/AudioPlayerPreview";
 import SystemSnapshot from "../../components/SystemSnapshot.astro";
 
 <p className="hero-trust">
-  Free and open source · Self-hosted on your own server · No subscription,
-  ever
+  Beta · Open source · Self-hosted on your own server · No subscription
 </p>
 
 <AudioPlayerPreview client:load />
@@ -49,30 +48,22 @@ import SystemSnapshot from "../../components/SystemSnapshot.astro";
 
 ## See it in your library
 
-<img
-  class="docs-shot"
-  src="/images/read-listen-sync.png"
-  alt="Aldus work page showing ebook and audiobook editions sharing one synchronized position"
-/>
-
 <div className="shot-grid">
   <figure>
     <img
       class="docs-shot"
-      src="/images/home.png"
-      alt="Aldus home screen with a continue-reading shelf and recently added books"
+      src="/images/reader-epub.png"
+      alt="Aldus ebook reader showing a synchronized passage and a Listen from here action"
     />
-    <figcaption>Pick up where you left off, across every format.</figcaption>
+    <figcaption>Read with your exact synchronized passage marked.</figcaption>
   </figure>
   <figure>
     <img
       class="docs-shot"
-      src="/images/metadata-enrichment.png"
-      alt="Aldus work page showing a description and genre tags pulled from Open Library"
+      src="/images/reader-audio.png"
+      alt="Aldus audiobook player showing chapters, playback controls, and a synchronized read-along passage"
     />
-    <figcaption>
-      Missing details fill themselves in from Open Library.
-    </figcaption>
+    <figcaption>Listen with chapters and the matching passage beside you.</figcaption>
   </figure>
 </div>
 
@@ -95,7 +86,7 @@ import SystemSnapshot from "../../components/SystemSnapshot.astro";
 </CardGrid>
 
 <div className="closing-cta">
-  <h2>Free, self-hosted, and yours to run.</h2>
+  <h2>Self-hosted and yours to run.</h2>
   <p>No account required to try it, and nothing to lose if you stop.</p>
   <div className="closing-cta__actions">
     <LinkButton href="/getting-started/" icon="right-arrow">

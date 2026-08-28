@@ -22,7 +22,7 @@ Open **Acquisitions → Connections**. Every field here maps to a real setting s
 | Field | Notes |
 | --- | --- |
 | Search provider | **Prowlarr** (recommended) or a direct **Torznab feed** for a single advanced indexer. |
-| Prowlarr URL / Torznab feed URL | Must be a valid `http(s)://` URL with a host. With Prowlarr, Aldus discovers and searches every indexer you have enabled there — you don't configure indexers individually in Aldus. |
+| Prowlarr URL / Torznab feed URL | Must be a valid `http(s)://` URL with a host. Do not embed a username, password, or API key in the URL; use the dedicated credential field. With Prowlarr, Aldus discovers and searches every indexer you have enabled there — you don't configure indexers individually in Aldus. |
 | Indexer API key | Prowlarr's API key. Stored, never redisplayed. |
 | qBittorrent URL | The Web UI address, e.g. `http://qbittorrent:8080` on a shared Docker network. |
 | qBittorrent username / password | Credentials for that Web UI. |
@@ -30,6 +30,10 @@ Open **Acquisitions → Connections**. Every field here maps to a real setting s
 | qBittorrent download root | The path **qBittorrent itself** reports for completed files — not Aldus's own `/downloads` mount, unless qBittorrent happens to report that same path. Aldus uses this to translate qBittorrent's view of a finished download into a path it can read. |
 
 Select **Save connections** to persist the settings (it also runs a connection test automatically), or **Test connections** at any time to re-check without saving. A successful test reports how many enabled torrent indexers Prowlarr exposed and whether qBittorrent authenticated.
+
+<Aside type="caution" title="Keep credentials out of URLs">
+  Aldus rejects URL-embedded usernames and passwords. Query-string credentials are not a supported configuration and may not be recognized as secrets in logs or backup redaction. Enter credentials only in their dedicated fields.
+</Aside>
 
 <Aside type="danger" title="qBittorrent and Aldus must see the same folder">
   This is the single most common setup mistake. qBittorrent's *download root* setting here has to describe the same physical folder as `ALDUS_DOWNLOAD_PATH` in Aldus's own `.env` — otherwise Aldus computes a path it can't actually open once a torrent finishes, and the request gets stuck. If a download completes in qBittorrent but the title never shows up in Aldus, this mapping is the first thing to check.

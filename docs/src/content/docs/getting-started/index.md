@@ -11,15 +11,14 @@ Three doors in. Pick the one that matches you.
 
 Someone who already runs an Aldus server added you as a reader. You need two things from them: the server's address (something like `https://library.example.com` or a local address like `http://192.168.1.20:8080`) and the one-time username and password Aldus generated for you.
 
-1. Open the web app in a browser, or install the iOS app if you received a TestFlight invitation. Android does not yet have a public beta download.
-2. Enter the address you were given and select **Continue**.
-3. Sign in with the one-time credentials, then choose your final username, display name, and password.
+1. In a browser, open the server address you were given. In the iOS or Android app, open **Connect to Aldus**, enter that address, and select **Continue**. Android does not yet have a public beta download.
+2. Sign in with the one-time credentials, then choose your final username, display name, and password.
 
 Full walkthrough, including what happens with a bad address or wrong password, is in [Connect to a server](/getting-started/connect/). Platform-specific notes live under [iPhone and iPad](/read-listen/ios/) and [Android](/read-listen/android/).
 
 ## If you run the household server
 
-Start with [Install Aldus](/admin/install/) to stand up the server itself, then add a library and a media source so there's something to read. Once a library exists, invite readers by creating their accounts — they don't need, and by default don't get, access to server administration. The [Run Aldus](/admin/install/) section covers installation, libraries, sources, and users end to end.
+Start with [Install Aldus](/admin/install/) to stand up the server itself, then add a [library](/admin/libraries/) and a [media source](/admin/sources/) so there's something to read. Once a library exists, [invite readers](/admin/users/) by creating their accounts — they don't need, and by default don't get, access to server administration.
 
 ## If you are exploring
 

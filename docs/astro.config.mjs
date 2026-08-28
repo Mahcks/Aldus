@@ -36,6 +36,7 @@ export default defineConfig({
         {
           label: "Read and listen",
           items: [
+            { label: "Use your library", slug: "read-listen/library" },
             { label: "iPhone and iPad", slug: "read-listen/ios" },
             { label: "Android", slug: "read-listen/android" },
             { label: "Offline use", slug: "read-listen/offline" },
@@ -60,8 +61,10 @@ export default defineConfig({
             { label: "Libraries and members", slug: "admin/libraries" },
             { label: "Users and recovery", slug: "admin/users" },
             { label: "Media sources", slug: "admin/sources" },
+            { label: "Manage a work", slug: "admin/works" },
             { label: "Genres and metadata", slug: "admin/genres" },
             { label: "Automatic requests", slug: "admin/acquisitions" },
+            { label: "System diagnostics", slug: "admin/system" },
             { label: "Backups and upgrades", slug: "admin/backups" },
           ],
         },

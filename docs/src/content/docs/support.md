@@ -18,7 +18,7 @@ Do not send passwords, session tokens, cookies, API keys, pairing codes, complet
 
 ## Administrators and bug reports
 
-GitHub Issues may be used for non-sensitive, reproducible bugs when the [Aldus repository](https://github.com/mahcks/aldus/issues) is publicly available. Search existing issues before opening one. The repository may be unavailable while it is private; email support instead.
+Use [GitHub Issues](https://github.com/mahcks/aldus/issues) for non-sensitive, reproducible bugs and feature requests. Search existing issues before opening one. Readers who do not use GitHub can email [support@aldus.media](mailto:support@aldus.media) instead.
 
 Public reports should contain only sanitized technical details. Contact your hosting provider or system administrator for server, network, certificate, backup, or account recovery issues specific to your installation.
 

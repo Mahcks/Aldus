@@ -3,7 +3,9 @@ title: Offline use
 description: Keep books available when your Aldus server cannot be reached.
 ---
 
-While connected to your server, open a title and select **Download for offline**. Aldus stores what it needs on the device so you can read or listen without a connection, and reverses the process with **Remove download (on this device)** when you're done.
+Offline downloads are available in the iOS and Android apps. The web app requires a connection to its Aldus server.
+
+While connected in a mobile app, open a title and select **Download**. Aldus stores what it needs on that device so you can read or listen without a connection. Select **Remove download** when you're done.
 
 ## What gets stored on the device
 

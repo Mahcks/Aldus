@@ -5,12 +5,6 @@ description: Understand how Aldus preserves one reading position across ebook an
 
 Close the ebook on your commute. Open the audiobook that night. Aldus resumes at the same passage, without matching two unrelated percentages. This page explains what Aldus saves, how precise each interaction is, and how to choose the exact word where narration should begin.
 
-<img
-  class="docs-shot"
-  src="/images/read-listen-sync.png"
-  alt="Aldus work page showing an ebook and audiobook edition sharing one synchronized position, with Continue reading and Listen instead buttons"
-/>
-
 ## What you see on a synchronized title
 
 When a work has both a readable edition and a listenable edition, and Aldus has produced an alignment between them, the work page shows:
@@ -71,4 +65,4 @@ For a title without read/listen alignment, the ebook or audio locator still save
 
 Not every title has synchronization. If a book only has one format, or an alignment hasn't been generated yet, the work page simply shows the one format available with no **Read & Listen** indicator. If the underlying ebook or audio edition changes after an alignment was produced, Aldus treats the old alignment as stale rather than silently applying a mapping that's no longer accurate for the new files — you'll see the single-format experience again until a fresh alignment is produced.
 
-The standard Aldus image generates alignments with WhisperX on CPU. Administrators with a supported x86-64 Linux NVIDIA host can accelerate the same work without changing Aldus data or synchronization behavior. See [Install Aldus](/admin/install/#whisperx-alignment) for the one-command GPU option and hardware requirements.
+Beginning with the next verified server release, the standard Aldus image generates alignments with WhisperX on CPU. Administrators with a supported x86-64 Linux NVIDIA host can accelerate the same work without changing Aldus data or synchronization behavior. See [Install Aldus](/admin/install/#whisperx-alignment) for the one-command GPU option and hardware requirements.

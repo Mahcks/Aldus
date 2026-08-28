@@ -3,7 +3,7 @@ title: Privacy policy
 description: How Aldus handles data in self-hosted installations, the public demo, and support.
 ---
 
-_Last updated: August 26, 2026_
+_Last updated: August 27, 2026_
 
 Aldus is a client for privately operated media servers. Who handles your data depends on whether you connect to a self-hosted server, use the developer-operated public demo, or contact Aldus support.
 

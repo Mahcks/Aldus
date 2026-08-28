@@ -91,7 +91,7 @@ That mode exposes credentials and sessions to anyone able to observe the LAN. Do
 
 ## WhisperX alignment
 
-The standard Aldus image includes the alignment runtime and required models. New read/listen alignments run on CPU automatically with no separate service or setup. Models are copied into Aldus's existing data volume on first start, so recreating or upgrading the container does not download them again. A full audiobook can take hours on CPU, so supported NVIDIA hosts can opt into acceleration below.
+On `main`, and beginning with the next verified server release, the standard Aldus image includes the alignment runtime and required models. New read/listen alignments run on CPU automatically with no separate service or setup. Models are copied into Aldus's existing data volume on first start, so recreating or upgrading the container does not download them again. A full audiobook can take hours on CPU, so supported NVIDIA hosts can opt into acceleration below.
 
 ### NVIDIA GPU (one command)
 
@@ -111,8 +111,8 @@ Return to normal CPU processing with:
 docker compose up -d --pull always
 ```
 
-<Aside type="caution" title="Available with the next release">
-  The pinned beta.14 image predates built-in CPU alignment and the CUDA tag. These paths become available with the next tagged Aldus release.
+<Aside type="caution" title="Not in the pinned beta.14 image">
+  The pinned beta.14 image predates built-in CPU alignment and the CUDA tag. Do not use either command path against that image.
 </Aside>
 
 ### Advanced GPU troubleshooting

@@ -3,15 +3,18 @@ title: Connect to a server
 description: Connect the Aldus app to a household server.
 ---
 
-You need an address and credentials supplied by the person who runs your Aldus server. Aldus is not a hosted service — the app is only a window onto whichever server you point it at, and it remembers every server you've connected to so switching later is quick.
+You need an address and credentials supplied by the person who runs your Aldus server. Aldus is not a hosted service — every browser or app session connects to a specific household server.
 
-## Connect
+## Connect in a browser
 
-1. Open Aldus. On a phone or tablet, this is the **Connect to Aldus** screen; if you've connected before, your previous servers are listed here too so you can jump straight back to one.
-2. Enter the server address in the **Server address** field — for example `demo.aldus.media` or a local address like `http://192.168.1.20:8080`.
-3. Select **Continue**.
-4. Aldus checks the address, then sends you to the right place: sign-in if the server already has accounts, first-time setup if it's brand new, or the demo welcome screen if the server offers a public demo.
-5. Sign in with the one-time username and password your server owner gave you. Aldus then asks you to choose your final credentials before opening the library.
+Open the exact server address the owner gave you — for example `https://library.example.com` or a local address like `http://192.168.1.20:8080`. The web app belongs to that server, so there is no separate server picker in the browser. Sign in with the one-time username and password you received, then choose your final credentials.
+
+## Connect in the iOS or Android app
+
+1. Open **Connect to Aldus**. If you have connected before, your saved servers appear here so you can switch between them.
+2. Enter the server address in **Server address** and select **Continue**.
+3. Aldus verifies the address, then opens sign-in, first-time setup, or the public demo as appropriate.
+4. Sign in with the one-time username and password your server owner gave you. Aldus then asks you to choose your final credentials before opening the library.
 
 ## HTTP versus HTTPS
 

@@ -24,8 +24,8 @@ This runs against the live server — Aldus does not need to be stopped. `--arch
   <Card title="A true hot snapshot" icon="seti:db">
     Aldus uses SQLite's own online backup API to copy the live database into a temporary file without pausing the server. This is a consistent point-in-time snapshot, not a raw copy of a file that might be mid-write.
   </Card>
-  <Card title="Connector secrets and sessions are removed" icon="seti:lock">
-    On the snapshot only, Aldus clears the stored Prowlarr API key and qBittorrent password, removes indexer URLs embedded in request history, and deletes active app sessions. It then runs `VACUUM` with secure-delete so those removed bytes are overwritten rather than merely unlinked.
+  <Card title="Dedicated credentials and sessions are removed" icon="seti:lock">
+    On the snapshot only, Aldus clears the stored Prowlarr API key and qBittorrent password, removes selected download URLs from request history, clears legacy connector URLs containing URL user-information, and deletes active app sessions. It then runs `VACUUM` with secure-delete so those removed bytes are overwritten rather than merely unlinked.
   </Card>
   <Card title="Every file is checksummed" icon="seti:lock">
     Each file written into the archive gets a SHA-256 hash recorded in a `manifest.json` inside it. Immediately after writing the archive, Aldus extracts and re-verifies it against that manifest before reporting success — a `backup` command that exits cleanly has already round-tripped itself.
