@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { AppIcon, type AppIconName } from '@/features/icons';
+import { colors } from '@/features/theme';
 import {
   Button,
   ConfirmDialog,
@@ -11,7 +13,6 @@ import {
   Notice,
   Page,
   Section,
-  StatusBadge,
 } from '@/features/ui';
 import { Text, View } from '@/features/tw';
 import { api, errorMessage } from '@/lib/api';
@@ -173,7 +174,7 @@ export default function SystemAdministration() {
             detail="Aldus can write its data directory"
             healthy={report.storage_status === 'ok'}
           />
-          <View className="flex-row flex-wrap gap-x-8 gap-y-2 border-t border-line-subtle pt-4">
+          <View className="flex-row flex-wrap gap-x-8 gap-y-2 pt-1">
             <Meta label="Version" value={report.version} />
             <Meta label="Environment" value={report.environment} />
           </View>
@@ -337,17 +338,39 @@ function DiagnosticRow({
   healthy: boolean;
   optional?: boolean;
 }) {
+  let status: { label: string; icon: AppIconName; color: string; textClass: string } = {
+    label: 'Needs attention',
+    icon: 'warning',
+    color: colors.danger,
+    textClass: 'text-danger',
+  };
+  if (optional) {
+    status = {
+      label: 'Not configured',
+      icon: 'disabled',
+      color: colors.muted,
+      textClass: 'text-muted',
+    };
+  }
+  if (healthy) {
+    status = {
+      label: 'Healthy',
+      icon: 'enabled',
+      color: colors.success,
+      textClass: 'text-success',
+    };
+  }
+
   return (
     <View className="min-h-14 flex-row flex-wrap items-center justify-between gap-3 border-b border-line-subtle py-3">
       <View className="min-w-0 flex-1 gap-1">
         <Text className="font-sans-semibold text-ink">{label}</Text>
         <Text className="text-sm text-muted">{detail}</Text>
       </View>
-      <StatusBadge
-        tone={healthy ? 'success' : optional ? 'neutral' : 'danger'}
-        label={healthy ? 'Healthy' : optional ? 'Not configured' : 'Needs attention'}
-        icon={healthy ? 'enabled' : optional ? 'disabled' : 'warning'}
-      />
+      <View className="flex-row items-center gap-1.5">
+        <AppIcon name={status.icon} size={15} color={status.color} />
+        <Text className={`text-xs font-sans-semibold ${status.textClass}`}>{status.label}</Text>
+      </View>
     </View>
   );
 }
