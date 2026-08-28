@@ -1,4 +1,4 @@
-import type { AcquisitionResult, WorkSummary } from '../generated/api';
+import type { AcquisitionResult, WorkSummary } from '@/generated/api';
 import { useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';

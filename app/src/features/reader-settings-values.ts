@@ -2,7 +2,7 @@ import type {
   ReaderPreferences as ReaderPreferencesDTO,
   ReaderPreferencesUpdate,
   RepresentationState,
-} from '../generated/api';
+} from '@/generated/api';
 
 export type ReaderSettingsValue = {
   layout: 'paginated' | 'scrolled';

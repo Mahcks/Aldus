@@ -1,4 +1,4 @@
-import type { ImportProposal, Library } from '../generated/api';
+import type { ImportProposal, Library } from '@/generated/api';
 
 /** The representation kinds the server accepts, shared by every admin surface that creates or edits one. */
 export const representationKinds = [

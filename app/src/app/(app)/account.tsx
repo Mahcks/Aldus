@@ -1,16 +1,16 @@
-import type { Library, ReaderCredential, WorkSummary } from '../../generated/api';
+import type { Library, ReaderCredential, WorkSummary } from '@/generated/api';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { useServer } from '../../features/auth/ServerProvider';
-import { LibraryCard } from '../../features/bookshelf';
-import { formatDuration } from '../../features/format';
-import { AppIcon } from '../../features/icons';
-import { listItemEnter } from '../../features/motion';
-import { Text, View } from '../../features/tw';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { useServer } from '@/features/auth/ServerProvider';
+import { LibraryCard } from '@/features/bookshelf';
+import { formatDuration } from '@/features/format';
+import { AppIcon } from '@/features/icons';
+import { listItemEnter } from '@/features/motion';
+import { Text, View } from '@/features/tw';
 import {
   Button,
   colors,
@@ -25,9 +25,9 @@ import {
   Row,
   Section,
   StatusBadge,
-} from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
-import { apiBaseURL } from '../../lib/api-base';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
+import { apiBaseURL } from '@/lib/api-base';
 
 const supportURL = 'https://aldus.media/support/';
 const privacyURL = 'https://aldus.media/privacy/';

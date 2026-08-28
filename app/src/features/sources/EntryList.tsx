@@ -1,6 +1,6 @@
-import type { SourceEntry } from '../../generated/api';
-import { Empty, Notice, StatusBadge } from '../ui';
-import { Text, View } from '../tw';
+import type { SourceEntry } from '@/generated/api';
+import { Empty, Notice, StatusBadge } from '@/features/ui';
+import { Text, View } from '@/features/tw';
 import { entryStatus, formatBytes, metadataText } from './helpers';
 import { TechnicalDetails } from './TechnicalDetails';
 

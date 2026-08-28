@@ -1,2 +1,2 @@
-import { AuthGate } from '../../features/auth/AuthGate';
+import { AuthGate } from '@/features/auth/AuthGate';
 export default AuthGate;

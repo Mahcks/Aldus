@@ -12,8 +12,8 @@ import {
   View,
 } from 'react-native';
 
-import { mediaURL } from '../lib/media';
-import type { AnchorFixture, OnsetAnchor, OnsetFixture } from '../maintainer/anchors.types';
+import { mediaURL } from '@/lib/media';
+import type { AnchorFixture, OnsetAnchor, OnsetFixture } from '@/maintainer/anchors.types';
 
 const sourceStorageKey = 'aldus:alice:anchors:v3';
 const storageKey = 'aldus:alice:onsets:v1';

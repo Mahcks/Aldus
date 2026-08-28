@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { DEFAULT_READER_PREFERENCES, type ReaderPreferences } from '../components/EPUBReader';
+import { DEFAULT_READER_PREFERENCES, type ReaderPreferences } from '@/components/EPUBReader';
 import { colors } from './theme';
 import { stepPreference } from './reader-settings-values';
 import { Button, IconButton, resolvePressStateClass } from './ui';

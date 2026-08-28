@@ -1,7 +1,7 @@
-import type { ImportProposal, Representation, Work } from '../../generated/api';
-import { representationKinds, type ReviewDraft } from '../source-administration';
-import { Button, Dialog, Field, Notice, Row, Select } from '../ui';
-import { Pressable, Text, View } from '../tw';
+import type { ImportProposal, Representation, Work } from '@/generated/api';
+import { representationKinds, type ReviewDraft } from '@/features/source-administration';
+import { Button, Dialog, Field, Notice, Row, Select } from '@/features/ui';
+import { Pressable, Text, View } from '@/features/tw';
 import { humanState } from './helpers';
 import { TechnicalDetails } from './TechnicalDetails';
 

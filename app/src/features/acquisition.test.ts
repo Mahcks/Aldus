@@ -9,7 +9,7 @@ import {
   parseAcquisitionRelease,
   scoreAcquisitionRelevance,
 } from './acquisition';
-import type { AcquisitionRequest, AcquisitionResult } from '../generated/api';
+import type { AcquisitionRequest, AcquisitionResult } from '@/generated/api';
 
 const request = {
   id: 'request',

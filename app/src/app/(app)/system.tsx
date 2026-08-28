@@ -1,8 +1,8 @@
-import type { BackupArchive, SystemDiagnostics } from '../../generated/api';
+import type { BackupArchive, SystemDiagnostics } from '@/generated/api';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
-import { useAuth } from '../../features/auth/AuthProvider';
+import { useAuth } from '@/features/auth/AuthProvider';
 import {
   Button,
   ConfirmDialog,
@@ -12,10 +12,10 @@ import {
   Page,
   Section,
   StatusBadge,
-} from '../../features/ui';
-import { Text, View } from '../../features/tw';
-import { api, errorMessage } from '../../lib/api';
-import { formatBytes } from '../../features/system-presentation';
+} from '@/features/ui';
+import { Text, View } from '@/features/tw';
+import { api, errorMessage } from '@/lib/api';
+import { formatBytes } from '@/features/system-presentation';
 
 export default function SystemAdministration() {
   const auth = useAuth();

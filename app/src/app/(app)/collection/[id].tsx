@@ -1,9 +1,9 @@
-import type { Collection, CollectionWork } from '../../../generated/api';
+import type { Collection, CollectionWork } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { WorkRow } from '../../../features/bookshelf';
-import { moveCollectionWork } from '../../../features/collection-presentation';
-import { View } from '../../../features/tw';
+import { WorkRow } from '@/features/bookshelf';
+import { moveCollectionWork } from '@/features/collection-presentation';
+import { View } from '@/features/tw';
 import {
   Button,
   ConfirmDialog,
@@ -17,9 +17,9 @@ import {
   Row,
   Section,
   TextField,
-} from '../../../features/ui';
-import { api, errorMessage } from '../../../lib/api';
-import { goBackOr } from '../../../lib/navigation';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
+import { goBackOr } from '@/lib/navigation';
 
 export default function CollectionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ReaderPreferences } from '../generated/api';
+import type { ReaderPreferences } from '@/generated/api';
 import { parseStoredJSON } from './stored-json';
 import { scopedStorageKey } from './storage-scope';
 

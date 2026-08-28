@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { Notification, TitleRequest } from '../generated/api';
+import type { Notification, TitleRequest } from '@/generated/api';
 import {
   groupNotifications,
   isCancelableRequestState,

@@ -11,9 +11,9 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import '../global.css';
-import { AuthProvider } from '../features/auth/AuthProvider';
-import { ServerProvider, useServer } from '../features/auth/ServerProvider';
+import '@/global.css';
+import { AuthProvider } from '@/features/auth/AuthProvider';
+import { ServerProvider, useServer } from '@/features/auth/ServerProvider';
 
 function ServerSession() {
   const server = useServer();

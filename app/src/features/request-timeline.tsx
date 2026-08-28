@@ -1,4 +1,4 @@
-import type { TitleRequestEvent } from '../generated/api';
+import type { TitleRequestEvent } from '@/generated/api';
 import { notificationTime } from './notification-presentation';
 import { requestEventDetail } from './request-timeline-presentation';
 import { titleRequestPresentation } from './title-search';

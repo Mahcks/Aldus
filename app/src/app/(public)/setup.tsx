@@ -1,10 +1,10 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { AuthLayout } from '../../features/auth/AuthLayout';
-import { Button, Field, Notice } from '../../features/ui';
-import { Text } from '../../features/tw';
-import { APIError, api, errorMessage } from '../../lib/api';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { AuthLayout } from '@/features/auth/AuthLayout';
+import { Button, Field, Notice } from '@/features/ui';
+import { Text } from '@/features/tw';
+import { APIError, api, errorMessage } from '@/lib/api';
 
 export default function Setup() {
   const auth = useAuth();

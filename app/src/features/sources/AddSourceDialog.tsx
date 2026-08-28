@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import type { LibrarySource, SourceDirectoryListing, SourceRoot } from '../../generated/api';
-import { childDirectory, deriveSourceName, parentDirectory } from '../source-administration';
+import type { LibrarySource, SourceDirectoryListing, SourceRoot } from '@/generated/api';
+import {
+  childDirectory,
+  deriveSourceName,
+  parentDirectory,
+} from '@/features/source-administration';
 import { findRootForPath } from './helpers';
-import { AppIcon } from '../icons';
-import { Button, Checkbox, Dialog, Field, Notice, Row, colors } from '../ui';
-import { Pressable, ScrollView, Text, View } from '../tw';
-import { api, errorMessage } from '../../lib/api';
+import { AppIcon } from '@/features/icons';
+import { Button, Checkbox, Dialog, Field, Notice, Row, colors } from '@/features/ui';
+import { Pressable, ScrollView, Text, View } from '@/features/tw';
+import { api, errorMessage } from '@/lib/api';
 
 type Props = {
   visible: boolean;

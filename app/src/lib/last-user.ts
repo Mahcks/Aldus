@@ -1,4 +1,4 @@
-import type { User } from '../generated/api';
+import type { User } from '@/generated/api';
 
 export async function lastUser(_origin?: string): Promise<User | null> {
   return null;

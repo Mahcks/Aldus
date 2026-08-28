@@ -1,12 +1,12 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { Platform } from 'react-native';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { AuthLayout } from '../../features/auth/AuthLayout';
-import { useServer } from '../../features/auth/ServerProvider';
-import { Button, Field, Notice } from '../../features/ui';
-import { Text } from '../../features/tw';
-import { api, errorMessage } from '../../lib/api';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { AuthLayout } from '@/features/auth/AuthLayout';
+import { useServer } from '@/features/auth/ServerProvider';
+import { Button, Field, Notice } from '@/features/ui';
+import { Text } from '@/features/tw';
+import { api, errorMessage } from '@/lib/api';
 
 export default function Login() {
   const auth = useAuth();

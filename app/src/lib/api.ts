@@ -87,7 +87,7 @@ import type {
   WorkBrowsePage,
   WorkProgressUpdate,
   WorkPreference,
-} from '../generated/api';
+} from '@/generated/api';
 import { clearToken, getToken, setToken } from './auth-token';
 import { getAPIBaseURL } from './api-base';
 

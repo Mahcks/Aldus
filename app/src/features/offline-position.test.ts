@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import type { Alignment } from '../generated/api';
+import type { Alignment } from '@/generated/api';
 import { offlineAudioToCanonical, offlineCanonicalToAudio } from './offline-position';
 
 const alignment = {

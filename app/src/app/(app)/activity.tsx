@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import type { Notification, TitleRequest, TitleRequestEvent } from '../../generated/api';
+import type { Notification, TitleRequest, TitleRequestEvent } from '@/generated/api';
 import {
   groupNotifications,
   isCancelableRequestState,
@@ -9,19 +9,19 @@ import {
   requestGroup,
   type NotificationGroup,
   type RequestFilter,
-} from '../../features/activity-presentation';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { BookCover } from '../../features/bookshelf';
-import { AppIcon } from '../../features/icons';
+} from '@/features/activity-presentation';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { BookCover } from '@/features/bookshelf';
+import { AppIcon } from '@/features/icons';
 import {
   notificationHref,
   notificationIcon,
   notificationTime,
-} from '../../features/notification-presentation';
-import { RequestTimeline } from '../../features/request-timeline';
-import { colors } from '../../features/theme';
-import { titleRequestDetail, titleRequestPresentation } from '../../features/title-search';
-import { Pressable, Text, View } from '../../features/tw';
+} from '@/features/notification-presentation';
+import { RequestTimeline } from '@/features/request-timeline';
+import { colors } from '@/features/theme';
+import { titleRequestDetail, titleRequestPresentation } from '@/features/title-search';
+import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
   ConfirmDialog,
@@ -31,8 +31,8 @@ import {
   Page,
   Section,
   StatusBadge,
-} from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
 
 function ActivityRow({
   group,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Platform } from 'react-native';
-import { Button } from '../ui';
-import { Text, View } from '../tw';
+import { Button } from '@/features/ui';
+import { Text, View } from '@/features/tw';
 
 type DetailRow = {
   label: string;

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { User } from '../generated/api';
+import type { User } from '@/generated/api';
 import { parseStoredJSON } from './stored-json';
 import { getAPIBaseURL } from './api-base';
 

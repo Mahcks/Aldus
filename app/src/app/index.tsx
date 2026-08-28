@@ -1,7 +1,7 @@
 import { Redirect, type Href } from 'expo-router';
-import { AppBootState } from '../features/ui';
-import { useAuth } from '../features/auth/AuthProvider';
-import { useServer } from '../features/auth/ServerProvider';
+import { AppBootState } from '@/features/ui';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { useServer } from '@/features/auth/ServerProvider';
 
 export default function Home() {
   const auth = useAuth();

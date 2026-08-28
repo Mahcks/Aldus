@@ -1,4 +1,4 @@
-import type { ReaderPreferences } from '../generated/api';
+import type { ReaderPreferences } from '@/generated/api';
 
 export async function cachedReaderPreferences(): Promise<ReaderPreferences | null> {
   return null;

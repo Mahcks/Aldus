@@ -1,8 +1,8 @@
 import { Redirect } from 'expo-router';
-import { AppBootState } from '../ui';
+import { AppBootState } from '@/features/ui';
 import { useAuth } from './AuthProvider';
 import { useServer } from './ServerProvider';
-import { AppShell } from '../shell/AppShell';
+import { AppShell } from '@/features/shell/AppShell';
 
 export function AuthGate() {
   const auth = useAuth();

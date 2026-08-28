@@ -8,15 +8,15 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react';
-import type { SetupStatus } from '../../generated/api';
-import { preloadedAPIBaseURL, setAPIBaseURL } from '../../lib/api-base';
-import { normalizeServerOrigin } from '../../lib/server-origin';
+import type { SetupStatus } from '@/generated/api';
+import { preloadedAPIBaseURL, setAPIBaseURL } from '@/lib/api-base';
+import { normalizeServerOrigin } from '@/lib/server-origin';
 import {
   forgetServerProfile,
   loadServerProfiles,
   rememberServerProfile,
   type ServerProfile,
-} from '../../lib/server-profiles';
+} from '@/lib/server-profiles';
 
 type ServerContextValue = {
   loading: boolean;

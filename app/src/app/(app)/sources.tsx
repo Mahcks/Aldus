@@ -1,35 +1,21 @@
-import type {
-  ImportProposal,
-  Library,
-  LibrarySource,
-  Representation,
-  Work,
-} from '../../generated/api';
+import type { ImportProposal, Library, LibrarySource, Representation, Work } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../../features/auth/AuthProvider';
+import { useAuth } from '@/features/auth/AuthProvider';
 import {
   canManageSources,
   makeReviewDraft,
   mergeReviewDraft,
   type ReviewDraft,
-} from '../../features/source-administration';
-import { AddSourceDialog } from '../../features/sources/AddSourceDialog';
-import { ImportReviewSection } from '../../features/sources/ImportReviewSection';
-import { ReviewDialog } from '../../features/sources/ReviewDialog';
-import { SourceCard } from '../../features/sources/SourceCard';
-import type { SourceDetails } from '../../features/sources/types';
-import {
-  Button,
-  ConfirmDialog,
-  EmptyState,
-  Loading,
-  Notice,
-  Page,
-  Section,
-} from '../../features/ui';
-import { Pressable, Text, View } from '../../features/tw';
-import { APIError, api, errorMessage } from '../../lib/api';
+} from '@/features/source-administration';
+import { AddSourceDialog } from '@/features/sources/AddSourceDialog';
+import { ImportReviewSection } from '@/features/sources/ImportReviewSection';
+import { ReviewDialog } from '@/features/sources/ReviewDialog';
+import { SourceCard } from '@/features/sources/SourceCard';
+import type { SourceDetails } from '@/features/sources/types';
+import { Button, ConfirmDialog, EmptyState, Loading, Notice, Page, Section } from '@/features/ui';
+import { Pressable, Text, View } from '@/features/tw';
+import { APIError, api, errorMessage } from '@/lib/api';
 
 export default function SourcesAdministration() {
   const { libraryId, proposalId } = useLocalSearchParams<{

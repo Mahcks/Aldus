@@ -1,7 +1,7 @@
-import type { User } from '../../generated/api';
+import type { User } from '@/generated/api';
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { Text, View } from '../../features/tw';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { Text, View } from '@/features/tw';
 import {
   Button,
   Checkbox,
@@ -15,8 +15,8 @@ import {
   Row,
   SearchField,
   StatusBadge,
-} from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
 
 const emptyForm = { username: '', display_name: '', admin: false };
 

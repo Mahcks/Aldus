@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { ImportProposal, Library } from '../generated/api';
+import type { ImportProposal, Library } from '@/generated/api';
 import {
   canManageSources,
   childDirectory,

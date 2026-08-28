@@ -1,4 +1,4 @@
-import type { WorkDetail, WorkSummary } from '../generated/api';
+import type { WorkDetail, WorkSummary } from '@/generated/api';
 import { Button, Dialog, Radio } from './ui';
 import { Text, View } from './tw';
 

@@ -1,4 +1,4 @@
-import type { AudioChapter } from '../generated/api';
+import type { AudioChapter } from '@/generated/api';
 
 export function offlineAudioChapters(value: unknown): Record<string, AudioChapter[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};

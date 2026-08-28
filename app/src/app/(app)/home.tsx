@@ -1,17 +1,17 @@
-import type { Collection, Notification, Work, WorkSummary } from '../../generated/api';
+import type { Collection, Notification, Work, WorkSummary } from '@/generated/api';
 import type { Href } from 'expo-router';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState, type PropsWithChildren } from 'react';
 import Animated from 'react-native-reanimated';
-import { BookCover, ContinueCard, coverPresentation, WorkCard } from '../../features/bookshelf';
-import { requestNotification } from '../../features/activity-presentation';
-import { collectionCount } from '../../features/collection-presentation';
-import { workProgressLabel } from '../../features/consumption';
-import { AppIcon } from '../../features/icons';
-import { listItemEnter } from '../../features/motion';
-import { notificationHref } from '../../features/notification-presentation';
-import { colors } from '../../features/theme';
-import { Pressable, ScrollView, Text, View } from '../../features/tw';
+import { BookCover, ContinueCard, coverPresentation, WorkCard } from '@/features/bookshelf';
+import { requestNotification } from '@/features/activity-presentation';
+import { collectionCount } from '@/features/collection-presentation';
+import { workProgressLabel } from '@/features/consumption';
+import { AppIcon } from '@/features/icons';
+import { listItemEnter } from '@/features/motion';
+import { notificationHref } from '@/features/notification-presentation';
+import { colors } from '@/features/theme';
+import { Pressable, ScrollView, Text, View } from '@/features/tw';
 import {
   Button,
   EmptyState,
@@ -20,9 +20,9 @@ import {
   Page,
   resolvePressStateClass,
   Section,
-} from '../../features/ui';
-import { APIError, api, errorMessage } from '../../lib/api';
-import { offlineWorkSummaries } from '../../lib/offline-library';
+} from '@/features/ui';
+import { APIError, api, errorMessage } from '@/lib/api';
+import { offlineWorkSummaries } from '@/lib/offline-library';
 
 function workHref(work: WorkSummary): Href {
   return `/work/${work.id}` as Href;

@@ -1,11 +1,11 @@
-import type { Library, Media, Representation } from '../../../generated/api';
+import type { Library, Media, Representation } from '@/generated/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../../features/auth/AuthProvider';
-import { representationKinds } from '../../../features/source-administration';
-import { TechnicalDetails } from '../../../features/sources/TechnicalDetails';
-import { Text, View } from '../../../features/tw';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { representationKinds } from '@/features/source-administration';
+import { TechnicalDetails } from '@/features/sources/TechnicalDetails';
+import { Text, View } from '@/features/tw';
 import {
   Button,
   ConfirmDialog,
@@ -18,9 +18,9 @@ import {
   Section,
   Select,
   shared,
-} from '../../../features/ui';
-import { api, errorMessage } from '../../../lib/api';
-import { goBackOr } from '../../../lib/navigation';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
+import { goBackOr } from '@/lib/navigation';
 
 export default function RepresentationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

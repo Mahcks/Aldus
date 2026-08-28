@@ -1,6 +1,6 @@
 import { Image as ExpoImage } from 'expo-image';
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
-import { apiBaseURL } from '../lib/api-base';
+import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from './icons';
 import { colors, resolvePressStateClass } from './ui';
 import { Pressable, Text, View } from './tw';

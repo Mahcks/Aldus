@@ -13,7 +13,7 @@ import {
   type SearchResult,
   type SelectionActionEvent,
 } from 'react-native-readium';
-import type { AlignmentSegment, EPUBLocator } from '../generated/api';
+import type { AlignmentSegment, EPUBLocator } from '@/generated/api';
 import {
   mapReadiumLocator,
   mapReadiumSelection,
@@ -24,11 +24,11 @@ import {
   readiumRestoreDisposition,
   readiumSearchQueries,
   segmentForEPUBLocator,
-} from '../features/reader-spike/readium-locator';
-import { colors } from '../features/theme';
-import { flattenReaderContents } from '../features/reader-navigation';
-import { Text, View } from '../features/tw';
-import { IconButton } from '../features/ui';
+} from '@/features/reader-spike/readium-locator';
+import { colors } from '@/features/theme';
+import { flattenReaderContents } from '@/features/reader-navigation';
+import { Text, View } from '@/features/tw';
+import { IconButton } from '@/features/ui';
 
 type ReaderLocation = {
   href: string;

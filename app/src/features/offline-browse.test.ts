@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { WorkSummary } from '../generated/api';
+import type { WorkSummary } from '@/generated/api';
 import { offlineBrowseWorks } from './offline-browse';
 
 const work = (value: Partial<WorkSummary> & Pick<WorkSummary, 'id' | 'title'>) =>

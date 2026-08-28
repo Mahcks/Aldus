@@ -1,6 +1,6 @@
-import type { LibrarySource, SourceScan } from '../../generated/api';
-import { Button, Notice, Row, StatusBadge } from '../ui';
-import { Text, View } from '../tw';
+import type { LibrarySource, SourceScan } from '@/generated/api';
+import { Button, Notice, Row, StatusBadge } from '@/features/ui';
+import { Text, View } from '@/features/tw';
 import { EntryList } from './EntryList';
 import { formatDate, scanStatus, sourceStatus } from './helpers';
 import { ScanHistory } from './ScanHistory';

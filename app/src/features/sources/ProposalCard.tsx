@@ -1,6 +1,6 @@
-import type { ImportProposal, Work } from '../../generated/api';
-import { Button, Row, StatusBadge } from '../ui';
-import { Text, View } from '../tw';
+import type { ImportProposal, Work } from '@/generated/api';
+import { Button, Row, StatusBadge } from '@/features/ui';
+import { Text, View } from '@/features/tw';
 import { proposalStatus } from './helpers';
 
 export function ProposalCard({

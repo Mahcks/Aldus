@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { AlignmentJob, Media, Representation } from '../generated/api';
+import type { AlignmentJob, Media, Representation } from '@/generated/api';
 import {
   audioPassage,
   audioChapterAt,

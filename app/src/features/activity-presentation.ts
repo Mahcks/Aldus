@@ -1,4 +1,4 @@
-import type { Notification, TitleRequest } from '../generated/api';
+import type { Notification, TitleRequest } from '@/generated/api';
 
 export type RequestFilter = 'active' | 'ready' | 'history';
 

@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react';
 import { Modal, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '../auth/AuthProvider';
-import { AppIcon, type AppIconName } from '../icons';
-import { sheetEnter, sheetExit } from '../motion';
-import { colors, IconButton, resolvePressStateClass } from '../ui';
-import { Pressable, Text, View } from '../tw';
-import { api } from '../../lib/api';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { AppIcon, type AppIconName } from '@/features/icons';
+import { sheetEnter, sheetExit } from '@/features/motion';
+import { colors, IconButton, resolvePressStateClass } from '@/features/ui';
+import { Pressable, Text, View } from '@/features/tw';
+import { api } from '@/lib/api';
 
 type NavItem = { label: string; href: string; icon: AppIconName; badge?: number };
 

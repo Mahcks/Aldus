@@ -1,4 +1,4 @@
-import type { LibrarySource, SourceEntry, SourceRoot, SourceScan } from '../../generated/api';
+import type { LibrarySource, SourceEntry, SourceRoot, SourceScan } from '@/generated/api';
 
 /** Matches `StatusBadge`'s tone union without importing a component into pure logic. */
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';

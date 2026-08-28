@@ -7,16 +7,16 @@ import type {
   Representation,
   Work,
   WorkDetail,
-} from '../../../../generated/api';
+} from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { choices, type MediaChoice } from '../../../../features/consumption';
-import { BookCover, coverPresentation } from '../../../../features/bookshelf';
-import { useAuth } from '../../../../features/auth/AuthProvider';
-import { TechnicalDetails } from '../../../../features/sources/TechnicalDetails';
-import { Pressable, ScrollView, Text, View } from '../../../../features/tw';
+import { choices, type MediaChoice } from '@/features/consumption';
+import { BookCover, coverPresentation } from '@/features/bookshelf';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { TechnicalDetails } from '@/features/sources/TechnicalDetails';
+import { Pressable, ScrollView, Text, View } from '@/features/tw';
 import {
   Button,
   Checkbox,
@@ -36,9 +36,9 @@ import {
   Select,
   StatusBadge,
   shared,
-} from '../../../../features/ui';
-import { api, errorMessage } from '../../../../lib/api';
-import { goBackOr } from '../../../../lib/navigation';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
+import { goBackOr } from '@/lib/navigation';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
 const focalPoints = [

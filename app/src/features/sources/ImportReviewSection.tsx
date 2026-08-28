@@ -1,6 +1,6 @@
-import type { ImportProposal, Work } from '../../generated/api';
-import { EmptyState, Section } from '../ui';
-import { View } from '../tw';
+import type { ImportProposal, Work } from '@/generated/api';
+import { EmptyState, Section } from '@/features/ui';
+import { View } from '@/features/tw';
 import { ProposalCard } from './ProposalCard';
 
 /**

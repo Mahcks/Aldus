@@ -1,4 +1,4 @@
-import type { AcquisitionRequest, AcquisitionResult } from '../generated/api';
+import type { AcquisitionRequest, AcquisitionResult } from '@/generated/api';
 
 export type AcquisitionFulfillment = {
   action?: 'review' | 'open';

@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, useWindowDimensions } from 'react-native';
-import { ScrollView, Text, View } from '../tw';
-import { Button } from '../ui';
+import { ScrollView, Text, View } from '@/features/tw';
+import { Button } from '@/features/ui';
 
 /**
  * Shared page shell for every pre-auth screen (demo, connect, login,

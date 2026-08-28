@@ -1,17 +1,17 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import type { DemoPairing, User } from '../../generated/api';
+import type { DemoPairing, User } from '@/generated/api';
 import { Platform, Share } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { BookCover } from '../../features/bookshelf';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { AuthLayout } from '../../features/auth/AuthLayout';
-import { useServer } from '../../features/auth/ServerProvider';
-import { AppIcon } from '../../features/icons';
-import { listItemEnter } from '../../features/motion';
-import { ScrollView, Text, View } from '../../features/tw';
-import { Button, Field, Notice, colors } from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+import { BookCover } from '@/features/bookshelf';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { AuthLayout } from '@/features/auth/AuthLayout';
+import { useServer } from '@/features/auth/ServerProvider';
+import { AppIcon } from '@/features/icons';
+import { listItemEnter } from '@/features/motion';
+import { ScrollView, Text, View } from '@/features/tw';
+import { Button, Field, Notice, colors } from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
 
 const features = [
   ['read', 'Read complete public-domain ebooks'],

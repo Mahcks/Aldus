@@ -5,16 +5,16 @@ import type {
   AcquisitionConnectionStatus,
   TitleRequest,
   User,
-} from '../../generated/api';
+} from '@/generated/api';
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../../features/auth/AuthProvider';
+import { useAuth } from '@/features/auth/AuthProvider';
 import {
   acquisitionFailureMessage,
   acquisitionDate,
   acquisitionFulfillment,
   acquisitionSize,
-} from '../../features/acquisition';
-import { titleRequestDetail, titleRequestPresentation } from '../../features/title-search';
+} from '@/features/acquisition';
+import { titleRequestDetail, titleRequestPresentation } from '@/features/title-search';
 import {
   Button,
   ConfirmDialog,
@@ -27,9 +27,9 @@ import {
   Section,
   Select,
   StatusBadge,
-} from '../../features/ui';
-import { Pressable, Text, View } from '../../features/tw';
-import { api, errorMessage } from '../../lib/api';
+} from '@/features/ui';
+import { Pressable, Text, View } from '@/features/tw';
+import { api, errorMessage } from '@/lib/api';
 
 export default function AcquisitionsAdministration() {
   const auth = useAuth();

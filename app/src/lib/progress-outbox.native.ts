@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { CanonicalPosition, WorkProgressUpdate } from '../generated/api';
+import type { CanonicalPosition, WorkProgressUpdate } from '@/generated/api';
 import { APIError, api } from './api';
 import { getAPIBaseURL } from './api-base';
 import { parseStoredJSON } from './stored-json';

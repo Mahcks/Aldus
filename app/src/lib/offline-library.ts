@@ -1,9 +1,4 @@
-import type {
-  CanonicalPosition,
-  Library,
-  RepresentationState,
-  WorkSummary,
-} from '../generated/api';
+import type { CanonicalPosition, Library, RepresentationState, WorkSummary } from '@/generated/api';
 import type { OfflineWork } from './offline-library.native';
 
 export type { OfflineWork };

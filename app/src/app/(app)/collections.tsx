@@ -1,10 +1,10 @@
-import type { Collection } from '../../generated/api';
+import type { Collection } from '@/generated/api';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { collectionCount } from '../../features/collection-presentation';
-import { AppIcon } from '../../features/icons';
-import { colors } from '../../features/theme';
-import { Pressable, Text, View } from '../../features/tw';
+import { collectionCount } from '@/features/collection-presentation';
+import { AppIcon } from '@/features/icons';
+import { colors } from '@/features/theme';
+import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
   Dialog,
@@ -16,8 +16,8 @@ import {
   resolvePressStateClass,
   Section,
   TextField,
-} from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
 
 function CollectionRow({ item }: { item: Collection }) {
   const [focused, setFocused] = useState(false);

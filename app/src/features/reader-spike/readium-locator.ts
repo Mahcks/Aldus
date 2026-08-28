@@ -1,4 +1,4 @@
-import type { AlignmentSegment, EPUBLocator } from '../../generated/api';
+import type { AlignmentSegment, EPUBLocator } from '@/generated/api';
 import type { DecorationGroup, Locator } from 'react-native-readium';
 
 export function parseReadiumLocator(value: unknown): Locator | undefined {

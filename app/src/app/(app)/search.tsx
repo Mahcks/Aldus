@@ -4,16 +4,16 @@ import type {
   Library,
   TitleSearchResult,
   WorkSummary,
-} from '../../generated/api';
+} from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { groupAcquisitionResults } from '../../features/acquisition';
-import { BookCover } from '../../features/bookshelf';
-import { AcquisitionGroupRow, BrowseControls, BrowseFacet, WorkGrid } from '../../features/browse';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { titleRequestPresentation } from '../../features/title-search';
-import { offlineBrowseWorks } from '../../features/offline-browse';
-import { Text, View } from '../../features/tw';
+import { groupAcquisitionResults } from '@/features/acquisition';
+import { BookCover } from '@/features/bookshelf';
+import { AcquisitionGroupRow, BrowseControls, BrowseFacet, WorkGrid } from '@/features/browse';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { titleRequestPresentation } from '@/features/title-search';
+import { offlineBrowseWorks } from '@/features/offline-browse';
+import { Text, View } from '@/features/tw';
 import {
   Button,
   Dialog,
@@ -24,9 +24,9 @@ import {
   SearchField,
   Section,
   StatusBadge,
-} from '../../features/ui';
-import { APIError, api, errorMessage } from '../../lib/api';
-import { offlineWorkSummaries } from '../../lib/offline-library';
+} from '@/features/ui';
+import { APIError, api, errorMessage } from '@/lib/api';
+import { offlineWorkSummaries } from '@/lib/offline-library';
 
 const statusTitles: Record<string, string> = {
   want_to_read: 'Want to read or listen',

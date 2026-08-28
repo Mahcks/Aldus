@@ -1,6 +1,6 @@
-import type { SourceScan } from '../../generated/api';
-import { StatusBadge } from '../ui';
-import { Text, View } from '../tw';
+import type { SourceScan } from '@/generated/api';
+import { StatusBadge } from '@/features/ui';
+import { Text, View } from '@/features/tw';
 import { formatDate, scanStatus } from './helpers';
 
 /** Compact list of a source's prior scans (most recent scan is shown on the card itself). */

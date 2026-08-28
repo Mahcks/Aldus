@@ -8,7 +8,7 @@ import type {
   Media,
   Representation,
   WorkProgressUpdate,
-} from '../generated/api';
+} from '@/generated/api';
 
 export type MediaChoice = Media & { representation: Representation };
 

@@ -1,9 +1,9 @@
-import type { GenreTag, UnmatchedGenreSubject } from '../../generated/api';
+import type { GenreTag, UnmatchedGenreSubject } from '@/generated/api';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
-import { useAuth } from '../../features/auth/AuthProvider';
-import { AppIcon, genreIconOptions, isAppIconName, type AppIconName } from '../../features/icons';
-import { Pressable, Text, View } from '../../features/tw';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { AppIcon, genreIconOptions, isAppIconName, type AppIconName } from '@/features/icons';
+import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
   ConfirmDialog,
@@ -18,8 +18,8 @@ import {
   Row,
   SearchField,
   colors,
-} from '../../features/ui';
-import { api, errorMessage } from '../../lib/api';
+} from '@/features/ui';
+import { api, errorMessage } from '@/lib/api';
 
 type TagForm = { label: string; icon: AppIconName; keywords: string[] };
 

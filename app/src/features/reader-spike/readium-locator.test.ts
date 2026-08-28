@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { AlignmentSegment } from '../../generated/api';
+import type { AlignmentSegment } from '@/generated/api';
 import {
   deserializeReadiumLocator,
   mapReadiumLocator,

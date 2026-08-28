@@ -1,4 +1,4 @@
-import type { WorkSummary } from '../generated/api';
+import type { WorkSummary } from '@/generated/api';
 
 export function offlineBrowseWorks(
   works: WorkSummary[],

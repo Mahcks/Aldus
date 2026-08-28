@@ -6,7 +6,7 @@ import type {
   ReaderPreferences as ReaderPreferencesDTO,
   RepresentationState,
   Work,
-} from '../../../generated/api';
+} from '@/generated/api';
 import type { AudioSource } from 'expo-audio';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
@@ -23,15 +23,15 @@ import {
   type ReaderNavigationItem,
   type ReaderPreferences,
   type ReaderSearchResult,
-} from '../../../components/EPUBReader';
-import { commitsReadingProgress } from '../../../components/reader-location';
-import { BookCover, coverPresentation } from '../../../features/bookshelf';
-import { ReaderSettings } from '../../../features/reader-settings';
+} from '@/components/EPUBReader';
+import { commitsReadingProgress } from '@/components/reader-location';
+import { BookCover, coverPresentation } from '@/features/bookshelf';
+import { ReaderSettings } from '@/features/reader-settings';
 import {
   readerPreferencesUpdate,
   readerSettingsFromDTO,
   readerSettingsFromState,
-} from '../../../features/reader-settings-values';
+} from '@/features/reader-settings-values';
 import {
   applyPlaybackRate,
   audioChapterAt,
@@ -57,8 +57,8 @@ import {
   PLAYBACK_RATES,
   synchronizationLabel,
   type MediaChoice,
-} from '../../../features/consumption';
-import { fadeIn as passageEntrance } from '../../../features/motion';
+} from '@/features/consumption';
+import { fadeIn as passageEntrance } from '@/features/motion';
 import {
   Button,
   colors,
@@ -70,33 +70,26 @@ import {
   resolvePressStateClass,
   SearchField,
   StatusBadge,
-} from '../../../features/ui';
-import { AppIcon } from '../../../features/icons';
-import { Pressable, ScrollView, Text, View } from '../../../features/tw';
-import { APIError, api, errorMessage } from '../../../lib/api';
-import {
-  cachedReaderPreferences,
-  cacheReaderPreferences,
-} from '../../../lib/reader-preferences-cache';
-import { productEPUBSource } from '../../../lib/epub-source';
-import { goBackOr } from '../../../lib/navigation';
-import { productAudioSource } from '../../../lib/media';
+} from '@/features/ui';
+import { AppIcon } from '@/features/icons';
+import { Pressable, ScrollView, Text, View } from '@/features/tw';
+import { APIError, api, errorMessage } from '@/lib/api';
+import { cachedReaderPreferences, cacheReaderPreferences } from '@/lib/reader-preferences-cache';
+import { productEPUBSource } from '@/lib/epub-source';
+import { goBackOr } from '@/lib/navigation';
+import { productAudioSource } from '@/lib/media';
 import {
   offlineWork,
   updateOfflineProgress,
   updateOfflineRepresentationState,
-} from '../../../lib/offline-library';
+} from '@/lib/offline-library';
 import {
   offlineAudioToCanonical,
   offlineCanonicalToAudio,
   offlineCanonicalToEPUB,
   offlineEPUBToCanonical,
-} from '../../../features/offline-position';
-import {
-  pendingProgress,
-  reconcilePendingProgress,
-  saveWorkProgress,
-} from '../../../lib/progress-outbox';
+} from '@/features/offline-position';
+import { pendingProgress, reconcilePendingProgress, saveWorkProgress } from '@/lib/progress-outbox';
 
 type Mode = 'read' | 'listen';
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';

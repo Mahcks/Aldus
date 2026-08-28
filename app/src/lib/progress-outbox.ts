@@ -1,4 +1,4 @@
-import type { CanonicalPosition, WorkProgressUpdate } from '../generated/api';
+import type { CanonicalPosition, WorkProgressUpdate } from '@/generated/api';
 import { api } from './api';
 
 export async function saveWorkProgress(workID: string, update: WorkProgressUpdate) {

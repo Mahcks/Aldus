@@ -5,13 +5,13 @@ import type {
   Media,
   Representation,
   WorkDetail,
-} from '../../../generated/api';
+} from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useAuth } from '../../../features/auth/AuthProvider';
-import { BookCover, coverPresentation } from '../../../features/bookshelf';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { BookCover, coverPresentation } from '@/features/bookshelf';
 import {
   choices,
   defaultPair,
@@ -19,16 +19,16 @@ import {
   synchronizationLabel,
   workProgressLabel,
   type MediaChoice,
-} from '../../../features/consumption';
-import { formatDuration } from '../../../features/format';
-import { AppIcon } from '../../../features/icons';
-import { fadeIn, listItemEnter } from '../../../features/motion';
+} from '@/features/consumption';
+import { formatDuration } from '@/features/format';
+import { AppIcon } from '@/features/icons';
+import { fadeIn, listItemEnter } from '@/features/motion';
 import {
   ReadingStatusDialog,
   readingStatusLabel,
   type ReadingStatus,
-} from '../../../features/reading-status';
-import { Pressable, Text, View } from '../../../features/tw';
+} from '@/features/reading-status';
+import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
   Checkbox,
@@ -42,10 +42,10 @@ import {
   Notice,
   Page,
   resolvePressStateClass,
-} from '../../../features/ui';
-import { APIError, api, errorMessage } from '../../../lib/api';
-import { goBackOr } from '../../../lib/navigation';
-import { downloadOfflineWork, offlineWork, removeOfflineWork } from '../../../lib/offline-library';
+} from '@/features/ui';
+import { APIError, api, errorMessage } from '@/lib/api';
+import { goBackOr } from '@/lib/navigation';
+import { downloadOfflineWork, offlineWork, removeOfflineWork } from '@/lib/offline-library';
 
 /** Open Library reports language as an ISO 639-2 code (e.g. "eng"); shown to readers as a name. */
 const languageNames: Record<string, string> = {

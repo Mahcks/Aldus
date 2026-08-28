@@ -9,9 +9,9 @@ import type {
   Library,
   WorkDetail,
   WorkSummary,
-} from '../generated/api';
-import type { MediaChoice } from '../features/consumption';
-import { offlineAudioChapters } from '../features/offline-chapters';
+} from '@/generated/api';
+import type { MediaChoice } from '@/features/consumption';
+import { offlineAudioChapters } from '@/features/offline-chapters';
 import { productEPUBSource } from './epub-source';
 import { downloadProductAudio } from './media';
 import { pendingProgress } from './progress-outbox';

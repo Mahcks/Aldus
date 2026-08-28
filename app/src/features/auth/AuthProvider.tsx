@@ -1,9 +1,9 @@
-import type { User } from '../../generated/api';
-import { APIError, api, onUnauthorized } from '../../lib/api';
-import { getAPIBaseURL } from '../../lib/api-base';
-import { clearToken } from '../../lib/auth-token';
-import { lastUser, rememberUser } from '../../lib/last-user';
-import { reconcileAllPendingProgress } from '../../lib/progress-outbox';
+import type { User } from '@/generated/api';
+import { APIError, api, onUnauthorized } from '@/lib/api';
+import { getAPIBaseURL } from '@/lib/api-base';
+import { clearToken } from '@/lib/auth-token';
+import { lastUser, rememberUser } from '@/lib/last-user';
+import { reconcileAllPendingProgress } from '@/lib/progress-outbox';
 import {
   createContext,
   useCallback,
@@ -14,7 +14,7 @@ import {
   type PropsWithChildren,
 } from 'react';
 import { AppState, Platform } from 'react-native';
-import { clearStorageScope, prepareStorageScope, setStorageUserID } from '../../lib/storage-scope';
+import { clearStorageScope, prepareStorageScope, setStorageUserID } from '@/lib/storage-scope';
 import { deleteAccountAndClearState } from './account-deletion';
 import { useServer } from './ServerProvider';
 

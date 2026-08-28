@@ -1,4 +1,4 @@
-import type { Alignment, AudioLocator, CanonicalPosition, EPUBLocator } from '../generated/api';
+import type { Alignment, AudioLocator, CanonicalPosition, EPUBLocator } from '@/generated/api';
 
 const OFFSET_MAX = 1_000_000;
 type TimedWord = { startTime: number; endTime: number; text: string };

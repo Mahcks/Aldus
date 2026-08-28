@@ -1,10 +1,10 @@
 import { Asset } from 'expo-asset';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
-import { IconButton } from '../features/ui';
-import { colors } from '../features/theme';
-import { flattenReaderContents } from '../features/reader-navigation';
-import { Text, View } from '../features/tw';
+import { IconButton } from '@/features/ui';
+import { colors } from '@/features/theme';
+import { flattenReaderContents } from '@/features/reader-navigation';
+import { Text, View } from '@/features/tw';
 import {
   activeContentIndex,
   classifyPageSync,

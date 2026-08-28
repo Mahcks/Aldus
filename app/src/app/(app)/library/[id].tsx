@@ -5,21 +5,21 @@ import type {
   Membership,
   User,
   WorkSummary,
-} from '../../../generated/api';
+} from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { BrowseControls, WorkGrid } from '../../../features/browse';
+import { BrowseControls, WorkGrid } from '@/features/browse';
 import {
   formatSizeLimit,
   parseFormats,
   parseSizeLimit,
   validFormats,
   validPolicyToken,
-} from '../../../features/acquisition-policy-form';
-import { useAuth } from '../../../features/auth/AuthProvider';
-import { AppIcon, type AppIconName } from '../../../features/icons';
-import { Pressable, Text, View } from '../../../features/tw';
+} from '@/features/acquisition-policy-form';
+import { useAuth } from '@/features/auth/AuthProvider';
+import { AppIcon, type AppIconName } from '@/features/icons';
+import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
   Checkbox,
@@ -38,14 +38,14 @@ import {
   SearchField,
   Select,
   shared,
-} from '../../../features/ui';
-import { APIError, api, errorMessage } from '../../../lib/api';
-import { goBackOr } from '../../../lib/navigation';
+} from '@/features/ui';
+import { APIError, api, errorMessage } from '@/lib/api';
+import { goBackOr } from '@/lib/navigation';
 import {
   offlineLibraries,
   offlineWorkSummaries,
   rememberOfflineLibraries,
-} from '../../../lib/offline-library';
+} from '@/lib/offline-library';
 
 type Panel = 'work' | 'members' | 'policy' | 'settings' | null;
 type Role = 'owner' | 'editor' | 'reader';

@@ -1,4 +1,4 @@
-import type { TitleRequestFormat } from '../generated/api';
+import type { TitleRequestFormat } from '@/generated/api';
 import { acquisitionDate } from './acquisition';
 import { notificationTime } from './notification-presentation';
 
