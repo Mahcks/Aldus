@@ -1,9 +1,6 @@
 services:
   aldus:
     image: ghcr.io/mahcks/aldus:${ALDUS_VERSION:?Set ALDUS_VERSION in .env to a published release}-cuda
-    build:
-      context: .
-      target: alignment-nvidia
     deploy:
       resources:
         reservations:

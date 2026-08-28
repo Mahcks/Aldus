@@ -82,14 +82,20 @@ Aldus also refuses to include a symbolic link anywhere under the data directory,
 
 ## Upgrading
 
-To move to a new version: take a backup first, then pin the new tag in `.env` and pull it.
+Keep the image and Compose configuration on the same release. After creating and downloading a verified backup, replace `0.1.0-beta.15` below with the version you are moving to:
 
 ```sh
+ALDUS_VERSION=0.1.0-beta.15
+curl -fL "https://github.com/Mahcks/Aldus/releases/download/v$ALDUS_VERSION/compose.yml" -o compose.yml
+printf 'ALDUS_VERSION=%s\n' "$ALDUS_VERSION" > .env
 docker compose pull
 docker compose up -d
+docker compose ps
 ```
 
-If something goes wrong after an upgrade, roll back by restoring the backup you just took and setting `ALDUS_VERSION` back to the version it came from. Avoid `latest` for a server you depend on — see [Install](/admin/install/) for why.
+If you use NVIDIA acceleration, download the matching `compose.gpu.yml` from that same release and start with both files. Wait for `docker compose ps` to report **healthy** before considering the upgrade complete.
+
+If something goes wrong, restore the backup you took and return to both the previous `ALDUS_VERSION` and its matching Compose files. Merely starting the old image against a database already migrated by a newer version is not a safe rollback. Avoid `latest` for a server you depend on — see [Install](/admin/install/) for why.
 
 ## A realistic schedule
 

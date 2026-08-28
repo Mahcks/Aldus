@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check release configuration
+        run: test "$(sed -n 's/^ALDUS_VERSION=//p' .env.example)" = "${GITHUB_REF_NAME#v}"
       - name: Free disk space for release images
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -87,3 +89,13 @@ jobs:
           [[ "${GITHUB_REF_NAME}" == *-* ]] && prerelease=(--prerelease)
           gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
             gh release create "${GITHUB_REF_NAME}" --verify-tag --generate-notes "${prerelease[@]}"
+          gh release upload "${GITHUB_REF_NAME}" compose.yml compose.gpu.yml --clobber
+
+  verify-public:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify anonymous image pulls
+        run: |
+          docker manifest inspect "ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}" >/dev/null
+          docker manifest inspect "ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}-cuda" >/dev/null

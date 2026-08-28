@@ -67,6 +67,7 @@ release() {
   git -C "$ROOT" fetch --quiet origin main --tags
   sha=$(git -C "$ROOT" rev-parse HEAD)
   [[ $sha == "$(git -C "$ROOT" rev-parse origin/main)" ]] || fail "Local main must exactly match origin/main"
+  [[ $(sed -n 's/^ALDUS_VERSION=//p' "$ROOT/.env.example") == ${tag#v} ]] || fail ".env.example must pin ${tag#v}"
 
   ci=$(gh run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
   [[ $ci == success ]] || fail "CI has not succeeded for $sha"
