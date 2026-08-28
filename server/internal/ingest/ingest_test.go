@@ -44,7 +44,7 @@ func testSetup(t *testing.T) *setup {
 		t.Fatal(err)
 	}
 	makeUser := func(name string) auth.User {
-		u, _, err := accounts.CreateUser(ctx, session.User, auth.Credentials{Username: name, Password: "a-secure-user-password"}, false)
+		u, _, err := accounts.CreateUser(ctx, session.User, auth.Credentials{Username: name, Password: "a-secure-user-password"}, false, "")
 		if err != nil {
 			t.Fatal(err)
 		}

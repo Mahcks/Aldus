@@ -12,6 +12,7 @@ type User struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 	DemoExpiresAt         *time.Time `json:"demo_expires_at,omitempty"`
 	MustChangeCredentials bool       `json:"must_change_credentials"`
+	AdminNote             string     `json:"admin_note,omitempty"`
 }
 type Session struct {
 	Token       string       `json:"token,omitempty"`
@@ -49,6 +50,7 @@ type SetupStatus struct {
 type CreateUserRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name,omitempty"`
+	AdminNote   string `json:"admin_note,omitempty"`
 	Admin       bool   `json:"admin"`
 }
 type CreatedUser struct {
@@ -56,7 +58,8 @@ type CreatedUser struct {
 	TemporaryPassword string `json:"temporary_password"`
 }
 type UpdateUserRequest struct {
-	Disabled *bool `json:"disabled"`
+	Disabled  *bool   `json:"disabled"`
+	AdminNote *string `json:"admin_note"`
 }
 type ClaimAccountRequest struct {
 	Username             string `json:"username"`

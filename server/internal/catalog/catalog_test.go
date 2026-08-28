@@ -31,7 +31,7 @@ func testCatalog(t *testing.T) (*Store, *auth.Store, auth.User) {
 
 func createUser(t *testing.T, accounts *auth.Store, admin auth.User, name string) auth.User {
 	t.Helper()
-	user, _, err := accounts.CreateUser(context.Background(), admin, auth.Credentials{Username: name, Password: "a-secure-user-password"}, false)
+	user, _, err := accounts.CreateUser(context.Background(), admin, auth.Credentials{Username: name, Password: "a-secure-user-password"}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

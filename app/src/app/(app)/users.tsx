@@ -24,7 +24,7 @@ import {
 } from '@/features/ui';
 import { api, errorMessage } from '@/lib/api';
 
-const emptyForm = { username: '', display_name: '', admin: false };
+const emptyForm = { username: '', display_name: '', admin_note: '', admin: false };
 const libraryRoles = [
   { value: '', label: 'No access' },
   { value: 'reader', label: 'Reader' },
@@ -52,6 +52,10 @@ export default function UsersScreen() {
   const [accessLoading, setAccessLoading] = useState(true);
   const [accessBusy, setAccessBusy] = useState('');
   const [accessError, setAccessError] = useState('');
+  const [adminNote, setAdminNote] = useState('');
+  const [noteError, setNoteError] = useState('');
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -106,7 +110,9 @@ export default function UsersScreen() {
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleUsers = users.filter((user) =>
-    `${user.display_name} ${user.username}`.toLocaleLowerCase().includes(normalizedQuery),
+    `${user.display_name} ${user.username} ${user.admin_note ?? ''}`
+      .toLocaleLowerCase()
+      .includes(normalizedQuery),
   );
   const canSubmit = form.username.trim().length >= 3;
   const selectedAccess = selected
@@ -164,6 +170,27 @@ export default function UsersScreen() {
       setError(errorMessage(value));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveAdminNote() {
+    if (!selected || savingNote) return;
+    const note = adminNote.trim();
+    setSavingNote(true);
+    setNoteError('');
+    setNoteSaved(false);
+    try {
+      await api.updateUser(selected.id, { admin_note: note });
+      setAdminNote(note);
+      setSelected((current) => (current ? { ...current, admin_note: note } : current));
+      setUsers((current) =>
+        current.map((user) => (user.id === selected.id ? { ...user, admin_note: note } : user)),
+      );
+      setNoteSaved(true);
+    } catch (value) {
+      setNoteError(errorMessage(value));
+    } finally {
+      setSavingNote(false);
     }
   }
 
@@ -276,6 +303,11 @@ export default function UsersScreen() {
                   <Text numberOfLines={1} className="text-sm text-muted">
                     @{user.username}
                   </Text>
+                  {user.admin_note ? (
+                    <Text numberOfLines={1} className="mt-1 text-xs text-subtle">
+                      {user.admin_note}
+                    </Text>
+                  ) : null}
                 </View>
                 <Row>
                   {!accessLoading ? (
@@ -300,6 +332,9 @@ export default function UsersScreen() {
                     onPress={() => {
                       setTechnicalOpen(false);
                       setAccessError('');
+                      setAdminNote(user.admin_note ?? '');
+                      setNoteError('');
+                      setNoteSaved(false);
                       setSelected(user);
                     }}
                   />
@@ -328,6 +363,15 @@ export default function UsersScreen() {
             label="Display name"
             value={form.display_name}
             onChangeText={(display_name) => setForm((current) => ({ ...current, display_name }))}
+          />
+          <Field
+            label="Admin note"
+            value={form.admin_note}
+            onChangeText={(admin_note) => setForm((current) => ({ ...current, admin_note }))}
+            help="Private to global administrators. Useful when the reader later changes their username."
+            maxLength={500}
+            multiline
+            numberOfLines={3}
           />
           <Notice>
             Aldus generates a one-time password. The reader chooses their final username and
@@ -391,6 +435,35 @@ export default function UsersScreen() {
                 Enable this account before changing its library access.
               </Notice>
             ) : null}
+            <View className="gap-3 border-t border-line pt-5">
+              <Field
+                label="Admin note"
+                value={adminNote}
+                onChangeText={(value) => {
+                  setAdminNote(value);
+                  setNoteSaved(false);
+                }}
+                help="Only global administrators can see this note."
+                maxLength={500}
+                multiline
+                numberOfLines={3}
+              />
+              {noteError ? <Notice danger>{noteError}</Notice> : null}
+              {noteSaved ? (
+                <Text accessibilityLiveRegion="polite" className="text-sm text-success">
+                  Note saved.
+                </Text>
+              ) : null}
+              <View className="self-start">
+                <Button
+                  label="Save note"
+                  kind="secondary"
+                  loading={savingNote}
+                  disabled={adminNote.trim() === (selected.admin_note ?? '')}
+                  onPress={() => void saveAdminNote()}
+                />
+              </View>
+            </View>
             <View className="gap-3 border-t border-line pt-5">
               <View className="gap-1">
                 <Text className="text-base font-sans-bold text-ink">Library access</Text>

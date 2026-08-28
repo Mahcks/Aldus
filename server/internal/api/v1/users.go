@@ -37,7 +37,7 @@ func createUser(store *auth.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		user, temporaryPassword, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, DisplayName: body.DisplayName}, body.Admin)
+		user, temporaryPassword, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, DisplayName: body.DisplayName}, body.Admin, body.AdminNote)
 		if err == nil {
 			w.Header().Set("Cache-Control", "no-store")
 			writeJSON(w, http.StatusCreated, contracts.CreatedUser{User: userDTO(user), TemporaryPassword: temporaryPassword})
@@ -67,11 +67,17 @@ func updateUser(store *auth.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		if body.Disabled == nil {
+		if (body.Disabled == nil) == (body.AdminNote == nil) {
 			http.Error(w, "invalid user", http.StatusBadRequest)
 			return
 		}
-		err := store.SetDisabled(r.Context(), actor, chi.URLParam(r, "userID"), *body.Disabled)
+		var err error
+		if body.Disabled != nil {
+			err = store.SetDisabled(r.Context(), actor, chi.URLParam(r, "userID"), *body.Disabled)
+		}
+		if err == nil && body.AdminNote != nil {
+			err = store.SetAdminNote(r.Context(), actor, chi.URLParam(r, "userID"), *body.AdminNote)
+		}
 		if err == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return

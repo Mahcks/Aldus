@@ -272,15 +272,21 @@ func TestAdminUserManagement(t *testing.T) {
 	if err := store.SetDisabled(ctx, session.User, session.User.ID, true); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("disable last admin = %v", err)
 	}
-	user, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "reader", Password: testPassword}, false)
-	if err != nil {
+	user, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "reader", Password: testPassword}, false, "Sam's partner")
+	if err != nil || user.AdminNote != "Sam's partner" {
 		t.Fatal(err)
 	}
-	if _, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "READER", Password: testPassword}, false); !errors.Is(err, ErrUsernameTaken) {
+	if _, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "READER", Password: testPassword}, false, ""); !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("duplicate username = %v", err)
 	}
 	if err := store.SetDisabled(ctx, user, user.ID, true); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("non-admin disable = %v", err)
+	}
+	if err := store.SetAdminNote(ctx, user, user.ID, "private"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-admin note update = %v", err)
+	}
+	if err := store.SetAdminNote(ctx, session.User, user.ID, "Sam's book club"); err != nil {
+		t.Fatal(err)
 	}
 	now := formatTime(time.Now().UTC())
 	if _, err := store.db.ExecContext(ctx, `INSERT INTO libraries(id,name,created_at,updated_at) VALUES('owned','Owned',?,?)`, now, now); err != nil {
@@ -302,7 +308,7 @@ func TestAdminUserManagement(t *testing.T) {
 		t.Fatalf("disabled login = %v", err)
 	}
 	users, err := store.Users(ctx, session.User, 50, 0)
-	if err != nil || len(users) != 2 {
+	if err != nil || len(users) != 2 || users[1].AdminNote != "Sam's book club" {
 		t.Fatalf("users = %#v, %v", users, err)
 	}
 }
@@ -314,8 +320,8 @@ func TestAccountCredentialLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, temporaryPassword, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader"}, false)
-	if err != nil || temporaryPassword == "" || !reader.MustChangeCredentials {
+	reader, temporaryPassword, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader"}, false, "")
+	if err != nil || len(temporaryPassword) != 12 || !reader.MustChangeCredentials {
 		t.Fatalf("created account = %#v, temporary=%q, %v", reader, temporaryPassword, err)
 	}
 	temporarySession, err := store.Login(ctx, Credentials{Username: reader.Username, Password: temporaryPassword})
@@ -347,7 +353,7 @@ func TestAccountCredentialLifecycle(t *testing.T) {
 		t.Fatalf("updated profile = %#v, %v", updated, err)
 	}
 	resetPassword, err := store.ResetPassword(ctx, admin.User, reader.ID)
-	if err != nil || resetPassword == "" {
+	if err != nil || len(resetPassword) != 12 {
 		t.Fatalf("password reset = %q, %v", resetPassword, err)
 	}
 	if _, err := store.Authenticate(ctx, changed.Token); !errors.Is(err, ErrUnauthenticated) {
@@ -389,11 +395,11 @@ func TestDeleteCurrentUser(t *testing.T) {
 	if err := store.DeleteCurrentUser(ctx, admin.User, testPassword); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("delete last admin = %v", err)
 	}
-	secondAdmin, _, err := store.CreateUser(ctx, admin.User, Credentials{Username: "second-admin", Password: testPassword}, true)
+	secondAdmin, _, err := store.CreateUser(ctx, admin.User, Credentials{Username: "second-admin", Password: testPassword}, true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, _, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader", Password: testPassword}, false)
+	reader, _, err := store.CreateUser(ctx, admin.User, Credentials{Username: "reader", Password: testPassword}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

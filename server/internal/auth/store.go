@@ -47,6 +47,7 @@ type User struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 	DemoExpiresAt         *time.Time `json:"demo_expires_at,omitempty"`
 	MustChangeCredentials bool       `json:"must_change_credentials"`
+	AdminNote             string     `json:"admin_note,omitempty"`
 }
 
 type Session struct {
@@ -294,6 +295,8 @@ func randomToken(size int) (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
+
+func randomTemporaryPassword() (string, error) { return randomToken(9) }
 
 func formatTime(value time.Time) string { return value.Format(time.RFC3339Nano) }
 

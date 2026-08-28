@@ -26,7 +26,7 @@ func TestInboxIsPrivateAndReadStateDoesNotMutateEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, _, err := accounts.CreateUser(ctx, owner.User, auth.Credentials{Username: "reader", Password: "a-secure-test-password"}, false)
+	reader, _, err := accounts.CreateUser(ctx, owner.User, auth.Credentials{Username: "reader", Password: "a-secure-test-password"}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

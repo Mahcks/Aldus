@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -30,7 +31,7 @@ func (s *Store) Users(ctx context.Context, actor User, limit, offset int) ([]Use
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,username,display_name,is_admin,disabled,created_at,updated_at,must_change_credentials FROM users WHERE demo_expires_at IS NULL ORDER BY username_normalized LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,username,display_name,is_admin,disabled,created_at,updated_at,must_change_credentials,admin_note FROM users WHERE demo_expires_at IS NULL ORDER BY username_normalized LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
@@ -40,7 +41,7 @@ func (s *Store) Users(ctx context.Context, actor User, limit, offset int) ([]Use
 		var u User
 		var admin, disabled, mustChange int
 		var c, d string
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &admin, &disabled, &c, &d, &mustChange); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &admin, &disabled, &c, &d, &mustChange, &u.AdminNote); err != nil {
 			return nil, err
 		}
 		u.Admin = admin != 0
@@ -107,15 +108,19 @@ func (s *Store) DeleteCurrentUser(ctx context.Context, actor User, password stri
 	return nil
 }
 
-func (s *Store) CreateUser(ctx context.Context, actor User, credentials Credentials, admin bool) (User, string, error) {
+func (s *Store) CreateUser(ctx context.Context, actor User, credentials Credentials, admin bool, adminNote string) (User, string, error) {
 	if !actor.Admin {
 		return User{}, "", ErrForbidden
+	}
+	adminNote = strings.TrimSpace(adminNote)
+	if utf8.RuneCountInString(adminNote) > 500 {
+		return User{}, "", ErrInvalid
 	}
 	temporaryPassword := credentials.Password
 	mustChange := temporaryPassword == ""
 	if mustChange {
 		var err error
-		temporaryPassword, err = randomToken(18)
+		temporaryPassword, err = randomTemporaryPassword()
 		if err != nil {
 			return User{}, "", fmt.Errorf("generate temporary password: %w", err)
 		}
@@ -134,8 +139,8 @@ func (s *Store) CreateUser(ctx context.Context, actor User, credentials Credenti
 		return User{}, "", err
 	}
 	now := time.Now().UTC()
-	u := User{ID: id, Username: strings.TrimSpace(credentials.Username), DisplayName: displayName, Admin: admin, MustChangeCredentials: mustChange, CreatedAt: now, UpdatedAt: now}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at,must_change_credentials) VALUES(?,?,?,?,?,?,0,?,?,?)`, id, u.Username, username, displayName, passwordHash, admin, formatTime(now), formatTime(now), mustChange)
+	u := User{ID: id, Username: strings.TrimSpace(credentials.Username), DisplayName: displayName, Admin: admin, MustChangeCredentials: mustChange, AdminNote: adminNote, CreatedAt: now, UpdatedAt: now}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at,must_change_credentials,admin_note) VALUES(?,?,?,?,?,?,0,?,?,?,?)`, id, u.Username, username, displayName, passwordHash, admin, formatTime(now), formatTime(now), mustChange, adminNote)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return User{}, "", ErrUsernameTaken
@@ -160,7 +165,7 @@ func (s *Store) ResetAdministratorPasswordFromHost(ctx context.Context, username
 }
 
 func (s *Store) resetPassword(ctx context.Context, predicate string, value any) (string, error) {
-	temporaryPassword, err := randomToken(18)
+	temporaryPassword, err := randomTemporaryPassword()
 	if err != nil {
 		return "", fmt.Errorf("generate temporary password: %w", err)
 	}
@@ -232,6 +237,28 @@ func (s *Store) SetDisabled(ctx context.Context, actor User, userID string, disa
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *Store) SetAdminNote(ctx context.Context, actor User, userID, note string) error {
+	if !actor.Admin {
+		return ErrForbidden
+	}
+	note = strings.TrimSpace(note)
+	if utf8.RuneCountInString(note) > 500 {
+		return ErrInvalid
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET admin_note=?,updated_at=? WHERE id=? AND demo_expires_at IS NULL`, note, formatTime(time.Now().UTC()), userID)
+	if err != nil {
+		return fmt.Errorf("update user admin note: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check user admin note update: %w", err)
+	}
+	if updated != 1 {
+		return ErrInvalid
+	}
+	return nil
 }
 
 func lastEnabledLibraryOwner(ctx context.Context, tx *sql.Tx, userID string) (bool, error) {

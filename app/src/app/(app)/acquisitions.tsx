@@ -302,7 +302,7 @@ export default function AcquisitionsAdministration() {
               completed and canceled requests.
             </EmptyState>
           ) : (
-            <View accessibilityRole="list" className="border-t border-line">
+            <View accessibilityRole="list">
               {shownRequests.map((request) => (
                 <View key={request.id} className="gap-3 border-b border-line py-4">
                   <View className="gap-1">
@@ -539,14 +539,14 @@ export default function AcquisitionsAdministration() {
               ) : null}
 
               {shownDownloads.length === 0 ? (
-                <View className="border-y border-line py-6">
+                <View className="border-b border-line py-6">
                   <Text className="text-base font-sans-bold text-ink">No active downloads</Text>
                   <Text className="mt-1 text-sm leading-5 text-muted">
                     New downloads will appear here. Open history to review earlier attempts.
                   </Text>
                 </View>
               ) : (
-                <View className="border-t border-line">
+                <View>
                   {shownDownloads.map((request) => {
                     const status = acquisitionFulfillment(request);
                     if (!status) return null;

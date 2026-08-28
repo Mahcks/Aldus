@@ -86,6 +86,27 @@ func TestAdminCanCreateDownloadAndDeleteBackup(t *testing.T) {
 	}
 }
 
+func TestAdminCanManagePrivateUserNotes(t *testing.T) {
+	handler, token := testHandler(t)
+	created := request(t, handler, token, http.MethodPost, "/users", `{"username":"guest","admin_note":"Met through the book club"}`)
+	var account contracts.CreatedUser
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &account) != nil || account.User.AdminNote != "Met through the book club" || len(account.TemporaryPassword) != 12 {
+		t.Fatalf("create noted user = %d %#v %s", created.Code, account, created.Body.String())
+	}
+	updated := request(t, handler, token, http.MethodPatch, "/users/"+account.User.ID, `{"admin_note":"Prefers audiobooks"}`)
+	if updated.Code != http.StatusNoContent {
+		t.Fatalf("update user note = %d %s", updated.Code, updated.Body.String())
+	}
+	listed := request(t, handler, token, http.MethodGet, "/users", "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), "Prefers audiobooks") {
+		t.Fatalf("list user note = %d %s", listed.Code, listed.Body.String())
+	}
+	login := request(t, handler, "", http.MethodPost, "/auth/login", fmt.Sprintf(`{"username":"guest","password":%q}`, account.TemporaryPassword))
+	if login.Code != http.StatusOK || strings.Contains(login.Body.String(), "admin_note") {
+		t.Fatalf("private note leaked to reader = %d %s", login.Code, login.Body.String())
+	}
+}
+
 func TestDeleteCurrentAccount(t *testing.T) {
 	handler, token := testHandler(t)
 	created := request(t, handler, token, http.MethodPost, "/users", `{"username":"other-admin","display_name":"Other Admin","admin":true}`)
@@ -230,7 +251,7 @@ func TestWorkAlignmentJobListing(t *testing.T) {
 	}
 	sessions := map[string]auth.Session{}
 	for _, role := range []string{"owner", "editor", "reader"} {
-		user, _, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: role, Password: "a-secure-test-password"}, false)
+		user, _, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: role, Password: "a-secure-test-password"}, false, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,7 +260,7 @@ func TestWorkAlignmentJobListing(t *testing.T) {
 		}
 		sessions[role], _ = accounts.Login(ctx, auth.Credentials{Username: role, Password: "a-secure-test-password"})
 	}
-	_, _, err = accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
+	_, _, err = accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +342,7 @@ func TestReadingStatePersistsAcrossSessionsAndRemainsPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outsider, _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false)
+	outsider, _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "outsider", Password: "a-secure-test-password"}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +379,7 @@ func TestReadingStatePersistsAcrossSessionsAndRemainsPrivate(t *testing.T) {
 			t.Fatalf("outsider PUT %s = %d %s", path, response.Code, response.Body.String())
 		}
 	}
-	if _, _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "second-admin", Password: "a-secure-test-password"}, true); err != nil {
+	if _, _, err := authStore.CreateUser(ctx, first.User, auth.Credentials{Username: "second-admin", Password: "a-secure-test-password"}, true, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := authStore.SetDisabled(ctx, first.User, first.User.ID, true); err != nil {
@@ -434,7 +455,7 @@ func TestUnclaimedAccountCannotUseProtectedRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, temporaryPassword, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "reader"}, false)
+	reader, temporaryPassword, err := accounts.CreateUser(ctx, admin.User, auth.Credentials{Username: "reader"}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

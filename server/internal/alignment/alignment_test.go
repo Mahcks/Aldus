@@ -58,7 +58,7 @@ func setupManager(t *testing.T, mode string, timeout time.Duration) *testState {
 		t.Fatal(err)
 	}
 	newUser := func(name string) auth.User {
-		u, _, e := accounts.CreateUser(ctx, session.User, auth.Credentials{Username: name, Password: "a-secure-user-password"}, false)
+		u, _, e := accounts.CreateUser(ctx, session.User, auth.Credentials{Username: name, Password: "a-secure-user-password"}, false, "")
 		if e != nil {
 			t.Fatal(e)
 		}

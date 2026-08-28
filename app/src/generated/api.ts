@@ -177,6 +177,7 @@ export interface User {
   updated_at: string;
   demo_expires_at?: string;
   must_change_credentials: boolean;
+  admin_note?: string;
 }
 export interface Session {
   token?: string;
@@ -216,6 +217,7 @@ export interface SetupStatus {
 export interface CreateUserRequest {
   username: string;
   display_name?: string;
+  admin_note?: string;
   admin: boolean;
 }
 export interface CreatedUser {
@@ -224,6 +226,7 @@ export interface CreatedUser {
 }
 export interface UpdateUserRequest {
   disabled?: boolean;
+  admin_note?: string;
 }
 export interface ClaimAccountRequest {
   username: string;
