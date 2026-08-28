@@ -200,7 +200,10 @@ func (c *Client) searchFeed(ctx context.Context, rawURL, query, source string) (
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	response, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("search indexer: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("search indexer: %w", ctx.Err())
+		}
+		return nil, errors.New("search indexer: request failed")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {

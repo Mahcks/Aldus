@@ -178,14 +178,16 @@ func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userI
 	} else if !ok {
 		return ErrNotFound
 	}
+	var currentRole string
+	if err := tx.QueryRowContext(ctx, `SELECT role FROM library_members WHERE library_id=? AND user_id=?`, libraryID, userID).Scan(&currentRole); errors.Is(err, sql.ErrNoRows) && !actor.Admin {
+		return ErrNotFound
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	var disabled int
 	if err := tx.QueryRowContext(ctx, `SELECT disabled FROM users WHERE id=?`, userID).Scan(&disabled); errors.Is(err, sql.ErrNoRows) || disabled != 0 {
 		return ErrInvalid
 	} else if err != nil {
-		return err
-	}
-	var currentRole string
-	if err := tx.QueryRowContext(ctx, `SELECT role FROM library_members WHERE library_id=? AND user_id=?`, libraryID, userID).Scan(&currentRole); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if currentRole == "owner" && role != "owner" {

@@ -48,7 +48,7 @@ func TestPersonalCollectionCRUDOrderingAndVisibility(t *testing.T) {
 	if err := store.AddWork(ctx, one, created.ID, private.ID); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("add invisible work = %v", err)
 	}
-	if err := catalogStore.SetMember(ctx, two, twoLibrary.ID, one.ID, "reader"); err != nil {
+	if err := catalogStore.SetMember(ctx, auth.User{ID: two.ID, Admin: true}, twoLibrary.ID, one.ID, "reader"); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AddWork(ctx, one, created.ID, private.ID); err != nil {
@@ -103,13 +103,14 @@ func TestExclusiveMembershipHidesAdditiveCollectionWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner, reader := auth.User{ID: "owner"}, auth.User{ID: "reader"}
+	admin := auth.User{ID: owner.ID, Admin: true}
 	catalogStore := catalog.New(db)
 	additive, _ := catalogStore.CreateLibrary(ctx, owner, "Family")
 	exclusive, _ := catalogStore.CreateLibrary(ctx, owner, "Kids")
-	if err := catalogStore.SetMember(ctx, owner, additive.ID, reader.ID, "reader"); err != nil {
+	if err := catalogStore.SetMember(ctx, admin, additive.ID, reader.ID, "reader"); err != nil {
 		t.Fatal(err)
 	}
-	if err := catalogStore.SetMember(ctx, owner, exclusive.ID, reader.ID, "reader"); err != nil {
+	if err := catalogStore.SetMember(ctx, admin, exclusive.ID, reader.ID, "reader"); err != nil {
 		t.Fatal(err)
 	}
 	additiveWork, _ := catalogStore.CreateWork(ctx, owner, additive.ID, "Parent book", "Author")

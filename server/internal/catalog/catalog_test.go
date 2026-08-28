@@ -239,6 +239,29 @@ func TestMembershipConstraints(t *testing.T) {
 	}
 }
 
+func TestOwnersOnlyUpdateExistingMembers(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	owner := createUser(t, accounts, admin, "owner")
+	user := createUser(t, accounts, admin, "member")
+	library, err := store.CreateLibrary(ctx, admin, "Library")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, owner.ID, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, owner, library.ID, user.ID, "reader", false, false, false, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("owner added nonmember = %v", err)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, user.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, owner, library.ID, user.ID, "editor"); err != nil {
+		t.Fatalf("owner updated member = %v", err)
+	}
+}
+
 func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	ctx := context.Background()
 	store, accounts, admin := testCatalog(t)

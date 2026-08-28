@@ -611,6 +611,17 @@ func TestSearchReturnsNewznabProtocolError(t *testing.T) {
 	}
 }
 
+func TestSearchTransportErrorDoesNotExposeAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	indexerURL := server.URL
+	server.Close()
+	client, _ := New(Options{IndexerURL: indexerURL, IndexerAPIKey: "do-not-leak"})
+	_, err := client.Search(context.Background(), "alice")
+	if err == nil || strings.Contains(err.Error(), "do-not-leak") || strings.Contains(err.Error(), "apikey") {
+		t.Fatalf("unsafe search error: %v", err)
+	}
+}
+
 func TestQBitTorrentDownloadsDefineImportHandoff(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
