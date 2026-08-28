@@ -326,7 +326,7 @@ export const api = {
   resetWorkGenreTags: (workID: string) =>
     request<void>(`/works/${workID}/genre-tags`, { method: 'DELETE' }),
 
-  libraries: () => request<Library[]>('/libraries'),
+  libraries: (offset = 0) => request<Library[]>(`/libraries?limit=100&offset=${offset}`),
   library: (id: string) => request<Library>(`/libraries/${id}`),
   createLibrary: (body: CreateLibraryRequest) =>
     request<Library>('/libraries', { method: 'POST', body: JSON.stringify(body) }),

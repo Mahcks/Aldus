@@ -1,7 +1,13 @@
-import type { User } from '@/generated/api';
+import type { Library, Membership, User } from '@/generated/api';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { Text, View } from '@/features/tw';
+import {
+  libraryAccessCountLabel,
+  libraryAccessSummary,
+  membershipAccessLabel,
+  membershipForUser,
+} from '@/features/user-library-access';
 import {
   Button,
   Checkbox,
@@ -19,10 +25,18 @@ import {
 import { api, errorMessage } from '@/lib/api';
 
 const emptyForm = { username: '', display_name: '', admin: false };
+const libraryRoles = [
+  { value: '', label: 'No access' },
+  { value: 'reader', label: 'Reader' },
+  { value: 'editor', label: 'Editor' },
+  { value: 'owner', label: 'Owner' },
+] as const;
 
 export default function UsersScreen() {
   const auth = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [libraries, setLibraries] = useState<Library[]>([]);
+  const [membersByLibrary, setMembersByLibrary] = useState<Record<string, Membership[]>>({});
   const [form, setForm] = useState(emptyForm);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<User>();
@@ -35,6 +49,9 @@ export default function UsersScreen() {
   }>();
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [accessLoading, setAccessLoading] = useState(true);
+  const [accessBusy, setAccessBusy] = useState('');
+  const [accessError, setAccessError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -56,10 +73,35 @@ export default function UsersScreen() {
     }
   }
 
+  async function loadLibraryAccess() {
+    setAccessLoading(true);
+    setAccessError('');
+    try {
+      const items: Library[] = [];
+      for (;;) {
+        const page = await api.libraries(items.length);
+        items.push(...page);
+        if (page.length < 100) break;
+      }
+      const memberPages = await Promise.all(items.map((library) => api.members(library.id)));
+      setLibraries(items);
+      setMembersByLibrary(
+        Object.fromEntries(items.map((library, index) => [library.id, memberPages[index]])),
+      );
+    } catch (value) {
+      setAccessError(errorMessage(value));
+    } finally {
+      setAccessLoading(false);
+    }
+  }
+
   useEffect(() => {
     // Data loading is the external synchronization this effect owns.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (auth.user?.admin) void loadUsers();
+    if (auth.user?.admin) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void loadUsers();
+      void loadLibraryAccess();
+    }
   }, [auth.user?.admin]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -67,6 +109,9 @@ export default function UsersScreen() {
     `${user.display_name} ${user.username}`.toLocaleLowerCase().includes(normalizedQuery),
   );
   const canSubmit = form.username.trim().length >= 3;
+  const selectedAccess = selected
+    ? libraryAccessSummary(membersByLibrary, selected.id)
+    : { count: 0, hasExclusiveAccess: false };
 
   async function createUser() {
     if (!canSubmit || busy) return;
@@ -122,6 +167,72 @@ export default function UsersScreen() {
     }
   }
 
+  function selectedMembership(libraryID: string) {
+    return selected ? membershipForUser(membersByLibrary, libraryID, selected.id) : undefined;
+  }
+
+  async function changeLibraryRole(library: Library, role: string) {
+    if (!selected || accessBusy) return;
+    const membership = selectedMembership(library.id);
+    if (membership?.role === role || (!membership && !role)) return;
+    setAccessBusy(library.id);
+    setAccessError('');
+    try {
+      if (!role) {
+        await api.removeMember(library.id, selected.id);
+      } else {
+        await api.setMember(
+          library.id,
+          selected.id,
+          role,
+          membership?.can_request_acquisitions,
+          membership?.can_bypass_acquisition_approval,
+          membership?.can_advanced_acquisition_request,
+          membership?.exclusive,
+        );
+      }
+      const members = await api.members(library.id);
+      setMembersByLibrary((current) => ({ ...current, [library.id]: members }));
+    } catch (value) {
+      setAccessError(errorMessage(value));
+    } finally {
+      setAccessBusy('');
+    }
+  }
+
+  async function toggleLibraryPermission(
+    library: Library,
+    permission: 'request' | 'bypass' | 'advanced' | 'exclusive',
+  ) {
+    const membership = selectedMembership(library.id);
+    if (!selected || !membership || accessBusy) return;
+    setAccessBusy(library.id);
+    setAccessError('');
+    try {
+      await api.setMember(
+        library.id,
+        selected.id,
+        membership.role,
+        permission === 'request'
+          ? !membership.can_request_acquisitions
+          : membership.can_request_acquisitions,
+        permission === 'bypass'
+          ? !membership.can_bypass_acquisition_approval
+          : membership.can_bypass_acquisition_approval,
+        permission === 'advanced'
+          ? !membership.can_advanced_acquisition_request
+          : membership.can_advanced_acquisition_request,
+        permission === 'exclusive' ? !membership.exclusive : membership.exclusive,
+      );
+      const members = await api.members(library.id);
+      setMembersByLibrary((current) => ({ ...current, [library.id]: members }));
+    } catch (value) {
+      setAccessError(errorMessage(value));
+    } finally {
+      setAccessBusy('');
+    }
+  }
+
   if (!auth.user?.admin)
     return (
       <Page title="Users" editorial={false}>
@@ -167,6 +278,15 @@ export default function UsersScreen() {
                   </Text>
                 </View>
                 <Row>
+                  {!accessLoading ? (
+                    <StatusBadge
+                      label={
+                        user.admin
+                          ? 'All libraries'
+                          : libraryAccessCountLabel(membersByLibrary, user.id)
+                      }
+                    />
+                  ) : null}
                   {user.admin ? <StatusBadge tone="info" label="Admin" /> : null}
                   {user.must_change_credentials ? (
                     <StatusBadge tone="warning" label="Setup required" />
@@ -179,6 +299,7 @@ export default function UsersScreen() {
                     kind="quiet"
                     onPress={() => {
                       setTechnicalOpen(false);
+                      setAccessError('');
                       setSelected(user);
                     }}
                   />
@@ -234,6 +355,7 @@ export default function UsersScreen() {
         visible={Boolean(selected)}
         title="User details"
         onClose={() => setSelected(undefined)}
+        wide
       >
         {selected ? (
           <View className="gap-5">
@@ -258,10 +380,134 @@ export default function UsersScreen() {
                 <StatusBadge tone="warning" label="Waiting for setup" />
               ) : null}
             </Row>
-            <Notice tone="info">
-              Disabling an account also revokes its active sessions. Library roles are managed from
-              each Library.
-            </Notice>
+            {selected.admin ? (
+              <Notice tone="info">
+                Global administrators can access and manage every library. Direct roles below show
+                library ownership records.
+              </Notice>
+            ) : null}
+            {selected.disabled ? (
+              <Notice tone="warning">
+                Enable this account before changing its library access.
+              </Notice>
+            ) : null}
+            <View className="gap-3 border-t border-line pt-5">
+              <View className="gap-1">
+                <Text className="text-base font-sans-bold text-ink">Library access</Text>
+                <Text className="text-sm text-muted">
+                  Readers consume books. Editors manage books and requests. Owners also manage
+                  members and library settings.
+                </Text>
+              </View>
+              {accessError ? <Notice danger>{accessError}</Notice> : null}
+              {selectedAccess.hasExclusiveAccess && !selected.admin ? (
+                <Notice tone="info">
+                  This account is limited to libraries marked “Include in exclusive access.” Other
+                  direct roles are retained but cannot open their libraries.
+                </Notice>
+              ) : null}
+              {accessLoading ? (
+                <Loading label="Loading library access…" />
+              ) : libraries.length ? (
+                <View className="overflow-hidden rounded-control border border-line">
+                  {libraries.map((library, index) => {
+                    const membership = selectedMembership(library.id);
+                    const lastOwner =
+                      membership?.role === 'owner' &&
+                      membersByLibrary[library.id]?.filter((member) => member.role === 'owner')
+                        .length === 1;
+                    const rowBusy = accessBusy === library.id;
+                    return (
+                      <View
+                        key={library.id}
+                        className={`gap-3 p-4 ${index ? 'border-t border-line' : ''}`}
+                      >
+                        <View className="flex-row flex-wrap items-start justify-between gap-3">
+                          <View className="min-w-[150px] flex-1 gap-0.5">
+                            <Text className="font-sans-bold text-ink">{library.name}</Text>
+                            <Text className="text-xs text-muted">
+                              {membershipAccessLabel(membership, selectedAccess.hasExclusiveAccess)}
+                            </Text>
+                          </View>
+                          <View
+                            accessibilityRole="radiogroup"
+                            accessibilityLabel={`${library.name} access`}
+                            className="flex-row flex-wrap gap-1.5"
+                          >
+                            {libraryRoles.map((option) => (
+                              <Button
+                                key={option.value || 'none'}
+                                label={option.label}
+                                kind="secondary"
+                                selected={(membership?.role ?? '') === option.value}
+                                accessibilityRole="radio"
+                                disabled={
+                                  selected.disabled ||
+                                  (lastOwner && option.value !== 'owner') ||
+                                  Boolean(accessBusy)
+                                }
+                                onPress={() => void changeLibraryRole(library, option.value)}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                        {lastOwner ? (
+                          <Text className="text-xs text-muted">
+                            Assign another owner before changing this role.
+                          </Text>
+                        ) : null}
+                        {rowBusy ? (
+                          <Text accessibilityLiveRegion="polite" className="text-xs text-muted">
+                            Saving access…
+                          </Text>
+                        ) : null}
+                        {membership?.role === 'reader' ? (
+                          <View className="gap-2 border-t border-line-subtle pt-3">
+                            <Text className="text-xs font-sans-semibold text-muted">
+                              Request permissions
+                            </Text>
+                            <View className="flex-row flex-wrap gap-x-5 gap-y-1">
+                              <Checkbox
+                                label="Can request"
+                                checked={membership.can_request_acquisitions}
+                                disabled={selected.disabled || Boolean(accessBusy)}
+                                onPress={() => void toggleLibraryPermission(library, 'request')}
+                              />
+                              <Checkbox
+                                label="Skip approval"
+                                checked={membership.can_bypass_acquisition_approval}
+                                disabled={selected.disabled || Boolean(accessBusy)}
+                                onPress={() => void toggleLibraryPermission(library, 'bypass')}
+                              />
+                              <Checkbox
+                                label="Advanced release choice"
+                                checked={membership.can_advanced_acquisition_request}
+                                disabled={selected.disabled || Boolean(accessBusy)}
+                                onPress={() => void toggleLibraryPermission(library, 'advanced')}
+                              />
+                            </View>
+                          </View>
+                        ) : null}
+                        {membership && libraries.length > 1 ? (
+                          <View className="border-t border-line-subtle pt-3">
+                            <Checkbox
+                              label="Include in exclusive access"
+                              checked={membership.exclusive}
+                              disabled={selected.disabled || Boolean(accessBusy)}
+                              onPress={() => void toggleLibraryPermission(library, 'exclusive')}
+                            />
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <EmptyState icon="libraries" title="No libraries">
+                  Create a library before assigning access.
+                </EmptyState>
+              )}
+            </View>
             <View className="self-start">
               <Button
                 label="Reset password"

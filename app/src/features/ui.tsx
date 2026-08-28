@@ -478,10 +478,12 @@ export function Checkbox({
   label,
   checked,
   onPress,
+  disabled = false,
 }: {
   label: string;
   checked: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -491,24 +493,25 @@ export function Checkbox({
   const handlePressOut = () => setPressed(false);
 
   const boxClass = checked ? 'border-accent bg-accent' : 'border-line bg-paper';
-  const stateClass = resolvePressStateClass({ focused, pressed });
+  const stateClass = disabled ? '' : resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="checkbox"
       accessibilityLabel={label}
-      accessibilityState={{ checked }}
+      accessibilityState={{ checked, disabled }}
+      disabled={disabled}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-2 rounded-control ${stateClass}`}
+      className={`min-h-11 flex-row items-center gap-2 rounded-control ${stateClass} ${disabled ? 'opacity-50' : ''}`}
     >
       <View className={`h-6 w-6 items-center justify-center rounded-control border ${boxClass}`}>
         {checked ? <AppIcon name="check" size={16} color={colors.onAccent} /> : null}
       </View>
-      <Text className="text-base text-ink">{label}</Text>
+      <Text className={`text-base ${disabled ? 'text-muted' : 'text-ink'}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -583,11 +586,16 @@ export function Dialog({
 }>) {
   const closeButtonId = useId();
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
   const previouslyFocusedRef = useRef<{ focus: () => void } | null>(null);
   const scrollMetricsRef = useRef({ content: 0, viewport: 0, offset: 0 });
   const [showScrollHint, setShowScrollHint] = useState(false);
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const updateScrollHint = useCallback(
     (next: Partial<(typeof scrollMetricsRef)['current']>) => {
@@ -613,7 +621,7 @@ export function Dialog({
     }, 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -622,7 +630,7 @@ export function Dialog({
       window.removeEventListener('keydown', handleKeyDown);
       previouslyFocusedRef.current?.focus();
     };
-  }, [visible, closeButtonId, onClose]);
+  }, [visible, closeButtonId]);
 
   if (!visible) return null;
 
