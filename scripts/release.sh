@@ -133,6 +133,121 @@ print_surfaces() {
   printf '%s\n' "$surfaces"
 }
 
+release_notes() {
+  local tag
+  local ref=${2:-}
+  local version
+  local repository=${GITHUB_REPOSITORY:-Mahcks/Aldus}
+  local repository_url
+  local package_name
+  local package_url
+  local image
+  local previous
+  local range
+  local compare_url
+  local conventional='^([a-z]+)(\([^)]*\))?(!)?:[[:space:]]*(.+)$'
+  local subject
+  local type
+  local change
+  local breaking
+  local -a features=()
+  local -a fixes=()
+  local -a performance=()
+  local -a documentation=()
+  local -a maintenance=()
+  local -a other=()
+
+  tag=$(tag_for "$1")
+  [[ -n $ref ]] || ref=$tag
+  version=${tag#v}
+  repository_url="https://github.com/$repository"
+  package_name=${repository##*/}
+  package_url="$repository_url/pkgs/container/${package_name,,}"
+  image="ghcr.io/${repository,,}"
+  previous=$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v*' "$ref^" 2>/dev/null || true)
+  range=$ref
+  compare_url=""
+  if [[ -n $previous ]]; then
+    range="$previous..$ref"
+    compare_url="$repository_url/compare/$previous...$tag"
+  fi
+
+  while IFS= read -r subject; do
+    [[ -n $subject ]] || continue
+    type=""
+    change=$subject
+    breaking=0
+    if [[ $subject =~ $conventional ]]; then
+      type=${BASH_REMATCH[1]}
+      [[ -z ${BASH_REMATCH[3]} ]] || breaking=1
+      change=${BASH_REMATCH[4]}
+      change=${change^}
+    fi
+    [[ $type == chore && $change == "Prepare "*" release" ]] && continue
+    if [[ $breaking == 1 ]]; then
+      other+=("**Breaking:** $change")
+      continue
+    fi
+    case "$type" in
+      feat) features+=("$change") ;;
+      fix) fixes+=("$change") ;;
+      perf) performance+=("$change") ;;
+      docs) documentation+=("$change") ;;
+      chore|ci|build|refactor|test|style) maintenance+=("$change") ;;
+      *) other+=("$change") ;;
+    esac
+  done < <(git -C "$ROOT" log --reverse --format='%s' "$range")
+
+  print_notes_section() {
+    local title=$1
+    shift
+    (($#)) || return 0
+    printf '### %s\n\n' "$title"
+    printf -- '- %s\n' "$@"
+    printf '\n'
+  }
+
+  printf '# Aldus %s\n\n' "$version"
+  printf 'This release bundles the Aldus web app and API in tested container images.\n\n'
+  printf '## What changed\n\n'
+  print_notes_section "New and improved" "${features[@]}"
+  print_notes_section "Fixes" "${fixes[@]}"
+  print_notes_section "Performance" "${performance[@]}"
+  print_notes_section "Documentation" "${documentation[@]}"
+  print_notes_section "Maintenance" "${maintenance[@]}"
+  print_notes_section "Other changes" "${other[@]}"
+  if ((${#features[@]} + ${#fixes[@]} + ${#performance[@]} + ${#documentation[@]} + ${#maintenance[@]} + ${#other[@]} == 0)); then
+    printf -- '- No user-visible changes.\n\n'
+  fi
+
+  printf '## Container images\n\n'
+  printf '| Build | Platforms | Image |\n'
+  printf '| --- | --- | --- |\n'
+  printf '| Standard | AMD64, ARM64 | [`%s:%s`](%s) |\n' "$image" "$version" "$package_url"
+  printf '| NVIDIA CUDA | AMD64 | [`%s:%s-cuda`](%s) |\n\n' "$image" "$version" "$package_url"
+  printf '```sh\n'
+  printf 'docker pull %s:%s\n' "$image" "$version"
+  printf 'docker pull %s:%s-cuda\n' "$image" "$version"
+  printf '```\n\n'
+  if [[ -n ${STANDARD_IMAGE_DIGEST:-} && -n ${CUDA_IMAGE_DIGEST:-} ]]; then
+    printf '<details>\n<summary>Verified immutable image digests</summary>\n\n'
+    printf -- '- Standard: `%s@%s`\n' "$image" "$STANDARD_IMAGE_DIGEST"
+    printf -- '- NVIDIA CUDA: `%s@%s`\n\n' "$image" "$CUDA_IMAGE_DIGEST"
+    printf '</details>\n\n'
+  fi
+
+  printf '## Install or upgrade\n\n'
+  printf -- '- [Download `compose.yml`](%s/releases/download/%s/compose.yml)\n' "$repository_url" "$tag"
+  printf -- '- [Download `compose.gpu.yml`](%s/releases/download/%s/compose.gpu.yml) for NVIDIA acceleration\n' "$repository_url" "$tag"
+  printf -- '- [Installation and upgrade guide](%s/admin/install/)\n\n' "$DOCS_ORIGIN"
+  printf '> Create and download a verified backup before upgrading. Compose files are attached to this exact release.\n\n'
+
+  printf '## Links\n\n'
+  printf -- '- [Try the demo](%s/)\n' "$DEMO_ORIGIN"
+  printf -- '- [Documentation](%s/)\n' "$DOCS_ORIGIN"
+  [[ -z $compare_url ]] || printf -- '- [Full comparison](%s)\n' "$compare_url"
+}
+
 release_status() {
   local requested=${1:-}
   local version=${requested#v}
@@ -445,6 +560,10 @@ case ${1:-} in
     [[ $# == 2 ]] || fail "Usage: $0 docs VERSION"
     publish_docs "$(tag_for "$2")"
     ;;
+  notes)
+    [[ $# == 2 || $# == 3 ]] || fail "Usage: $0 notes VERSION [REF]"
+    release_notes "$2" "${3:-}"
+    ;;
   self-test)
     [[ $(tag_for 1.2.3-beta.4) == v1.2.3-beta.4 ]]
     [[ $(tag_for v1.2.3) == v1.2.3 ]]
@@ -498,9 +617,14 @@ EOF
         fail "Stale release pins must be rejected"
       fi
     )
+    notes=$(STANDARD_IMAGE_DIGEST=sha256:standard CUDA_IMAGE_DIGEST=sha256:cuda release_notes 1.2.3 HEAD)
+    grep -Fq '# Aldus 1.2.3' <<<"$notes"
+    grep -Fq 'ghcr.io/mahcks/aldus:1.2.3' <<<"$notes"
+    grep -Fq 'ghcr.io/mahcks/aldus@sha256:standard' <<<"$notes"
+    grep -Fq '/releases/download/v1.2.3/compose.yml' <<<"$notes"
     echo "release checks passed"
     ;;
   *)
-    fail "Usage: $0 <status|prepare|release|demo|docs|self-test> [VERSION]"
+    fail "Usage: $0 <status|prepare|release|demo|docs|notes|self-test> [VERSION]"
     ;;
 esac

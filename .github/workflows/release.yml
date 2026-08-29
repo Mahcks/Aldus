@@ -59,6 +59,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -93,6 +95,8 @@ jobs:
         with:
           images: ghcr.io/mahcks/aldus
           tags: type=semver,pattern={{version}},suffix=-cuda
+          labels: |
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -118,7 +122,9 @@ jobs:
           fetch-depth: 0
       - name: Free disk space for exact-image verification
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Verify exact public images
+        id: images
         run: |
           image="ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}"
           manifest=$(docker manifest inspect "$image")
@@ -127,38 +133,23 @@ jobs:
           docker manifest inspect "${image}-cuda" >/dev/null
           docker pull "$image"
           EXPECTED_VERSION="${GITHUB_REF_NAME}" make release-smoke IMAGE="$image"
+          standard_digest=$(docker buildx imagetools inspect "$image" | awk '$1 == "Digest:" { print $2; exit }')
+          cuda_digest=$(docker buildx imagetools inspect "${image}-cuda" | awk '$1 == "Digest:" { print $2; exit }')
+          [[ $standard_digest == sha256:* && $cuda_digest == sha256:* ]]
+          echo "standard_digest=$standard_digest" >> "$GITHUB_OUTPUT"
+          echo "cuda_digest=$cuda_digest" >> "$GITHUB_OUTPUT"
       - name: Publish release notes and Compose files
         env:
           GH_TOKEN: ${{ github.token }}
+          STANDARD_IMAGE_DIGEST: ${{ steps.images.outputs.standard_digest }}
+          CUDA_IMAGE_DIGEST: ${{ steps.images.outputs.cuda_digest }}
         run: |
-          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
-          range="${GITHUB_REF_NAME}"
-          compare=""
-          if [[ -n "$previous" ]]; then
-            range="$previous..${GITHUB_REF_NAME}"
-            compare="https://github.com/${GITHUB_REPOSITORY}/compare/${previous}...${GITHUB_REF_NAME}"
-          fi
-          {
-            echo "## Changes"
-            git log --format='- %s' "$range"
-            echo
-            echo "## Surfaces"
-            echo "- Multi-architecture standard image"
-            echo "- NVIDIA CUDA image"
-            echo "- Bundled Aldus web application and API"
-            echo
-            echo "## Upgrade and backup"
-            echo "Create and download a verified backup before upgrading. Use the Compose files attached to this exact release."
-            if [[ -n "$compare" ]]; then
-              echo
-              echo "[Full comparison]($compare)"
-            fi
-          } > "$RUNNER_TEMP/release-notes.md"
+          ./scripts/release.sh notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
           prerelease=()
           [[ "${GITHUB_REF_NAME}" == *-* ]] && prerelease=(--prerelease)
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release edit "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md"
+            gh release edit "${GITHUB_REF_NAME}" --title "Aldus ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/release-notes.md"
           else
-            gh release create "${GITHUB_REF_NAME}" --verify-tag --notes-file "$RUNNER_TEMP/release-notes.md" "${prerelease[@]}"
+            gh release create "${GITHUB_REF_NAME}" --verify-tag --title "Aldus ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/release-notes.md" "${prerelease[@]}"
           fi
           gh release upload "${GITHUB_REF_NAME}" compose.yml compose.gpu.yml --clobber

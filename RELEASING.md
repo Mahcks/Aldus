@@ -62,6 +62,11 @@ The two product phases are resumable, not atomic. `demo-deploy` redeploys an imm
 it does not roll back a migrated database. A database rollback requires the matching backup and
 the previous image and Compose files.
 
+The container workflow creates the public GitHub Release automatically. Its notes categorize the
+commits, link the exact standard and CUDA images with their verified digests, attach the matching
+Compose files, and link the demo, documentation, and full source comparison. Do not create or copy
+release notes manually.
+
 Common release order:
 
 - Additive server feature: release server/web first; iOS may adopt it later with fallback behavior.

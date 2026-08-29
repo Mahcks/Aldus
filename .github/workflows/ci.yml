@@ -82,11 +82,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - run: ./scripts/release.sh self-test
       - name: Verify published migrations are immutable
         id: previous
         shell: bash
         run: |
-          previous=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          previous=$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || true)
           if [[ -z "$previous" ]]; then
             echo "image=" >> "$GITHUB_OUTPUT"
             echo "schema_upgrade=0" >> "$GITHUB_OUTPUT"
