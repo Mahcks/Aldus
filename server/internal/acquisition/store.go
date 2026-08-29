@@ -27,38 +27,84 @@ var (
 )
 
 type Settings struct {
-	IndexerKind, IndexerURL, QBitURL, QBitUsername, QBitCategory, QBitDownloadRoot string
-	HasIndexerAPIKey, HasQBitPassword                                              bool
+	IndexerKind      string
+	IndexerURL       string
+	QBitURL          string
+	QBitUsername     string
+	QBitCategory     string
+	QBitDownloadRoot string
+	HasIndexerAPIKey bool
+	HasQBitPassword  bool
 }
 
 type SettingsUpdate struct {
-	IndexerKind, IndexerURL, IndexerAPIKey, QBitURL, QBitUsername, QBitPassword, QBitCategory, QBitDownloadRoot string
+	IndexerKind      string
+	IndexerURL       string
+	IndexerAPIKey    string
+	QBitURL          string
+	QBitUsername     string
+	QBitPassword     string
+	QBitCategory     string
+	QBitDownloadRoot string
 }
 
 type ConnectionStatus struct {
-	ProwlarrOK, QBitTorrentOK       bool
-	IndexerCount                    int
-	ProwlarrError, QBitTorrentError string
+	ProwlarrOK       bool
+	QBitTorrentOK    bool
+	IndexerCount     int
+	ProwlarrError    string
+	QBitTorrentError string
 }
 
 type Request struct {
-	ID, LibraryID, RequestedBy, SourceID, Query, Status, PairID string
-	DownloadState, DownloadError                                string
-	FulfillmentState, ScanID, ProposalID, WorkID                string
-	SelectedTitle, SelectedSource                               string
-	SelectedSize                                                int64
-	SelectedPublished, CreatedAt, UpdatedAt                     time.Time
+	ID                string
+	LibraryID         string
+	RequestedBy       string
+	SourceID          string
+	Query             string
+	Status            string
+	PairID            string
+	DownloadState     string
+	DownloadError     string
+	FulfillmentState  string
+	ScanID            string
+	ProposalID        string
+	WorkID            string
+	SelectedTitle     string
+	SelectedSource    string
+	SelectedSize      int64
+	SelectedPublished time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type SearchResult struct {
-	ID, Title, Source, CanonicalTitle, Author, Language, Format, Kind, Edition, Narrator, GroupKey, Match string
-	ISBN, CoverID, CoverURL, Description, OpenLibraryID, MatchConfidence                                  string
-	MatchReasons, LikelyPairIDs                                                                           []string
-	Size                                                                                                  int64
-	Published                                                                                             time.Time
-	Relevance, Year                                                                                       int
-	Abridged                                                                                              bool
-	downloadURL                                                                                           string
+	ID              string
+	Title           string
+	Source          string
+	CanonicalTitle  string
+	Author          string
+	Language        string
+	Format          string
+	Kind            string
+	Edition         string
+	Narrator        string
+	GroupKey        string
+	Match           string
+	ISBN            string
+	CoverID         string
+	CoverURL        string
+	Description     string
+	OpenLibraryID   string
+	MatchConfidence string
+	MatchReasons    []string
+	LikelyPairIDs   []string
+	Size            int64
+	Published       time.Time
+	Relevance       int
+	Year            int
+	Abridged        bool
+	downloadURL     string
 }
 
 type Discovery struct {
@@ -72,7 +118,10 @@ type Pair struct {
 }
 
 type Destination struct {
-	LibraryID, LibraryName, SourceID, SourceName string
+	LibraryID   string
+	LibraryName string
+	SourceID    string
+	SourceName  string
 }
 
 type Tracker struct {
@@ -81,7 +130,12 @@ type Tracker struct {
 }
 
 type ReadyPair struct {
-	ID, RequestedBy, EPUBMediaID, EPUBSHA256, AudioMediaID, AudioSHA256 string
+	ID           string
+	RequestedBy  string
+	EPUBMediaID  string
+	EPUBSHA256   string
+	AudioMediaID string
+	AudioSHA256  string
 }
 
 type selectedDiscoveryResult struct {
@@ -90,9 +144,12 @@ type selectedDiscoveryResult struct {
 }
 
 type discoverySession struct {
-	LibraryID, SourceID, Query, UserID string
-	ExpiresAt                          time.Time
-	Results                            map[string]selectedDiscoveryResult
+	LibraryID string
+	SourceID  string
+	Query     string
+	UserID    string
+	ExpiresAt time.Time
+	Results   map[string]selectedDiscoveryResult
 }
 
 type Store struct {
@@ -110,7 +167,12 @@ type Store struct {
 }
 
 func NewStore(db *sql.DB, client *Client) *Store {
-	return &Store{db: db, client: client, metadataCache: make(map[string]cachedMetadata), discoveries: make(map[string]discoverySession)}
+	return &Store{
+		db:            db,
+		client:        client,
+		metadataCache: make(map[string]cachedMetadata),
+		discoveries:   make(map[string]discoverySession),
+	}
 }
 
 func (s *Store) SetHandoff(handoff func(context.Context, string, string, string, string) (string, error)) {
@@ -140,7 +202,16 @@ func (s *Store) Settings(ctx context.Context, actor auth.User) (Settings, error)
 	if err != nil {
 		return Settings{}, err
 	}
-	return Settings{IndexerKind: options.IndexerKind, IndexerURL: options.IndexerURL, QBitURL: options.QBitURL, QBitUsername: options.QBitUsername, QBitCategory: options.Category, QBitDownloadRoot: options.DownloadRoot, HasIndexerAPIKey: options.IndexerAPIKey != "", HasQBitPassword: options.QBitPassword != ""}, nil
+	return Settings{
+		IndexerKind:      options.IndexerKind,
+		IndexerURL:       options.IndexerURL,
+		QBitURL:          options.QBitURL,
+		QBitUsername:     options.QBitUsername,
+		QBitCategory:     options.Category,
+		QBitDownloadRoot: options.DownloadRoot,
+		HasIndexerAPIKey: options.IndexerAPIKey != "",
+		HasQBitPassword:  options.QBitPassword != "",
+	}, nil
 }
 
 func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update SettingsUpdate) (Settings, error) {
@@ -151,7 +222,16 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 	if err != nil {
 		return Settings{}, err
 	}
-	options := Options{IndexerKind: strings.TrimSpace(update.IndexerKind), IndexerURL: strings.TrimSpace(update.IndexerURL), IndexerAPIKey: strings.TrimSpace(update.IndexerAPIKey), QBitURL: strings.TrimSpace(update.QBitURL), QBitUsername: strings.TrimSpace(update.QBitUsername), QBitPassword: update.QBitPassword, Category: strings.TrimSpace(update.QBitCategory), DownloadRoot: strings.TrimSpace(update.QBitDownloadRoot)}
+	options := Options{
+		IndexerKind:   strings.TrimSpace(update.IndexerKind),
+		IndexerURL:    strings.TrimSpace(update.IndexerURL),
+		IndexerAPIKey: strings.TrimSpace(update.IndexerAPIKey),
+		QBitURL:       strings.TrimSpace(update.QBitURL),
+		QBitUsername:  strings.TrimSpace(update.QBitUsername),
+		QBitPassword:  update.QBitPassword,
+		Category:      strings.TrimSpace(update.QBitCategory),
+		DownloadRoot:  strings.TrimSpace(update.QBitDownloadRoot),
+	}
 	if options.IndexerKind == "" {
 		options.IndexerKind = "prowlarr"
 	}
@@ -170,7 +250,40 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 	if _, err := New(options); err != nil {
 		return Settings{}, ErrInvalid
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO acquisition_settings(id,indexer_url,indexer_api_key,qbittorrent_url,qbittorrent_username,qbittorrent_password,qbittorrent_category,indexer_kind,qbittorrent_download_root,updated_at) VALUES(1,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET indexer_url=excluded.indexer_url,indexer_api_key=excluded.indexer_api_key,qbittorrent_url=excluded.qbittorrent_url,qbittorrent_username=excluded.qbittorrent_username,qbittorrent_password=excluded.qbittorrent_password,qbittorrent_category=excluded.qbittorrent_category,indexer_kind=excluded.indexer_kind,qbittorrent_download_root=excluded.qbittorrent_download_root,updated_at=excluded.updated_at`, options.IndexerURL, options.IndexerAPIKey, options.QBitURL, options.QBitUsername, options.QBitPassword, options.Category, options.IndexerKind, options.DownloadRoot, time.Now().UTC().Format(time.RFC3339Nano))
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO acquisition_settings (
+			id,
+			indexer_url,
+			indexer_api_key,
+			qbittorrent_url,
+			qbittorrent_username,
+			qbittorrent_password,
+			qbittorrent_category,
+			indexer_kind,
+			qbittorrent_download_root,
+			updated_at
+		)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			indexer_url = excluded.indexer_url,
+			indexer_api_key = excluded.indexer_api_key,
+			qbittorrent_url = excluded.qbittorrent_url,
+			qbittorrent_username = excluded.qbittorrent_username,
+			qbittorrent_password = excluded.qbittorrent_password,
+			qbittorrent_category = excluded.qbittorrent_category,
+			indexer_kind = excluded.indexer_kind,
+			qbittorrent_download_root = excluded.qbittorrent_download_root,
+			updated_at = excluded.updated_at`,
+		options.IndexerURL,
+		options.IndexerAPIKey,
+		options.QBitURL,
+		options.QBitUsername,
+		options.QBitPassword,
+		options.Category,
+		options.IndexerKind,
+		options.DownloadRoot,
+		time.Now().UTC().Format(time.RFC3339Nano),
+	)
 	if err != nil {
 		return Settings{}, fmt.Errorf("save acquisition settings: %w", err)
 	}
@@ -179,7 +292,28 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 
 func (s *Store) options(ctx context.Context) (Options, error) {
 	options := s.client.options
-	err := s.db.QueryRowContext(ctx, `SELECT indexer_url,indexer_api_key,qbittorrent_url,qbittorrent_username,qbittorrent_password,qbittorrent_category,indexer_kind,qbittorrent_download_root FROM acquisition_settings WHERE id=1`).Scan(&options.IndexerURL, &options.IndexerAPIKey, &options.QBitURL, &options.QBitUsername, &options.QBitPassword, &options.Category, &options.IndexerKind, &options.DownloadRoot)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT
+			indexer_url,
+			indexer_api_key,
+			qbittorrent_url,
+			qbittorrent_username,
+			qbittorrent_password,
+			qbittorrent_category,
+			indexer_kind,
+			qbittorrent_download_root
+		FROM acquisition_settings
+		WHERE id = 1`,
+	).Scan(
+		&options.IndexerURL,
+		&options.IndexerAPIKey,
+		&options.QBitURL,
+		&options.QBitUsername,
+		&options.QBitPassword,
+		&options.Category,
+		&options.IndexerKind,
+		&options.DownloadRoot,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return options, nil
 	}

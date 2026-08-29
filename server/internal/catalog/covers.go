@@ -21,22 +21,36 @@ import (
 )
 
 type CoverCandidate struct {
-	Source, SourceID, ImageURL, Title, Author, Publisher, ISBN string
-	WorkID                                                     string
-	FirstPublishYear                                           int
-	Language                                                   string
-	Subjects                                                   []string
+	Source           string
+	SourceID         string
+	ImageURL         string
+	Title            string
+	Author           string
+	Publisher        string
+	ISBN             string
+	WorkID           string
+	FirstPublishYear int
+	Language         string
+	Subjects         []string
 }
 
 type CoverAsset struct {
-	ID, Source, SourceID, ImageURL, Label string
-	Selected                              bool
-	CreatedAt                             time.Time
+	ID        string
+	Source    string
+	SourceID  string
+	ImageURL  string
+	Label     string
+	Selected  bool
+	CreatedAt time.Time
 }
 
 type CoverSettings struct {
-	Fit, Style, Layout   string
-	FocalX, FocalY, Tone int
+	Fit    string
+	Style  string
+	Layout string
+	FocalX int
+	FocalY int
+	Tone   int
 }
 
 type openLibraryResult struct {
@@ -78,9 +92,13 @@ func cleanOpenLibrarySubjects(subjects []string) []string {
 const maxWorkDescriptionRunes = 4000
 
 type refreshedMetadata struct {
-	CoverID, Description, ISBN, Publisher, Language string
-	Subjects                                        []string
-	FirstPublishYear                                int
+	CoverID          string
+	Description      string
+	ISBN             string
+	Publisher        string
+	Language         string
+	Subjects         []string
+	FirstPublishYear int
 }
 
 func (s *Store) RefreshMetadata(ctx context.Context, actor auth.User, workID string) (WorkDetail, error) {
@@ -203,7 +221,9 @@ func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, search
 }
 
 type openLibraryEdition struct {
-	Language, Publisher, ISBN string
+	Language  string
+	Publisher string
+	ISBN      string
 }
 
 // openLibraryEnglishEdition picks the first edition that isn't explicitly

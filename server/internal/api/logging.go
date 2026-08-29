@@ -10,7 +10,8 @@ import (
 
 type loggingResponseWriter struct {
 	http.ResponseWriter
-	status, bytes int
+	status int
+	bytes  int
 }
 
 func (w *loggingResponseWriter) WriteHeader(status int) {
@@ -29,7 +30,9 @@ func (w *loggingResponseWriter) Write(value []byte) (int, error) {
 	return n, err
 }
 
-func (w *loggingResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w *loggingResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
 
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +50,18 @@ func requestLogger(next http.Handler) http.Handler {
 		} else if response.status >= 400 {
 			level = slog.LevelWarn
 		}
-		slog.Log(r.Context(), level, "HTTP request", "request_id", requestID, "method", r.Method, "path", r.URL.Path, "status", response.status, "duration", time.Since(started).Round(time.Millisecond), "bytes", response.bytes, "remote", r.RemoteAddr)
+		slog.Log(
+			r.Context(),
+			level,
+			"HTTP request",
+			"request_id", requestID,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", response.status,
+			"duration", time.Since(started).Round(time.Millisecond),
+			"bytes", response.bytes,
+			"remote", r.RemoteAddr,
+		)
 	})
 }
 

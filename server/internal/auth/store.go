@@ -97,7 +97,9 @@ func (s *Store) SetupAvailable(ctx context.Context) (bool, error) {
 	return count == 0, nil
 }
 
-func (s *Store) DemoAvailable() bool { return s.options.DemoLibraryID != "" }
+func (s *Store) DemoAvailable() bool {
+	return s.options.DemoLibraryID != ""
+}
 
 func (s *Store) DemoReady(ctx context.Context) (bool, error) {
 	if !s.DemoAvailable() {
@@ -286,7 +288,9 @@ func validateCredentials(credentials Credentials) (string, string, error) {
 	return username, displayName, nil
 }
 
-func normalizeUsername(username string) string { return strings.ToLower(strings.TrimSpace(username)) }
+func normalizeUsername(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
 
 func randomToken(size int) (string, error) {
 	value := make([]byte, size)
@@ -296,9 +300,13 @@ func randomToken(size int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
-func randomTemporaryPassword() (string, error) { return randomToken(9) }
+func randomTemporaryPassword() (string, error) {
+	return randomToken(9)
+}
 
-func formatTime(value time.Time) string { return value.Format(time.RFC3339Nano) }
+func formatTime(value time.Time) string {
+	return value.Format(time.RFC3339Nano)
+}
 
 func parseTime(value string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339Nano, value)

@@ -15,8 +15,14 @@ const (
 )
 
 type downloadMonitorRequest struct {
-	id, libraryID, sourceID, hash, lastSeen, progressUpdated, updated string
-	progress                                                          float64
+	id              string
+	libraryID       string
+	sourceID        string
+	hash            string
+	lastSeen        string
+	progressUpdated string
+	updated         string
+	progress        float64
 }
 
 func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequest, download *Download, now time.Time) (bool, error) {

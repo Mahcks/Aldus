@@ -12,14 +12,29 @@ import (
 )
 
 type TitleSearchResult struct {
-	WorkID, LibraryID, Title, Author, CoverURL string
-	ExternalSource, ExternalID                 string
-	Readable, Listenable, Synchronized         bool
-	EbookRequestState, AudiobookRequestState   string
+	WorkID                string
+	LibraryID             string
+	Title                 string
+	Author                string
+	CoverURL              string
+	ExternalSource        string
+	ExternalID            string
+	Readable              bool
+	Listenable            bool
+	Synchronized          bool
+	EbookRequestState     string
+	AudiobookRequestState string
 }
 
 type titleRequestProjection struct {
-	WorkID, ExternalSource, ExternalID, Title, Author, CoverURL, Format, State string
+	WorkID         string
+	ExternalSource string
+	ExternalID     string
+	Title          string
+	Author         string
+	CoverURL       string
+	Format         string
+	State          string
 }
 
 func (s *Store) SearchTitles(ctx context.Context, actor auth.User, query string, libraryID ...string) ([]TitleSearchResult, error) {

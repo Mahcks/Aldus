@@ -104,7 +104,16 @@ func main() {
 	if version == "dev" {
 		slog.Warn("development build", "diagnosis", "not intended for production")
 	}
-	slog.Debug("runtime configuration", "addr", cfg.Addr, "data_dir", cfg.DataDir, "media_dir", cfg.MediaDir, "source_roots", len(cfg.SourceRoots), "allowed_origins", len(cfg.AllowedOrigins), "secure_cookies", cfg.SecureCookies, "alignment_timeout", cfg.AlignmentTimeout)
+	slog.Debug(
+		"runtime configuration",
+		"addr", cfg.Addr,
+		"data_dir", cfg.DataDir,
+		"media_dir", cfg.MediaDir,
+		"source_roots", len(cfg.SourceRoots),
+		"allowed_origins", len(cfg.AllowedOrigins),
+		"secure_cookies", cfg.SecureCookies,
+		"alignment_timeout", cfg.AlignmentTimeout,
+	)
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		slog.Error("create data directory", "error", err)
 		os.Exit(1)
@@ -124,7 +133,12 @@ func main() {
 	if mediaDir == "" {
 		mediaDir = filepath.Join(cfg.DataDir, "media")
 	}
-	sourceStore, err := source.New(db, source.Options{AllowedRoots: cfg.SourceRoots, ManagedRoot: mediaDir, DataRoot: cfg.DataDir, MaxBytes: cfg.MaxUploadBytes})
+	sourceStore, err := source.New(db, source.Options{
+		AllowedRoots: cfg.SourceRoots,
+		ManagedRoot:  mediaDir,
+		DataRoot:     cfg.DataDir,
+		MaxBytes:     cfg.MaxUploadBytes,
+	})
 	if err != nil {
 		slog.Error("open library sources", "error", err)
 		db.Close()
@@ -136,13 +150,24 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Debug("library source scanner ready", "roots", len(cfg.SourceRoots))
-	ingestStore, err := ingest.New(db, ingest.Options{Root: mediaDir, MaxBytes: cfg.MaxUploadBytes, Resolver: sourceStore})
+	ingestStore, err := ingest.New(db, ingest.Options{
+		Root:     mediaDir,
+		MaxBytes: cfg.MaxUploadBytes,
+		Resolver: sourceStore,
+	})
 	if err != nil {
 		slog.Error("open media storage", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
-	alignmentManager, err := alignment.New(db, alignment.Options{MediaRoot: mediaDir, Media: sourceStore, ArtifactRoot: filepath.Join(cfg.DataDir, "alignments"), ModelRoot: cfg.AlignmentModelDir, Command: strings.Fields(cfg.AlignmentCommand), Timeout: cfg.AlignmentTimeout})
+	alignmentManager, err := alignment.New(db, alignment.Options{
+		MediaRoot:    mediaDir,
+		Media:        sourceStore,
+		ArtifactRoot: filepath.Join(cfg.DataDir, "alignments"),
+		ModelRoot:    cfg.AlignmentModelDir,
+		Command:      strings.Fields(cfg.AlignmentCommand),
+		Timeout:      cfg.AlignmentTimeout,
+	})
 	if err != nil {
 		slog.Error("open alignment worker", "error", err)
 		db.Close()
@@ -168,7 +193,10 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
-	authStore, err := auth.New(db, auth.Options{SecureCookies: cfg.SecureCookies, DemoLibraryID: cfg.DemoLibraryID})
+	authStore, err := auth.New(db, auth.Options{
+		SecureCookies: cfg.SecureCookies,
+		DemoLibraryID: cfg.DemoLibraryID,
+	})
 	if err != nil {
 		slog.Error("open authentication database", "error", err)
 		db.Close()
@@ -179,7 +207,16 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
-	acquisitionClient, err := acquisition.New(acquisition.Options{IndexerKind: cfg.IndexerKind, IndexerURL: cfg.IndexerURL, IndexerAPIKey: cfg.IndexerAPIKey, QBitURL: cfg.QBitTorrentURL, QBitUsername: cfg.QBitTorrentUser, QBitPassword: cfg.QBitTorrentPass, Category: cfg.QBitTorrentCategory, DownloadRoot: cfg.QBitTorrentDownloadRoot})
+	acquisitionClient, err := acquisition.New(acquisition.Options{
+		IndexerKind:   cfg.IndexerKind,
+		IndexerURL:    cfg.IndexerURL,
+		IndexerAPIKey: cfg.IndexerAPIKey,
+		QBitURL:       cfg.QBitTorrentURL,
+		QBitUsername:  cfg.QBitTorrentUser,
+		QBitPassword:  cfg.QBitTorrentPass,
+		Category:      cfg.QBitTorrentCategory,
+		DownloadRoot:  cfg.QBitTorrentDownloadRoot,
+	})
 	if err != nil {
 		slog.Error("configure acquisition", "error", err)
 		db.Close()
@@ -200,7 +237,16 @@ func main() {
 	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
 	acquisitionStore.SetScanRetry(sourceStore.RetryAcquisitionScan)
 	acquisitionStore.SetPairHandoff(func(ctx context.Context, pair acquisition.ReadyPair) error {
-		_, err := alignmentManager.Enqueue(ctx, auth.User{ID: pair.RequestedBy}, alignment.Request{EPUBMediaID: pair.EPUBMediaID, EPUBSHA256: pair.EPUBSHA256, AudioMediaID: pair.AudioMediaID, AudioSHA256: pair.AudioSHA256})
+		_, err := alignmentManager.Enqueue(
+			ctx,
+			auth.User{ID: pair.RequestedBy},
+			alignment.Request{
+				EPUBMediaID:  pair.EPUBMediaID,
+				EPUBSHA256:   pair.EPUBSHA256,
+				AudioMediaID: pair.AudioMediaID,
+				AudioSHA256:  pair.AudioSHA256,
+			},
+		)
 		return err
 	})
 	titleRequestStore.SetAcquisitionStore(acquisitionStore)

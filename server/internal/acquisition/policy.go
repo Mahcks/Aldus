@@ -37,7 +37,9 @@ type Policy struct {
 
 type PolicyStore struct{ db *sql.DB }
 
-func NewPolicyStore(db *sql.DB) *PolicyStore { return &PolicyStore{db: db} }
+func NewPolicyStore(db *sql.DB) *PolicyStore {
+	return &PolicyStore{db: db}
+}
 
 func (s *PolicyStore) Get(ctx context.Context, actor auth.User, libraryID string) (Policy, error) {
 	if err := s.authorize(ctx, actor, libraryID); err != nil {

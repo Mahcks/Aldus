@@ -16,23 +16,42 @@ import (
 )
 
 type TitleRequest struct {
-	ID, LibraryID, RequestedBy, WorkID, ExternalSource, ExternalID string
-	Title, Author, CoverURL                                        string
-	Formats                                                        []TitleRequestFormat
-	CreatedAt, UpdatedAt                                           time.Time
+	ID             string
+	LibraryID      string
+	RequestedBy    string
+	WorkID         string
+	ExternalSource string
+	ExternalID     string
+	Title          string
+	Author         string
+	CoverURL       string
+	Formats        []TitleRequestFormat
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type TitleRequestFormat struct {
-	Format, State, SourceID, Error, DownloadState string
-	RetryCount                                    int
-	LastSearchedAt, NextSearchAt                  time.Time
-	CreatedAt, UpdatedAt                          time.Time
+	Format         string
+	State          string
+	SourceID       string
+	Error          string
+	DownloadState  string
+	RetryCount     int
+	LastSearchedAt time.Time
+	NextSearchAt   time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type CreateTitleRequest struct {
-	LibraryID, WorkID, ExternalSource, ExternalID string
-	Title, Author, CoverURL                       string
-	Formats                                       []string
+	LibraryID      string
+	WorkID         string
+	ExternalSource string
+	ExternalID     string
+	Title          string
+	Author         string
+	CoverURL       string
+	Formats        []string
 }
 
 type TitleRequestStore struct {
@@ -41,11 +60,17 @@ type TitleRequestStore struct {
 	notifications *notification.Store
 }
 
-func NewTitleRequestStore(db *sql.DB) *TitleRequestStore { return &TitleRequestStore{db: db} }
+func NewTitleRequestStore(db *sql.DB) *TitleRequestStore {
+	return &TitleRequestStore{db: db}
+}
 
-func (s *TitleRequestStore) SetAcquisitionStore(store *Store) { s.acquisitions = store }
+func (s *TitleRequestStore) SetAcquisitionStore(store *Store) {
+	s.acquisitions = store
+}
 
-func (s *TitleRequestStore) SetNotificationStore(store *notification.Store) { s.notifications = store }
+func (s *TitleRequestStore) SetNotificationStore(store *notification.Store) {
+	s.notifications = store
+}
 
 func (s *TitleRequestStore) Start(ctx context.Context) {
 	if s.acquisitions == nil {
@@ -68,7 +93,13 @@ func (s *TitleRequestStore) Start(ctx context.Context) {
 }
 
 type claimedTitleFormat struct {
-	requestID, libraryID, requestedBy, title, author, format, sourceID string
+	requestID   string
+	libraryID   string
+	requestedBy string
+	title       string
+	author      string
+	format      string
+	sourceID    string
 }
 
 func (s *TitleRequestStore) Poll(ctx context.Context) error {
@@ -203,7 +234,31 @@ func (s *TitleRequestStore) claimDueFormat(ctx context.Context) (claimedTitleFor
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for {
 		var value claimedTitleFormat
-		err := s.db.QueryRowContext(ctx, `SELECT r.id,r.library_id,COALESCE(r.requested_by,''),r.title,r.author,f.format,COALESCE(f.source_id,'') FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id WHERE f.state IN ('wanted','awaiting_release') AND (f.next_search_at IS NULL OR f.next_search_at<=?) ORDER BY COALESCE(f.next_search_at,''),f.updated_at,r.id,f.format LIMIT 1`, now).Scan(&value.requestID, &value.libraryID, &value.requestedBy, &value.title, &value.author, &value.format, &value.sourceID)
+		err := s.db.QueryRowContext(ctx, `
+			SELECT
+				r.id,
+				r.library_id,
+				COALESCE(r.requested_by, ''),
+				r.title,
+				r.author,
+				f.format,
+				COALESCE(f.source_id, '')
+			FROM title_requests r
+			JOIN title_request_formats f ON f.title_request_id = r.id
+			WHERE f.state IN ('wanted', 'awaiting_release')
+				AND (f.next_search_at IS NULL OR f.next_search_at <= ?)
+			ORDER BY COALESCE(f.next_search_at, ''), f.updated_at, r.id, f.format
+			LIMIT 1`,
+			now,
+		).Scan(
+			&value.requestID,
+			&value.libraryID,
+			&value.requestedBy,
+			&value.title,
+			&value.author,
+			&value.format,
+			&value.sourceID,
+		)
 		if errors.Is(err, sql.ErrNoRows) {
 			return claimedTitleFormat{}, false, nil
 		}
@@ -214,7 +269,26 @@ func (s *TitleRequestStore) claimDueFormat(ctx context.Context) (claimedTitleFor
 		if err != nil {
 			return claimedTitleFormat{}, false, fmt.Errorf("claim title request: %w", err)
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state='searching',last_searched_at=?,next_search_at=NULL,error='',updated_at=? WHERE title_request_id=? AND format=? AND state IN ('wanted','awaiting_release') AND (next_search_at IS NULL OR next_search_at<=?)`, now, now, value.requestID, value.format, now)
+		// The conditional update is the claim: only one poller may move this
+		// format from a waiting state into searching.
+		result, err := tx.ExecContext(ctx, `
+			UPDATE title_request_formats
+			SET
+				state = 'searching',
+				last_searched_at = ?,
+				next_search_at = NULL,
+				error = '',
+				updated_at = ?
+			WHERE title_request_id = ?
+				AND format = ?
+				AND state IN ('wanted', 'awaiting_release')
+				AND (next_search_at IS NULL OR next_search_at <= ?)`,
+			now,
+			now,
+			value.requestID,
+			value.format,
+			now,
+		)
 		if err == nil {
 			var changed int64
 			changed, err = result.RowsAffected()
@@ -368,7 +442,16 @@ func matchingGuidedResults(results []SearchResult, requestedTitle, format string
 	requestedVolume := titleVolume(requestedTitle)
 	matched := make([]SearchResult, 0, len(results))
 	for _, result := range results {
-		if result.Kind != format || result.Size <= 0 || result.Size > policy.maxBytes || !policy.allowedExtensions[strings.ToLower(result.Format)] || (!policy.allowAbridged && result.Abridged) || (result.Language != "" && policy.preferredLanguage != "" && strings.ToLower(result.Language) != policy.preferredLanguage) || (requestedVolume != "" && titleVolume(result.Title) != requestedVolume) {
+		wrongFormat := result.Kind != format
+		wrongSize := result.Size <= 0 || result.Size > policy.maxBytes
+		disallowedExtension := !policy.allowedExtensions[strings.ToLower(result.Format)]
+		disallowedAbridged := !policy.allowAbridged && result.Abridged
+		wrongLanguage := result.Language != "" &&
+			policy.preferredLanguage != "" &&
+			strings.ToLower(result.Language) != policy.preferredLanguage
+		wrongVolume := requestedVolume != "" && titleVolume(result.Title) != requestedVolume
+
+		if wrongFormat || wrongSize || disallowedExtension || disallowedAbridged || wrongLanguage || wrongVolume {
 			continue
 		}
 		matched = append(matched, result)

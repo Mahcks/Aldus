@@ -16,7 +16,12 @@ type Store struct {
 	queries *dbsql.Queries
 }
 
-func New(db *sql.DB) *Store { return &Store{db: db, queries: dbsql.New(db)} }
+func New(db *sql.DB) *Store {
+	return &Store{
+		db:      db,
+		queries: dbsql.New(db),
+	}
+}
 
 func (s *Store) WorkForAlignment(ctx context.Context, alignmentID string) (string, error) {
 	workID, err := s.queries.WorkForAlignment(ctx, alignmentID)

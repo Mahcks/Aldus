@@ -12,7 +12,8 @@ import (
 )
 
 type ReaderCredential struct {
-	ID, Label string
+	ID        string
+	Label     string
 	LastUsed  *time.Time
 	CreatedAt time.Time
 }

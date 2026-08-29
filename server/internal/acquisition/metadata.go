@@ -16,8 +16,16 @@ import (
 const maxDescriptionRunes = 4000
 
 type Metadata struct {
-	ID, Title, Author, ISBN, CoverID, CoverURL, Description string
-	Year, EditionCount, RatingsCount                        int
+	ID           string
+	Title        string
+	Author       string
+	ISBN         string
+	CoverID      string
+	CoverURL     string
+	Description  string
+	Year         int
+	EditionCount int
+	RatingsCount int
 }
 
 type cachedMetadata struct {
@@ -108,7 +116,14 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 		if derivativeKind(doc.Title) != derivativeKind(query) {
 			continue
 		}
-		result := Metadata{ID: strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"), Title: strings.TrimSpace(doc.Title), Year: doc.Year, EditionCount: doc.Editions, RatingsCount: doc.Ratings, Description: firstSentence(doc.FirstSentence)}
+		result := Metadata{
+			ID:           strings.TrimPrefix(strings.TrimSpace(doc.Key), "/works/"),
+			Title:        strings.TrimSpace(doc.Title),
+			Year:         doc.Year,
+			EditionCount: doc.Editions,
+			RatingsCount: doc.Ratings,
+			Description:  firstSentence(doc.FirstSentence),
+		}
 		if titleSimilarity(queryKey, normalizedWords(result.Title)) < .5 && result.RatingsCount < 10 {
 			continue
 		}
@@ -352,7 +367,9 @@ func addLikelyPairs(results []SearchResult) {
 	}
 }
 
-func isAudio(format string) bool { return format != "" && !ebookFormats[strings.ToLower(format)] }
+func isAudio(format string) bool {
+	return format != "" && !ebookFormats[strings.ToLower(format)]
+}
 
 func normalizedWords(value string) []string {
 	words := strings.FieldsFunc(strings.ToLower(value), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })

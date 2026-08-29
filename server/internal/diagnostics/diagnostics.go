@@ -14,13 +14,20 @@ import (
 var ErrForbidden = errors.New("administrator access required")
 
 type Report struct {
-	Version, Environment, DatabaseStatus, StorageStatus string
-	SchemaVersion                                       int
-	SourceRootsConfigured, SourceRootsReachable         int
-	PendingSourceScans, FailedSourceScans               int
-	PendingAlignmentJobs, FailedAlignmentJobs           int
-	AcquisitionConfigured                               bool
-	ManagedAcquisitionFiles, ExternalMediaExcluded      int
+	Version                 string
+	Environment             string
+	DatabaseStatus          string
+	StorageStatus           string
+	SchemaVersion           int
+	SourceRootsConfigured   int
+	SourceRootsReachable    int
+	PendingSourceScans      int
+	FailedSourceScans       int
+	PendingAlignmentJobs    int
+	FailedAlignmentJobs     int
+	AcquisitionConfigured   bool
+	ManagedAcquisitionFiles int
+	ExternalMediaExcluded   int
 }
 
 type Store struct {
@@ -32,14 +39,24 @@ type Store struct {
 }
 
 func New(db *sql.DB, dataDir string, sourceRoots []string, version, environment string) *Store {
-	return &Store{db: db, dataDir: dataDir, sourceRoots: sourceRoots, version: version, environment: environment}
+	return &Store{
+		db:          db,
+		dataDir:     dataDir,
+		sourceRoots: sourceRoots,
+		version:     version,
+		environment: environment,
+	}
 }
 
 func (s *Store) Report(ctx context.Context, actor auth.User) (Report, error) {
 	if !actor.Admin {
 		return Report{}, ErrForbidden
 	}
-	report := Report{Version: s.version, Environment: s.environment, SourceRootsConfigured: len(s.sourceRoots)}
+	report := Report{
+		Version:               s.version,
+		Environment:           s.environment,
+		SourceRootsConfigured: len(s.sourceRoots),
+	}
 	var quickCheck string
 	if err := s.db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&quickCheck); err != nil {
 		return Report{}, fmt.Errorf("check database: %w", err)

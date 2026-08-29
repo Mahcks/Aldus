@@ -17,22 +17,45 @@ import (
 )
 
 type Proposal struct {
-	ID, LibraryID, State, Confidence, Title, Author, NormalizedTitle, NormalizedAuthor, ExistingWorkID string
-	Reasons                                                                                            []string
-	Revision                                                                                           int
-	Items                                                                                              []ProposalItem
-	CreatedAt, UpdatedAt                                                                               time.Time
+	ID               string
+	LibraryID        string
+	State            string
+	Confidence       string
+	Title            string
+	Author           string
+	NormalizedTitle  string
+	NormalizedAuthor string
+	ExistingWorkID   string
+	Reasons          []string
+	Revision         int
+	Items            []ProposalItem
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
+
 type ProposalItem struct {
-	EntryID, RelativePath, Kind, Label, SHA256, DuplicateOf string
-	Evidence                                                map[string]any
+	EntryID      string
+	RelativePath string
+	Kind         string
+	Label        string
+	SHA256       string
+	DuplicateOf  string
+	Evidence     map[string]any
 }
+
 type proposalEntry struct {
-	ID, Path, Kind, Hash, Title, Author string
-	Metadata                            map[string]any
-	AdvisoryTitle, AdvisoryAuthor       string
-	AdvisoryISBN, AdvisoryCover         string
-	AdvisoryYear                        int
+	ID             string
+	Path           string
+	Kind           string
+	Hash           string
+	Title          string
+	Author         string
+	Metadata       map[string]any
+	AdvisoryTitle  string
+	AdvisoryAuthor string
+	AdvisoryISBN   string
+	AdvisoryCover  string
+	AdvisoryYear   int
 }
 
 func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
@@ -355,7 +378,10 @@ func nullValue(value string) any {
 	}
 	return value
 }
-func mustJSON(value any) []byte { data, _ := json.Marshal(value); return data }
+func mustJSON(value any) []byte {
+	data, _ := json.Marshal(value)
+	return data
+}
 func sameKindVariants(items []proposalEntry) bool {
 	seen := map[string]map[string]bool{}
 	for _, item := range items {

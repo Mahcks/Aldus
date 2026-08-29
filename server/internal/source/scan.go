@@ -27,17 +27,37 @@ import (
 var ErrActiveScan = errors.New("source scan already active")
 
 type Scan struct {
-	ID, SourceID, State, Error                                                                     string
-	FilesVisited, Supported, EPUB, Audio, New, Changed, Unchanged, Missing, Problems, AutoImported int
-	CreatedAt                                                                                      time.Time
-	StartedAt, FinishedAt                                                                          *time.Time
+	ID           string
+	SourceID     string
+	State        string
+	Error        string
+	FilesVisited int
+	Supported    int
+	EPUB         int
+	Audio        int
+	New          int
+	Changed      int
+	Unchanged    int
+	Missing      int
+	Problems     int
+	AutoImported int
+	CreatedAt    time.Time
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
 }
 
 type Entry struct {
-	ID, SourceID, RelativePath, Kind, SHA256, State, Error string
-	SizeBytes                                              int64
-	ModifiedAt                                             time.Time
-	Metadata, PathHints                                    json.RawMessage
+	ID           string
+	SourceID     string
+	RelativePath string
+	Kind         string
+	SHA256       string
+	State        string
+	Error        string
+	SizeBytes    int64
+	ModifiedAt   time.Time
+	Metadata     json.RawMessage
+	PathHints    json.RawMessage
 }
 
 func (s *Store) Start(ctx context.Context) error {
@@ -57,7 +77,9 @@ func (s *Store) recoverScans(ctx context.Context) error {
 	return err
 }
 
-func (s *Store) Wait() { <-s.done }
+func (s *Store) Wait() {
+	<-s.done
+}
 
 func (s *Store) EnqueueScan(ctx context.Context, actor auth.User, libraryID, sourceID string) (Scan, error) {
 	if ok, err := s.canScan(ctx, actor, libraryID, sourceID); err != nil || !ok {

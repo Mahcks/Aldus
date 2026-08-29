@@ -9,8 +9,13 @@ import (
 )
 
 type OPDSPublication struct {
-	WorkID, MediaID, LibraryName, Title, Author, Filename string
-	UpdatedAt                                             time.Time
+	WorkID      string
+	MediaID     string
+	LibraryName string
+	Title       string
+	Author      string
+	Filename    string
+	UpdatedAt   time.Time
 }
 
 func (s *Store) OPDSPublications(ctx context.Context, actor auth.User) ([]OPDSPublication, error) {

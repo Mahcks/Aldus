@@ -39,12 +39,18 @@ type Archive struct {
 }
 
 type Manager struct {
-	dataDir, backupDir, version string
-	mu                          sync.Mutex
+	dataDir   string
+	backupDir string
+	version   string
+	mu        sync.Mutex
 }
 
 func NewManager(dataDir, backupDir, version string) *Manager {
-	return &Manager{dataDir: dataDir, backupDir: backupDir, version: version}
+	return &Manager{
+		dataDir:   dataDir,
+		backupDir: backupDir,
+		version:   version,
+	}
 }
 
 func (m *Manager) List(actor auth.User) ([]Archive, error) {
@@ -68,7 +74,11 @@ func (m *Manager) List(actor auth.User) ([]Archive, error) {
 		if err != nil {
 			return nil, fmt.Errorf("inspect backup: %w", err)
 		}
-		archives = append(archives, Archive{Name: entry.Name(), CreatedAt: createdAt, SizeBytes: info.Size()})
+		archives = append(archives, Archive{
+			Name:      entry.Name(),
+			CreatedAt: createdAt,
+			SizeBytes: info.Size(),
+		})
 	}
 	sort.Slice(archives, func(i, j int) bool { return archives[i].CreatedAt.After(archives[j].CreatedAt) })
 	return archives, nil
@@ -195,6 +205,8 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err := snapshotDatabase(ctx, filepath.Join(dataDir, "aldus.db"), snapshot); err != nil {
 		return err
 	}
+	// Redact only the isolated snapshot. The live database keeps its connector
+	// credentials and in-flight state.
 	if err := redactConnectorSecrets(ctx, snapshot); err != nil {
 		return err
 	}
@@ -206,7 +218,13 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err != nil {
 		return err
 	}
-	manifest := Manifest{Version: version, SchemaVersion: schemaVersion, CreatedAt: time.Now().UTC(), ConnectorSecretsRedacted: true, Files: make(map[string]string, len(files))}
+	manifest := Manifest{
+		Version:                  version,
+		SchemaVersion:            schemaVersion,
+		CreatedAt:                time.Now().UTC(),
+		ConnectorSecretsRedacted: true,
+		Files:                    make(map[string]string, len(files)),
+	}
 	for name := range files {
 		if strings.HasPrefix(name, "acquisitions/") {
 			manifest.ManagedAcquisitionFiles++

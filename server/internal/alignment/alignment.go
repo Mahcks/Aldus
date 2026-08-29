@@ -36,14 +36,17 @@ var (
 )
 
 type Options struct {
-	MediaRoot, ArtifactRoot string
-	Command                 []string
-	Timeout                 time.Duration
-	WorkerVersion, Model    string
-	ModelRoot               string
-	AudioDuration           func(context.Context, string) (int64, error)
-	Media                   *source.Store
+	MediaRoot     string
+	ArtifactRoot  string
+	Command       []string
+	Timeout       time.Duration
+	WorkerVersion string
+	Model         string
+	ModelRoot     string
+	AudioDuration func(context.Context, string) (int64, error)
+	Media         *source.Store
 }
+
 type Manager struct {
 	db      *sql.DB
 	queries *dbsql.Queries
@@ -54,12 +57,14 @@ type Manager struct {
 	done    chan struct{}
 	media   *source.Store
 }
+
 type Request struct {
 	EPUBMediaID  string `json:"epub_media_id"`
 	EPUBSHA256   string `json:"epub_sha256"`
 	AudioMediaID string `json:"audio_media_id"`
 	AudioSHA256  string `json:"audio_sha256"`
 }
+
 type Job struct {
 	ID            string     `json:"id"`
 	AlignmentID   string     `json:"alignment_id,omitempty"`
@@ -75,6 +80,7 @@ type Job struct {
 	StartedAt     *time.Time `json:"started_at,omitempty"`
 	FinishedAt    *time.Time `json:"finished_at,omitempty"`
 }
+
 type Artifact struct {
 	Version     int       `json:"version"`
 	Tool        string    `json:"tool"`
@@ -83,6 +89,7 @@ type Artifact struct {
 	AudioSHA256 string    `json:"audio_sha256"`
 	Segments    []Segment `json:"segments"`
 }
+
 type Segment struct {
 	ID             string `json:"id"`
 	Ordinal        int    `json:"ordinal"`
@@ -103,6 +110,7 @@ type Segment struct {
 	Confidence    json.RawMessage `json:"confidence_signals"`
 	WordTimings   json.RawMessage `json:"word_timings"`
 }
+
 type workerInput struct {
 	Version            int            `json:"version"`
 	EPUBPath           string         `json:"epub_path"`
@@ -115,6 +123,7 @@ type workerInput struct {
 	KOReaderDocumentID string         `json:"-"`
 	Segments           []inputSegment `json:"segments"`
 }
+
 type inputSegment struct {
 	ID              string `json:"id"`
 	Ordinal         int    `json:"ordinal"`
@@ -163,7 +172,9 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.signal()
 	return nil
 }
-func (m *Manager) Wait() { <-m.done }
+func (m *Manager) Wait() {
+	<-m.done
+}
 
 // BackfillKOReader upgrades ready alignments created before KOReader locators
 // were published. It leaves incompatible historical alignments untouched.
@@ -508,7 +519,15 @@ func (m *Manager) execute(ctx context.Context, job Job) (string, string, error) 
 	}
 	args := append(append([]string{}, m.options.Command[1:]...), "--job-input", inputPath, "--output", outputPath)
 	command := exec.CommandContext(ctx, m.options.Command[0], args...)
-	command.Env = append(os.Environ(), "HF_HOME="+m.options.ModelRoot, "TORCH_HOME="+filepath.Join(m.options.ModelRoot, "torch"), "NLTK_DATA="+filepath.Join(m.options.ModelRoot, "nltk"), "MPLCONFIGDIR="+filepath.Join(m.options.ArtifactRoot, "matplotlib"), "HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1")
+	command.Env = append(
+		os.Environ(),
+		"HF_HOME="+m.options.ModelRoot,
+		"TORCH_HOME="+filepath.Join(m.options.ModelRoot, "torch"),
+		"NLTK_DATA="+filepath.Join(m.options.ModelRoot, "nltk"),
+		"MPLCONFIGDIR="+filepath.Join(m.options.ArtifactRoot, "matplotlib"),
+		"HF_HUB_OFFLINE=1",
+		"TRANSFORMERS_OFFLINE=1",
+	)
 	logFile, err := os.OpenFile(filepath.Join(dir, "worker.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return "", "", err
@@ -578,15 +597,33 @@ func (m *Manager) input(ctx context.Context, job Job) (workerInput, error) {
 	if duration <= 0 {
 		return workerInput{}, errors.New("invalid audio duration")
 	}
-	input := workerInput{Version: ContractVersion, EPUBPath: ep, AudioPath: ap, EPUBSHA256: eh, AudioSHA256: ah, AudioResource: filepath.Base(ap), AudioDuration: duration, Model: m.options.Model, KOReaderDocumentID: documentID}
+	input := workerInput{
+		Version:            ContractVersion,
+		EPUBPath:           ep,
+		AudioPath:          ap,
+		EPUBSHA256:         eh,
+		AudioSHA256:        ah,
+		AudioResource:      filepath.Base(ap),
+		AudioDuration:      duration,
+		Model:              m.options.Model,
+		KOReaderDocumentID: documentID,
+	}
 	for i, p := range book.Paragraphs {
-		input.Segments = append(input.Segments, inputSegment{ID: fmt.Sprintf("s%06d", i+1), Ordinal: i, Text: p.Text, Href: p.Href, DOMPath: p.DOMPath, KOReaderLocator: position.MarshalKOReaderParagraph(p)})
+		input.Segments = append(input.Segments, inputSegment{
+			ID:              fmt.Sprintf("s%06d", i+1),
+			Ordinal:         i,
+			Text:            p.Text,
+			Href:            p.Href,
+			DOMPath:         p.DOMPath,
+			KOReaderLocator: position.MarshalKOReaderParagraph(p),
+		})
 	}
 	if len(input.Segments) == 0 {
 		return workerInput{}, ErrInvalid
 	}
 	return input, nil
 }
+
 func readArtifact(path string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -631,6 +668,8 @@ func (m *Manager) publish(ctx context.Context, job Job, path, artifactID string)
 	if err := validate(artifact, input, m.options.WorkerVersion); err != nil {
 		return err
 	}
+	// Publish every segment and retire the previous alignment in one transaction.
+	// Readers must never observe a partially written alignment.
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

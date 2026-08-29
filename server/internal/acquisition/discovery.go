@@ -20,9 +20,21 @@ var (
 )
 
 var releaseFormats = map[string]string{
-	"epub": "EPUB", "mobi": "MOBI", "azw3": "AZW3", "pdf": "PDF", "cbz": "CBZ", "cbr": "CBR",
-	"audiobook": "Audiobook", "mp3": "MP3", "m4a": "M4A", "m4b": "M4B",
-	"aac": "AAC", "flac": "FLAC", "ogg": "OGG", "opus": "OPUS", "wav": "WAV",
+	"epub":      "EPUB",
+	"mobi":      "MOBI",
+	"azw3":      "AZW3",
+	"pdf":       "PDF",
+	"cbz":       "CBZ",
+	"cbr":       "CBR",
+	"audiobook": "Audiobook",
+	"mp3":       "MP3",
+	"m4a":       "M4A",
+	"m4b":       "M4B",
+	"aac":       "AAC",
+	"flac":      "FLAC",
+	"ogg":       "OGG",
+	"opus":      "OPUS",
+	"wav":       "WAV",
 }
 
 // Formats read visually rather than listened to — everything else in
@@ -30,14 +42,34 @@ var releaseFormats = map[string]string{
 // containers (MOBI/AZW3/PDF) belong here, or a release using them gets
 // silently misclassified as an audiobook.
 var ebookFormats = map[string]bool{
-	"epub": true, "mobi": true, "azw3": true, "pdf": true, "cbz": true, "cbr": true,
+	"epub": true,
+	"mobi": true,
+	"azw3": true,
+	"pdf":  true,
+	"cbz":  true,
+	"cbr":  true,
 }
 
 var metadataWords = map[string]bool{
-	"epub": true, "mobi": true, "azw3": true, "pdf": true, "cbz": true, "cbr": true,
-	"audiobook": true, "mp3": true, "m4a": true, "m4b": true, "aac": true,
-	"flac": true, "ogg": true, "opus": true, "wav": true, "retail": true, "repack": true,
-	"unabridged": true, "abridged": true,
+	"epub":       true,
+	"mobi":       true,
+	"azw3":       true,
+	"pdf":        true,
+	"cbz":        true,
+	"cbr":        true,
+	"audiobook":  true,
+	"mp3":        true,
+	"m4a":        true,
+	"m4b":        true,
+	"aac":        true,
+	"flac":       true,
+	"ogg":        true,
+	"opus":       true,
+	"wav":        true,
+	"retail":     true,
+	"repack":     true,
+	"unabridged": true,
+	"abridged":   true,
 }
 
 var derivativePhrases = []string{
@@ -48,8 +80,16 @@ var derivativePhrases = []string{
 
 type discoveryResult struct {
 	Result
-	CanonicalTitle, Author, Language, Format, Kind, Edition, Narrator, GroupKey, Match string
-	Relevance                                                                          int
+	CanonicalTitle string
+	Author         string
+	Language       string
+	Format         string
+	Kind           string
+	Edition        string
+	Narrator       string
+	GroupKey       string
+	Match          string
+	Relevance      int
 }
 
 const workTitleSimilarity = 0.7
@@ -151,7 +191,18 @@ func parseDiscoveryResult(query string, result Result) discoveryResult {
 	if comparableTitle(query) == comparableTitle(canonical) {
 		match = "exact"
 	}
-	return discoveryResult{Result: result, CanonicalTitle: canonical, Author: author, Language: language, Format: format, Kind: kind, Edition: edition, Narrator: narrator, Match: match, Relevance: relevance}
+	return discoveryResult{
+		Result:         result,
+		CanonicalTitle: canonical,
+		Author:         author,
+		Language:       language,
+		Format:         format,
+		Kind:           kind,
+		Edition:        edition,
+		Narrator:       narrator,
+		Match:          match,
+		Relevance:      relevance,
+	}
 }
 
 func assignGroupKeys(results []discoveryResult) {

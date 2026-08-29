@@ -15,7 +15,9 @@ import (
 )
 
 type Cover struct {
-	MediaID, Kind, Label string
+	MediaID string
+	Kind    string
+	Label   string
 }
 
 func (s *Store) Covers(ctx context.Context, actor auth.User, workID string) ([]Cover, error) {

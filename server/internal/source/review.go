@@ -18,11 +18,19 @@ import (
 var ErrConflict = errors.New("proposal changed")
 
 type AcceptRequest struct {
-	ExpectedRevision      int
-	WorkID, Title, Author string
-	Items                 []AcceptItem
+	ExpectedRevision int
+	WorkID           string
+	Title            string
+	Author           string
+	Items            []AcceptItem
 }
-type AcceptItem struct{ SourceEntryID, RepresentationID, Kind, Label string }
+
+type AcceptItem struct {
+	SourceEntryID    string
+	RepresentationID string
+	Kind             string
+	Label            string
+}
 
 func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, proposalID string, request AcceptRequest) (string, error) {
 	if request.ExpectedRevision <= 0 || len(request.Items) == 0 {

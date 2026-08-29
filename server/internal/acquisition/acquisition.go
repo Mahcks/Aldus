@@ -24,8 +24,14 @@ var (
 )
 
 type Options struct {
-	IndexerKind, IndexerURL, IndexerAPIKey                      string
-	QBitURL, QBitUsername, QBitPassword, Category, DownloadRoot string
+	IndexerKind   string
+	IndexerURL    string
+	IndexerAPIKey string
+	QBitURL       string
+	QBitUsername  string
+	QBitPassword  string
+	Category      string
+	DownloadRoot  string
 }
 
 type Client struct {
@@ -34,22 +40,30 @@ type Client struct {
 }
 
 type Result struct {
-	Title, DownloadURL, Source string
-	Size                       int64
-	Published                  time.Time
+	Title       string
+	DownloadURL string
+	Source      string
+	Size        int64
+	Published   time.Time
 }
 
 type Indexer struct {
-	ID             int
-	Name, Protocol string
-	Enabled        bool
+	ID       int
+	Name     string
+	Protocol string
+	Enabled  bool
 }
 
 type Download struct {
-	Hash, Name, State, ContentPath, Tags string
-	Progress                             float64
-	Size                                 int64
-	Seeds, Peers                         int
+	Hash        string
+	Name        string
+	State       string
+	ContentPath string
+	Tags        string
+	Progress    float64
+	Size        int64
+	Seeds       int
+	Peers       int
 }
 
 func (d Download) HasTag(tag string) bool {
@@ -86,18 +100,21 @@ func New(options Options) (*Client, error) {
 			return nil, fmt.Errorf("invalid acquisition URL %q", raw)
 		}
 	}
-	return &Client{options: options, http: &http.Client{
-		Timeout: 20 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if req.URL.Scheme == "magnet" && validDownloadURL(req.URL.String()) {
-				return magnetRedirectError{URL: req.URL.String()}
-			}
-			if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
-				return errors.New("cross-origin redirect refused")
-			}
-			return nil
+	return &Client{
+		options: options,
+		http: &http.Client{
+			Timeout: 20 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if req.URL.Scheme == "magnet" && validDownloadURL(req.URL.String()) {
+					return magnetRedirectError{URL: req.URL.String()}
+				}
+				if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
+					return errors.New("cross-origin redirect refused")
+				}
+				return nil
+			},
 		},
-	}}, nil
+	}, nil
 }
 
 func (c *Client) Search(ctx context.Context, query string) ([]Result, error) {
@@ -408,7 +425,9 @@ func (c *Client) addTracked(ctx context.Context, downloadURL, tag string) (strin
 
 type magnetRedirectError struct{ URL string }
 
-func (e magnetRedirectError) Error() string { return "indexer redirected to magnet" }
+func (e magnetRedirectError) Error() string {
+	return "indexer redirected to magnet"
+}
 
 func (c *Client) shouldFetchTorrent(raw string) bool {
 	download, err := url.Parse(raw)

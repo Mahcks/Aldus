@@ -58,9 +58,14 @@ func (s *Store) DeleteLibrary(ctx context.Context, actor auth.User, id string) e
 }
 
 type WorkUpdate struct {
-	Title, Author, Description, ISBN, Publisher, Language string
-	FirstPublishYear                                      int
-	Subjects                                              []string
+	Title            string
+	Author           string
+	Description      string
+	ISBN             string
+	Publisher        string
+	Language         string
+	FirstPublishYear int
+	Subjects         []string
 }
 
 func (s *Store) UpdateWork(ctx context.Context, actor auth.User, id string, update WorkUpdate) error {

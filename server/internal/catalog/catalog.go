@@ -21,9 +21,13 @@ var (
 	ErrMetadataUnavailable = errors.New("metadata provider unavailable")
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+}
 
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store {
+	return &Store{db: db}
+}
 
 type Library struct {
 	ID                 string    `json:"id"`
@@ -50,45 +54,76 @@ type Membership struct {
 }
 
 type Work struct {
-	ID                                                  string `json:"id"`
-	LibraryID                                           string `json:"library_id"`
-	Title                                               string `json:"title"`
-	Author                                              string `json:"author,omitempty"`
-	CoverURL                                            string `json:"cover_url,omitempty"`
-	CoverFit, GeneratedCoverStyle, GeneratedCoverLayout string
-	CoverFocalX, CoverFocalY, GeneratedCoverTone        int
-	CreatedAt                                           time.Time `json:"created_at"`
-	UpdatedAt                                           time.Time `json:"updated_at"`
+	ID                   string `json:"id"`
+	LibraryID            string `json:"library_id"`
+	Title                string `json:"title"`
+	Author               string `json:"author,omitempty"`
+	CoverURL             string `json:"cover_url,omitempty"`
+	CoverFit             string
+	GeneratedCoverStyle  string
+	GeneratedCoverLayout string
+	CoverFocalX          int
+	CoverFocalY          int
+	GeneratedCoverTone   int
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type WorkDetail struct {
 	Work
-	Description                                                        string
-	ISBN                                                               string
-	FirstPublishYear                                                   int
-	Publisher, Language, Subjects                                      string
-	SubjectValues                                                      []string
-	InProgress                                                         bool
-	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
-	LastMode                                                           string
-	ProgressUpdatedAt                                                  time.Time
-	ReadingStatus                                                      string
+	Description       string
+	ISBN              string
+	FirstPublishYear  int
+	Publisher         string
+	Language          string
+	Subjects          string
+	SubjectValues     []string
+	InProgress        bool
+	CompletionPercent int
+	ActiveSeconds     int
+	ReadingSeconds    int
+	ListeningSeconds  int
+	LastMode          string
+	ProgressUpdatedAt time.Time
+	ReadingStatus     string
 }
 
 type WorkSummary struct {
-	ID, LibraryID, LibraryName, Title, Author, CoverURL                string
-	CoverFit, GeneratedCoverStyle, GeneratedCoverLayout                string
-	LastMode                                                           string
-	ReadingStatus                                                      string
-	Readable, Listenable, Synchronized, InProgress                     bool
-	CompletionPercent, ActiveSeconds, ReadingSeconds, ListeningSeconds int
-	CoverFocalX, CoverFocalY, GeneratedCoverTone                       int
-	CreatedAt, UpdatedAt, ProgressUpdatedAt                            time.Time
+	ID                   string
+	LibraryID            string
+	LibraryName          string
+	Title                string
+	Author               string
+	CoverURL             string
+	CoverFit             string
+	GeneratedCoverStyle  string
+	GeneratedCoverLayout string
+	LastMode             string
+	ReadingStatus        string
+	Readable             bool
+	Listenable           bool
+	Synchronized         bool
+	InProgress           bool
+	CompletionPercent    int
+	ActiveSeconds        int
+	ReadingSeconds       int
+	ListeningSeconds     int
+	CoverFocalX          int
+	CoverFocalY          int
+	GeneratedCoverTone   int
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	ProgressUpdatedAt    time.Time
 }
 
 type BrowseOptions struct {
-	LibraryID, Query, Sort, Availability, Status string
-	Limit, Offset                                int
+	LibraryID    string
+	Query        string
+	Sort         string
+	Availability string
+	Status       string
+	Limit        int
+	Offset       int
 }
 
 type Representation struct {
@@ -116,16 +151,47 @@ func (s *Store) CreateLibrary(ctx context.Context, actor auth.User, name string)
 		return Library{}, fmt.Errorf("begin library creation: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO libraries(id,name,created_at,updated_at) VALUES(?,?,?,?)`, id, name, stamp, stamp); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, created_at, updated_at)
+		VALUES (?, ?, ?, ?)`,
+		id,
+		name,
+		stamp,
+		stamp,
+	); err != nil {
 		return Library{}, fmt.Errorf("create library: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,can_bypass_acquisition_approval,can_advanced_acquisition_request,created_at) VALUES(?,?,'owner',1,1,1,?)`, id, actor.ID, stamp); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO library_members (
+			library_id,
+			user_id,
+			role,
+			can_request_acquisitions,
+			can_bypass_acquisition_approval,
+			can_advanced_acquisition_request,
+			created_at
+		)
+		VALUES (?, ?, 'owner', 1, 1, 1, ?)`,
+		id,
+		actor.ID,
+		stamp,
+	); err != nil {
 		return Library{}, fmt.Errorf("create library owner: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Library{}, fmt.Errorf("commit library creation: %w", err)
 	}
-	return Library{ID: id, Name: name, Role: "owner", Effective: true, CanRequest: true, CanBypassApproval: true, CanAdvancedRequest: true, CreatedAt: now, UpdatedAt: now}, nil
+	return Library{
+		ID:                 id,
+		Name:               name,
+		Role:               "owner",
+		Effective:          true,
+		CanRequest:         true,
+		CanBypassApproval:  true,
+		CanAdvancedRequest: true,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}, nil
 }
 
 func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset int) ([]Library, error) {

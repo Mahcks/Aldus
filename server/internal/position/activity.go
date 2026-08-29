@@ -11,10 +11,13 @@ import (
 )
 
 type ActivitySession struct {
-	ID, WorkID, Mode      string
-	StartedAt, LastSeenAt time.Time
-	EndedAt               *time.Time
-	ActiveSeconds         int
+	ID            string
+	WorkID        string
+	Mode          string
+	StartedAt     time.Time
+	LastSeenAt    time.Time
+	EndedAt       *time.Time
+	ActiveSeconds int
 }
 
 func (s *Store) StartActivity(ctx context.Context, userID, workID, mode string) (ActivitySession, error) {

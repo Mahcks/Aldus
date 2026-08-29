@@ -26,20 +26,30 @@ var (
 )
 
 type ValidationError struct {
-	Code, Message string
+	Code    string
+	Message string
 }
 
-func (e *ValidationError) Error() string { return e.Message }
-func (e *ValidationError) Unwrap() error { return ErrInvalid }
+func (e *ValidationError) Error() string {
+	return e.Message
+}
+
+func (e *ValidationError) Unwrap() error {
+	return ErrInvalid
+}
 
 type SourceRoot struct {
-	ID, Label, Path string
+	ID    string
+	Label string
+	Path  string
 }
 
 type DirectoryListing struct {
-	RootID, RelativePath, AbsolutePath string
-	HasParent                          bool
-	Directories                        []string
+	RootID       string
+	RelativePath string
+	AbsolutePath string
+	HasParent    bool
+	Directories  []string
 }
 
 type Options struct {
@@ -62,17 +72,28 @@ type Store struct {
 }
 
 type LibrarySource struct {
-	ID, LibraryID, Kind, Name, RootPath string
-	StorageKind                         string
-	Enabled, AutoImport                 bool
-	CreatedAt, UpdatedAt                time.Time
+	ID          string
+	LibraryID   string
+	Kind        string
+	Name        string
+	RootPath    string
+	StorageKind string
+	Enabled     bool
+	AutoImport  bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func New(db *sql.DB, options Options) (*Store, error) {
 	if options.MaxBytes <= 0 {
 		options.MaxBytes = 2 << 30
 	}
-	s := &Store{db: db, maxBytes: options.MaxBytes, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	s := &Store{
+		db:       db,
+		maxBytes: options.MaxBytes,
+		wake:     make(chan struct{}, 1),
+		done:     make(chan struct{}),
+	}
 	for _, root := range options.AllowedRoots {
 		resolved, err := canonicalDirectory(root)
 		if err != nil {
@@ -92,6 +113,8 @@ func New(db *sql.DB, options Options) (*Store, error) {
 	}
 	for _, allowed := range s.allowedRoots {
 		for _, blocked := range s.blockedRoots {
+			// Scanning Aldus's own data directory could recursively import managed
+			// downloads, backups, or alignment artifacts as user media.
 			if within(blocked, allowed) || within(allowed, blocked) {
 				return nil, fmt.Errorf("source root %q overlaps Aldus storage", allowed)
 			}
@@ -157,13 +180,42 @@ func (s *Store) ensureManagedSource(ctx context.Context, libraryID string) (Libr
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id := "managed-" + libraryID
-	result, err := s.db.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at,storage_kind) SELECT ?,id,'local','Aldus managed downloads',?,1,1,?,?,'managed' FROM libraries WHERE id=? ON CONFLICT DO NOTHING`, id, root, now, now, libraryID)
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO library_sources (
+			id,
+			library_id,
+			kind,
+			name,
+			root_path,
+			enabled,
+			auto_import,
+			created_at,
+			updated_at,
+			storage_kind
+		)
+		SELECT ?, id, 'local', 'Aldus managed downloads', ?, 1, 1, ?, ?, 'managed'
+		FROM libraries
+		WHERE id = ?
+		ON CONFLICT DO NOTHING`,
+		id,
+		root,
+		now,
+		now,
+		libraryID,
+	)
 	if err != nil {
 		return LibrarySource{}, fmt.Errorf("create managed source: %w", err)
 	}
 	if n, _ := result.RowsAffected(); n == 0 {
 		var existing string
-		if err := s.db.QueryRowContext(ctx, `SELECT id FROM library_sources WHERE library_id=? AND storage_kind='managed' AND deleted_at IS NULL`, libraryID).Scan(&existing); err != nil {
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT id
+			FROM library_sources
+			WHERE library_id = ?
+				AND storage_kind = 'managed'
+				AND deleted_at IS NULL`,
+			libraryID,
+		).Scan(&existing); err != nil {
 			return LibrarySource{}, ErrNotFound
 		}
 		id = existing
@@ -195,11 +247,43 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 		return LibrarySource{}, err
 	}
 	now := time.Now().UTC()
-	_, err = s.db.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at) VALUES(?,?,'local',?,?,1,?,?,?)`, id, libraryID, name, resolved, autoImport, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	stamp := now.Format(time.RFC3339Nano)
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO library_sources (
+			id,
+			library_id,
+			kind,
+			name,
+			root_path,
+			enabled,
+			auto_import,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, 'local', ?, ?, 1, ?, ?, ?)`,
+		id,
+		libraryID,
+		name,
+		resolved,
+		autoImport,
+		stamp,
+		stamp,
+	)
 	if err != nil {
 		return LibrarySource{}, fmt.Errorf("create source: %w", err)
 	}
-	return LibrarySource{ID: id, LibraryID: libraryID, Kind: "local", Name: name, RootPath: resolved, StorageKind: "referenced", Enabled: true, AutoImport: autoImport, CreatedAt: now, UpdatedAt: now}, nil
+	return LibrarySource{
+		ID:          id,
+		LibraryID:   libraryID,
+		Kind:        "local",
+		Name:        name,
+		RootPath:    resolved,
+		StorageKind: "referenced",
+		Enabled:     true,
+		AutoImport:  autoImport,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}, nil
 }
 
 func (s *Store) Roots(actor auth.User) ([]SourceRoot, error) {
@@ -209,7 +293,11 @@ func (s *Store) Roots(actor auth.User) ([]SourceRoot, error) {
 	result := make([]SourceRoot, len(s.allowedRoots))
 	for i, root := range s.allowedRoots {
 		sum := sha256.Sum256([]byte(root))
-		result[i] = SourceRoot{ID: hex.EncodeToString(sum[:8]), Label: filepath.Base(root), Path: root}
+		result[i] = SourceRoot{
+			ID:    hex.EncodeToString(sum[:8]),
+			Label: filepath.Base(root),
+			Path:  root,
+		}
 	}
 	return result, nil
 }
@@ -256,7 +344,13 @@ func (s *Store) Directories(actor auth.User, rootID, relative string) (Directory
 			directories = append(directories, entry.Name())
 		}
 	}
-	return DirectoryListing{RootID: selected.ID, RelativePath: filepath.ToSlash(relative), AbsolutePath: full, HasParent: relative != "", Directories: directories}, nil
+	return DirectoryListing{
+		RootID:       selected.ID,
+		RelativePath: filepath.ToSlash(relative),
+		AbsolutePath: full,
+		HasParent:    relative != "",
+		Directories:  directories,
+	}, nil
 }
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]LibrarySource, error) {

@@ -19,20 +19,30 @@ var (
 )
 
 type Collection struct {
-	ID, Title, Description string
-	WorkCount              int
-	CreatedAt, UpdatedAt   time.Time
-	Works                  []Work
+	ID          string
+	Title       string
+	Description string
+	WorkCount   int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Works       []Work
 }
 
 type Work struct {
-	ID, Title, Author, CoverURL string
-	Position                    int
+	ID       string
+	Title    string
+	Author   string
+	CoverURL string
+	Position int
 }
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+}
 
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store {
+	return &Store{db: db}
+}
 
 func (s *Store) List(ctx context.Context, actor auth.User) ([]Collection, error) {
 	args := append(auth.LibraryAccessArgs(actor), actor.ID)

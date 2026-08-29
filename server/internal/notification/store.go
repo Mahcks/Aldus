@@ -31,7 +31,9 @@ type Store struct {
 	db *sql.DB
 }
 
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store {
+	return &Store{db: db}
+}
 
 func (s *Store) Publish(ctx context.Context, event Event, userIDs []string) (Event, error) {
 	event, err := prepareEvent(event, userIDs)

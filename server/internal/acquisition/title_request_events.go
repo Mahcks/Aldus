@@ -9,8 +9,11 @@ import (
 )
 
 type TitleRequestEvent struct {
-	Format, EventType, State, Message string
-	CreatedAt                         time.Time
+	Format    string
+	EventType string
+	State     string
+	Message   string
+	CreatedAt time.Time
 }
 
 func (s *TitleRequestStore) Events(ctx context.Context, actor auth.User, libraryID, requestID string) ([]TitleRequestEvent, error) {

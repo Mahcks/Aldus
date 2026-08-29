@@ -11,8 +11,11 @@ import (
 )
 
 type WorkPreference struct {
-	WorkID, EPUBMediaID, AudioMediaID, AlignmentID string
-	UpdatedAt                                      time.Time
+	WorkID       string
+	EPUBMediaID  string
+	AudioMediaID string
+	AlignmentID  string
+	UpdatedAt    time.Time
 }
 
 func (s *Store) WorkPreference(ctx context.Context, actor auth.User, workID string) (WorkPreference, error) {

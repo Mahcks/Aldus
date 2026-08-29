@@ -66,7 +66,9 @@ type AudioChapter struct {
 	EndMS   int64  `json:"end_ms"`
 }
 
-func (s *Store) MaxBytes() int64 { return s.maxBytes }
+func (s *Store) MaxBytes() int64 {
+	return s.maxBytes
+}
 
 func New(db *sql.DB, options Options) (*Store, error) {
 	if options.Root == "" {
@@ -101,12 +103,21 @@ func New(db *sql.DB, options Options) (*Store, error) {
 	}
 	resolver := options.Resolver
 	if resolver == nil {
-		resolver, err = source.New(db, source.Options{ManagedRoot: root})
+		resolver, err = source.New(db, source.Options{
+			ManagedRoot: root,
+		})
 		if err != nil {
 			return nil, err
 		}
 	}
-	return &Store{db: db, root: root, maxBytes: options.MaxBytes, probe: probe, resolver: resolver, probes: make(chan struct{}, 2)}, nil
+	return &Store{
+		db:       db,
+		root:     root,
+		maxBytes: options.MaxBytes,
+		probe:    probe,
+		resolver: resolver,
+		probes:   make(chan struct{}, 2),
+	}, nil
 }
 
 func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, representationID, filename string, source io.Reader) (Media, error) {

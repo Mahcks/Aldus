@@ -101,4 +101,6 @@ func (w *statusWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
