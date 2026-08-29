@@ -20,6 +20,16 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
 
+team_id_from_subject() {
+  sed -nE 's/.*(^|,)OU=([A-Z0-9]{10})(,|$).*/\2/p'
+}
+
+if [[ ${1:-} == self-test ]]; then
+  [[ $(printf '%s\n' 'subject=UID=person,CN=Apple Development: Person (CERTID1234),OU=TEAMID1234,O=Person,C=US' | team_id_from_subject) == TEAMID1234 ]]
+  echo "iOS acceptance checks passed"
+  exit
+fi
+
 cleanup() {
   if [[ -n $SERVER_PID ]]; then
     kill "$SERVER_PID" >/dev/null 2>&1 || true
@@ -30,7 +40,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 [[ $(uname -s) == Darwin ]] || fail "iPhone acceptance must run on a Mac"
-for command in bun curl go node security xcodebuild xcrun; do
+for command in bun curl go node openssl security xcodebuild xcrun; do
   require_command "$command"
 done
 if [[ ! -f $ROOT/test-fixtures/alice/media/alice.epub || ! -f $ROOT/test-fixtures/alice/media/alice-chapter-01.mp3 ]]; then
@@ -49,7 +59,10 @@ fi
 
 DEVELOPMENT_TEAM=${IOS_DEVELOPMENT_TEAM:-}
 if [[ -z $DEVELOPMENT_TEAM ]]; then
-  DEVELOPMENT_TEAM=$(security find-identity -v -p codesigning 2>/dev/null | sed -nE 's/.*Apple (Development|Distribution): .*\(([A-Z0-9]{10})\)"/\2/p' | head -1)
+  DEVELOPMENT_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | sed -nE 's/.*"(Apple Development: [^"]+)".*/\1/p' | head -1)
+  if [[ -n $DEVELOPMENT_IDENTITY ]]; then
+    DEVELOPMENT_TEAM=$(security find-certificate -p -c "$DEVELOPMENT_IDENTITY" | openssl x509 -noout -subject -nameopt RFC2253 | team_id_from_subject)
+  fi
 fi
 [[ -n $DEVELOPMENT_TEAM ]] || fail "Set IOS_DEVELOPMENT_TEAM=<10-character Apple team ID>; Xcode needs an Apple Development signing identity"
 
@@ -69,6 +82,7 @@ mkdir -p "$ARTIFACT_DIR"
 
 echo "Acceptance app: com.mahcks.aldus.acceptance (your TestFlight app is untouched)"
 echo "iPhone: $DEVICE"
+echo "Signing team: $DEVELOPMENT_TEAM"
 echo "Fixture server: $SERVER_URL"
 echo "Evidence: $ARTIFACT_DIR"
 
