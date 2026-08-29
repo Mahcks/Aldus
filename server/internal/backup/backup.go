@@ -241,10 +241,12 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 		manifest.Files[name] = hash
 	}
 	if err := writeArchive(archivePath, manifest, files); err != nil {
-		os.Remove(archivePath)
-		return err
+		return errors.Join(err, os.Remove(archivePath))
 	}
-	return Verify(ctx, archivePath)
+	if err := Verify(ctx, archivePath); err != nil {
+		return errors.Join(err, os.Remove(archivePath))
+	}
+	return nil
 }
 
 func countExternalMedia(ctx context.Context, snapshot string, count *int) error {

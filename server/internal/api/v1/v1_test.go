@@ -494,7 +494,7 @@ func TestLimiterDiscardsExpiredAddresses(t *testing.T) {
 }
 
 func TestLimiterUsesForwardedAddressOnlyWhenConfigured(t *testing.T) {
-	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
 	for _, trust := range []bool{false, true} {
 		limiter := newLimiter(1, time.Hour, trust)
 		forwarded := httptest.NewRequest(http.MethodPost, "/auth/demo", nil)
@@ -514,6 +514,24 @@ func TestLimiterUsesForwardedAddressOnlyWhenConfigured(t *testing.T) {
 	limiter.middleware(next).ServeHTTP(httptest.NewRecorder(), fly)
 	if limiter.attempt["/auth/demo\x00203.0.113.8"].count != 1 {
 		t.Fatal("trusted Fly client address was not preferred")
+	}
+	public := newLimiter(1, time.Hour, true)
+	direct := httptest.NewRequest(http.MethodPost, "/auth/demo", nil)
+	direct.RemoteAddr = "192.0.2.20:1234"
+	direct.Header.Set("X-Forwarded-For", "198.51.100.4")
+	public.middleware(next).ServeHTTP(httptest.NewRecorder(), direct)
+	if public.attempt["/auth/demo\x00192.0.2.20"].count != 1 {
+		t.Fatal("public peer was allowed to spoof its client address")
+	}
+	success := newLimiter(1, time.Hour, false)
+	success.middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/auth/demo", nil))
+	if len(success.attempt) != 0 {
+		t.Fatal("successful authentication consumed the failure limit")
+	}
+	attempts := newAttemptLimiter(1, time.Hour, false)
+	attempts.middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/auth/demo", nil))
+	if len(attempts.attempt) != 1 {
+		t.Fatal("successful demo session bypassed its attempt limit")
 	}
 }
 

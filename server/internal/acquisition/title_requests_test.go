@@ -11,11 +11,41 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/notification"
 )
+
+func TestBackgroundStoresStopBeforeDatabaseClose(t *testing.T) {
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	acquisitions := NewStore(db, nil)
+	acquisitions.SetHandoff(func(context.Context, string, string, string, string) (string, error) { return "", nil })
+	titles := NewTitleRequestStore(db)
+	titles.SetAcquisitionStore(acquisitions)
+	acquisitions.Start(ctx)
+	titles.Start(ctx)
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		titles.Wait()
+		acquisitions.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("background stores did not stop")
+	}
+}
 
 func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	ctx := context.Background()

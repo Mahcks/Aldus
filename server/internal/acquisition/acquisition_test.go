@@ -61,7 +61,7 @@ func TestSearchAndAdd(t *testing.T) {
 	if err != nil || len(results) != 1 || results[0].Title != "Alice EPUB" || results[0].Size != 123 {
 		t.Fatalf("results=%+v err=%v", results, err)
 	}
-	if err := client.AddTracked(context.Background(), results[0].DownloadURL, "request_123"); err != nil {
+	if _, err := client.addTracked(context.Background(), results[0].DownloadURL, "request_123"); err != nil {
 		t.Fatal(err)
 	}
 	if added != "https://download.test/alice:aldus:request_123" {
@@ -112,7 +112,7 @@ func TestAddTrackedUploadsIndexerTorrentInsteadOfLeavingQBitPending(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.AddTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
+	if _, err := client.addTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
 		t.Fatal(err)
 	}
 	if uploaded != torrent {
@@ -721,7 +721,7 @@ func TestQBitTorrentRejectsProtocolLevelFailures(t *testing.T) {
 			}))
 			defer server.Close()
 			client, _ := New(Options{QBitURL: server.URL})
-			if err := client.Add(context.Background(), "magnet:?xt=urn:btih:abcdef"); err == nil {
+			if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err == nil {
 				t.Fatal("accepted qBittorrent failure response")
 			}
 		})
@@ -742,7 +742,7 @@ func TestQBitTorrentAcceptsAcceptedResponse(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := New(Options{QBitURL: server.URL})
-	if err := client.Add(context.Background(), "magnet:?xt=urn:btih:abcdef"); err != nil {
+	if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -835,7 +835,7 @@ func TestQBitTorrentKeepsPortScopedSessionCookie(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := New(Options{QBitURL: server.URL})
-	if err := client.Add(context.Background(), "magnet:?xt=urn:btih:abcdef"); err != nil {
+	if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -849,11 +849,11 @@ func TestRejectsUnsafeConfigurationAndDownload(t *testing.T) {
 	}
 	client, _ := New(Options{QBitURL: "https://qbit.test"})
 	for _, unsafe := range []string{"file:///tmp/book", "https://user:pass@example.test/book", "magnet:?dn=missing-hash"} {
-		if err := client.Add(context.Background(), unsafe); err == nil || !strings.Contains(err.Error(), "invalid") {
+		if _, err := client.addTracked(context.Background(), unsafe, ""); err == nil || !strings.Contains(err.Error(), "invalid") {
 			t.Fatalf("url=%q err=%v", unsafe, err)
 		}
 	}
-	if err := client.AddTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", "bad,tag"); err == nil {
+	if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", "bad,tag"); err == nil {
 		t.Fatal("accepted unsafe tracking tag")
 	}
 }

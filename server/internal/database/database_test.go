@@ -37,7 +37,7 @@ func TestMigrationPreservesExistingVersionOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := initialSchema + `
+	legacy := migrationFixture(1) + `
 PRAGMA user_version = 1;
 INSERT INTO works (id, title) VALUES ('work', 'Alice');
 INSERT INTO media (id, work_id, kind, path, sha256, created_at) VALUES
@@ -322,6 +322,9 @@ VALUES('library','allowed','reader',1,'2026-01-01T00:00:00Z'),
 			t.Fatalf("permission row %d = (%d,%d,%d), want %d", i, request, bypass, advanced, want)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMigrationFromVersionTwo(t *testing.T) {
@@ -330,7 +333,7 @@ func TestMigrationFromVersionTwo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(initialSchema + authenticationSchema + `PRAGMA user_version=2; INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','hash',1,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+	if _, err := db.Exec(migrationFixture(2) + `PRAGMA user_version=2; INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('admin','admin','admin','Admin','hash',1,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -359,7 +362,7 @@ func TestMigrationFromVersionThree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + `PRAGMA user_version=3;`); err != nil {
+	if _, err := db.Exec(migrationFixture(3) + `PRAGMA user_version=3;`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -383,7 +386,7 @@ func TestMigrationFromVersionFour(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + `PRAGMA user_version=4;`); err != nil {
+	if _, err := db.Exec(migrationFixture(4) + `PRAGMA user_version=4;`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -409,7 +412,7 @@ func TestMigrationFromVersionFivePreservesOwnedProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	hashA, hashB := strings.Repeat("a", 64), strings.Repeat("b", 64)
-	fixture := initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + `
+	fixture := migrationFixture(5) + `
 PRAGMA user_version=5;
 INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('user','reader','reader','Reader','hash',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
@@ -481,7 +484,7 @@ func TestMigrationFromVersionSixPreservesManagedMediaAndAlignment(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + userReadingStateSchema + `
+	fixture := migrationFixture(6) + `
 PRAGMA user_version=6;
 INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES('work','library','Book','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
@@ -513,7 +516,7 @@ func TestMigrationFromVersionSevenAddsSourceInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + userReadingStateSchema + librarySourcesSchema + `PRAGMA user_version=7;`); err != nil {
+	if _, err := db.Exec(migrationFixture(7) + `PRAGMA user_version=7;`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -537,7 +540,7 @@ func TestMigrationFromVersionEightAddsImportProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + userReadingStateSchema + librarySourcesSchema + sourceScansSchema + `PRAGMA user_version=8;`); err != nil {
+	if _, err := db.Exec(migrationFixture(8) + `PRAGMA user_version=8;`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -558,7 +561,7 @@ func TestMigrationFromVersionNineAddsImportAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(initialSchema + authenticationSchema + catalogSchema + mediaIngestionSchema + alignmentJobsSchema + userReadingStateSchema + librarySourcesSchema + sourceScansSchema + importProposalsSchema + `PRAGMA user_version=9;`); err != nil {
+	if _, err := db.Exec(migrationFixture(9) + `PRAGMA user_version=9;`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -583,4 +586,8 @@ func schemaVersion(t *testing.T, db *sql.DB) int {
 		t.Fatal(err)
 	}
 	return version
+}
+
+func migrationFixture(version int) string {
+	return strings.Join(migrations[:version], "")
 }

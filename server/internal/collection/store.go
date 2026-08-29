@@ -216,7 +216,13 @@ func (s *Store) Reorder(ctx context.Context, actor auth.User, collectionID strin
 		}
 		existing[id] = true
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
 	if len(existing) != len(workIDs) {
 		return ErrInvalid
 	}
@@ -255,7 +261,13 @@ func compact(ctx context.Context, tx *sql.Tx, collectionID string) error {
 		}
 		ids = append(ids, id)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM collection_works WHERE collection_id=?`, collectionID); err != nil {
 		return err
 	}

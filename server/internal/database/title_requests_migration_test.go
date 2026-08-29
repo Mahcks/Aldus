@@ -29,7 +29,7 @@ func TestTitleRequestMigrationBackfillsOnlyKnownFormats(t *testing.T) {
 `); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, titleRequestsSchema); err != nil {
+	if _, err := db.ExecContext(ctx, migrations[27]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,6 +57,9 @@ func TestTitleRequestMigrationBackfillsOnlyKnownFormats(t *testing.T) {
 	}
 	if rows.Next() {
 		t.Fatal("ambiguous legacy release was classified")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	var parents, events int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM title_requests`).Scan(&parents); err != nil || parents != 2 {

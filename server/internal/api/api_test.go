@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/mahcks/aldus/server/internal/api/koreader"
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -50,6 +51,9 @@ func TestExactProgressCrossClientAcceptance(t *testing.T) {
 	apiRequest := func(method, target, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		request := httptest.NewRequest(method, target, strings.NewReader(body))
+		if body != "" {
+			request.Header.Set("Content-Type", "application/json")
+		}
 		request.Header.Set("Authorization", "Bearer "+reader.Token)
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)
@@ -151,12 +155,40 @@ func TestHandler(t *testing.T) {
 			t.Fatalf("%s preflight response = %d %#v", method, recorder.Code, recorder.Header())
 		}
 	}
+	sameHost := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodOptions, "http://example.com/api/libraries/1", nil)
+	request.Header.Set("Origin", "http://example.com")
+	handler.ServeHTTP(sameHost, request)
+	if sameHost.Code != http.StatusNoContent || sameHost.Header().Get("Access-Control-Allow-Origin") != "http://example.com" {
+		t.Fatalf("same-host preflight = %d %#v", sameHost.Code, sameHost.Header())
+	}
 	rejected := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodOptions, "/api/libraries/1", nil)
+	request = httptest.NewRequest(http.MethodOptions, "/api/libraries/1", nil)
 	request.Header.Set("Origin", "https://evil.example")
 	handler.ServeHTTP(rejected, request)
 	if rejected.Code != http.StatusForbidden || rejected.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("rejected preflight = %d %#v", rejected.Code, rejected.Header())
+	}
+	wrongType := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/setup", strings.NewReader(`{"username":"admin"}`))
+	request.Header.Set("Content-Type", "text/plain")
+	handler.ServeHTTP(wrongType, request)
+	if wrongType.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("text request = %d %s", wrongType.Code, wrongType.Body.String())
+	}
+}
+
+func TestReaderLimiterOnlyTrustsPrivateProxyPeers(t *testing.T) {
+	limiter := newFailureLimiter(1, time.Minute, true)
+	request := httptest.NewRequest(http.MethodGet, "/opds/", nil)
+	request.RemoteAddr = "192.0.2.20:1234"
+	request.Header.Set("X-Forwarded-For", "198.51.100.4")
+	if got := limiter.client(request); got != "192.0.2.20" {
+		t.Fatalf("public peer client = %q", got)
+	}
+	request.RemoteAddr = "172.18.0.2:1234"
+	if got := limiter.client(request); got != "198.51.100.4" {
+		t.Fatalf("private proxy client = %q", got)
 	}
 }
 
@@ -230,11 +262,27 @@ func TestAliasesShareLoginLimiter(t *testing.T) {
 		}
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, prefix+"/auth/login", strings.NewReader(`{"username":"nobody","password":"bad"}`))
+		request.Header.Set("Content-Type", "application/json")
 		request.RemoteAddr = "192.0.2.1:1234"
 		handler.ServeHTTP(recorder, request)
 		if i == 10 && recorder.Code != http.StatusTooManyRequests {
 			t.Fatalf("shared attempt 11 = %d", recorder.Code)
 		}
+	}
+	hostile := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	hostile.Header.Set("Origin", "https://evil.example")
+	hostile.AddCookie(&http.Cookie{Name: auth.CookieName, Value: session.Token})
+	hostileResponse := httptest.NewRecorder()
+	handler.ServeHTTP(hostileResponse, hostile)
+	if hostileResponse.Code != http.StatusForbidden {
+		t.Fatalf("hostile logout = %d %s", hostileResponse.Code, hostileResponse.Body.String())
+	}
+	stillSignedIn := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	stillSignedIn.AddCookie(&http.Cookie{Name: auth.CookieName, Value: session.Token})
+	stillSignedInResponse := httptest.NewRecorder()
+	handler.ServeHTTP(stillSignedInResponse, stillSignedIn)
+	if stillSignedInResponse.Code != http.StatusOK {
+		t.Fatalf("session after hostile logout = %d %s", stillSignedInResponse.Code, stillSignedInResponse.Body.String())
 	}
 }
 

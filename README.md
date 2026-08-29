@@ -219,7 +219,7 @@ When one commit genuinely needs every surface, `make release-all VERSION=0.1.0-b
 
 ## Developing Aldus
 
-You need Go 1.26+, Bun 1.3.5+, Node.js LTS, `ffprobe`, and Docker for production-image work.
+You need Go 1.26.6+, Bun 1.3.5+, Node.js LTS, `ffprobe`, and Docker for production-image work.
 
 ```sh
 cd app && bun install && cd ..

@@ -256,9 +256,6 @@ func (s *Store) Authenticate(ctx context.Context, token string) (User, error) {
 	if user.UpdatedAt, err = parseTime(updatedAt); err != nil {
 		return User{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at=? WHERE token_hash=?`, formatTime(now), hash[:]); err != nil {
-		return User{}, fmt.Errorf("touch session: %w", err)
-	}
 	return user, nil
 }
 

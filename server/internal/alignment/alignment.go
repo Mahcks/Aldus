@@ -193,6 +193,10 @@ func (m *Manager) BackfillKOReader(ctx context.Context) (updated, skipped int, e
 		}
 		targets = append(targets, value)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, 0, err
+	}
 	if err := rows.Close(); err != nil {
 		return 0, 0, err
 	}
@@ -247,6 +251,10 @@ func (m *Manager) backfillKOReaderAlignment(ctx context.Context, alignmentID, me
 		}
 		locators[id] = position.MarshalKOReaderParagraph(paragraph)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return false, err
+	}
 	if err := rows.Close(); err != nil {
 		return false, err
 	}
@@ -282,8 +290,16 @@ func (m *Manager) loop(ctx context.Context) {
 			for {
 				job, ok, err := m.claim(ctx)
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					slog.Error("claim alignment job", "error", err)
-					break
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(time.Second):
+						continue
+					}
 				}
 				if !ok {
 					break

@@ -1,6 +1,10 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"net/url"
+	"strings"
+)
 
 func cors(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
@@ -12,8 +16,12 @@ func cors(allowedOrigins []string) func(http.Handler) http.Handler {
 			origin := r.Header.Get("Origin")
 			if origin != "" {
 				w.Header().Add("Vary", "Origin")
-			}
-			if _, ok := allowed[origin]; origin != "" && ok {
+				parsed, err := url.Parse(origin)
+				_, configured := allowed[origin]
+				if !configured && (err != nil || !strings.EqualFold(parsed.Host, r.Host)) {
+					http.Error(w, "origin not allowed", http.StatusForbidden)
+					return
+				}
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
@@ -21,12 +29,6 @@ func cors(allowedOrigins []string) func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range")
 			}
 			if r.Method == http.MethodOptions {
-				if origin != "" {
-					if _, ok := allowed[origin]; !ok {
-						http.Error(w, "origin not allowed", http.StatusForbidden)
-						return
-					}
-				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}

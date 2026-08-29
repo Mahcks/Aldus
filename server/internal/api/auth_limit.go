@@ -73,7 +73,8 @@ func (l *failureLimiter) client(r *http.Request) string {
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if !l.proxy {
+	peer := net.ParseIP(host)
+	if !l.proxy || peer == nil || (!peer.IsLoopback() && !peer.IsPrivate()) {
 		return host
 	}
 	forwarded := strings.TrimSpace(r.Header.Get("Fly-Client-IP"))

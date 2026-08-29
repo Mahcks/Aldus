@@ -2,18 +2,14 @@ package position
 
 import (
 	"archive/zip"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"strings"
 )
 
 type EPUB struct {
-	SHA256     string
 	Package    string
 	Resources  map[string]string
 	Spine      []string
@@ -39,11 +35,6 @@ type KOReaderParagraph struct {
 }
 
 func ImportEPUB(filename string) (EPUB, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return EPUB{}, fmt.Errorf("read EPUB: %w", err)
-	}
-	sum := sha256.Sum256(data)
 	archive, err := zip.OpenReader(filename)
 	if err != nil {
 		return EPUB{}, fmt.Errorf("open EPUB: %w", err)
@@ -77,7 +68,7 @@ func ImportEPUB(filename string) (EPUB, error) {
 		return EPUB{}, err
 	}
 
-	book := EPUB{SHA256: hex.EncodeToString(sum[:]), Package: packagePath, Resources: map[string]string{}}
+	book := EPUB{Package: packagePath, Resources: map[string]string{}}
 	byID := map[string]string{}
 	base := path.Dir(packagePath)
 	for _, item := range opf.Manifest {

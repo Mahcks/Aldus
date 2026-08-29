@@ -3,165 +3,39 @@ package database
 import (
 	"context"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/001_initial.sql
-var initialSchema string
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
 
-//go:embed migrations/002_authentication.sql
-var authenticationSchema string
+var migrations = loadMigrations()
 
-//go:embed migrations/003_catalog.sql
-var catalogSchema string
-
-//go:embed migrations/004_media_ingestion.sql
-var mediaIngestionSchema string
-
-//go:embed migrations/005_alignment_jobs.sql
-var alignmentJobsSchema string
-
-//go:embed migrations/006_user_reading_state.sql
-var userReadingStateSchema string
-
-//go:embed migrations/007_library_sources.sql
-var librarySourcesSchema string
-
-//go:embed migrations/008_source_scans.sql
-var sourceScansSchema string
-
-//go:embed migrations/009_import_proposals.sql
-var importProposalsSchema string
-
-//go:embed migrations/010_import_acceptance.sql
-var importAcceptanceSchema string
-
-//go:embed migrations/011_reader_preferences.sql
-var readerPreferencesSchema string
-
-//go:embed migrations/012_reading_activity.sql
-var readingActivitySchema string
-
-//go:embed migrations/013_work_covers.sql
-var workCoversSchema string
-
-//go:embed migrations/014_embedded_covers.sql
-var embeddedCoversSchema string
-
-//go:embed migrations/015_cover_studio.sql
-var coverStudioSchema string
-
-//go:embed migrations/016_reader_credentials.sql
-var readerCredentialsSchema string
-
-//go:embed migrations/017_acquisition_requests.sql
-var acquisitionRequestsSchema string
-
-//go:embed migrations/018_acquisition_settings.sql
-var acquisitionSettingsSchema string
-
-//go:embed migrations/019_acquisition_completion.sql
-var acquisitionCompletionSchema string
-
-//go:embed migrations/020_acquisition_fulfillment.sql
-var acquisitionFulfillmentSchema string
-
-//go:embed migrations/021_acquisition_pairs_and_preferences.sql
-var acquisitionPairsAndPreferencesSchema string
-
-//go:embed migrations/022_acquisition_tracking.sql
-var acquisitionTrackingSchema string
-
-//go:embed migrations/023_acquisition_recovery.sql
-var acquisitionRecoverySchema string
-
-//go:embed migrations/024_user_work_statuses.sql
-var userWorkStatusesSchema string
-
-//go:embed migrations/025_source_auto_import.sql
-var sourceAutoImportSchema string
-
-//go:embed migrations/026_acquisition_permissions.sql
-var acquisitionPermissionsSchema string
-
-//go:embed migrations/027_acquisition_policy.sql
-var acquisitionPolicySchema string
-
-//go:embed migrations/028_title_requests.sql
-var titleRequestsSchema string
-
-//go:embed migrations/029_notifications.sql
-var notificationsSchema string
-
-//go:embed migrations/030_collections.sql
-var collectionsSchema string
-
-//go:embed migrations/031_acquisition_download_monitoring.sql
-var acquisitionDownloadMonitoringSchema string
-
-//go:embed migrations/032_acquisition_import_outcomes.sql
-var acquisitionImportOutcomesSchema string
-
-//go:embed migrations/033_managed_media.sql
-var managedMediaSchema string
-
-//go:embed migrations/034_acquisition_release_failures.sql
-var acquisitionReleaseFailuresSchema string
-
-//go:embed migrations/035_work_descriptions.sql
-var workDescriptionsSchema string
-
-//go:embed migrations/036_exclusive_library_grants.sql
-var exclusiveLibraryGrantsSchema string
-
-//go:embed migrations/037_work_publisher_details.sql
-var workPublisherDetailsSchema string
-
-//go:embed migrations/038_notification_work_id.sql
-var notificationWorkIDSchema string
-
-//go:embed migrations/039_demo_users.sql
-var demoUsersSchema string
-
-//go:embed migrations/040_demo_pairing.sql
-var demoPairingSchema string
-
-//go:embed migrations/041_account_deletion.sql
-var accountDeletionSchema string
-
-//go:embed migrations/042_notification_recipient_integrity.sql
-var notificationRecipientIntegritySchema string
-
-//go:embed migrations/043_account_credentials.sql
-var accountCredentialsSchema string
-
-//go:embed migrations/044_reader_night_theme.sql
-var readerNightThemeSchema string
-
-//go:embed migrations/045_reader_defaults.sql
-var readerDefaultsSchema string
-
-//go:embed migrations/046_genre_tags.sql
-var genreTagsSchema string
-
-//go:embed migrations/047_genre_tag_seed_corrections.sql
-var genreTagSeedCorrectionsSchema string
-
-//go:embed migrations/048_work_subjects.sql
-var workSubjectsSchema string
-
-//go:embed migrations/049_work_genre_overrides.sql
-var workGenreOverridesSchema string
-
-//go:embed migrations/050_user_admin_notes.sql
-var userAdminNotesSchema string
-
-var migrations = []string{initialSchema, authenticationSchema, catalogSchema, mediaIngestionSchema, alignmentJobsSchema, userReadingStateSchema, librarySourcesSchema, sourceScansSchema, importProposalsSchema, importAcceptanceSchema, readerPreferencesSchema, readingActivitySchema, workCoversSchema, embeddedCoversSchema, coverStudioSchema, readerCredentialsSchema, acquisitionRequestsSchema, acquisitionSettingsSchema, acquisitionCompletionSchema, acquisitionFulfillmentSchema, acquisitionPairsAndPreferencesSchema, acquisitionTrackingSchema, acquisitionRecoverySchema, userWorkStatusesSchema, sourceAutoImportSchema, acquisitionPermissionsSchema, acquisitionPolicySchema, titleRequestsSchema, notificationsSchema, collectionsSchema, acquisitionDownloadMonitoringSchema, acquisitionImportOutcomesSchema, managedMediaSchema, acquisitionReleaseFailuresSchema, workDescriptionsSchema, exclusiveLibraryGrantsSchema, workPublisherDetailsSchema, notificationWorkIDSchema, demoUsersSchema, demoPairingSchema, accountDeletionSchema, notificationRecipientIntegritySchema, accountCredentialsSchema, readerNightThemeSchema, readerDefaultsSchema, genreTagsSchema, genreTagSeedCorrectionsSchema, workSubjectsSchema, workGenreOverridesSchema, userAdminNotesSchema}
+func loadMigrations() []string {
+	names, err := fs.Glob(migrationFiles, "migrations/*.sql")
+	if err != nil {
+		panic(fmt.Sprintf("list migrations: %v", err))
+	}
+	migrations := make([]string, len(names))
+	for index, name := range names {
+		if !strings.HasPrefix(name, fmt.Sprintf("migrations/%03d_", index+1)) {
+			panic(fmt.Sprintf("migration %d is missing or out of order", index+1))
+		}
+		contents, err := migrationFiles.ReadFile(name)
+		if err != nil {
+			panic(fmt.Sprintf("read migration %s: %v", name, err))
+		}
+		migrations[index] = string(contents)
+	}
+	return migrations
+}
 
 func SupportedSchemaVersion() int {
 	return len(migrations)

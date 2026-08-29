@@ -9,7 +9,7 @@ RUN bun install --frozen-lockfile
 COPY app/ ./
 RUN bun run build:web
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS server
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS server
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH

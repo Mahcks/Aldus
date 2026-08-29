@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -58,10 +59,12 @@ type TitleRequestStore struct {
 	db            *sql.DB
 	acquisitions  *Store
 	notifications *notification.Store
+	startOnce     sync.Once
+	done          chan struct{}
 }
 
 func NewTitleRequestStore(db *sql.DB) *TitleRequestStore {
-	return &TitleRequestStore{db: db}
+	return &TitleRequestStore{db: db, done: make(chan struct{})}
 }
 
 func (s *TitleRequestStore) SetAcquisitionStore(store *Store) {
@@ -73,23 +76,31 @@ func (s *TitleRequestStore) SetNotificationStore(store *notification.Store) {
 }
 
 func (s *TitleRequestStore) Start(ctx context.Context) {
-	if s.acquisitions == nil {
-		return
-	}
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for {
-			if err := s.Poll(ctx); err != nil && ctx.Err() == nil {
-				slog.Warn("title request search failed", "error", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
+	s.startOnce.Do(func() {
+		if s.acquisitions == nil {
+			close(s.done)
+			return
 		}
-	}()
+		go func() {
+			defer close(s.done)
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for {
+				if err := s.Poll(ctx); err != nil && ctx.Err() == nil {
+					slog.Warn("title request search failed", "error", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	})
+}
+
+func (s *TitleRequestStore) Wait() {
+	<-s.done
 }
 
 type claimedTitleFormat struct {

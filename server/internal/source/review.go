@@ -36,6 +36,56 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 	if request.ExpectedRevision <= 0 || len(request.Items) == 0 {
 		return "", ErrInvalid
 	}
+	if ok, err := canReview(ctx, s.db, actor, libraryID); err != nil || !ok {
+		if err != nil {
+			return "", err
+		}
+		return "", ErrNotFound
+	}
+	var currentRevision int
+	var currentState, currentDecision string
+	err := s.db.QueryRowContext(ctx, `SELECT revision,state,decision FROM import_groups WHERE id=? AND library_id=?`, proposalID, libraryID).Scan(&currentRevision, &currentState, &currentDecision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if currentRevision != request.ExpectedRevision || currentDecision != "" || currentState == "obsolete" {
+		return "", ErrConflict
+	}
+	verified := make(map[string]bool, len(request.Items))
+	for _, item := range request.Items {
+		kind := item.Kind
+		if kind == "audiobook" {
+			kind = "audio"
+		}
+		if kind != "epub" && kind != "audio" {
+			return "", ErrInvalid
+		}
+		var entryID, hash, entryKind, state string
+		err := s.db.QueryRowContext(ctx, `SELECT e.id,COALESCE(e.sha256,''),e.detected_kind,e.state FROM import_items i JOIN import_groups g ON g.id=i.group_id JOIN source_entries e ON e.id=i.source_entry_id WHERE g.id=? AND g.library_id=? AND e.id=?`, proposalID, libraryID, item.SourceEntryID).Scan(&entryID, &hash, &entryKind, &state)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrInvalid
+		}
+		if err != nil {
+			return "", err
+		}
+		if state != "registered" || len(hash) != 64 || (entryKind == "epub") != (kind == "epub") {
+			return "", ErrConflict
+		}
+		if verified[entryID] {
+			continue
+		}
+		file, err := openEntry(ctx, s.db, entryID)
+		if err != nil {
+			return "", ErrConflict
+		}
+		if err := file.Close(); err != nil {
+			return "", ErrConflict
+		}
+		verified[entryID] = true
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
@@ -74,7 +124,10 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		if title == "" || len(title) > 500 || len(author) > 500 {
 			return "", ErrInvalid
 		}
-		workID, _ = randomID()
+		workID, err = randomID()
+		if err != nil {
+			return "", err
+		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		if _, err := tx.ExecContext(ctx, `INSERT INTO works(id,library_id,title,author,created_at,updated_at) VALUES(?,?,?,?,?,?)`, workID, libraryID, title, nullValue(author), now, now); err != nil {
 			return "", err
@@ -90,9 +143,9 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		if kind != "epub" && kind != "audio" {
 			return "", ErrInvalid
 		}
-		var sourceID, path, hash, entryKind, state, metadataJSON string
+		var entryID, path, hash, entryKind, state, metadataJSON string
 		var size int64
-		err := tx.QueryRowContext(ctx, `SELECT e.id,e.relative_path,COALESCE(e.sha256,''),e.detected_kind,e.state,e.size_bytes,e.metadata_json FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? AND e.id=?`, proposalID, item.SourceEntryID).Scan(&sourceID, &path, &hash, &entryKind, &state, &size, &metadataJSON)
+		err := tx.QueryRowContext(ctx, `SELECT e.id,e.relative_path,COALESCE(e.sha256,''),e.detected_kind,e.state,e.size_bytes,e.metadata_json FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? AND e.id=?`, proposalID, item.SourceEntryID).Scan(&entryID, &path, &hash, &entryKind, &state, &size, &metadataJSON)
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrInvalid
 		}
@@ -102,11 +155,6 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		if state != "registered" || len(hash) != 64 || (entryKind == "epub") != (kind == "epub") {
 			return "", ErrConflict
 		}
-		file, err := s.openEntryTx(ctx, tx, sourceID, true)
-		if err != nil {
-			return "", ErrConflict
-		}
-		file.Close()
 		representationID := item.RepresentationID
 		if duplicate := seen[kind+"\x00"+hash]; duplicate != "" {
 			representationID = duplicate
@@ -118,7 +166,10 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 				return "", ErrInvalid
 			}
 		} else {
-			representationID, _ = randomID()
+			representationID, err = randomID()
+			if err != nil {
+				return "", err
+			}
 			label := strings.TrimSpace(item.Label)
 			if label == "" {
 				if kind == "epub" {
@@ -136,9 +187,12 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		var mediaID string
 		err = tx.QueryRowContext(ctx, `SELECT id FROM media WHERE representation_id=? AND sha256=?`, representationID, hash).Scan(&mediaID)
 		if errors.Is(err, sql.ErrNoRows) {
-			mediaID, _ = randomID()
+			mediaID, err = randomID()
+			if err != nil {
+				return "", err
+			}
 			now := time.Now().UTC().Format(time.RFC3339Nano)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes,storage_kind,source_entry_id) VALUES(?,?,?,?,?,?,?,?, 'referenced',?)`, mediaID, representationID, kind, "", hash, now, filepathBase(path), size, sourceID); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes,storage_kind,source_entry_id) VALUES(?,?,?,?,?,?,?,?, 'referenced',?)`, mediaID, representationID, kind, "", hash, now, filepathBase(path), size, entryID); err != nil {
 				return "", err
 			}
 			if _, err := tx.ExecContext(ctx, `UPDATE alignments SET state='stale' WHERE state!='stale' AND EXISTS(SELECT 1 FROM alignment_inputs ai JOIN media old ON old.id=ai.media_id WHERE ai.alignment_id=alignments.id AND old.representation_id=? AND old.id!=?)`, representationID, mediaID); err != nil {
@@ -150,7 +204,7 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		} else if err != nil {
 			return "", err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO media_locations(media_id,source_entry_id,created_at) VALUES(?,?,?)`, mediaID, sourceID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO media_locations(media_id,source_entry_id,created_at) VALUES(?,?,?)`, mediaID, entryID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return "", err
 		}
 		var metadata map[string]any
@@ -160,7 +214,10 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		}
 	}
 	if coverMediaID != "" {
-		coverID, _ := randomID()
+		coverID, err := randomID()
+		if err != nil {
+			return "", err
+		}
 		now := time.Now().UTC().Format(time.RFC3339Nano)
 		if _, err := tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) VALUES(?,?,'embedded',?,?,?) ON CONFLICT(work_id,source,source_id) DO NOTHING`, coverID, workID, coverMediaID, "/api/media/"+coverMediaID+"/cover", now); err != nil {
 			return "", err
@@ -212,18 +269,24 @@ func (s *Store) IgnoreProposal(ctx context.Context, actor auth.User, libraryID, 
 	}
 	return tx.Commit()
 }
-func canReview(ctx context.Context, tx *sql.Tx, actor auth.User, libraryID string) (bool, error) {
+
+type rowQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func canReview(ctx context.Context, db rowQuerier, actor auth.User, libraryID string) (bool, error) {
 	var n int
 	args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "lm"), args...).Scan(&n)
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "lm"), args...).Scan(&n)
 	return n == 1, err
 }
-func (s *Store) openEntryTx(ctx context.Context, tx *sql.Tx, entryID string, verify bool) (*os.File, error) {
+
+func openEntry(ctx context.Context, db rowQuerier, entryID string) (*os.File, error) {
 	var root, path, hash string
 	var size int64
 	var modified string
 	var enabled int
-	err := tx.QueryRowContext(ctx, `SELECT ls.root_path,e.relative_path,e.sha256,e.size_bytes,e.modified_at,ls.enabled FROM source_entries e JOIN library_sources ls ON ls.id=e.source_id AND ls.deleted_at IS NULL WHERE e.id=? AND e.state='registered'`, entryID).Scan(&root, &path, &hash, &size, &modified, &enabled)
+	err := db.QueryRowContext(ctx, `SELECT ls.root_path,e.relative_path,e.sha256,e.size_bytes,e.modified_at,ls.enabled FROM source_entries e JOIN library_sources ls ON ls.id=e.source_id AND ls.deleted_at IS NULL WHERE e.id=? AND e.state='registered'`, entryID).Scan(&root, &path, &hash, &size, &modified, &enabled)
 	if err != nil || enabled == 0 {
 		return nil, ErrUnavailable
 	}
@@ -236,13 +299,10 @@ func (s *Store) openEntryTx(ctx context.Context, tx *sql.Tx, entryID string, ver
 		file.Close()
 		return nil, ErrUnavailable
 	}
-	if verify {
-		got, err := hashOpen(ctx, file)
-		if err != nil || got != hash {
-			file.Close()
-			return nil, ErrUnavailable
-		}
-		file.Seek(0, 0)
+	got, err := hashOpen(ctx, file)
+	if err != nil || got != hash {
+		file.Close()
+		return nil, ErrUnavailable
 	}
 	return file, nil
 }

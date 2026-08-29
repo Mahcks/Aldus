@@ -9,9 +9,9 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"math"
 	"os"
 	"os/exec"
@@ -199,11 +199,25 @@ func (s *Store) scanLoop(ctx context.Context) {
 		case <-s.wake:
 			for {
 				job, ok, err := s.claimScan(ctx)
-				if err != nil || !ok {
+				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
+					slog.Error("claim source scan", "error", err)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(time.Second):
+						continue
+					}
+				}
+				if !ok {
 					break
 				}
 				if err := s.runScan(ctx, job); err != nil && ctx.Err() == nil {
-					s.finishScan(context.Background(), job.ID, "failed", summary{}, bounded(err.Error()))
+					if finishErr := s.finishScan(context.Background(), job.ID, "failed", summary{}, bounded(err.Error())); finishErr != nil {
+						slog.Error("record failed source scan", "scan_id", job.ID, "error", finishErr)
+					}
 				}
 			}
 		}
@@ -402,7 +416,10 @@ func (s *Store) upsertEntry(ctx context.Context, job Scan, relative, kind string
 	id := ""
 	if errors.Is(err, sql.ErrNoRows) {
 		classification = "new"
-		id, _ = randomID()
+		id, err = randomID()
+		if err != nil {
+			return "", err
+		}
 	} else if err != nil {
 		return "", err
 	} else if oldHash != hash || state == "missing" {
@@ -416,9 +433,12 @@ func (s *Store) upsertEntry(ctx context.Context, job Scan, relative, kind string
 	return classification, err
 }
 func (s *Store) upsertProblem(ctx context.Context, job Scan, relative, kind string, info fs.FileInfo, cause error) error {
-	id, _ := randomID()
+	id, err := randomID()
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,state,created_at,updated_at,detected_kind,last_seen_scan_id,error_summary) VALUES(?,?,?,?,?,'error',?,?,?,?,?) ON CONFLICT(source_id,relative_path) DO UPDATE SET size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,state='error',updated_at=excluded.updated_at,detected_kind=excluded.detected_kind,last_seen_scan_id=excluded.last_seen_scan_id,error_summary=excluded.error_summary`, id, job.SourceID, relative, info.Size(), info.ModTime().UTC().Format(time.RFC3339Nano), now, now, kind, job.ID, bounded(cause.Error()))
+	_, err = s.db.ExecContext(ctx, `INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,state,created_at,updated_at,detected_kind,last_seen_scan_id,error_summary) VALUES(?,?,?,?,?,'error',?,?,?,?,?) ON CONFLICT(source_id,relative_path) DO UPDATE SET size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,state='error',updated_at=excluded.updated_at,detected_kind=excluded.detected_kind,last_seen_scan_id=excluded.last_seen_scan_id,error_summary=excluded.error_summary`, id, job.SourceID, relative, info.Size(), info.ModTime().UTC().Format(time.RFC3339Nano), now, now, kind, job.ID, bounded(cause.Error()))
 	return err
 }
 func hashPath(ctx context.Context, path string, max int64) (string, error) {
@@ -640,5 +660,3 @@ func scanScan(row rowScanner) (Scan, error) {
 	}
 	return v, err
 }
-
-var _ = fmt.Sprintf

@@ -97,7 +97,13 @@ func TestSeed(t *testing.T) {
 		}
 		positions = append(positions, item)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
 	for _, item := range positions {
 		audio, err := position.New(db).CanonicalToAudio(context.Background(), position.Canonical{AlignmentID: AlignmentID, SegmentID: item.id, Offset: 430_000})
 		if err != nil || audio.Resource != item.resource || audio.TimestampMS < item.start || audio.TimestampMS > item.end {

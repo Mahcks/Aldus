@@ -296,6 +296,8 @@ func main() {
 	select {
 	case err := <-errCh:
 		stop()
+		titleRequestStore.Wait()
+		acquisitionStore.Wait()
 		alignmentManager.Wait()
 		sourceStore.Wait()
 		if !errors.Is(err, http.ErrServerClosed) {
@@ -315,7 +317,11 @@ func main() {
 	cancel()
 	if err != nil {
 		slog.Error("shut down HTTP server", "error", err)
+		_ = server.Close()
+		titleRequestStore.Wait()
+		acquisitionStore.Wait()
 		alignmentManager.Wait()
+		sourceStore.Wait()
 		db.Close()
 		os.Exit(1)
 	}
@@ -324,6 +330,8 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	titleRequestStore.Wait()
+	acquisitionStore.Wait()
 	alignmentManager.Wait()
 	sourceStore.Wait()
 	if err := db.Close(); err != nil {

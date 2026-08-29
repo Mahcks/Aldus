@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 	"time"
@@ -32,6 +33,11 @@ func ready(check func(context.Context) error) http.HandlerFunc {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return false
+	}
 	controller := http.NewResponseController(w)
 	_ = controller.SetReadDeadline(time.Now().Add(30 * time.Second))
 	defer controller.SetReadDeadline(time.Time{})

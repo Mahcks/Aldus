@@ -180,8 +180,8 @@ func (c *Client) searchProwlarr(ctx context.Context, query string) ([]Result, er
 			continue
 		}
 		count++
+		semaphore <- struct{}{}
 		go func(value Indexer) {
-			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 			feed := fmt.Sprintf("%s/%d/api", strings.TrimRight(c.options.IndexerURL, "/"), value.ID)
 			items, err := c.searchFeed(ctx, feed, query, value.Name)
@@ -295,10 +295,6 @@ func supportedReleaseTitle(title string) bool {
 	return false
 }
 
-func (c *Client) Add(ctx context.Context, downloadURL string) error {
-	return c.AddTracked(ctx, downloadURL, "")
-}
-
 func (c *Client) RemoveTag(ctx context.Context, hash, tag string) error {
 	if hash == "" || !validTag(tag) {
 		return nil
@@ -325,11 +321,6 @@ func (c *Client) RemoveTag(ctx context.Context, hash, tag string) error {
 		return fmt.Errorf("remove qBittorrent tag: status %d", response.StatusCode)
 	}
 	return nil
-}
-
-func (c *Client) AddTracked(ctx context.Context, downloadURL, tag string) error {
-	_, err := c.addTracked(ctx, downloadURL, tag)
-	return err
 }
 
 func (c *Client) addTracked(ctx context.Context, downloadURL, tag string) (string, error) {

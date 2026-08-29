@@ -623,24 +623,21 @@ func validation(code, message string) error {
 }
 
 func openRegular(root, relative string) (*os.File, error) {
-	if filepath.IsAbs(relative) || relative == "." || filepath.Clean(relative) != relative || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return nil, ErrInvalid
+	directory, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
 	}
-	full := filepath.Join(root, relative)
-	resolved, err := filepath.EvalSymlinks(full)
-	if err != nil || resolved != full || !within(root, resolved) {
-		return nil, ErrInvalid
-	}
-	info, err := os.Lstat(full)
+	defer directory.Close()
+	info, err := directory.Lstat(relative)
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, ErrInvalid
 	}
-	file, err := os.Open(full)
+	file, err := directory.Open(relative)
 	if err != nil {
 		return nil, err
 	}
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
+	if err != nil || !opened.Mode().IsRegular() {
 		file.Close()
 		return nil, ErrInvalid
 	}

@@ -15,7 +15,7 @@ import (
 
 func registerAuthRoutes(router chi.Router, store *auth.Store, trustProxyHeaders bool) {
 	limiter := newLimiter(10, time.Minute, trustProxyHeaders)
-	demoLimiter := newLimiter(5, time.Hour, trustProxyHeaders)
+	demoLimiter := newAttemptLimiter(5, time.Hour, trustProxyHeaders)
 	pairingLimiter := newLimiter(5, time.Minute, trustProxyHeaders)
 	router.Get("/setup/status", setupStatus(store))
 	router.With(limiter.middleware).Post("/setup", setup(store))
@@ -277,11 +277,12 @@ func me(w http.ResponseWriter, r *http.Request) {
 }
 
 type limiter struct {
-	mu      sync.Mutex
-	limit   int
-	window  time.Duration
-	proxy   bool
-	attempt map[string]attempt
+	mu       sync.Mutex
+	limit    int
+	window   time.Duration
+	proxy    bool
+	countAll bool
+	attempt  map[string]attempt
 }
 
 type attempt struct {
@@ -293,13 +294,20 @@ func newLimiter(limit int, window time.Duration, trustProxyHeaders bool) *limite
 	return &limiter{limit: limit, window: window, proxy: trustProxyHeaders, attempt: make(map[string]attempt)}
 }
 
+func newAttemptLimiter(limit int, window time.Duration, trustProxyHeaders bool) *limiter {
+	limiter := newLimiter(limit, window, trustProxyHeaders)
+	limiter.countAll = true
+	return limiter
+}
+
 func (l *limiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			host = r.RemoteAddr
 		}
-		if l.proxy {
+		peer := net.ParseIP(host)
+		if l.proxy && peer != nil && (peer.IsLoopback() || peer.IsPrivate()) {
 			forwarded := strings.TrimSpace(r.Header.Get("Fly-Client-IP"))
 			if forwarded == "" {
 				forwarded = strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0])
@@ -321,14 +329,50 @@ func (l *limiter) middleware(next http.Handler) http.Handler {
 		if current.start.IsZero() || now.Sub(current.start) >= l.window {
 			current = attempt{start: now}
 		}
-		current.count++
-		l.attempt[key] = current
-		allowed := current.count <= l.limit
-		l.mu.Unlock()
-		if !allowed {
+		if current.count >= l.limit {
+			l.mu.Unlock()
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return
 		}
-		next.ServeHTTP(w, r)
+		current.count++
+		l.attempt[key] = current
+		windowStart := current.start
+		l.mu.Unlock()
+
+		response := &limiterWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(response, r)
+		if l.countAll || response.status == http.StatusUnauthorized || response.status == http.StatusPaymentRequired {
+			return
+		}
+		l.mu.Lock()
+		current = l.attempt[key]
+		if current.start.Equal(windowStart) {
+			current.count--
+			if current.count == 0 {
+				delete(l.attempt, key)
+			} else {
+				l.attempt[key] = current
+			}
+		}
+		l.mu.Unlock()
 	})
+}
+
+type limiterWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (w *limiterWriter) WriteHeader(status int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *limiterWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }

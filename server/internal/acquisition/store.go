@@ -164,6 +164,8 @@ type Store struct {
 	metadataCache   map[string]cachedMetadata
 	discoveryMu     sync.Mutex
 	discoveries     map[string]discoverySession
+	startOnce       sync.Once
+	done            chan struct{}
 }
 
 func NewStore(db *sql.DB, client *Client) *Store {
@@ -172,6 +174,7 @@ func NewStore(db *sql.DB, client *Client) *Store {
 		client:        client,
 		metadataCache: make(map[string]cachedMetadata),
 		discoveries:   make(map[string]discoverySession),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -561,23 +564,31 @@ func (s *Store) Dismiss(ctx context.Context, actor auth.User, libraryID, request
 }
 
 func (s *Store) Start(ctx context.Context) {
-	if s.handoff == nil {
-		return
-	}
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			if err := s.Poll(ctx); err != nil && ctx.Err() == nil {
-				slog.Warn("acquisition completion check failed", "diagnosis", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
+	s.startOnce.Do(func() {
+		if s.handoff == nil {
+			close(s.done)
+			return
 		}
-	}()
+		go func() {
+			defer close(s.done)
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				if err := s.Poll(ctx); err != nil && ctx.Err() == nil {
+					slog.Warn("acquisition completion check failed", "diagnosis", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	})
+}
+
+func (s *Store) Wait() {
+	<-s.done
 }
 
 func (s *Store) Poll(ctx context.Context) error {

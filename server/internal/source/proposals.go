@@ -146,7 +146,10 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 		var oldContent, decision string
 		err := tx.QueryRowContext(ctx, `SELECT id,revision,content_key,decision FROM import_groups WHERE library_id=? AND logical_key=?`, libraryID, logical).Scan(&id, &oldRevision, &oldContent, &decision)
 		if errors.Is(err, sql.ErrNoRows) {
-			id, _ = randomID()
+			id, err = randomID()
+			if err != nil {
+				return err
+			}
 			oldRevision = 0
 		} else if err != nil {
 			return err
@@ -370,6 +373,9 @@ func suggestExisting(ctx context.Context, tx *sql.Tx, libraryID, title, author s
 			}
 			match = id
 		}
+	}
+	if rows.Err() != nil {
+		return ""
 	}
 	return match
 }

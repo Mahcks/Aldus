@@ -15,9 +15,6 @@ func TestImportAliceEPUB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if book.SHA256 != "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c" {
-		t.Fatalf("SHA-256 = %s", book.SHA256)
-	}
 	if book.Package != "OEBPS/content.opf" || len(book.Spine) != 15 {
 		t.Fatalf("package = %q, spine items = %d", book.Package, len(book.Spine))
 	}
