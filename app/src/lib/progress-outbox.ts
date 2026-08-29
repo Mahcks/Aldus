@@ -12,7 +12,10 @@ export async function reconcilePendingProgress(_workID: string): Promise<{
   return null;
 }
 
-export async function pendingProgress(_workID: string): Promise<WorkProgressUpdate | null> {
+export async function pendingProgress(
+  _workID: string,
+  _scope?: string,
+): Promise<WorkProgressUpdate | null> {
   return null;
 }
 

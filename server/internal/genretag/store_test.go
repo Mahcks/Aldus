@@ -78,17 +78,24 @@ func TestUnmatchedSubjectsAreAdminOnlyAndCounted(t *testing.T) {
 		t.Fatalf("reader unmatched = %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `
-		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01','2026-01-01');
+		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at)
+			VALUES('admin','admin','admin','Admin','x',1,0,'2026-01-01','2026-01-01');
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES
+			('library','Library','2026-01-01','2026-01-01'),
+			('restricted','Restricted','2026-01-01','2026-01-01');
+		INSERT INTO library_members(library_id,user_id,role,exclusive,created_at)
+			VALUES('library','admin','reader',1,'2026-01-01');
 		INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES
 			('one','library','One','2026-01-01','2026-01-01'),
 			('two','library','Two','2026-01-01','2026-01-01'),
-			('three','library','Three','2026-01-01','2026-01-01');
+			('three','library','Three','2026-01-01','2026-01-01'),
+			('hidden','restricted','Hidden','2026-01-01','2026-01-01');
 		INSERT INTO work_subjects(work_id,ordinal,subject) VALUES
 			('one',0,'Naval fiction'),('two',0,'naval fiction'),('two',1,'Pirates'),
-			('one',1,'Astronomy'),('three',0,'Domestic fiction');`); err != nil {
+			('one',1,'Astronomy'),('three',0,'Domestic fiction'),('hidden',0,'Hidden subject');`); err != nil {
 		t.Fatal(err)
 	}
-	admin := auth.User{Admin: true}
+	admin := auth.User{ID: "admin", Admin: true}
 	first, more, err := store.Unmatched(ctx, admin, 1, 0)
 	if err != nil || !more || len(first) != 1 || first[0].Subject != "Naval fiction" || first[0].WorkCount != 2 {
 		t.Fatalf("first unmatched page = %#v, %v, %v", first, more, err)

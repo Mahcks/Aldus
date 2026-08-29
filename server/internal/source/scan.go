@@ -391,7 +391,8 @@ func (s *Store) finishScan(ctx context.Context, id, state string, v summary, mes
 }
 func (s *Store) canScan(ctx context.Context, actor auth.User, libraryID, sourceID string) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.id=? AND ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor'))`, actor.ID, sourceID, libraryID, actor.Admin).Scan(&n)
+	args := append([]any{actor.ID, sourceID, libraryID}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.id=? AND ls.library_id=? AND ls.deleted_at IS NULL AND `+auth.EffectiveLibraryEditSQL("ls.library_id", "lm"), args...).Scan(&n)
 	return n == 1, err
 }
 func (s *Store) upsertEntry(ctx context.Context, job Scan, relative, kind string, info fs.FileInfo, hash string, metadata map[string]any) (string, error) {

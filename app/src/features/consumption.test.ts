@@ -14,6 +14,7 @@ import {
   PLAYBACK_RATES,
   progressSaveLabel,
   progressSourceLabel,
+  queueTask,
   readerControlsReady,
   readToListen,
   readyJob,
@@ -39,6 +40,33 @@ it('keeps reader controls locked until the restored location is published', () =
   expect(readerControlsReady(true, false, true, true)).toBe(false);
   expect(readerControlsReady(true, false, false, false)).toBe(false);
   expect(readerControlsReady(true, false, false, true)).toBe(true);
+});
+
+it('runs progress saves in the order they were requested', async () => {
+  let releaseFirst!: () => void;
+  let markFirstStarted!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    markFirstStarted = resolve;
+  });
+  const firstDone = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const calls: string[] = [];
+  let queue = queueTask(Promise.resolve(), async () => {
+    calls.push('first:start');
+    markFirstStarted();
+    await firstDone;
+    calls.push('first:end');
+  });
+  queue = queueTask(queue, async () => {
+    calls.push('second');
+  });
+
+  await firstStarted;
+  expect(calls).toEqual(['first:start']);
+  releaseFirst();
+  await queue;
+  expect(calls).toEqual(['first:start', 'first:end', 'second']);
 });
 
 const passageSegments = [

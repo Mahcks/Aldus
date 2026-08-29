@@ -14,6 +14,7 @@ import type { MediaChoice } from '@/features/consumption';
 import { offlineAudioChapters } from '@/features/offline-chapters';
 import { representationStateUpdate } from '@/features/offline-representation';
 import { APIError, api } from './api';
+import { getAPIBaseURL } from './api-base';
 import { productEPUBSource } from './epub-source';
 import { downloadProductAudio } from './media';
 import { pendingProgress } from './progress-outbox';
@@ -40,8 +41,7 @@ const key = (scope: string, workID: string) => scopedStorageKey(`offline-work:${
 const prefix = (scope: string) => scopedStorageKey('offline-work:', scope);
 const librariesKey = (scope: string) => scopedStorageKey('offline-libraries', scope);
 
-export async function offlineWorks(): Promise<OfflineWork[]> {
-  const scope = activeStorageScope();
+export async function offlineWorks(scope = activeStorageScope()): Promise<OfflineWork[]> {
   const scopedPrefix = prefix(scope);
   const keys = (await AsyncStorage.getAllKeys()).filter((item) => item.startsWith(scopedPrefix));
   const values = await Promise.all(
@@ -59,11 +59,10 @@ export async function rememberOfflineLibraries(libraries: Library[]) {
   await AsyncStorage.setItem(librariesKey(scope), JSON.stringify([...merged.values()]));
 }
 
-export async function offlineLibraries(): Promise<Library[]> {
-  const scope = activeStorageScope();
+export async function offlineLibraries(scope = activeStorageScope()): Promise<Library[]> {
   const [raw, works] = await Promise.all([
     AsyncStorage.getItem(librariesKey(scope)),
-    offlineWorks(),
+    offlineWorks(scope),
   ]);
   const saved = parseStoredJSON<Library[]>(raw) ?? [];
   const ids = new Set(works.map((item) => item.work.library_id));
@@ -88,7 +87,8 @@ export async function offlineLibraries(): Promise<Library[]> {
 }
 
 export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSummary[]> {
-  const [works, libraries] = await Promise.all([offlineWorks(), offlineLibraries()]);
+  const scope = activeStorageScope();
+  const [works, libraries] = await Promise.all([offlineWorks(scope), offlineLibraries(scope)]);
   const byID = new Map(libraries.map((item) => [item.id, item]));
   return works
     .filter((item) => !libraryID || item.work.library_id === libraryID)
@@ -172,9 +172,9 @@ export async function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_a
 
 export async function removeOfflineWork(workID: string) {
   const scope = activeStorageScope();
-  if (await pendingProgress(workID))
+  if (await pendingProgress(workID, scope))
     throw new Error('Sync this device before removing the download.');
-  const value = await offlineWork(workID);
+  const value = await offlineWork(workID, scope);
   if (value) deleteOfflineFiles(value, scope);
   await AsyncStorage.removeItem(key(scope, workID));
 }
@@ -191,7 +191,7 @@ function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: 
 
 export async function updateOfflineProgress(workID: string, progress: CanonicalPosition) {
   const scope = activeStorageScope();
-  const value = await offlineWork(workID);
+  const value = await offlineWork(workID, scope);
   if (value) await AsyncStorage.setItem(key(scope, workID), JSON.stringify({ ...value, progress }));
 }
 
@@ -200,9 +200,9 @@ export async function updateOfflineRepresentationState(
   kind: 'epub' | 'audio',
   state: RepresentationState,
   pending = false,
+  scope = activeStorageScope(),
 ) {
-  const scope = activeStorageScope();
-  const value = await offlineWork(workID);
+  const value = await offlineWork(workID, scope);
   if (!value) return false;
   await AsyncStorage.setItem(
     key(scope, workID),
@@ -219,25 +219,32 @@ export async function updateOfflineRepresentationState(
 }
 
 export async function reconcileOfflineRepresentationStates() {
-  for (const work of await offlineWorks()) {
+  const scope = activeStorageScope();
+  const origin = getAPIBaseURL();
+  const stillActive = () => origin === getAPIBaseURL() && scope === activeStorageScope();
+  for (const work of await offlineWorks(scope)) {
     for (const kind of ['epub', 'audio'] as const) {
       if (!work.pending_representation_states?.[kind]) continue;
       const local = kind === 'epub' ? work.epub_state : work.audio_state;
       if (!local) continue;
       try {
+        if (!stillActive()) return;
         let expectedRevision = local.revision;
         try {
           const remote = await api.representationState(local.representation_id);
+          if (!stillActive()) return;
           expectedRevision = remote?.revision ?? 0;
         } catch (error) {
           if (!(error instanceof APIError && error.status === 404)) throw error;
           expectedRevision = 0;
         }
+        if (!stillActive()) return;
         const saved = await api.updateRepresentationState(
           local.representation_id,
           representationStateUpdate(local, expectedRevision),
         );
-        await updateOfflineRepresentationState(work.work.id, kind, saved);
+        if (!stillActive()) return;
+        await updateOfflineRepresentationState(work.work.id, kind, saved, false, scope);
       } catch {
         // Leave the local state pending for the next foreground attempt.
       }

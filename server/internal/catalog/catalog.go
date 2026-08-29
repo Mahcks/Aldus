@@ -544,7 +544,8 @@ func (s *Store) CreateRepresentation(ctx context.Context, actor auth.User, workI
 		return Representation{}, ErrInvalid
 	}
 	var libraryID string
-	err := s.db.QueryRowContext(ctx, `SELECT w.library_id FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND (? OR m.role IN ('owner','editor'))`, actor.ID, workID, actor.Admin).Scan(&libraryID)
+	args := append([]any{actor.ID, workID}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT w.library_id FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m"), args...).Scan(&libraryID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Representation{}, ErrNotFound
 	}
@@ -613,30 +614,21 @@ func (s *Store) CanAccessAlignment(ctx context.Context, actor auth.User, alignme
 }
 
 func (s *Store) canRead(ctx context.Context, actor auth.User, libraryID string) (bool, error) {
-	if actor.Admin {
-		var n int
-		err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries WHERE id=?`, libraryID).Scan(&n)
-		return n == 1, err
-	}
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members WHERE library_id=? AND user_id=?`, libraryID, actor.ID).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id"), append([]any{libraryID}, auth.LibraryAccessArgs(actor)...)...).Scan(&n)
 	return n == 1, err
 }
 func (s *Store) canEdit(ctx context.Context, actor auth.User, libraryID string) (bool, error) {
-	if actor.Admin {
-		return s.canRead(ctx, actor, libraryID)
-	}
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members WHERE library_id=? AND user_id=? AND role IN ('owner','editor')`, libraryID, actor.ID).Scan(&n)
+	args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "m"), args...).Scan(&n)
 	return n == 1, err
 }
 func canManage(ctx context.Context, tx *sql.Tx, actor auth.User, libraryID string) (bool, error) {
 	var n int
-	if actor.Admin {
-		err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries WHERE id=?`, libraryID).Scan(&n)
-		return n == 1, err
-	}
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members WHERE library_id=? AND user_id=? AND role='owner'`, libraryID, actor.ID).Scan(&n)
+	args := append([]any{actor.ID, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin)
+	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role='owner')`, args...).Scan(&n)
 	return n == 1, err
 }
 func scanWork(rows *sql.Rows) (Work, error) {

@@ -214,7 +214,8 @@ func (s *Store) IgnoreProposal(ctx context.Context, actor auth.User, libraryID, 
 }
 func canReview(ctx context.Context, tx *sql.Tx, actor auth.User, libraryID string) (bool, error) {
 	var n int
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=? WHERE l.id=? AND (? OR lm.role IN ('owner','editor'))`, actor.ID, libraryID, actor.Admin).Scan(&n)
+	args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
+	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "lm"), args...).Scan(&n)
 	return n == 1, err
 }
 func (s *Store) openEntryTx(ctx context.Context, tx *sql.Tx, entryID string, verify bool) (*os.File, error) {

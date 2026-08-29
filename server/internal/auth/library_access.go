@@ -18,6 +18,20 @@ func EffectiveLibraryAccessSQL(libraryIDExpression string) string {
 	)`, libraryIDExpression, libraryIDExpression)
 }
 
+// LibraryAccessArgs returns arguments in the order expected by
+// EffectiveLibraryAccessSQL.
 func LibraryAccessArgs(actor User) []any {
 	return []any{actor.ID, actor.ID, actor.Admin, actor.ID}
+}
+
+// EffectiveLibraryEditSQL adds owner/editor authorization to effective
+// library visibility. Administrators may edit any library they can see.
+func EffectiveLibraryEditSQL(libraryIDExpression, membershipAlias string) string {
+	return EffectiveLibraryAccessSQL(libraryIDExpression) + fmt.Sprintf(" AND (? OR %s.role IN ('owner','editor'))", membershipAlias)
+}
+
+// LibraryEditArgs returns arguments in the order expected by
+// EffectiveLibraryEditSQL.
+func LibraryEditArgs(actor User) []any {
+	return append(LibraryAccessArgs(actor), actor.Admin)
 }

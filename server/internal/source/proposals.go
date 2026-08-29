@@ -205,7 +205,8 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 
 func (s *Store) Proposals(ctx context.Context, actor auth.User, libraryID string) ([]Proposal, error) {
 	var allowed int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=? WHERE l.id=? AND (? OR lm.role IN ('owner','editor'))`, actor.ID, libraryID, actor.Admin).Scan(&allowed); err != nil || allowed != 1 {
+	args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries l LEFT JOIN library_members lm ON lm.library_id=l.id AND lm.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "lm"), args...).Scan(&allowed); err != nil || allowed != 1 {
 		if err != nil {
 			return nil, err
 		}

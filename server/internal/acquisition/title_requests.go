@@ -638,7 +638,9 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 }
 
 func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID string) ([]TitleRequest, error) {
-	rows, err := s.db.QueryContext(ctx, titleRequestSelect+` WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID, libraryID, actor.ID, actor.Admin)
+	args := append([]any{actor.ID, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.ID, actor.Admin)
+	rows, err := s.db.QueryContext(ctx, titleRequestSelect+` WHERE r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id LIMIT 100`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list title requests: %w", err)
 	}
@@ -658,7 +660,9 @@ func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID
 	for i := range values {
 		byID[values[i].ID] = i
 	}
-	formatRows, err := s.db.QueryContext(ctx, `SELECT f.title_request_id,f.format,f.state,COALESCE(f.source_id,''),f.error,COALESCE(a.qbit_state,''),f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id,f.format LIMIT 200`, actor.ID, libraryID, actor.ID, actor.Admin)
+	args = append([]any{actor.ID, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.ID, actor.Admin)
+	formatRows, err := s.db.QueryContext(ctx, `SELECT f.title_request_id,f.format,f.state,COALESCE(f.source_id,''),f.error,COALESCE(a.qbit_state,''),f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id,f.format LIMIT 200`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list title request formats: %w", err)
 	}
@@ -684,7 +688,9 @@ func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID
 }
 
 func (s *TitleRequestStore) Get(ctx context.Context, actor auth.User, libraryID, id string) (TitleRequest, error) {
-	row := s.db.QueryRowContext(ctx, titleRequestSelect+` WHERE r.id=? AND r.library_id=? AND (r.requested_by=? OR ? OR m.role IN ('owner','editor'))`, actor.ID, id, libraryID, actor.ID, actor.Admin)
+	args := append([]any{actor.ID, id, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.ID, actor.Admin)
+	row := s.db.QueryRowContext(ctx, titleRequestSelect+` WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (r.requested_by=? OR ? OR m.role IN ('owner','editor'))`, args...)
 	value, err := scanTitleRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TitleRequest{}, ErrNotFound
@@ -710,7 +716,9 @@ func (s *TitleRequestStore) Cancel(ctx context.Context, actor auth.User, library
 	}
 	if s.acquisitions != nil {
 		var state, legacyID, legacyState string
-		err := s.db.QueryRowContext(ctx, `SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, format, actor.ID, id, libraryID, actor.Admin, actor.ID).Scan(&state, &legacyID, &legacyState)
+		args := append([]any{format, actor.ID, id, libraryID}, auth.LibraryAccessArgs(actor)...)
+		args = append(args, actor.Admin, actor.ID)
+		err := s.db.QueryRowContext(ctx, `SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&state, &legacyID, &legacyState)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -739,7 +747,8 @@ func (s *TitleRequestStore) transition(ctx context.Context, actor auth.User, lib
 	}
 	defer tx.Rollback()
 	var requestedBy, title, role, state string
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(r.requested_by,''),r.title,COALESCE(m.role,''),f.state FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=?`, format, actor.ID, id, libraryID).Scan(&requestedBy, &title, &role, &state)
+	args := append([]any{format, actor.ID, id, libraryID}, auth.LibraryAccessArgs(actor)...)
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(r.requested_by,''),r.title,COALESCE(m.role,''),f.state FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id AND f.format=? LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id"), args...).Scan(&requestedBy, &title, &role, &state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -884,7 +893,19 @@ func (s *TitleRequestStore) notifyReviewersTx(ctx context.Context, tx *sql.Tx, r
 	if s.notifications == nil {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE disabled=0 AND (is_admin=1 OR id IN (SELECT user_id FROM library_members WHERE library_id=? AND role IN ('owner','editor'))) ORDER BY id`, libraryID)
+	rows, err := tx.QueryContext(ctx, `
+		SELECT u.id
+		FROM users u
+		WHERE u.disabled=0
+			AND (
+				EXISTS(SELECT 1 FROM library_members exclusive_grant WHERE exclusive_grant.user_id=u.id AND exclusive_grant.library_id=? AND exclusive_grant.exclusive=1)
+				OR (
+					NOT EXISTS(SELECT 1 FROM library_members exclusive_override WHERE exclusive_override.user_id=u.id AND exclusive_override.exclusive=1)
+					AND (u.is_admin=1 OR EXISTS(SELECT 1 FROM library_members additive_grant WHERE additive_grant.user_id=u.id AND additive_grant.library_id=?))
+				)
+			)
+			AND (u.is_admin=1 OR EXISTS(SELECT 1 FROM library_members reviewer WHERE reviewer.user_id=u.id AND reviewer.library_id=? AND reviewer.role IN ('owner','editor')))
+		ORDER BY u.id`, libraryID, libraryID, libraryID)
 	if err != nil {
 		return fmt.Errorf("list acquisition reviewers: %w", err)
 	}

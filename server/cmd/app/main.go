@@ -237,9 +237,8 @@ func main() {
 	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
 	acquisitionStore.SetScanRetry(sourceStore.RetryAcquisitionScan)
 	acquisitionStore.SetPairHandoff(func(ctx context.Context, pair acquisition.ReadyPair) error {
-		_, err := alignmentManager.Enqueue(
+		_, err := alignmentManager.EnqueueAcquiredPair(
 			ctx,
-			auth.User{ID: pair.RequestedBy},
 			alignment.Request{
 				EPUBMediaID:  pair.EPUBMediaID,
 				EPUBSHA256:   pair.EPUBSHA256,

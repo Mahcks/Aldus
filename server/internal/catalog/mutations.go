@@ -98,7 +98,8 @@ func (s *Store) UpdateWork(ctx context.Context, actor auth.User, id string, upda
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE works SET title=?,author=?,updated_at=? WHERE (id=? AND EXISTS(SELECT 1 FROM library_members m WHERE m.library_id=works.library_id AND m.user_id=? AND m.role IN ('owner','editor'))) OR (id=? AND ?)`, update.Title, nullString(update.Author), now, id, actor.ID, id, actor.Admin)
+	args := append([]any{update.Title, nullString(update.Author), now, id, actor.ID}, auth.LibraryEditArgs(actor)...)
+	result, err := tx.ExecContext(ctx, `UPDATE works SET title=?,author=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=works.library_id AND `+auth.EffectiveLibraryEditSQL("l.id", "m")+`)`, args...)
 	if err != nil {
 		return err
 	}
@@ -156,7 +157,8 @@ func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, k
 	}
 	var existingKind string
 	var mediaCount int
-	err := s.db.QueryRowContext(ctx, `SELECT r.kind,COUNT(md.id) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN media md ON md.representation_id=r.id WHERE r.id=? AND (? OR m.role IN ('owner','editor')) GROUP BY r.id`, actor.ID, id, actor.Admin).Scan(&existingKind, &mediaCount)
+	args := append([]any{actor.ID, id}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT r.kind,COUNT(md.id) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN media md ON md.representation_id=r.id WHERE r.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+` GROUP BY r.id`, args...).Scan(&existingKind, &mediaCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -166,7 +168,8 @@ func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, k
 	if mediaCount > 0 && kind != existingKind {
 		return ErrReferenced
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE representations SET kind=?,label=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=representations.work_id AND (? OR m.role IN ('owner','editor')))`, kind, label, time.Now().UTC().Format(time.RFC3339Nano), id, actor.ID, actor.Admin)
+	args = append([]any{kind, label, time.Now().UTC().Format(time.RFC3339Nano), id, actor.ID}, auth.LibraryEditArgs(actor)...)
+	result, err := s.db.ExecContext(ctx, `UPDATE representations SET kind=?,label=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=representations.work_id AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+`)`, args...)
 	if err != nil {
 		return err
 	}
@@ -179,7 +182,8 @@ func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, k
 
 func (s *Store) DeleteRepresentation(ctx context.Context, actor auth.User, id string) error {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(md.id) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN media md ON md.representation_id=r.id WHERE r.id=? AND (? OR m.role IN ('owner','editor')) GROUP BY r.id`, actor.ID, id, actor.Admin).Scan(&n)
+	args := append([]any{actor.ID, id}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(md.id) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN media md ON md.representation_id=r.id WHERE r.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+` GROUP BY r.id`, args...).Scan(&n)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -189,7 +193,8 @@ func (s *Store) DeleteRepresentation(ctx context.Context, actor auth.User, id st
 	if n != 0 {
 		return ErrReferenced
 	}
-	result, err := s.db.ExecContext(ctx, `DELETE FROM representations WHERE id=? AND EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=representations.work_id AND (? OR m.role IN ('owner','editor')))`, id, actor.ID, actor.Admin)
+	args = append([]any{id, actor.ID}, auth.LibraryEditArgs(actor)...)
+	result, err := s.db.ExecContext(ctx, `DELETE FROM representations WHERE id=? AND EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=representations.work_id AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+`)`, args...)
 	if err != nil {
 		return err
 	}

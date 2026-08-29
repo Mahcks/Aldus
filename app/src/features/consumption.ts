@@ -19,6 +19,10 @@ export function shouldLoadConsumptionMedia(mode: 'read' | 'listen', kind: 'epub'
   return (mode === 'read' && kind === 'epub') || (mode === 'listen' && kind === 'audio');
 }
 
+export function queueTask(current: Promise<void>, task: () => Promise<void>) {
+  return current.catch(() => {}).then(task);
+}
+
 export function readerControlsReady(
   navigationReady: boolean,
   mediaLoading: boolean,

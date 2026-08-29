@@ -480,6 +480,52 @@ func TestCompletedDownloadStartsSafeHandoffOnce(t *testing.T) {
 	}
 }
 
+func TestCompletedPairClosesRowsBeforeHandoff(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`
+		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01','2026-01-01');
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01','2026-01-01');
+		INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES('work','library','Alice','2026-01-01','2026-01-01');
+		INSERT INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES('epub-rep','work','epub','EPUB','2026-01-01','2026-01-01'),('audio-rep','work','audio','Audio','2026-01-01','2026-01-01');
+		INSERT INTO media(id,representation_id,kind,path,sha256,created_at) VALUES('epub-media','epub-rep','epub','book.epub','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-01-01'),('audio-media','audio-rep','audio','book.mp3','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','2026-01-01');
+		INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Media','/media',1,'2026-01-01','2026-01-01');
+		INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,state,created_at,updated_at) VALUES('epub-entry','source','book.epub',1,'2026-01-01','registered','2026-01-01','2026-01-01'),('audio-entry','source','book.mp3',1,'2026-01-01','registered','2026-01-01','2026-01-01');
+		INSERT INTO media_locations(media_id,source_entry_id,created_at) VALUES('epub-media','epub-entry','2026-01-01'),('audio-media','audio-entry','2026-01-01');
+		INSERT INTO import_groups(id,library_id,logical_key,content_key,state,confidence,proposed_title,normalized_title,created_at,updated_at) VALUES('epub-proposal','library','epub','epub','obsolete','high','Alice','alice','2026-01-01','2026-01-01'),('audio-proposal','library','audio','audio','obsolete','high','Alice','alice','2026-01-01','2026-01-01');
+		INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label) VALUES('epub-proposal','epub-entry','epub','EPUB'),('audio-proposal','audio-entry','audiobook','Audio');
+		INSERT INTO acquisition_pairs(id,library_id,requested_by,query,work_id,created_at,updated_at) VALUES('pair','library','reader','Alice','work','2026-01-01','2026-01-01');
+		INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,fulfillment_state,proposal_id,work_id,pair_id,created_at,updated_at) VALUES('epub-request','library','reader','Alice','queued','available','epub-proposal','work','pair','2026-01-01','2026-01-01'),('audio-request','library','reader','Alice','queued','available','audio-proposal','work','pair','2026-01-01','2026-01-01');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(db, nil)
+	handedOff := false
+	store.SetPairHandoff(func(ctx context.Context, pair ReadyPair) error {
+		var count int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media`).Scan(&count); err != nil {
+			return err
+		}
+		if pair.ID != "pair" || pair.RequestedBy != "reader" || count != 2 {
+			t.Fatalf("handoff = %#v, media=%d", pair, count)
+		}
+		handedOff = true
+		return nil
+	})
+	reconcileCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if err := store.reconcileFulfillment(reconcileCtx); err != nil {
+		t.Fatal(err)
+	}
+	if !handedOff {
+		t.Fatal("paired acquisition was not handed off")
+	}
+}
+
 func TestFulfillmentTracksExactScanProposalAndAcceptedWork(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))

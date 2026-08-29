@@ -417,7 +417,8 @@ func secondsToMilliseconds(value string) (int64, error) {
 
 func (s *Store) editableRepresentation(ctx context.Context, actor auth.User, libraryID, id string) (string, bool, error) {
 	var kind string
-	err := s.db.QueryRowContext(ctx, `SELECT r.kind FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE r.id=? AND w.library_id=? AND (? OR m.role IN ('owner','editor'))`, actor.ID, id, libraryID, actor.Admin).Scan(&kind)
+	args := append([]any{actor.ID, id, libraryID}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT r.kind FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE r.id=? AND w.library_id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m"), args...).Scan(&kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}

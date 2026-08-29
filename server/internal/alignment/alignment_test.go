@@ -203,6 +203,20 @@ func TestJobReadyDuplicateAndAuthorization(t *testing.T) {
 	}
 }
 
+func TestExclusiveMembershipBlocksAdditiveAlignmentEnqueue(t *testing.T) {
+	s := setupManager(t, "success", time.Second)
+	ctx := context.Background()
+	if _, err := s.manager.db.ExecContext(ctx, `
+		UPDATE library_members SET role='editor' WHERE user_id=?;
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('exclusive-library','Exclusive','2026-01-01','2026-01-01');
+		INSERT INTO library_members(library_id,user_id,role,exclusive,created_at) VALUES('exclusive-library',?,'reader',1,'2026-01-01')`, s.reader.ID, s.reader.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.manager.Enqueue(ctx, s.reader, s.request); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("additive alignment enqueue = %v", err)
+	}
+}
+
 func TestFailuresTimeoutAndSafeConfidence(t *testing.T) {
 	for _, mode := range []string{"failure", "malformed", "wrong_hash"} {
 		t.Run(mode, func(t *testing.T) {
@@ -264,6 +278,29 @@ func TestFailedJobCanBeRetried(t *testing.T) {
 	retried, err := s.manager.Enqueue(ctx, s.admin, s.request)
 	if err != nil || retried.ID != job.ID || retried.State != "pending" || retried.Attempts != 0 || retried.Error != "" {
 		t.Fatalf("retried = %#v, %v", retried, err)
+	}
+}
+
+func TestAutomaticPairDoesNotRetryTerminalJob(t *testing.T) {
+	s := setupManager(t, "failure", time.Second)
+	ctx := context.Background()
+	job, err := s.manager.EnqueueAcquiredPair(ctx, s.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, ok, err := s.manager.claim(ctx)
+	if err != nil || !ok {
+		t.Fatalf("claim = %#v, %v, %v", claimed, ok, err)
+	}
+	s.manager.run(ctx, claimed)
+
+	duplicate, err := s.manager.EnqueueAcquiredPair(ctx, s.request)
+	if err != nil || duplicate.ID != job.ID || duplicate.State != "failed" || duplicate.Attempts != 1 {
+		t.Fatalf("automatic duplicate = %#v, %v", duplicate, err)
+	}
+	retried, err := s.manager.Enqueue(ctx, s.admin, s.request)
+	if err != nil || retried.State != "pending" || retried.Attempts != 0 {
+		t.Fatalf("explicit retry = %#v, %v", retried, err)
 	}
 }
 

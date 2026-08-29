@@ -94,7 +94,8 @@ func (s *PolicyStore) Update(ctx context.Context, actor auth.User, value Policy)
 
 func (s *PolicyStore) authorize(ctx context.Context, actor auth.User, libraryID string) error {
 	var allowed bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor')))`, actor.ID, libraryID, actor.Admin).Scan(&allowed)
+	args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "m")+`)`, args...).Scan(&allowed)
 	if err != nil {
 		return fmt.Errorf("authorize acquisition policy: %w", err)
 	}

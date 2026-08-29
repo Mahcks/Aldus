@@ -553,7 +553,8 @@ func (s *Store) Cover(ctx context.Context, actor auth.User, id string) ([]byte, 
 
 func (s *Store) editableWork(ctx context.Context, actor auth.User, workID string) (Work, error) {
 	var work Work
-	err := s.db.QueryRowContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,'') FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND (? OR m.role IN ('owner','editor'))`, actor.ID, workID, actor.Admin).Scan(&work.ID, &work.LibraryID, &work.Title, &work.Author)
+	args := append([]any{actor.ID, workID}, auth.LibraryEditArgs(actor)...)
+	err := s.db.QueryRowContext(ctx, `SELECT w.id,w.library_id,w.title,COALESCE(w.author,'') FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m"), args...).Scan(&work.ID, &work.LibraryID, &work.Title, &work.Author)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Work{}, ErrNotFound
 	}

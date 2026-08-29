@@ -31,11 +31,16 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES
 			('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
 			('owner','owner','owner','Owner','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
+			('restricted-admin','restricted-admin','restricted-admin','Restricted Admin','x',1,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
 			('other','other','other','Other','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
-		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES
+			('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
+			('restricted','Restricted','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 		INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,can_bypass_acquisition_approval,created_at) VALUES
 			('library','reader','reader',1,0,'2026-01-01T00:00:00Z'),
 			('library','owner','owner',1,1,'2026-01-01T00:00:00Z');
+		INSERT INTO library_members(library_id,user_id,role,exclusive,created_at) VALUES
+			('restricted','restricted-admin','reader',1,'2026-01-01T00:00:00Z');
 		INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES
 			('ebooks','library','local','Ebooks',?,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
 			('audio','library','local','Audio',?,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
@@ -101,6 +106,10 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	ownerNotifications, err := inbox.List(ctx, "owner", 20, 0)
 	if err != nil || len(ownerNotifications) != 2 || ownerNotifications[0].Kind != "acquisition.approval_needed" {
 		t.Fatalf("owner notifications=%#v err=%v", ownerNotifications, err)
+	}
+	restrictedNotifications, err := inbox.List(ctx, "restricted-admin", 20, 0)
+	if err != nil || len(restrictedNotifications) != 0 {
+		t.Fatalf("restricted admin notifications=%#v err=%v", restrictedNotifications, err)
 	}
 
 	if _, err := db.Exec(`UPDATE library_members SET can_bypass_acquisition_approval=1 WHERE library_id='library' AND user_id='reader'`); err != nil {

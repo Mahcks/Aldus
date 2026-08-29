@@ -45,6 +45,7 @@ import {
   playbackRate,
   progressSaveLabel,
   progressSourceLabel,
+  queueTask,
   readerControlsReady,
   resumedProgressLabel,
   readToListen,
@@ -225,6 +226,7 @@ export default function ConsumeWorkScreen() {
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
   const representationSaves = useRef<Promise<void>>(Promise.resolve());
+  const audioSaves = useRef<Promise<void>>(Promise.resolve());
   const epubStateRef = useRef<RepresentationState | null>(null);
   const audioStateRef = useRef<RepresentationState | null>(null);
   const representationSaveAttempt = useRef(0);
@@ -920,6 +922,7 @@ export default function ConsumeWorkScreen() {
   useEffect(() => {
     if (
       mode !== 'listen' ||
+      switching.current ||
       !status.isLoaded ||
       (initialAudioMS != null && !audioReady) ||
       !selectedAudio
@@ -1237,22 +1240,28 @@ export default function ConsumeWorkScreen() {
     }
   }
 
-  async function saveListeningPosition(timestampMS: number) {
-    await saveRepresentation('audio', timestampMS);
-    if (switching.current || !alignmentID || !alignment?.segments[0]) return;
-    const locator: AudioLocator = {
-      resource: alignment.segments[0].audio_resource,
-      timestamp_ms: timestampMS,
-    };
-    try {
-      await saveCanonical(await api.audioToCanonical(alignmentID, locator));
-    } catch (error) {
-      if (error instanceof APIError && error.status === 0 && alignment) {
-        const canonical = offlineAudioToCanonical(alignment, locator);
-        if (canonical) await saveCanonical(canonical);
-      } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
-      else setNotice(errorMessage(error));
-    }
+  async function saveListeningPosition(timestampMS: number, speed = status.playbackRate || 1) {
+    const currentAlignmentID = switching.current ? undefined : alignmentID;
+    const currentAlignment = switching.current ? undefined : alignment;
+    const audioResource = currentAlignment?.segments[0]?.audio_resource;
+    audioSaves.current = queueTask(audioSaves.current, async () => {
+      await saveRepresentation('audio', timestampMS, speed);
+      if (!currentAlignmentID || !currentAlignment || !audioResource) return;
+      const locator: AudioLocator = {
+        resource: audioResource,
+        timestamp_ms: timestampMS,
+      };
+      try {
+        await saveCanonical(await api.audioToCanonical(currentAlignmentID, locator));
+      } catch (error) {
+        if (error instanceof APIError && error.status === 0) {
+          const canonical = offlineAudioToCanonical(currentAlignment, locator);
+          if (canonical) await saveCanonical(canonical);
+        } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
+        else setNotice(errorMessage(error));
+      }
+    });
+    await audioSaves.current;
   }
 
   async function switchToListen(location = readerLocation) {
@@ -1345,6 +1354,7 @@ export default function ConsumeWorkScreen() {
     switching.current = true;
     setModeSwitching(true);
     try {
+      await audioSaves.current;
       await canonicalSaves.current;
       const timestampMS = Math.round(player.currentTime * 1000);
       const { progress: next, target } = await listenToRead(
@@ -1469,7 +1479,7 @@ export default function ConsumeWorkScreen() {
     if (!canAdjustPlaybackRate) return;
     try {
       const next = applyPlaybackRate(player, rate);
-      void saveRepresentation('audio', Math.round(status.currentTime * 1000), next);
+      void saveListeningPosition(Math.round(status.currentTime * 1000), next);
     } catch (error) {
       setNotice(errorMessage(error));
     }

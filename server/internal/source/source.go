@@ -224,7 +224,9 @@ func (s *Store) ensureManagedSource(ctx context.Context, libraryID string) (Libr
 }
 
 func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, root string, autoImport bool) (LibrarySource, error) {
-	if !actor.Admin {
+	if allowed, err := s.canAdministerLibrary(ctx, actor, libraryID); err != nil {
+		return LibrarySource{}, err
+	} else if !allowed {
 		return LibrarySource{}, ErrNotFound
 	}
 	name = strings.TrimSpace(name)
@@ -234,13 +236,6 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, name, ro
 	}
 	if name == "" || len(name) > 200 {
 		return LibrarySource{}, ErrInvalid
-	}
-	var exists int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM libraries WHERE id=?`, libraryID).Scan(&exists); err != nil {
-		return LibrarySource{}, err
-	}
-	if exists != 1 {
-		return LibrarySource{}, ErrNotFound
 	}
 	id, err := randomID()
 	if err != nil {
@@ -356,7 +351,8 @@ func (s *Store) Directories(actor auth.User, rootID, relative string) (Directory
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]LibrarySource, error) {
 	if s.acquisitionRoot != "" {
 		var allowed int
-		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.role IN ('owner','editor')))`, actor.ID, libraryID, actor.Admin).Scan(&allowed); err != nil {
+		args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND `+auth.EffectiveLibraryEditSQL("l.id", "m")+`)`, args...).Scan(&allowed); err != nil {
 			return nil, err
 		}
 		if allowed == 1 {
@@ -365,7 +361,8 @@ func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]
 			}
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.auto_import,ls.created_at,ls.updated_at,ls.storage_kind FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND (? OR lm.role IN ('owner','editor')) ORDER BY ls.created_at,ls.id`, actor.Admin, actor.ID, libraryID, actor.Admin)
+	args := append([]any{actor.Admin, actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT ls.id,ls.library_id,ls.kind,ls.name,CASE WHEN ? THEN ls.root_path ELSE '' END,ls.enabled,ls.auto_import,ls.created_at,ls.updated_at,ls.storage_kind FROM library_sources ls LEFT JOIN library_members lm ON lm.library_id=ls.library_id AND lm.user_id=? WHERE ls.library_id=? AND ls.deleted_at IS NULL AND `+auth.EffectiveLibraryEditSQL("ls.library_id", "lm")+` ORDER BY ls.created_at,ls.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +455,9 @@ func (s *Store) EnqueueAcquisitionScan(ctx context.Context, libraryID, sourceID,
 }
 
 func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name, root string, enabled, autoImport bool) error {
-	if !actor.Admin {
+	if allowed, err := s.canAdministerLibrary(ctx, actor, libraryID); err != nil {
+		return err
+	} else if !allowed {
 		return ErrNotFound
 	}
 	if v, err := s.get(ctx, libraryID, id); err != nil {
@@ -485,7 +484,9 @@ func (s *Store) Update(ctx context.Context, actor auth.User, libraryID, id, name
 }
 
 func (s *Store) Delete(ctx context.Context, actor auth.User, libraryID, id string) error {
-	if !actor.Admin {
+	if allowed, err := s.canAdministerLibrary(ctx, actor, libraryID); err != nil {
+		return err
+	} else if !allowed {
 		return ErrNotFound
 	}
 	if v, err := s.get(ctx, libraryID, id); err != nil {
@@ -502,6 +503,15 @@ func (s *Store) Delete(ctx context.Context, actor auth.User, libraryID, id strin
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) canAdministerLibrary(ctx context.Context, actor auth.User, libraryID string) (bool, error) {
+	if !actor.Admin {
+		return false, nil
+	}
+	var allowed bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries l WHERE l.id=? AND `+auth.EffectiveLibraryAccessSQL("l.id")+`)`, append([]any{libraryID}, auth.LibraryAccessArgs(actor)...)...).Scan(&allowed)
+	return allowed, err
 }
 
 func (s *Store) OpenMedia(ctx context.Context, mediaID string, verifyHash bool) (*os.File, error) {

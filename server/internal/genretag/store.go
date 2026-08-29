@@ -169,7 +169,8 @@ func (s *Store) ResetWork(ctx context.Context, actor auth.User, workID string) e
 
 func editableWork(ctx context.Context, tx *sql.Tx, actor auth.User, workID string) (bool, error) {
 	var ok bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND (? OR m.role IN ('owner','editor')))`, actor.ID, workID, actor.Admin).Scan(&ok)
+	args := append([]any{actor.ID, workID}, auth.LibraryEditArgs(actor)...)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+`)`, args...).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("authorize work genre edit: %w", err)
 	}
@@ -249,7 +250,7 @@ func (s *Store) Unmatched(ctx context.Context, actor auth.User, limit, offset in
 	}
 	// ponytail: aggregate in process so Unicode normalization matches the matcher;
 	// move this into a stored normalized column only if real library size makes it slow.
-	rows, err := s.db.QueryContext(ctx, `SELECT subject,work_id FROM work_subjects ORDER BY subject,work_id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT ws.subject,ws.work_id FROM work_subjects ws JOIN works w ON w.id=ws.work_id WHERE `+auth.EffectiveLibraryAccessSQL("w.library_id")+` ORDER BY ws.subject,ws.work_id`, auth.LibraryAccessArgs(actor)...)
 	if err != nil {
 		return nil, false, fmt.Errorf("list imported subjects: %w", err)
 	}

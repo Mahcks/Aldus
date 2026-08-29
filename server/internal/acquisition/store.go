@@ -434,7 +434,8 @@ func (s *Store) Tracker(ctx context.Context, actor auth.User) (Tracker, error) {
 	if err := s.db.QueryRowContext(ctx, `SELECT acquisition_seen_at FROM users WHERE id=? AND disabled=0`, actor.ID).Scan(&seen); err != nil {
 		return Tracker{}, ErrNotFound
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT r.id,r.library_id,COALESCE(r.requested_by,''),COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),COALESCE(r.selected_published_at,''),r.created_at,r.updated_at FROM acquisition_requests r WHERE r.requested_by=? AND r.dismissed_at='' ORDER BY r.updated_at DESC,r.id LIMIT 100`, actor.ID)
+	args := append([]any{actor.ID}, auth.LibraryAccessArgs(actor)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT r.id,r.library_id,COALESCE(r.requested_by,''),COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),COALESCE(r.selected_published_at,''),r.created_at,r.updated_at FROM acquisition_requests r WHERE r.requested_by=? AND r.dismissed_at='' AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` ORDER BY r.updated_at DESC,r.id LIMIT 100`, args...)
 	if err != nil {
 		return Tracker{}, fmt.Errorf("list acquisition tracker: %w", err)
 	}
@@ -466,7 +467,9 @@ func (s *Store) MarkTrackerSeen(ctx context.Context, actor auth.User) error {
 
 func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID string) error {
 	var selectedURL, scanID, state, torrentHash string
-	err := s.db.QueryRowContext(ctx, `SELECT r.selected_url,COALESCE(r.scan_id,''),r.fulfillment_state,r.torrent_hash FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, actor.ID, requestID, libraryID, actor.Admin, actor.ID).Scan(&selectedURL, &scanID, &state, &torrentHash)
+	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin, actor.ID)
+	err := s.db.QueryRowContext(ctx, `SELECT r.selected_url,COALESCE(r.scan_id,''),r.fulfillment_state,r.torrent_hash FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&selectedURL, &scanID, &state, &torrentHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -521,7 +524,9 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 
 func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestID string) error {
 	var state string
-	err := s.db.QueryRowContext(ctx, `SELECT r.fulfillment_state FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, actor.ID, requestID, libraryID, actor.Admin, actor.ID).Scan(&state)
+	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin, actor.ID)
+	err := s.db.QueryRowContext(ctx, `SELECT r.fulfillment_state FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&state)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -543,7 +548,9 @@ func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestI
 }
 
 func (s *Store) Dismiss(ctx context.Context, actor auth.User, libraryID, requestID string) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET dismissed_at=?,updated_at=? WHERE id=? AND library_id=? AND fulfillment_state IN ('failed','available') AND EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=acquisition_requests.library_id AND (? OR m.role IN ('owner','editor') OR acquisition_requests.requested_by=?))`, time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano), requestID, libraryID, actor.ID, actor.Admin, actor.ID)
+	args := append([]any{time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano), requestID, libraryID, actor.ID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin, actor.ID)
+	result, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET dismissed_at=?,updated_at=? WHERE id=? AND library_id=? AND fulfillment_state IN ('failed','available') AND EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=acquisition_requests.library_id AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR acquisition_requests.requested_by=?))`, args...)
 	if err != nil {
 		return err
 	}
@@ -780,18 +787,26 @@ func (s *Store) reconcileFulfillment(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("find completed acquisition pairs: %w", err)
 		}
-		defer rows.Close()
+		var pairs []ReadyPair
 		for rows.Next() {
 			var pair ReadyPair
 			if err := rows.Scan(&pair.ID, &pair.RequestedBy, &pair.EPUBMediaID, &pair.EPUBSHA256, &pair.AudioMediaID, &pair.AudioSHA256); err != nil {
+				rows.Close()
 				return err
 			}
+			pairs = append(pairs, pair)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		for _, pair := range pairs {
 			if err := s.pairHandoff(ctx, pair); err != nil {
 				slog.Warn("paired acquisition alignment unavailable", "pair_id", pair.ID, "error", err)
 			}
-		}
-		if err := rows.Err(); err != nil {
-			return err
 		}
 	}
 	return nil
@@ -871,6 +886,7 @@ func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, sourceID
 }
 
 func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]Request, error) {
+	args := append([]any{actor.ID, libraryID}, auth.LibraryEditArgs(actor)...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT r.id,r.library_id,COALESCE(r.requested_by,''),COALESCE(r.source_id,''),r.query,r.status,COALESCE(r.pair_id,''),r.download_state,r.download_error,r.fulfillment_state,COALESCE(r.scan_id,''),COALESCE(r.proposal_id,''),COALESCE(r.work_id,''),
 			COALESCE(r.selected_title,''),COALESCE(r.selected_source,''),COALESCE(r.selected_size,0),
@@ -878,8 +894,8 @@ func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]
 		FROM acquisition_requests r
 		JOIN libraries l ON l.id=r.library_id
 		LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=?
-		WHERE r.library_id=? AND (? OR m.role IN ('owner','editor'))
-		ORDER BY r.created_at DESC,r.id`, actor.ID, libraryID, actor.Admin)
+		WHERE r.library_id=? AND `+auth.EffectiveLibraryEditSQL("r.library_id", "m")+`
+		ORDER BY r.created_at DESC,r.id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list acquisition requests: %w", err)
 	}
@@ -1208,7 +1224,9 @@ func (s *Store) request(ctx context.Context, id string) (Request, error) {
 
 func (s *Store) authorizedSelectableQuery(ctx context.Context, actor auth.User, libraryID, id string) (string, error) {
 	var query string
-	err := s.db.QueryRowContext(ctx, `SELECT r.query FROM acquisition_requests r JOIN libraries l ON l.id=r.library_id LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND r.status='requested' AND r.fulfillment_state='awaiting_selection' AND (? OR m.role IN ('owner','editor') OR (m.can_request_acquisitions=1 AND r.requested_by=?))`, actor.ID, id, libraryID, actor.Admin, actor.ID).Scan(&query)
+	args := append([]any{actor.ID, id, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin, actor.ID)
+	err := s.db.QueryRowContext(ctx, `SELECT r.query FROM acquisition_requests r JOIN libraries l ON l.id=r.library_id LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND r.status='requested' AND r.fulfillment_state='awaiting_selection' AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR (m.can_request_acquisitions=1 AND r.requested_by=?))`, args...).Scan(&query)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -1235,7 +1253,9 @@ func (s *Store) authorizeLibrary(ctx context.Context, actor auth.User, libraryID
 
 func (s *Store) authorizedQuery(ctx context.Context, actor auth.User, libraryID, id string) (string, error) {
 	var query string
-	err := s.db.QueryRowContext(ctx, `SELECT r.query FROM acquisition_requests r JOIN libraries l ON l.id=r.library_id LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND (? OR m.role IN ('owner','editor') OR (m.can_request_acquisitions=1 AND r.requested_by=?))`, actor.ID, id, libraryID, actor.Admin, actor.ID).Scan(&query)
+	args := append([]any{actor.ID, id, libraryID}, auth.LibraryAccessArgs(actor)...)
+	args = append(args, actor.Admin, actor.ID)
+	err := s.db.QueryRowContext(ctx, `SELECT r.query FROM acquisition_requests r JOIN libraries l ON l.id=r.library_id LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("l.id")+` AND (? OR m.role IN ('owner','editor') OR (m.can_request_acquisitions=1 AND r.requested_by=?))`, args...).Scan(&query)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}

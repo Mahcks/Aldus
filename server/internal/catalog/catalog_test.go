@@ -375,6 +375,7 @@ func TestExclusiveMembershipOverridesAdditiveCatalogAccess(t *testing.T) {
 	ctx := context.Background()
 	store, accounts, admin := testCatalog(t)
 	reader := createUser(t, accounts, admin, "exclusive-reader")
+	restrictedEditor := createUser(t, accounts, admin, "exclusive-editor")
 	additive, err := store.CreateLibrary(ctx, admin, "Family")
 	if err != nil {
 		t.Fatal(err)
@@ -387,6 +388,12 @@ func TestExclusiveMembershipOverridesAdditiveCatalogAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.SetMember(ctx, admin, exclusive.ID, reader.ID, "reader", false, false, false, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, additive.ID, restrictedEditor.ID, "editor"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, exclusive.ID, restrictedEditor.ID, "reader", false, false, false, true); err != nil {
 		t.Fatal(err)
 	}
 	additiveWork, _ := store.CreateWork(ctx, admin, additive.ID, "Parent book", "Author")
@@ -405,6 +412,18 @@ func TestExclusiveMembershipOverridesAdditiveCatalogAccess(t *testing.T) {
 	}
 	if _, err := store.Works(ctx, reader, additive.ID, 50, 0); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("additive library listing access = %v", err)
+	}
+	if members, err := store.Members(ctx, restrictedEditor, additive.ID); !errors.Is(err, ErrNotFound) || members != nil {
+		t.Fatalf("additive member access = %#v, %v", members, err)
+	}
+	if _, err := store.CreateWork(ctx, restrictedEditor, additive.ID, "Denied", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("additive work creation = %v", err)
+	}
+	if err := store.UpdateWork(ctx, restrictedEditor, additiveWork.ID, WorkUpdate{Title: "Denied"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("additive work update = %v", err)
+	}
+	if _, err := store.CreateRepresentation(ctx, restrictedEditor, additiveWork.ID, "epub", "Denied"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("additive representation creation = %v", err)
 	}
 
 	libraries, err := store.Libraries(ctx, reader, 50, 0)

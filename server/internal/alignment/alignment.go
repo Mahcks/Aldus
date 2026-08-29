@@ -308,14 +308,27 @@ func (m *Manager) stopAll() {
 }
 
 func (m *Manager) Enqueue(ctx context.Context, actor auth.User, r Request) (Job, error) {
+	return m.enqueue(ctx, actor, r, true)
+}
+
+// EnqueueAcquiredPair queues media that Aldus already validated and imported
+// for one paired acquisition. Terminal jobs remain terminal until a person
+// explicitly retries them through Enqueue.
+func (m *Manager) EnqueueAcquiredPair(ctx context.Context, r Request) (Job, error) {
+	return m.enqueue(ctx, auth.User{Admin: true}, r, false)
+}
+
+func (m *Manager) enqueue(ctx context.Context, actor auth.User, r Request, retryTerminal bool) (Job, error) {
 	var work1, work2, kind1, kind2, hash1, hash2 string
-	query := `SELECT w.id,md.kind,md.sha256 FROM media md JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE md.id=? AND (? OR lm.role IN ('owner','editor'))`
-	if err := m.db.QueryRowContext(ctx, query, actor.ID, r.EPUBMediaID, actor.Admin).Scan(&work1, &kind1, &hash1); errors.Is(err, sql.ErrNoRows) {
+	query := `SELECT w.id,md.kind,md.sha256 FROM media md JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id LEFT JOIN library_members lm ON lm.library_id=w.library_id AND lm.user_id=? WHERE md.id=? AND ` + auth.EffectiveLibraryEditSQL("w.library_id", "lm")
+	args := append([]any{actor.ID, r.EPUBMediaID}, auth.LibraryEditArgs(actor)...)
+	if err := m.db.QueryRowContext(ctx, query, args...).Scan(&work1, &kind1, &hash1); errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	} else if err != nil {
 		return Job{}, err
 	}
-	if err := m.db.QueryRowContext(ctx, query, actor.ID, r.AudioMediaID, actor.Admin).Scan(&work2, &kind2, &hash2); errors.Is(err, sql.ErrNoRows) {
+	args = append([]any{actor.ID, r.AudioMediaID}, auth.LibraryEditArgs(actor)...)
+	if err := m.db.QueryRowContext(ctx, query, args...).Scan(&work2, &kind2, &hash2); errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	} else if err != nil {
 		return Job{}, err
@@ -326,7 +339,7 @@ func (m *Manager) Enqueue(ctx context.Context, actor auth.User, r Request) (Job,
 	if job, ok, err := m.findDuplicate(ctx, r); err != nil {
 		return Job{}, err
 	} else if ok {
-		if job.State == "failed" || job.State == "stale" {
+		if retryTerminal && (job.State == "failed" || job.State == "stale") {
 			now := time.Now().UTC().Format(time.RFC3339Nano)
 			result, updateErr := m.db.ExecContext(ctx, `UPDATE alignment_jobs SET alignment_id=NULL,state='pending',attempts=0,cancel_requested=0,artifact_id=NULL,error_summary='',created_at=?,started_at=NULL,finished_at=NULL WHERE id=? AND state IN ('failed','stale')`, now, job.ID)
 			if updateErr != nil {
