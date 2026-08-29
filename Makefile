@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
+.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev ios-acceptance generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -41,6 +41,9 @@ expo-dev:
 
 ios-dev:
 	cd app && bun run ios:device
+
+ios-acceptance:
+	DEVICE="$(DEVICE)" ./scripts/ios-acceptance.sh
 
 release-status:
 	./scripts/release.sh status "$(VERSION)"

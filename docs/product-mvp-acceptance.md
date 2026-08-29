@@ -27,6 +27,16 @@ template is a checklist, not evidence that any public build passed.
 
 Use a fresh install or delete Aldus and its local data before the first row. Record **Pass** or **Fail** and a short note; do not infer a pass from automated tests.
 
+Run `make ios-acceptance` on the Mac with an unlocked, trusted iPhone connected. The runner builds
+a separate `com.mahcks.aldus.acceptance` app, resets only that app, starts the frozen Alice fixture,
+and stores screenshots plus `AldusAcceptance.xcresult` under `artifacts/ios/`. Set `DEVICE=<udid>`
+when more than one iPhone is connected. The TestFlight installation and its data are untouched.
+
+The runner covers server setup, EPUB controls, relaunch/reopen, offline download creation, audio
+controls, Read/Listen switching, and account/legal controls. A person must still confirm visible
+passage accuracy, audible/background/lock-screen behavior, disconnected-server recovery,
+cross-account isolation, and the actual TestFlight binary.
+
 | Required flow | Result | Notes |
 | --- | --- | --- |
 | Add the beta server, bootstrap or sign in, and reopen the app | Pending | |
