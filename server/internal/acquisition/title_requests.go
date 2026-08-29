@@ -352,8 +352,13 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		blocked[downloadURL] = true
 		blocked[hash] = hash != ""
 	}
-	if err := rows.Close(); err != nil {
-		return s.deferClaim(ctx, value, "search_failed", err.Error())
+	rowsErr := rows.Err()
+	closeErr := rows.Close()
+	if rowsErr != nil {
+		return s.deferClaim(ctx, value, "search_failed", rowsErr.Error())
+	}
+	if closeErr != nil {
+		return s.deferClaim(ctx, value, "search_failed", closeErr.Error())
 	}
 	results = slices.DeleteFunc(results, func(result SearchResult) bool {
 		return blocked[result.downloadURL] || blocked[magnetInfoHash(result.downloadURL)]
