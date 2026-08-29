@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
+.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -42,17 +42,24 @@ expo-dev:
 ios-dev:
 	cd app && bun run ios:device
 
+release-status:
+	./scripts/release.sh status "$(VERSION)"
+
+release-prepare:
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release-prepare VERSION=x.y.z" >&2; exit 1)
+	./scripts/release.sh prepare "$(VERSION)"
+
 release:
-	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release VERSION=0.1.0-beta.16" >&2; exit 1)
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release VERSION=x.y.z" >&2; exit 1)
 	./scripts/release.sh release "$(VERSION)"
 
 release-all:
-	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release-all VERSION=0.1.0-beta.16" >&2; exit 1)
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make release-all VERSION=x.y.z" >&2; exit 1)
 	./scripts/release.sh release "$(VERSION)"
 	./scripts/ios-release.sh testflight
 
 demo-deploy:
-	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make demo-deploy VERSION=0.1.0-beta.16" >&2; exit 1)
+	@test -n "$(VERSION)" || (echo "Set VERSION, for example: make demo-deploy VERSION=x.y.z" >&2; exit 1)
 	./scripts/release.sh demo "$(VERSION)"
 
 ios-testflight:

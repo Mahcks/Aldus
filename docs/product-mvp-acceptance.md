@@ -1,16 +1,17 @@
-# Beta acceptance record
+# Beta acceptance template
 
-This is the release gate for the current Aldus server and iOS candidate. A candidate is not accepted until every required row below passes on a physical iPhone against the exact server image recorded here.
+Copy this template into the ignored iOS build artifact directory for each candidate. The tracked
+template is a checklist, not evidence that any public build passed.
 
 ## Candidate
 
 | Item | Value |
 | --- | --- |
-| Server release | `0.1.0-beta.16` |
-| Git commit | Pending |
-| TestFlight build | Pending |
-| iPhone / iOS | Pending |
-| Tester / date | Pending |
+| Server release | `<server-version>` |
+| Git commit | `<full-commit>` |
+| TestFlight build | `<build-number>` |
+| iPhone / iOS | `<device-and-version>` |
+| Tester / date | `<name-and-date>` |
 
 ## Automated gates
 
@@ -43,6 +44,7 @@ Use a fresh install or delete Aldus and its local data before the first row. Rec
 
 ## Decision
 
-**Status: NOT ACCEPTED**
+**Status: Pending**
 
-Promote the TestFlight build externally only after every physical row passes. A failed row blocks promotion; fix it, produce a new build from the new exact commit, and replace the candidate details above.
+Promote the TestFlight build externally only after every physical row passes. A failed row blocks
+promotion; fix it, produce a new build from the new exact commit, and start a new acceptance copy.

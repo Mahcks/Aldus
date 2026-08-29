@@ -75,22 +75,18 @@ Do not include generated build output, local databases, media, credentials, or r
 
 ## Maintainer releases
 
-The API and exported web client ship together in one container. A normal beta publishes that container and moves the public demo to the same source tag:
+Start with the read-only classifier:
 
 ```sh
-make release VERSION=0.1.0-beta.17
+make release-status VERSION=<server-version>
 ```
 
-The command requires a clean `main` matching `origin/main` with successful CI. It waits for the GHCR workflow, backs up the demo, deploys the tagged source to Fly, and checks readiness. Redeploy or roll back only the demo with `make demo-deploy VERSION=0.1.0-beta.17`.
+| Change | Command |
+| --- | --- |
+| Server, Docker, alignment, shared/web app | `make release VERSION=<server-version>` |
+| Native or shared app | `make ios-testflight` after the referenced server is public |
+| Both | Run the server phase, then the iOS phase |
+| Docs only | Manually dispatch the Docs workflow |
 
-iOS releases independently because installed clients and self-hosted servers update on different schedules:
-
-```sh
-make ios-testflight
-make ios-external BUILD_ID=<processed-build-id>
-make ios-release VERSION=0.1.0 BUILD_ID=<tested-build-id>
-```
-
-`ios-testflight` records the exact commit and pinned server release in the artifact folder and TestFlight notes. `ios-external` promotes that binary to external review. `ios-release` attaches the tested build to its App Store version and validates it; final App Store submission remains a manual App Store Connect action.
-
-Use `make release-all VERSION=0.1.0-beta.17` only when one commit genuinely needs the container, demo, and iOS candidate. Use the narrower command for server-only or iOS-only changes. A new iOS upload does not replace installed builds, so every non-expired TestFlight build still assigned to a group must remain compatible with a server candidate.
+The complete compatibility policy, preparation steps, phase checklist, recovery commands, and
+physical-device gate are in [RELEASING.md](RELEASING.md).
