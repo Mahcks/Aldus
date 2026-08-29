@@ -5,6 +5,10 @@ description: Read and listen with Aldus on iOS and iPadOS.
 
 Aldus on iOS and iPadOS is the same app and the same library as every other platform — what differs here is how it behaves as a native iOS citizen: background audio, lock-screen controls, and the local-network permission prompt.
 
+## Install the beta
+
+[Join the public Aldus beta on TestFlight](https://testflight.apple.com/join/FUfZvzkt), then install Aldus from the TestFlight app. Beta builds expire after 90 days; TestFlight will offer the next approved build when one is available.
+
 <img
   class="docs-shot"
   src="/images/reader-epub.png"

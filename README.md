@@ -10,7 +10,7 @@
 [![Status: beta](https://img.shields.io/badge/status-beta-8a3c24)](#current-beta-status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8a3c24)](LICENSE)
 
-[Live demo](https://demo.aldus.media) · [Quickstart](#run-the-server) · [Screenshots](#what-it-looks-like)
+[TestFlight beta](https://testflight.apple.com/join/FUfZvzkt) · [Live demo](https://demo.aldus.media) · [Quickstart](#run-the-server) · [Screenshots](#what-it-looks-like)
 
 </div>
 
@@ -24,7 +24,7 @@ It's built for the way a household actually keeps books. One person hosts it. Ev
 
 ## Current beta status
 
-Aldus is public beta software. The source, self-hosted server, web app, and public demo are available now; the iOS app is available to invited external TestFlight testers. Android is implemented but does not yet have a public build. Expect rough edges and take a verified backup before upgrading a server you depend on.
+Aldus is public beta software. The source, self-hosted server, web app, and public demo are available now; anyone with an iPhone or iPad can [join the public TestFlight beta](https://testflight.apple.com/join/FUfZvzkt). Android is implemented but does not yet have a public build. Expect rough edges and take a verified backup before upgrading a server you depend on.
 
 <br>
 
@@ -106,7 +106,7 @@ Indexer names, file sizes, and release strings never surface to someone who just
 | **A household, not just a user** | Libraries are access grants, not walls. Most setups need zero configuration; multi-library households — a shared collection plus a kids' library — get real isolation when they need it. |
 | **Bring what you already have** | Point Aldus at a folder of EPUBs and audio files and it imports them without renaming or rewriting a single file. Nothing you already own gets touched. |
 | **Two ways to store media** | External Sources stay exactly where they are, referenced read-only. Managed media from acquisitions is copied in, checksummed, and verified on import. |
-| **Read anywhere** | The web app ships with every server. The iOS app is currently available to invited TestFlight testers. Android is implemented but does not yet have a public beta distribution channel. OPDS + KOReader credentials support e-ink devices. |
+| **Read anywhere** | The web app ships with every server. The iOS app is available through the [public TestFlight beta](https://testflight.apple.com/join/FUfZvzkt). Android is implemented but does not yet have a public beta distribution channel. OPDS + KOReader credentials support e-ink devices. |
 | **Verified backups** | `docker compose run --rm aldus backup` produces a checksummed archive of the database, managed media, covers, and alignment artifacts. The stored Prowlarr API key, qBittorrent password, and active sessions are removed from the archive. |
 | **It's yours** | Self-hosted, your data, on your hardware. No account required anywhere but your own server. |
 
