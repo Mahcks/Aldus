@@ -32,7 +32,7 @@ The standard image supports Linux AMD64 and ARM64, including Linux containers un
 1. Create an Aldus folder and download the small, versioned Compose manifest:
 
    ```sh
-   ALDUS_VERSION=0.1.0-beta.16
+   ALDUS_VERSION=0.1.0-beta.17
    mkdir -p aldus/library-media aldus/downloads && cd aldus
    curl -fL "https://github.com/Mahcks/Aldus/releases/download/v${ALDUS_VERSION}/compose.yml" -o compose.yml
    printf 'ALDUS_VERSION=%s\n' "$ALDUS_VERSION" > .env
@@ -60,7 +60,7 @@ Compose still uses the exact pinned GHCR image. It exists here only to keep the 
 Run the same setup from PowerShell 7:
 
 ```powershell
-$AldusVersion = "0.1.0-beta.16"
+$AldusVersion = "0.1.0-beta.17"
 New-Item -ItemType Directory -Force aldus/library-media, aldus/downloads | Out-Null
 Set-Location aldus
 Invoke-WebRequest "https://github.com/Mahcks/Aldus/releases/download/v$AldusVersion/compose.yml" -OutFile compose.yml
@@ -93,7 +93,7 @@ Copy an EPUB, M4B, or audiobook folder into `library-media/`. In Aldus, create a
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `ALDUS_VERSION` | `0.1.0-beta.16` | Exact published image tag to run. Compose stops with an error when this is missing. |
+| `ALDUS_VERSION` | `0.1.0-beta.17` | Exact published image tag to run. Compose stops with an error when this is missing. |
 | `ALDUS_BIND_HOST` | `127.0.0.1` | Host interface that publishes Aldus. The default is reachable only from the Docker host. Use `0.0.0.0` only after the first administrator exists and HTTPS or trusted-LAN controls are ready. |
 | `ALDUS_PORT` | `8080` | The host port Aldus listens on. Change it if `8080` is already taken on your machine. |
 | `ALDUS_SOURCE_PATH` | `./library-media` | Host folder mounted **read-only** into the container at `/library/media`. This becomes the one path you're allowed to add Sources under — see [Media sources](/admin/sources/). |
@@ -136,7 +136,7 @@ The standard Aldus image includes the alignment runtime and required models. New
 On an x86-64 Linux host, install a current NVIDIA driver and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Docker Compose 2.30 or newer is required. Then start GPU alignment:
 
 ```sh
-curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.16/compose.gpu.yml -o compose.gpu.yml
+curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.17/compose.gpu.yml -o compose.gpu.yml
 docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
 ```
 

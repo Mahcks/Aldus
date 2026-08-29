@@ -82,10 +82,10 @@ Aldus also refuses to include a symbolic link anywhere under the data directory,
 
 ## Upgrading
 
-Keep the image and Compose configuration on the same release. After creating and downloading a verified backup, replace `0.1.0-beta.16` below with the version you are moving to:
+Keep the image and Compose configuration on the same release. After creating and downloading a verified backup, replace `0.1.0-beta.17` below with the version you are moving to:
 
 ```sh
-ALDUS_VERSION=0.1.0-beta.16
+ALDUS_VERSION=0.1.0-beta.17
 curl -fL "https://github.com/Mahcks/Aldus/releases/download/v$ALDUS_VERSION/compose.yml" -o compose.yml
 printf 'ALDUS_VERSION=%s\n' "$ALDUS_VERSION" > .env
 docker compose pull

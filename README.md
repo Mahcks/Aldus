@@ -33,7 +33,7 @@ Aldus is public beta software. The source, self-hosted server, web app, and publ
 Every tagged release publishes a ready-to-run, multi-architecture image to GitHub Container Registry. **There is nothing to build.** `docker compose up -d` pulls `ghcr.io/mahcks/aldus` and starts serving — no Go toolchain, no Node, no local Dockerfile.
 
 ```sh
-ALDUS_VERSION=0.1.0-beta.16
+ALDUS_VERSION=0.1.0-beta.17
 mkdir -p aldus/library-media aldus/downloads && cd aldus
 curl -fL "https://github.com/Mahcks/Aldus/releases/download/v${ALDUS_VERSION}/compose.yml" -o compose.yml
 printf 'ALDUS_VERSION=%s\n' "$ALDUS_VERSION" > .env
@@ -41,9 +41,9 @@ docker compose up -d --pull always
 docker compose ps
 ```
 
-Compose does not build Aldus or require the repository. It pulls the exact `ghcr.io/mahcks/aldus:0.1.0-beta.16` image and adds the restart policy, persistent volumes, health check, and safe localhost port mapping that a long `docker run` command would need. When `docker compose ps` reports **healthy**, open [http://localhost:8080](http://localhost:8080) and create the first account — it becomes the administrator. Do that before exposing Aldus to another machine.
+Compose does not build Aldus or require the repository. It pulls the exact `ghcr.io/mahcks/aldus:0.1.0-beta.17` image and adds the restart policy, persistent volumes, health check, and safe localhost port mapping that a long `docker run` command would need. When `docker compose ps` reports **healthy**, open [http://localhost:8080](http://localhost:8080) and create the first account — it becomes the administrator. Do that before exposing Aldus to another machine.
 
-> **Current beta note:** `0.1.0-beta.16` includes CPU alignment and publishes an optional NVIDIA CUDA image. Image downloads are large, so first startup time depends on your connection and host.
+> **Current beta note:** `0.1.0-beta.17` includes CPU alignment and publishes an optional NVIDIA CUDA image. Image downloads are large, so first startup time depends on your connection and host.
 
 Prefer to look before downloading anything? [demo.aldus.media](https://demo.aldus.media) runs the current build against a small public-domain catalog — no account required.
 
@@ -171,7 +171,7 @@ The default Compose mapping is localhost-only. Before making it reachable elsewh
 The standard Aldus image includes WhisperX and generates exact read/listen mappings on CPU without extra setup. CPU processing can take hours for a long audiobook. To accelerate it, install the NVIDIA driver and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), then run one command:
 
 ```sh
-curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.16/compose.gpu.yml -o compose.gpu.yml
+curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.17/compose.gpu.yml -o compose.gpu.yml
 docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
 ```
 
