@@ -33,7 +33,10 @@ trap cleanup EXIT INT TERM
 for command in bun curl go node security xcodebuild xcrun; do
   require_command "$command"
 done
-[[ -f $ROOT/test-fixtures/alice/media/alice.epub ]] || fail "Run make fixture first"
+if [[ ! -f $ROOT/test-fixtures/alice/media/alice.epub || ! -f $ROOT/test-fixtures/alice/media/alice-chapter-01.mp3 ]]; then
+  echo "Downloading the frozen Alice acceptance fixture..."
+  "$ROOT/test-fixtures/alice/fetch.sh"
+fi
 
 DEVICE=${DEVICE:-}
 if [[ -z $DEVICE ]]; then

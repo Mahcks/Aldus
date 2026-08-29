@@ -15,7 +15,12 @@ fetch() {
     mv "$media/$file.part" "$media/$file"
   fi
   test "$(wc -c < "$media/$file" | tr -d ' ')" = "$bytes"
-  printf '%s  %s\n' "$sha" "$media/$file" | sha256sum --check --status
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$media/$file" | awk '{print $1}')
+  else
+    actual=$(shasum -a 256 "$media/$file" | awk '{print $1}')
+  fi
+  test "$actual" = "$sha"
 }
 
 fetch alice.epub https://www.gutenberg.org/ebooks/11.epub3.images 6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c 189231
