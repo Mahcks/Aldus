@@ -72,6 +72,7 @@ echo "iPhone: $DEVICE"
 echo "Fixture server: $SERVER_URL"
 echo "Evidence: $ARTIFACT_DIR"
 
+mkdir -p "$WORKSPACE/data"
 (
   cd "$ROOT/server"
   ALDUS_ENV=test go run ./cmd/seed-alice \
