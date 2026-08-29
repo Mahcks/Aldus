@@ -83,7 +83,7 @@ make release-status VERSION=<server-version>
 
 | Change | Command |
 | --- | --- |
-| Server, Docker, alignment, shared/web app | `make release VERSION=<server-version>` |
+| Server, Docker, alignment, shared/web app | `make release VERSION=<server-version>` (container, demo, then docs) |
 | Native or shared app | `make ios-testflight` after the referenced server is public |
 | Both | Run the server phase, then the iOS phase |
 | Docs only | Manually dispatch the Docs workflow |

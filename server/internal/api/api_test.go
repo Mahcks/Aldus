@@ -129,8 +129,8 @@ func TestHandler(t *testing.T) {
 		name, target, body string
 		status             int
 	}{
-		{"health", "/api/health", `{"status":"ok"}`, http.StatusOK},
-		{"versioned health", "/api/v1/health", `{"status":"ok"}`, http.StatusOK},
+		{"health", "/api/health", `"server_version":"test-version"`, http.StatusOK},
+		{"versioned health", "/api/v1/health", `"api_version":"v1"`, http.StatusOK},
 		{"spa fallback", "/library/book", "Aldus web", http.StatusOK},
 		{"static route", "/anchors", "Alice anchors", http.StatusOK},
 		{"api root", "/api", "404 page not found", http.StatusNotFound},
@@ -138,7 +138,7 @@ func TestHandler(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			Handler(Dependencies{Web: fs.FS(web), Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), KOReader: koreader.Credentials{User: "aldus", Key: "aldus"}}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, test.target, nil))
+			Handler(Dependencies{ServerVersion: "test-version", Web: fs.FS(web), Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), KOReader: koreader.Credentials{User: "aldus", Key: "aldus"}}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, test.target, nil))
 			if recorder.Code != test.status || !strings.Contains(recorder.Body.String(), test.body) {
 				t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
 			}
@@ -203,6 +203,18 @@ func TestAPIAliasRemainsV1(t *testing.T) {
 	}
 }
 
+func TestHealthReportsCompatibilityIdentity(t *testing.T) {
+	handler := Handler(Dependencies{ServerVersion: "v1.2.3", SchemaVersion: 45})
+	for _, target := range []string{"/api/health", "/api/v1/health"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+		body := response.Body.String()
+		if response.Code != http.StatusOK || !strings.Contains(body, `"status":"ok"`) || !strings.Contains(body, `"server_version":"v1.2.3"`) || !strings.Contains(body, `"api_version":"v1"`) {
+			t.Fatalf("GET %s = %d %s", target, response.Code, body)
+		}
+	}
+}
+
 func TestReaderLimiterOnlyTrustsPrivateProxyPeers(t *testing.T) {
 	limiter := newFailureLimiter(1, time.Minute, true)
 	request := httptest.NewRequest(http.MethodGet, "/opds/", nil)
@@ -218,13 +230,15 @@ func TestReaderLimiterOnlyTrustsPrivateProxyPeers(t *testing.T) {
 }
 
 func TestReadinessReportsDependencyFailure(t *testing.T) {
-	ready := httptest.NewRecorder()
-	Handler(Dependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(ready, httptest.NewRequest(http.MethodGet, "/api/ready", nil))
-	if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"status":"ready"`) {
-		t.Fatalf("ready = %d %s", ready.Code, ready.Body.String())
+	for _, target := range []string{"/api/ready", "/api/v1/ready"} {
+		ready := httptest.NewRecorder()
+		Handler(Dependencies{ServerVersion: "v1.2.3", SchemaVersion: 45, Ready: func(context.Context) error { return nil }}).ServeHTTP(ready, httptest.NewRequest(http.MethodGet, target, nil))
+		if ready.Code != http.StatusOK || !strings.Contains(ready.Body.String(), `"status":"ready"`) || !strings.Contains(ready.Body.String(), `"server_version":"v1.2.3"`) || !strings.Contains(ready.Body.String(), `"api_version":"v1"`) || !strings.Contains(ready.Body.String(), `"schema_version":45`) {
+			t.Fatalf("GET %s = %d %s", target, ready.Code, ready.Body.String())
+		}
 	}
 	unavailable := httptest.NewRecorder()
-	Handler(Dependencies{Ready: func(context.Context) error { return errors.New("storage unavailable") }}).ServeHTTP(unavailable, httptest.NewRequest(http.MethodGet, "/api/ready", nil))
+	Handler(Dependencies{ServerVersion: "v1.2.3", SchemaVersion: 45, Ready: func(context.Context) error { return errors.New("storage unavailable") }}).ServeHTTP(unavailable, httptest.NewRequest(http.MethodGet, "/api/ready", nil))
 	if unavailable.Code != http.StatusServiceUnavailable || !strings.Contains(unavailable.Body.String(), `"status":"unavailable"`) {
 		t.Fatalf("unavailable = %d %s", unavailable.Code, unavailable.Body.String())
 	}

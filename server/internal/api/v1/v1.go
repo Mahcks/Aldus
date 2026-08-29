@@ -6,10 +6,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const apiVersion = "v1"
+
 func Handler(deps Dependencies) http.Handler {
 	router := chi.NewRouter()
-	router.Get("/health", health)
-	router.Get("/ready", ready(deps.Ready))
+	router.Get("/health", health(deps.ServerVersion))
+	router.Get("/ready", ready(deps.ServerVersion, deps.SchemaVersion, deps.Ready))
 	registerAuthRoutes(router, deps.Auth, deps.ServerVersion, deps.TrustProxyHeaders)
 	router.Group(func(router chi.Router) {
 		router.Use(deps.Auth.Middleware)

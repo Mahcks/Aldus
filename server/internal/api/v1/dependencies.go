@@ -18,6 +18,7 @@ import (
 
 type Dependencies struct {
 	ServerVersion       string
+	SchemaVersion       int
 	Position            *position.Store
 	Auth                *auth.Store
 	Catalog             *catalog.Store

@@ -80,6 +80,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Verify published migrations are immutable
+        id: previous
+        shell: bash
+        run: |
+          previous=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          if [[ -z "$previous" ]]; then
+            echo "image=" >> "$GITHUB_OUTPUT"
+            echo "schema_upgrade=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=0
+          while IFS= read -r file; do
+            git show "$previous:$file" | cmp - "$file" || changed=1
+          done < <(git ls-tree -r --name-only "$previous" -- server/internal/database/migrations)
+          test "$changed" = 0 || {
+            echo "Published migration files are immutable; add a new numbered migration instead." >&2
+            exit 1
+          }
+          previous_count=$(git ls-tree -r --name-only "$previous" -- server/internal/database/migrations | wc -l)
+          current_count=$(find server/internal/database/migrations -type f -name '*.sql' | wc -l)
+          echo "image=ghcr.io/mahcks/aldus:${previous#v}" >> "$GITHUB_OUTPUT"
+          if [[ $current_count -gt $previous_count ]]; then
+            echo "schema_upgrade=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "schema_upgrade=0" >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
@@ -91,6 +119,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=alignment
       - run: ./scripts/check-alignment-image.sh aldus:ci cpu
       - run: make release-smoke IMAGE=aldus:ci
+        env:
+          PREVIOUS_IMAGE: ${{ steps.previous.outputs.image }}
+          EXPECT_SCHEMA_UPGRADE: ${{ steps.previous.outputs.schema_upgrade }}
 
   docker-cuda:
     runs-on: ubuntu-latest

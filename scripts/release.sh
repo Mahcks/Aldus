@@ -4,6 +4,11 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FLY_APP=${FLY_APP:-aldus-demo}
+GH_BIN=${GH_BIN:-gh}
+FLY_BIN=${FLY_BIN:-fly}
+CURL_BIN=${CURL_BIN:-curl}
+DEMO_ORIGIN=${DEMO_ORIGIN:-https://demo.aldus.media}
+DOCS_ORIGIN=${DOCS_ORIGIN:-https://aldus.media}
 
 fail() {
   echo "$*" >&2
@@ -160,8 +165,8 @@ release_status() {
     fi
   fi
 
-  if command -v gh >/dev/null 2>&1; then
-    ci=$(gh run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 \
+  if command -v "$GH_BIN" >/dev/null 2>&1; then
+    ci=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 \
       --json conclusion --jq '.[0].conclusion // "not found"' 2>/dev/null || printf 'unavailable')
     [[ -n $ci ]] || ci="not found"
   fi
@@ -254,22 +259,63 @@ prepare_release() {
   echo "Review and commit these changes, push them, then wait for that commit's CI before releasing."
 }
 
+preflight_public_services() {
+  require_command "$GH_BIN"
+  require_command "$FLY_BIN"
+  require_command "$CURL_BIN"
+  "$GH_BIN" auth status >/dev/null
+  "$GH_BIN" repo view Mahcks/Aldus >/dev/null
+  "$FLY_BIN" auth whoami >/dev/null
+  "$FLY_BIN" status --app "$FLY_APP" >/dev/null
+  "$CURL_BIN" --fail --silent --show-error --retry 6 --retry-delay 2 --retry-all-errors \
+    "$DEMO_ORIGIN/api/ready" >/dev/null
+}
+
+backup_demo() {
+  local tag=$1
+  local backup_name="pre-${tag}-$(date -u +%Y%m%dT%H%M%SZ)"
+  local attempt
+
+  for attempt in 1 2 3; do
+    echo "Demo backup attempt $attempt of 3: /data/${backup_name}-attempt-${attempt}.tar.gz"
+    if "$FLY_BIN" ssh console --app "$FLY_APP" --command \
+      "aldus backup --data-dir /data/aldus --archive /data/${backup_name}-attempt-${attempt}.tar.gz"; then
+      return 0
+    fi
+    [[ $attempt == 3 ]] || sleep 2
+  done
+  echo "Demo backup failed after 3 attempts" >&2
+  return 1
+}
+
+verify_demo() {
+  local tag=$1
+  local ready_response
+  local setup_response
+
+  ready_response=$("$CURL_BIN" --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors \
+    "$DEMO_ORIGIN/api/ready") || return
+  grep -Fq '"status":"ready"' <<<"$ready_response" || return 1
+  grep -Fq "\"server_version\":\"$tag\"" <<<"$ready_response" || return 1
+  "$CURL_BIN" --fail --silent --show-error "$DEMO_ORIGIN/" >/dev/null || return
+  setup_response=$("$CURL_BIN" --fail --silent --show-error "$DEMO_ORIGIN/api/setup/status") || return
+  grep -Fq '"demo_available":true' <<<"$setup_response" || return 1
+  "$FLY_BIN" checks list --app "$FLY_APP" | grep -qi 'passing' || return 1
+}
+
 deploy_demo() {
   local tag=$1
-  local backup_name
 
-  require_command fly
-  require_command curl
+  require_command "$FLY_BIN"
+  require_command "$CURL_BIN"
+  "$FLY_BIN" auth whoami >/dev/null
+  "$FLY_BIN" status --app "$FLY_APP" >/dev/null
+  "$CURL_BIN" --fail --silent --show-error --retry 6 --retry-delay 2 --retry-all-errors \
+    "$DEMO_ORIGIN/api/ready" >/dev/null
 
   git -C "$ROOT" fetch --quiet origin tag "$tag"
   git -C "$ROOT" rev-parse --verify "refs/tags/$tag^{commit}" >/dev/null 2>&1 || fail "Tag $tag does not exist"
-
-  if [[ ${SKIP_DEMO_BACKUP:-0} != 1 ]]; then
-    backup_name="pre-${tag}-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-    echo "Backing up the demo to /data/$backup_name"
-    fly ssh console --app "$FLY_APP" --command \
-      "aldus backup --data-dir /data/aldus --archive /data/$backup_name"
-  fi
+  backup_demo "$tag"
 
   (
     local worktree
@@ -281,11 +327,53 @@ deploy_demo() {
 
     git -C "$ROOT" worktree add --quiet --detach "$worktree" "$tag"
     cd "$worktree"
-    fly deploy --app "$FLY_APP" --config demo/fly.toml --ha=false --remote-only --build-arg "VERSION=$tag"
-    curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors \
-      "https://demo.aldus.media/api/ready" >/dev/null
+    "$FLY_BIN" deploy --app "$FLY_APP" --config demo/fly.toml --ha=false --remote-only --build-arg "VERSION=$tag"
   )
+  verify_demo "$tag"
   echo "Demo is healthy on $tag"
+}
+
+docs_are_current() {
+  local tag=$1
+  "$CURL_BIN" --fail --silent --show-error "$DOCS_ORIGIN/admin/install/" | grep -Fq "${tag#v}"
+}
+
+publish_docs() {
+  local tag=$1
+  local before
+  local run_id=""
+
+  require_command "$GH_BIN"
+  require_command "$CURL_BIN"
+  "$CURL_BIN" --fail --silent --show-error "$DOCS_ORIGIN/" >/dev/null
+  before=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow Docs --branch "$tag" --limit 1 \
+    --json databaseId --jq '.[0].databaseId // ""')
+  "$GH_BIN" workflow run docs.yml --repo Mahcks/Aldus --ref "$tag"
+  for _ in {1..30}; do
+    run_id=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow Docs --branch "$tag" --limit 1 \
+      --json databaseId --jq '.[0].databaseId // ""')
+    [[ -n $run_id && $run_id != "$before" ]] && break
+    sleep 2
+  done
+  [[ -n $run_id && $run_id != "$before" ]] || fail "The Docs workflow did not start for $tag"
+  "$GH_BIN" run watch "$run_id" --repo Mahcks/Aldus --compact --exit-status
+  docs_are_current "$tag" || fail "Docs published but do not advertise ${tag#v}"
+  echo "Docs: $DOCS_ORIGIN"
+}
+
+partial_release() {
+  local tag=$1
+  local failed=$2
+
+  echo "Images/GitHub Release: complete" >&2
+  if [[ $failed == demo ]]; then
+    echo "Demo: failed" >&2
+    echo "Resume: make demo-deploy VERSION=${tag#v}" >&2
+  else
+    echo "Demo: complete" >&2
+    echo "Docs: failed" >&2
+    echo "Resume: ./scripts/release.sh docs ${tag#v}" >&2
+  fi
 }
 
 release() {
@@ -294,7 +382,7 @@ release() {
   local ci
   local run_id
 
-  require_command gh
+  preflight_public_services
   [[ $(git -C "$ROOT" branch --show-current) == main ]] || fail "Release from main"
   [[ -z $(git -C "$ROOT" status --porcelain) ]] || fail "Commit or stash local changes before releasing"
 
@@ -303,7 +391,7 @@ release() {
   [[ $sha == "$(git -C "$ROOT" rev-parse origin/main)" ]] || fail "Local main must exactly match origin/main"
   version_consistent "${tag#v}" || fail "Public server-version pins must all match ${tag#v}"
 
-  ci=$(gh run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+  ci=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
   [[ $ci == success ]] || fail "CI has not succeeded for $sha"
 
   if git -C "$ROOT" rev-parse --verify "refs/tags/$tag^{commit}" >/dev/null 2>&1; then
@@ -318,15 +406,22 @@ release() {
 
   echo "Waiting for the container release workflow"
   for _ in {1..30}; do
-    run_id=$(gh run list --repo Mahcks/Aldus --workflow Release --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // ""')
+    run_id=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow Release --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // ""')
     [[ -n $run_id ]] && break
     sleep 2
   done
   [[ -n ${run_id:-} ]] || fail "The release workflow did not start for $tag"
-  gh run watch "$run_id" --repo Mahcks/Aldus --compact --exit-status
+  "$GH_BIN" run watch "$run_id" --repo Mahcks/Aldus --compact --exit-status
 
-  deploy_demo "$tag"
-  echo "Released $tag: GHCR, bundled web/API, and demo"
+  if ! verify_demo "$tag" >/dev/null 2>&1 && ! deploy_demo "$tag"; then
+    partial_release "$tag" demo
+    return 1
+  fi
+  if ! docs_are_current "$tag" && ! publish_docs "$tag"; then
+    partial_release "$tag" docs
+    return 1
+  fi
+  echo "Released $tag: GHCR, bundled web/API, demo, and docs"
 }
 
 case ${1:-} in
@@ -346,11 +441,25 @@ case ${1:-} in
     [[ $# == 2 ]] || fail "Usage: $0 demo VERSION"
     deploy_demo "$(tag_for "$2")"
     ;;
+  docs)
+    [[ $# == 2 ]] || fail "Usage: $0 docs VERSION"
+    publish_docs "$(tag_for "$2")"
+    ;;
   self-test)
     [[ $(tag_for 1.2.3-beta.4) == v1.2.3-beta.4 ]]
     [[ $(tag_for v1.2.3) == v1.2.3 ]]
     if (tag_for nope >/dev/null 2>&1); then
       fail "Invalid release versions must be rejected"
+    fi
+    before=$(git -C "$ROOT" tag --list)
+    if (GH_BIN=true FLY_BIN=aldus-command-that-does-not-exist CURL_BIN=true preflight_public_services >/dev/null 2>&1); then
+      fail "Missing Fly must fail public-service preflight"
+    fi
+    [[ $before == "$(git -C "$ROOT" tag --list)" ]]
+    output=$(partial_release v1.2.3 demo 2>&1)
+    grep -Fq 'Resume: make demo-deploy VERSION=1.2.3' <<<"$output"
+    if (GH_BIN=true FLY_BIN=true CURL_BIN=false verify_demo v1.2.3 >/dev/null 2>&1); then
+      fail "A failed demo URL must fail verification"
     fi
     classify_paths <<'EOF'
 app/src/features/ui.tsx
@@ -392,6 +501,6 @@ EOF
     echo "release checks passed"
     ;;
   *)
-    fail "Usage: $0 <status|prepare|release|demo|self-test> [VERSION]"
+    fail "Usage: $0 <status|prepare|release|demo|docs|self-test> [VERSION]"
     ;;
 esac

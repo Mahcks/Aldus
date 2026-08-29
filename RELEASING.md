@@ -52,7 +52,7 @@ Before releasing a candidate server:
 
 | Change | Publication | Command |
 | --- | --- | --- |
-| Server, Docker, alignment, shared/web app | Container and demo | `make release VERSION=<server-version>` |
+| Server, Docker, alignment, shared/web app | Container, demo, and tag-matched docs | `make release VERSION=<server-version>` |
 | Native or shared app | Internal iOS candidate, after its referenced server release is public | `make ios-testflight` |
 | Both | Container/demo first, then iOS | Run the two commands above in order |
 | Docs only | Documentation | Manually dispatch the **Docs** workflow |
@@ -102,7 +102,7 @@ record the result in the candidate record.
 - [ ] Database migration, backup, upgrade, and restore checked
 - [ ] Container release completed: `make release VERSION=<server-version>`
 - [ ] Demo reports ready on the same immutable tag
-- [ ] Docs workflow completed when required
+- [ ] Tag-matched Docs workflow completed as the final server-release phase
 - [ ] Internal iOS build completed when required: `make ios-testflight`
 - [ ] A copy of `docs/product-mvp-acceptance.md` completed on a physical iPhone
 - [ ] External TestFlight promotion completed: `make ios-external BUILD_ID=<processed-build-id>`
@@ -112,6 +112,7 @@ with the exact command for the incomplete phase:
 
 ```sh
 make demo-deploy VERSION=<existing-server-version>
+./scripts/release.sh docs <existing-server-version>
 make ios-testflight
 make ios-external BUILD_ID=<processed-build-id>
 ```

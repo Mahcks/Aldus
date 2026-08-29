@@ -175,7 +175,7 @@ func setupStatus(store *auth.Store, serverVersion string) http.HandlerFunc {
 			Available:     available,
 			DemoAvailable: demoAvailable,
 			ServerVersion: serverVersion,
-			APIVersion:    "v1",
+			APIVersion:    apiVersion,
 		})
 	}
 }

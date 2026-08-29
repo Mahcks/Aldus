@@ -5,13 +5,18 @@ on:
     tags: ['v[0-9]+.[0-9]+.[0-9]+*']
 
 permissions:
-  actions: read
-  contents: write
-  packages: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Require successful CI for the tagged commit
         env:
@@ -27,14 +32,17 @@ jobs:
             exit 1
           }
 
-  publish:
+  standard:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check release configuration
         run: test "$(sed -n 's/^ALDUS_VERSION=//p' .env.example)" = "${GITHUB_REF_NAME#v}"
-      - name: Free disk space for release images
+      - name: Free disk space for the standard image
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -51,11 +59,6 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-      - id: meta-alignment-nvidia
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ghcr.io/mahcks/aldus
-          tags: type=semver,pattern={{version}},suffix=-cuda
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -68,6 +71,28 @@ jobs:
           build-args: VERSION=${{ github.ref_name }}
           cache-from: type=gha,scope=alignment
           cache-to: type=gha,mode=max,scope=alignment
+
+  cuda:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Free disk space for the CUDA image
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/mahcks/aldus
+          tags: type=semver,pattern={{version}},suffix=-cuda
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -76,26 +101,64 @@ jobs:
           push: true
           provenance: true
           sbom: true
-          tags: ${{ steps.meta-alignment-nvidia.outputs.tags }}
-          labels: ${{ steps.meta-alignment-nvidia.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ github.ref_name }}
           cache-from: type=gha,scope=alignment-nvidia
           cache-to: type=gha,mode=max,scope=alignment-nvidia
-      - name: Publish release notes
+
+  publish:
+    needs: [standard, cuda]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Free disk space for exact-image verification
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+      - name: Verify exact public images
+        run: |
+          image="ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}"
+          manifest=$(docker manifest inspect "$image")
+          grep -q '"architecture": "amd64"' <<<"$manifest"
+          grep -q '"architecture": "arm64"' <<<"$manifest"
+          docker manifest inspect "${image}-cuda" >/dev/null
+          docker pull "$image"
+          EXPECTED_VERSION="${GITHUB_REF_NAME}" make release-smoke IMAGE="$image"
+      - name: Publish release notes and Compose files
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          range="${GITHUB_REF_NAME}"
+          compare=""
+          if [[ -n "$previous" ]]; then
+            range="$previous..${GITHUB_REF_NAME}"
+            compare="https://github.com/${GITHUB_REPOSITORY}/compare/${previous}...${GITHUB_REF_NAME}"
+          fi
+          {
+            echo "## Changes"
+            git log --format='- %s' "$range"
+            echo
+            echo "## Surfaces"
+            echo "- Multi-architecture standard image"
+            echo "- NVIDIA CUDA image"
+            echo "- Bundled Aldus web application and API"
+            echo
+            echo "## Upgrade and backup"
+            echo "Create and download a verified backup before upgrading. Use the Compose files attached to this exact release."
+            if [[ -n "$compare" ]]; then
+              echo
+              echo "[Full comparison]($compare)"
+            fi
+          } > "$RUNNER_TEMP/release-notes.md"
           prerelease=()
           [[ "${GITHUB_REF_NAME}" == *-* ]] && prerelease=(--prerelease)
-          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
-            gh release create "${GITHUB_REF_NAME}" --verify-tag --generate-notes "${prerelease[@]}"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            gh release create "${GITHUB_REF_NAME}" --verify-tag --notes-file "$RUNNER_TEMP/release-notes.md" "${prerelease[@]}"
+          fi
           gh release upload "${GITHUB_REF_NAME}" compose.yml compose.gpu.yml --clobber
-
-  verify-public:
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify anonymous image pulls
-        run: |
-          docker manifest inspect "ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}" >/dev/null
-          docker manifest inspect "ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}-cuda" >/dev/null

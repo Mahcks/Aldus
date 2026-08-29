@@ -14,21 +14,36 @@ import (
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
-func health(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = io.WriteString(w, `{"status":"ok"}`)
+func health(serverVersion string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":         "ok",
+			"server_version": serverVersion,
+			"api_version":    apiVersion,
+		})
+	}
 }
 
-func ready(check func(context.Context) error) http.HandlerFunc {
+func ready(serverVersion string, schemaVersion int, check func(context.Context) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if check != nil {
 			if err := check(r.Context()); err != nil {
 				slog.Warn("readiness check failed", "error", err)
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+				writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+					"status":         "unavailable",
+					"server_version": serverVersion,
+					"api_version":    apiVersion,
+					"schema_version": schemaVersion,
+				})
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":         "ready",
+			"server_version": serverVersion,
+			"api_version":    apiVersion,
+			"schema_version": schemaVersion,
+		})
 	}
 }
 
