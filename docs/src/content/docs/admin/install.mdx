@@ -176,4 +176,4 @@ docker compose logs --tail=200 aldus
 
 **Sign-in silently does nothing.** This is almost always `ALDUS_SECURE_COOKIES=true` without HTTPS in front of Aldus — the browser drops the session cookie rather than showing an error. Use the documented trusted-LAN opt-in for private-IP HTTP, or put a TLS-terminating proxy in front of Aldus and keep secure cookies enabled.
 
-**`/api/health` and `/api/ready` both matter.** `/api/health` only confirms the process is running. `/api/ready` additionally checks that SQLite is reachable and that Aldus can still write to its data directory — useful for catching a volume that went read-only after a host reboot.
+**`/api/v1/health` and `/api/v1/ready` both matter.** `/api/v1/health` only confirms the process is running. `/api/v1/ready` additionally checks that SQLite is reachable and that Aldus can still write to its data directory — useful for catching a volume that went read-only after a host reboot.

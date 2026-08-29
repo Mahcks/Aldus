@@ -37,7 +37,7 @@ func createUser(store *auth.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		user, temporaryPassword, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, DisplayName: body.DisplayName}, body.Admin, body.AdminNote)
+		user, temporaryPassword, err := store.CreateUser(r.Context(), actor, auth.Credentials{Username: body.Username, DisplayName: body.DisplayName, Password: body.Password}, body.Admin, body.AdminNote)
 		if err == nil {
 			w.Header().Set("Cache-Control", "no-store")
 			writeJSON(w, http.StatusCreated, contracts.CreatedUser{User: userDTO(user), TemporaryPassword: temporaryPassword})

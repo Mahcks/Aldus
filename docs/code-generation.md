@@ -30,4 +30,6 @@ Move an existing exception when that package is otherwise being changed and sqlc
 
 Only intentionally public structs in `server/internal/api/contracts` feed Tygo. Database-generated sqlc models and internal store types are not API contracts. Tygo writes the committed, generated TypeScript file to `app/src/generated/api.ts`; edit the Go contract and regenerate rather than editing that file.
 
-The Expo API client imports the generated synchronization contracts directly. Add later Plan 007 DTOs to the public contract package only when the client consumes those endpoints.
+The Expo API client imports the generated contracts directly and calls `/api/v1`. API v1 is additions-only while a released client depends on it: preserve released request fields explicitly, add response fields as optional client inputs, and keep strict unknown-field rejection for fields that were never released. The server's unversioned `/api` mount is a permanent v1 alias for installed clients, not a moving "latest" route.
+
+A breaking route, field type, meaning, status, or authentication change belongs in a future API version while v1 remains mounted. Do not bump the API version for ordinary server releases or additive endpoints.

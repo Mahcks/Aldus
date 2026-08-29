@@ -10,7 +10,7 @@
 [![Status: beta](https://img.shields.io/badge/status-beta-8a3c24)](#current-beta-status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8a3c24)](LICENSE)
 
-[TestFlight beta](https://testflight.apple.com/join/FUfZvzkt) · [Live demo](https://demo.aldus.media) · [Quickstart](#run-the-server) · [Screenshots](#what-it-looks-like)
+[TestFlight beta](https://testflight.apple.com/join/FUfZvzkt) · [Live demo](https://demo.aldus.media) · [Documentation](https://aldus.media) · [Quickstart](#run-the-server)
 
 </div>
 
@@ -189,57 +189,7 @@ For e-ink devices, create a credential under **Account → KOReader and OPDS**, 
 
 **A download finished but the title is unavailable** — confirm `ALDUS_DOWNLOAD_PATH` matches qBittorrent's folder, confirm **qBittorrent download root** is set correctly, and check **More → Sources → Import review** — Aldus asks for help when a completed payload is ambiguous or conflicts with an existing format.
 
-**Is the server healthy?** `/api/health` confirms the process is running; `/api/ready` checks SQLite and data-directory write access.
-
-<br>
-
-## Maintainer releases
-
-The API and exported web client ship together in one container. A normal beta publishes that container and moves the public demo to the exact same source tag:
-
-```sh
-make release VERSION=0.1.0-beta.16
-```
-
-The command requires a clean `main` matching `origin/main` with successful CI, waits for the GHCR workflow, backs up the demo, deploys the tagged source to Fly, and checks its readiness endpoint. Redeploy or roll back only the demo with `make demo-deploy VERSION=0.1.0-beta.16`.
-
-iOS moves independently. On the Mac mini, authenticate once with `asc auth login` and `eas login`; the script finds Aldus's App Store record from its bundle identifier. The ignored `scripts/ios-release.env` is only needed for custom group names or optional remote-Mac settings.
-
-```sh
-make ios-testflight
-make ios-external BUILD_ID=<processed-build-id>
-make ios-release VERSION=0.1.0 BUILD_ID=<tested-build-id>
-```
-
-`ios-testflight` requires the exact current `origin/main` commit, records that commit and the pinned server release in the artifact folder and TestFlight notes, compiles locally, uploads with `asc`, waits for processing, and adds the build to the internal group. `ios-external` promotes that same binary to external TestFlight review. `ios-release` attaches the tested build to its App Store version and validates it; the final review submission remains an intentional App Store Connect action. From another trusted computer, configure the optional Mac host/path and run `make ios-testflight-remote REF=<commit-or-tag>`.
-
-When one commit genuinely needs every surface, `make release-all VERSION=0.1.0-beta.16` performs the container/demo release and then starts the local or remote iOS candidate. Server-only and iOS-only fixes should use their narrower commands instead.
-
-<br>
-
-## Developing Aldus
-
-You need Go 1.26.6+, Bun 1.3.5+, Node.js LTS, `ffprobe`, and Docker for production-image work.
-
-```sh
-cd app && bun install && cd ..
-make dev
-```
-
-| Command | Does |
-| --- | --- |
-| `make dev-server` | Go server on port 8080 |
-| `make dev-app` | Expo development server |
-| `make expo-dev` | Metro for an installed native development client |
-| `make ios-dev` | Build and install the iOS development client |
-| `make demo-media` | Fetch and verify the public-domain demo catalog |
-| `make build` | Production web export and Go build |
-| `make test` | Go, race, client, and TypeScript tests |
-| `make lint` | Go vet, formatting, and Expo lint |
-| `make generate` | Regenerate sqlc and public TypeScript contracts |
-| `make docker` | Build the production container locally |
-
-The repository stays small on purpose: `app/` is the universal Expo client, `server/` is the Go API and production web server, `tools/` is the alignment worker, and `docs/` is the Astro Starlight documentation site. The production image serves both the API and the exported web app from one binary.
+**Is the server healthy?** `/api/v1/health` confirms the process is running; `/api/v1/ready` checks SQLite and data-directory write access.
 
 <br>
 
@@ -250,3 +200,5 @@ The ambition is a complete, calm home for the books you own — one that treats 
 <p align="center">
   <img src="docs/public/images/demo.png" alt="Aldus public demo landing page" width="850">
 </p>
+
+Want to help build Aldus? Start with [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -178,6 +178,31 @@ func TestHandler(t *testing.T) {
 	}
 }
 
+func TestAPIAliasRemainsV1(t *testing.T) {
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	accounts, err := auth.New(db, auth.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := Handler(Dependencies{ServerVersion: "test", Auth: accounts})
+	var bodies []string
+	for _, target := range []string{"/api/setup/status", "/api/v1/setup/status"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d %s", target, response.Code, response.Body.String())
+		}
+		bodies = append(bodies, response.Body.String())
+	}
+	if bodies[0] != bodies[1] || !strings.Contains(bodies[0], `"api_version":"v1"`) {
+		t.Fatalf("API aliases differ: %#v", bodies)
+	}
+}
+
 func TestReaderLimiterOnlyTrustsPrivateProxyPeers(t *testing.T) {
 	limiter := newFailureLimiter(1, time.Minute, true)
 	request := httptest.NewRequest(http.MethodGet, "/opds/", nil)

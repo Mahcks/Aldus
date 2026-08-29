@@ -22,6 +22,7 @@ type ServerContextValue = {
   loading: boolean;
   connected: boolean;
   origin: string;
+  status: SetupStatus | null;
   profiles: ServerProfile[];
   connect: (address: string) => Promise<SetupStatus>;
   forget: (origin: string) => Promise<void>;
@@ -29,10 +30,12 @@ type ServerContextValue = {
 
 const ServerContext = createContext<ServerContextValue | null>(null);
 
-async function inspectServer(origin: string): Promise<SetupStatus> {
+export async function inspectServer(origin: string): Promise<SetupStatus> {
   let response: Response;
   try {
-    response = await fetch(`${origin}/api/setup/status`, { signal: AbortSignal.timeout(10_000) });
+    response = await fetch(`${origin}/api/v1/setup/status`, {
+      signal: AbortSignal.timeout(10_000),
+    });
   } catch {
     throw new Error('Unable to connect. Check the address, network, and HTTPS certificate.');
   }
@@ -54,6 +57,7 @@ export function ServerProvider({ children }: PropsWithChildren) {
       : '',
   );
   const [profiles, setProfiles] = useState<ServerProfile[]>([]);
+  const [status, setStatus] = useState<SetupStatus | null>(null);
 
   useEffect(() => {
     if (web) return;
@@ -94,6 +98,7 @@ export function ServerProvider({ children }: PropsWithChildren) {
       }
       setAPIBaseURL(nextOrigin);
       setOrigin(nextOrigin);
+      setStatus(status);
       return status;
     },
     [web],
@@ -104,6 +109,7 @@ export function ServerProvider({ children }: PropsWithChildren) {
       loading,
       connected: web || Boolean(origin),
       origin,
+      status,
       profiles,
       connect,
       forget: async (forgottenOrigin: string) => {
@@ -111,7 +117,7 @@ export function ServerProvider({ children }: PropsWithChildren) {
         if (next) setProfiles(next);
       },
     }),
-    [loading, web, origin, profiles, connect],
+    [loading, web, origin, status, profiles, connect],
   );
   return <ServerContext.Provider value={value}>{children}</ServerContext.Provider>;
 }

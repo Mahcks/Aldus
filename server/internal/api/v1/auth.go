@@ -13,11 +13,11 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 )
 
-func registerAuthRoutes(router chi.Router, store *auth.Store, trustProxyHeaders bool) {
+func registerAuthRoutes(router chi.Router, store *auth.Store, serverVersion string, trustProxyHeaders bool) {
 	limiter := newLimiter(10, time.Minute, trustProxyHeaders)
 	demoLimiter := newAttemptLimiter(5, time.Hour, trustProxyHeaders)
 	pairingLimiter := newLimiter(5, time.Minute, trustProxyHeaders)
-	router.Get("/setup/status", setupStatus(store))
+	router.Get("/setup/status", setupStatus(store, serverVersion))
 	router.With(limiter.middleware).Post("/setup", setup(store))
 	router.With(limiter.middleware).Post("/auth/login", login(store))
 	router.With(demoLimiter.middleware).Post("/auth/demo", demoLogin(store))
@@ -159,7 +159,7 @@ func deleteCurrentUser(store *auth.Store) http.HandlerFunc {
 	}
 }
 
-func setupStatus(store *auth.Store) http.HandlerFunc {
+func setupStatus(store *auth.Store, serverVersion string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		available, err := store.SetupAvailable(r.Context())
 		if err != nil {
@@ -171,7 +171,12 @@ func setupStatus(store *auth.Store) http.HandlerFunc {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, http.StatusOK, contracts.SetupStatus{Available: available, DemoAvailable: demoAvailable})
+		writeJSON(w, http.StatusOK, contracts.SetupStatus{
+			Available:     available,
+			DemoAvailable: demoAvailable,
+			ServerVersion: serverVersion,
+			APIVersion:    "v1",
+		})
 	}
 }
 

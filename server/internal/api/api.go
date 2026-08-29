@@ -17,8 +17,9 @@ func Handler(deps Dependencies) http.Handler {
 	router.Use(requestLogger)
 	readerLimiter := newFailureLimiter(10, time.Minute, deps.TrustProxyHeaders)
 	apiRouter := router.With(cors(deps.AllowedOrigins))
-	v1Handler := v1.Handler(v1.Dependencies{Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Collections: deps.Collections, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs, Acquisitions: deps.Acquisitions, AcquisitionPolicies: deps.AcquisitionPolicies, TitleRequests: deps.TitleRequests, Notifications: deps.Notifications, Diagnostics: deps.Diagnostics, GenreTags: deps.GenreTags, Backups: deps.Backups, TrustProxyHeaders: deps.TrustProxyHeaders, Ready: deps.Ready})
+	v1Handler := v1.Handler(v1.Dependencies{ServerVersion: deps.ServerVersion, Position: deps.Position, Auth: deps.Auth, Catalog: deps.Catalog, Collections: deps.Collections, Ingest: deps.Ingest, Sources: deps.Sources, AlignmentJobs: deps.AlignmentJobs, Acquisitions: deps.Acquisitions, AcquisitionPolicies: deps.AcquisitionPolicies, TitleRequests: deps.TitleRequests, Notifications: deps.Notifications, Diagnostics: deps.Diagnostics, GenreTags: deps.GenreTags, Backups: deps.Backups, TrustProxyHeaders: deps.TrustProxyHeaders, Ready: deps.Ready})
 	apiRouter.Mount("/api/v1", v1Handler)
+	// Already-installed clients use /api. Keep it as a permanent alias for v1.
 	apiRouter.Mount("/api", v1Handler)
 	router.Mount("/opds", readerLimiter.middleware(opds.Handler(opds.Dependencies{Auth: deps.Auth, Catalog: deps.Catalog, Ingest: deps.Ingest})))
 	koreaderHandler := readerLimiter.middleware(koreader.Handler(deps.Position, deps.Auth, deps.KOReader))

@@ -18,7 +18,7 @@ export const goCode = `func media(w http.ResponseWriter, r *http.Request) {
 export const typescriptCode = `export async function playableMediaURL(mediaID: string) {
   const token = await authToken();
   return {
-    uri: \`${"${apiBaseURL}"}/api/media/${"${mediaID}"}\`,
+    uri: \`${"${apiBaseURL}"}/api/v1/media/${"${mediaID}"}\`,
     headers: { Authorization: \`Bearer ${"${token}"}\` },
   };
 }`;

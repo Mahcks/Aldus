@@ -20,6 +20,7 @@ import (
 )
 
 type Dependencies struct {
+	ServerVersion       string
 	Web                 fs.FS
 	Position            *position.Store
 	Auth                *auth.Store

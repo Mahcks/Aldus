@@ -44,14 +44,18 @@ type SetupRequest struct {
 	DisplayName          string `json:"display_name,omitempty"`
 }
 type SetupStatus struct {
-	Available     bool `json:"available"`
-	DemoAvailable bool `json:"demo_available"`
+	Available     bool   `json:"available"`
+	DemoAvailable bool   `json:"demo_available"`
+	ServerVersion string `json:"server_version,omitempty"`
+	APIVersion    string `json:"api_version,omitempty"`
 }
 type CreateUserRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name,omitempty"`
 	AdminNote   string `json:"admin_note,omitempty"`
-	Admin       bool   `json:"admin"`
+	// Password preserves the account-creation request shipped in TestFlight build 4.
+	Password string `json:"password,omitempty"`
+	Admin    bool   `json:"admin"`
 }
 type CreatedUser struct {
 	User              User   `json:"user"`

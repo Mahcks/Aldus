@@ -69,9 +69,9 @@ The KOReader adapter maps `(document alias, XPointer)` to a segment and stores t
 
 ## Progress conflict semantics
 
-There is one canonical progress row per user and Work. `GET` and `PUT /api/works/{workID}/progress` read and update it; an update names the validated alignment explicitly. A client reads revision `N` and updates with `expected_revision: N`. The server commits `N+1` atomically. A mismatched revision returns `409 Conflict` and the current position; it never silently overwrites it. A new client starts with expected revision `0`.
+There is one canonical progress row per user and Work. `GET` and `PUT /api/v1/works/{workID}/progress` read and update it; an update names the validated alignment explicitly. A client reads revision `N` and updates with `expected_revision: N`. The server commits `N+1` atomically. A mismatched revision returns `409 Conflict` and the current position; it never silently overwrites it. A new client starts with expected revision `0`.
 
-There is separately one native-state row per user and Representation at `GET` and `PUT /api/representations/{representationID}/state`, with its own optimistic revision. If an alignment becomes stale, Aldus preserves the exact canonical row and reports it as unresolved instead of rebinding or interpreting it against another revision. Native state remains writable even when no canonical mapping can be resolved.
+There is separately one native-state row per user and Representation at `GET` and `PUT /api/v1/representations/{representationID}/state`, with its own optimistic revision. If an alignment becomes stale, Aldus preserves the exact canonical row and reports it as unresolved instead of rebinding or interpreting it against another revision. Native state remains writable even when no canonical mapping can be resolved.
 
 This is deliberately not a CRDT. A user resolving a conflict submits again against the returned current revision.
 

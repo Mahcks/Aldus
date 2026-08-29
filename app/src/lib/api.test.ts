@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 mock.module('react-native', () => ({ Platform: { OS: 'web' } }));
 const { api, APIError, errorMessage } = await import('./api');
 const { resolveAPIBaseURL } = await import('./api-base');
+const { productMediaURL } = await import('./media');
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
@@ -32,6 +33,12 @@ describe('API transport', () => {
     }) as typeof fetch;
     expect(await api.setupStatus()).toEqual({ available: true, demo_available: false });
     expect(request?.credentials).toBe('include');
+  });
+
+  it('uses the explicit v1 route for native media URLs', () => {
+    expect(productMediaURL('audio/item', 'https://library.example')).toBe(
+      'https://library.example/api/v1/media/audio%2Fitem',
+    );
   });
 
   it('does not persist or attach the web login token', async () => {
@@ -75,7 +82,7 @@ describe('API transport', () => {
       return new Response(null, { status: 204 });
     }) as typeof fetch;
     await api.deleteAccount();
-    expect(url).toEndWith('/api/auth/me');
+    expect(url).toEndWith('/api/v1/auth/me');
     expect(method).toBe('DELETE');
   });
 
@@ -90,8 +97,8 @@ describe('API transport', () => {
     expect(await api.downloadBackup(name)).toBeInstanceOf(Blob);
     await api.deleteBackup(name);
     expect(calls).toEqual([
-      { url: `/api/system/backups/${name}`, method: 'GET' },
-      { url: `/api/system/backups/${name}`, method: 'DELETE' },
+      { url: `/api/v1/system/backups/${name}`, method: 'GET' },
+      { url: `/api/v1/system/backups/${name}`, method: 'DELETE' },
     ]);
   });
 
@@ -139,7 +146,7 @@ describe('API transport', () => {
       return Response.json(jobs);
     }) as typeof fetch;
     expect(await api.alignmentJobs('work-1')).toEqual(jobs);
-    expect(url).toEndWith('/api/works/work-1/alignment-jobs');
+    expect(url).toEndWith('/api/v1/works/work-1/alignment-jobs');
   });
 
   it('builds one bounded server browse request', async () => {
@@ -157,7 +164,7 @@ describe('API transport', () => {
       offset: 24,
     });
     expect(url).toEndWith(
-      '/api/works?library_id=library&q=Alice+%26+Bob&sort=title&availability=readable&limit=24&offset=24',
+      '/api/v1/works?library_id=library&q=Alice+%26+Bob&sort=title&availability=readable&limit=24&offset=24',
     );
   });
 
@@ -168,7 +175,7 @@ describe('API transport', () => {
       return Response.json([]);
     }) as typeof fetch;
     await api.searchTitles('Alice & Bob', 'kids');
-    expect(url).toEndWith('/api/search/titles?q=Alice+%26+Bob&library_id=kids');
+    expect(url).toEndWith('/api/v1/search/titles?q=Alice+%26+Bob&library_id=kids');
   });
 
   it('browses only configured server source roots', async () => {
@@ -191,7 +198,7 @@ describe('API transport', () => {
     expect((await api.sourceDirectories('root', 'Books/Classics')).selected_path).toBe(
       '/library/media/Books/Classics',
     );
-    expect(urls[1]).toEndWith('/api/source-roots/root/directories?path=Books%2FClassics');
+    expect(urls[1]).toEndWith('/api/v1/source-roots/root/directories?path=Books%2FClassics');
   });
 
   it('downloads authenticated EPUB bytes with web credentials', async () => {

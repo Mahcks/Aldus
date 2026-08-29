@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/catalog"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
+	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -104,6 +106,57 @@ func TestAdminCanManagePrivateUserNotes(t *testing.T) {
 	login := request(t, handler, "", http.MethodPost, "/auth/login", fmt.Sprintf(`{"username":"guest","password":%q}`, account.TemporaryPassword))
 	if login.Code != http.StatusOK || strings.Contains(login.Body.String(), "admin_note") {
 		t.Fatalf("private note leaked to reader = %d %s", login.Code, login.Body.String())
+	}
+}
+
+// TestV1InstalledClientCompatibility characterizes the v1 contract used by
+// TestFlight build 4 (commit b296e453) and all later installed clients.
+func TestV1InstalledClientCompatibility(t *testing.T) {
+	handler, token := testHandler(t)
+
+	type oldSetupStatus struct {
+		Available     bool `json:"available"`
+		DemoAvailable bool `json:"demo_available"`
+	}
+	status := request(t, handler, "", http.MethodGet, "/setup/status", "")
+	var oldStatus oldSetupStatus
+	if status.Code != http.StatusOK || json.Unmarshal(status.Body.Bytes(), &oldStatus) != nil || oldStatus.Available || oldStatus.DemoAvailable {
+		t.Fatalf("old setup status = %d %#v %s", status.Code, oldStatus, status.Body.String())
+	}
+	if !strings.Contains(status.Body.String(), `"server_version":"test"`) || !strings.Contains(status.Body.String(), `"api_version":"v1"`) {
+		t.Fatalf("current setup identity = %s", status.Body.String())
+	}
+
+	created := request(t, handler, token, http.MethodPost, "/users", `{"username":"build-four","display_name":"Build Four","password":"a-secure-build-four-password","admin":false}`)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("build 4 create user = %d %s", created.Code, created.Body.String())
+	}
+	login := request(t, handler, "", http.MethodPost, "/auth/login", `{"username":"build-four","password":"a-secure-build-four-password"}`)
+	if login.Code != http.StatusOK {
+		t.Fatalf("build 4 login = %d %s", login.Code, login.Body.String())
+	}
+	unknown := request(t, handler, token, http.MethodPost, "/users", `{"username":"unknown-field","password":"a-secure-password","future":true,"admin":false}`)
+	if unknown.Code != http.StatusBadRequest {
+		t.Fatalf("unknown field = %d %s", unknown.Code, unknown.Body.String())
+	}
+
+	for _, target := range []string{"/libraries", "/works/fixture-work", "/media/fixture-epub"} {
+		response := request(t, handler, token, http.MethodGet, target, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d %s", target, response.Code, response.Body.String())
+		}
+	}
+	saved := request(t, handler, token, http.MethodPut, "/works/fixture-work/progress", `{"alignment_id":"fixture-alignment","segment_id":"s0002","offset":350000,"expected_revision":0,"source_device":"ios"}`)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("save progress = %d %s", saved.Code, saved.Body.String())
+	}
+	progress := request(t, handler, token, http.MethodGet, "/works/fixture-work/progress", "")
+	if progress.Code != http.StatusOK || !strings.Contains(progress.Body.String(), `"segment_id":"s0002"`) {
+		t.Fatalf("read progress = %d %s", progress.Code, progress.Body.String())
+	}
+	audio := request(t, handler, token, http.MethodPost, "/alignments/fixture-alignment/locators/audio", `{"segment_id":"s0002","offset":350000}`)
+	if audio.Code != http.StatusOK || !strings.Contains(audio.Body.String(), `"timestamp_ms":4420`) {
+		t.Fatalf("read/listen handoff = %d %s", audio.Code, audio.Body.String())
 	}
 }
 
@@ -638,7 +691,18 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(Dependencies{Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test"), Backups: backup.NewManager(filepath.Dir(path), t.TempDir(), "test")}), session.Token
+	mediaRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(mediaRoot, "media", "fixture"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mediaRoot, "media", "fixture", "book.epub"), []byte("fixture epub"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mediaStore, err := ingest.New(db, ingest.Options{Root: mediaRoot, MaxBytes: 1 << 20, Probe: func(context.Context, string) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Handler(Dependencies{ServerVersion: "test", Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Ingest: mediaStore, Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test"), Backups: backup.NewManager(filepath.Dir(path), t.TempDir(), "test")}), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {

@@ -213,11 +213,17 @@ export interface SetupRequest {
 export interface SetupStatus {
   available: boolean;
   demo_available: boolean;
+  server_version?: string;
+  api_version?: string;
 }
 export interface CreateUserRequest {
   username: string;
   display_name?: string;
   admin_note?: string;
+  /**
+   * Password preserves the account-creation request shipped in TestFlight build 4.
+   */
+  password?: string;
   admin: boolean;
 }
 export interface CreatedUser {

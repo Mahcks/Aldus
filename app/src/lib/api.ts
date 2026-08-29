@@ -91,6 +91,8 @@ import type {
 import { clearToken, getToken, setToken } from './auth-token';
 import { getAPIBaseURL } from './api-base';
 
+const apiBasePath = '/api/v1';
+
 let unauthorized: (() => void) | undefined;
 export function onUnauthorized(handler?: () => void) {
   unauthorized = handler;
@@ -124,7 +126,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try {
-    response = await fetch(`${origin}/api${path}`, {
+    response = await fetch(`${origin}${apiBasePath}${path}`, {
       ...init,
       headers,
       credentials: 'include',
@@ -153,7 +155,10 @@ async function download(path: string) {
   const token = await getToken(origin);
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${origin}/api${path}`, { headers, credentials: 'include' });
+  const response = await fetch(`${origin}${apiBasePath}${path}`, {
+    headers,
+    credentials: 'include',
+  });
   if (!response.ok)
     throw new APIError(
       response.status,
