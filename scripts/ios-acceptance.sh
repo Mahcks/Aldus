@@ -40,13 +40,16 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 [[ $(uname -s) == Darwin ]] || fail "iPhone acceptance must run on a Mac"
-for command in bun curl go node openssl security xcodebuild xcrun; do
+for command in bun curl ffprobe go node openssl security xcodebuild xcrun; do
   require_command "$command"
 done
 if [[ ! -f $ROOT/test-fixtures/alice/media/alice.epub || ! -f $ROOT/test-fixtures/alice/media/alice-chapter-01.mp3 ]]; then
   echo "Downloading the frozen Alice acceptance fixture..."
   "$ROOT/test-fixtures/alice/fetch.sh"
 fi
+ffprobe -v error -show_entries format=duration -of json \
+  "$ROOT/test-fixtures/alice/media/alice-chapter-01.mp3" >/dev/null || \
+  fail "ffprobe could not read the Alice audio fixture"
 
 DEVICE=${DEVICE:-}
 if [[ -z $DEVICE ]]; then
