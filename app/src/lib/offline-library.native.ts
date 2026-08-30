@@ -16,7 +16,7 @@ import { representationStateUpdate } from '@/features/offline-representation';
 import { APIError, api } from './api';
 import { getAPIBaseURL } from './api-base';
 import { productEPUBSource } from './epub-source';
-import { downloadProductAudio } from './media';
+import { downloadProductAudio, productAudioFileName } from './media';
 import { pendingProgress } from './progress-outbox';
 import { parseStoredJSON } from './stored-json';
 import { activeStorageScope, scopedMediaFileName, scopedStorageKey } from './storage-scope';
@@ -40,6 +40,14 @@ export type OfflineWork = {
 const key = (scope: string, workID: string) => scopedStorageKey(`offline-work:${workID}`, scope);
 const prefix = (scope: string) => scopedStorageKey('offline-work:', scope);
 const librariesKey = (scope: string) => scopedStorageKey('offline-libraries', scope);
+
+function offlineMediaFile(item: MediaChoice, scope: string) {
+  const name =
+    item.representation.kind === 'epub'
+      ? scopedMediaFileName(item.id, 'epub', scope)
+      : productAudioFileName(item.id, item.original_filename, scope);
+  return new File(Paths.document, name);
+}
 
 export async function offlineWorks(scope = activeStorageScope()): Promise<OfflineWork[]> {
   const scopedPrefix = prefix(scope);
@@ -140,10 +148,7 @@ export async function offlineWork(
   const media = [...value.epubs, ...value.audio];
   if (
     media.some((item) => {
-      const file = new File(
-        Paths.document,
-        scopedMediaFileName(item.id, item.representation.kind === 'epub' ? 'epub' : 'audio', scope),
-      );
+      const file = offlineMediaFile(item, scope);
       return !file.exists || file.size !== item.size_bytes;
     })
   ) {
@@ -158,7 +163,9 @@ export async function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_a
   const scope = activeStorageScope();
   const results = await Promise.allSettled([
     ...value.epubs.map((item) => productEPUBSource(item.id, item.size_bytes)),
-    ...value.audio.map((item) => downloadProductAudio(item.id, item.size_bytes)),
+    ...value.audio.map((item) =>
+      downloadProductAudio(item.id, item.size_bytes, item.original_filename),
+    ),
   ]);
   const failed = results.find((result) => result.status === 'rejected');
   if (failed?.status === 'rejected') {
@@ -181,10 +188,7 @@ export async function removeOfflineWork(workID: string) {
 
 function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: string) {
   for (const item of [...value.epubs, ...value.audio]) {
-    const file = new File(
-      Paths.document,
-      scopedMediaFileName(item.id, item.representation.kind === 'epub' ? 'epub' : 'audio', scope),
-    );
+    const file = offlineMediaFile(item, scope);
     if (file.exists) file.delete();
   }
 }

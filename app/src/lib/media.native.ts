@@ -14,10 +14,23 @@ export function productMediaURL(id: string, origin = apiBaseURL) {
   return `${origin}/api/v1/media/${encodeURIComponent(id)}`;
 }
 
-export async function productAudioSource(id: string, expectedSize?: number): Promise<AudioSource> {
+export function productAudioFileName(
+  id: string,
+  originalFilename?: string,
+  scope = activeStorageScope(),
+) {
+  const extension = originalFilename?.match(/\.([a-z0-9]+)$/i)?.[1].toLowerCase() ?? 'audio';
+  return scopedMediaFileName(id, extension, scope);
+}
+
+export async function productAudioSource(
+  id: string,
+  expectedSize?: number,
+  originalFilename?: string,
+): Promise<AudioSource> {
   const origin = getAPIBaseURL();
   const scope = activeStorageScope();
-  const destination = new File(Paths.document, scopedMediaFileName(id, 'audio', scope));
+  const destination = new File(Paths.document, productAudioFileName(id, originalFilename, scope));
   if (destination.exists && (!expectedSize || destination.size === expectedSize)) {
     return destination.uri;
   }
@@ -29,10 +42,14 @@ export async function productAudioSource(id: string, expectedSize?: number): Pro
   };
 }
 
-export async function downloadProductAudio(id: string, expectedSize?: number) {
+export async function downloadProductAudio(
+  id: string,
+  expectedSize?: number,
+  originalFilename?: string,
+) {
   const origin = getAPIBaseURL();
   const scope = activeStorageScope();
-  const destination = new File(Paths.document, scopedMediaFileName(id, 'audio', scope));
+  const destination = new File(Paths.document, productAudioFileName(id, originalFilename, scope));
   if (destination.exists && (!expectedSize || destination.size === expectedSize)) {
     return destination.uri;
   }

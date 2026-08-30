@@ -66,10 +66,11 @@ afterEach(() => {
 
 test('native downloads retain finalized EPUB and audio files after move mutates the source URI', async () => {
   const epub = await productEPUBSource('epub-success', downloadSize);
-  const audio = await downloadProductAudio('audio-success', downloadSize);
+  const audio = await downloadProductAudio('audio-success', downloadSize, 'Chapter.MP3');
 
   expect(files.has(epub)).toBe(true);
   expect(files.has(audio)).toBe(true);
+  expect(audio.endsWith('.mp3')).toBe(true);
   expect([...files.keys()].some((uri) => uri.includes('.part'))).toBe(false);
 });
 
@@ -77,7 +78,9 @@ test('native downloads remove incomplete files without publishing them', async (
   downloadSize = 11;
 
   await expect(productEPUBSource('epub-incomplete', 12)).rejects.toThrow('incomplete');
-  await expect(downloadProductAudio('audio-incomplete', 12)).rejects.toThrow('incomplete');
+  await expect(downloadProductAudio('audio-incomplete', 12, 'chapter.m4b')).rejects.toThrow(
+    'incomplete',
+  );
 
   expect([...files.keys()].some((uri) => uri.includes('epub-incomplete'))).toBe(false);
   expect([...files.keys()].some((uri) => uri.includes('audio-incomplete'))).toBe(false);

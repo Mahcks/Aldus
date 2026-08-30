@@ -543,7 +543,11 @@ export default function ConsumeWorkScreen() {
           }
           if (loadAudio && selectedAudioChoice) {
             setSource(
-              await productAudioSource(selectedAudioChoice.id, selectedAudioChoice.size_bytes),
+              await productAudioSource(
+                selectedAudioChoice.id,
+                selectedAudioChoice.size_bytes,
+                selectedAudioChoice.original_filename,
+              ),
             );
             audioSourceID.current = selectedAudioChoice.id;
           }
@@ -587,7 +591,11 @@ export default function ConsumeWorkScreen() {
             loadAudio && selectedAudio
               ? audioSourceID.current === selectedAudio.id && source
                 ? source
-                : productAudioSource(selectedAudio.id, selectedAudio.size_bytes)
+                : productAudioSource(
+                    selectedAudio.id,
+                    selectedAudio.size_bytes,
+                    selectedAudio.original_filename,
+                  )
               : null,
             loadAudio && selectedAudio ? api.audioChapters(selectedAudio.id).catch(() => []) : [],
           ]);
