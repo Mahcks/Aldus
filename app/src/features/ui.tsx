@@ -558,10 +558,6 @@ export function Radio({
   );
 }
 
-function noop() {
-  // Swallows presses on dialog content so they don't bubble to the backdrop.
-}
-
 /**
  * Shared modal primitive. Replaces one-off `Modal` wrappers throughout the
  * app. Dismisses on backdrop press; on web, Escape closes it and focus moves
@@ -637,8 +633,7 @@ export function Dialog({
   const maxWidthClass = wide ? 'max-w-[720px]' : 'max-w-[480px]';
   const dialogMaxHeight = Math.max(0, windowHeight - 32);
   const dialog = (
-    <Pressable
-      onPress={noop}
+    <View
       accessibilityViewIsModal
       aria-labelledby={titleId}
       role="dialog"
@@ -692,7 +687,7 @@ export function Dialog({
           <AppIcon name="moveDown" size={16} color={colors.muted} />
         </View>
       ) : null}
-    </Pressable>
+    </View>
   );
 
   return (
