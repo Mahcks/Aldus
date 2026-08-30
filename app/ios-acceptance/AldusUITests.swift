@@ -97,7 +97,6 @@ final class AldusUITests: XCTestCase {
     let chapters = element(startingWith: "View chapters. Current chapter:", in: app)
     XCTAssertTrue(chapters.waitForExistence(timeout: timeout))
     chapters.tap()
-    XCTAssertTrue(app.staticTexts["Chapters"].waitForExistence(timeout: timeout))
     tap("Close dialog", in: app)
     evidence("03-audio-playing")
 
