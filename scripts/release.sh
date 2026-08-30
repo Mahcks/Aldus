@@ -450,7 +450,7 @@ deploy_demo() {
 
 docs_are_current() {
   local tag=$1
-  "$CURL_BIN" --fail --silent --show-error "$DOCS_ORIGIN/admin/install/" | grep -Fq "${tag#v}"
+  "$CURL_BIN" --fail --silent --show-error "$DOCS_ORIGIN/admin/install/" | grep -F "${tag#v}" >/dev/null
 }
 
 publish_docs() {
