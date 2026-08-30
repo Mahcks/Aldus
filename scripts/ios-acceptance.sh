@@ -131,6 +131,7 @@ xcodebuild test \
   -destination "platform=iOS,id=$DEVICE" \
   -derivedDataPath "$ARTIFACT_DIR/DerivedData" \
   -resultBundlePath "$ARTIFACT_DIR/AldusAcceptance.xcresult" \
+  -collect-test-diagnostics never \
   -allowProvisioningUpdates \
   CODE_SIGN_STYLE=Automatic \
   DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"

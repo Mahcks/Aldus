@@ -26,7 +26,13 @@ final class AldusUITests: XCTestCase {
     tap("Continue", in: app)
     app.tap()
 
-    enter(username, in: app.textFields["Username"])
+    let usernameField = app.textFields["Username"]
+    if !usernameField.waitForExistence(timeout: 5) {
+      let retry = app.buttons["Continue"]
+      XCTAssertTrue(retry.waitForExistence(timeout: 5), "Library connection did not complete")
+      retry.tap()
+    }
+    enter(username, in: usernameField)
     enter("Acceptance Admin", in: app.textFields["Display name"])
     enter(password, in: app.secureTextFields["Password (12 characters minimum)"])
     enter(password, in: app.secureTextFields["Confirm password"])
