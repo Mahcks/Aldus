@@ -203,6 +203,8 @@ export default function ConsumeWorkScreen() {
   const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number>();
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number>();
   const [initialAudioMS, setInitialAudioMS] = useState<number>();
+  const [currentPlaybackRate, setCurrentPlaybackRate] =
+    useState<(typeof PLAYBACK_RATES)[number]>(1);
   const [trackWidth, setTrackWidth] = useState(1);
   const [syncAvailable, setSyncAvailable] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
@@ -253,7 +255,6 @@ export default function ConsumeWorkScreen() {
   const passage = audioPassage(alignment?.segments, status.currentTime * 1000);
   const chapter = audioChapterAt(audioChapters, status.currentTime * 1000);
   const currentChapterTitle = chapter?.current.title;
-  const currentPlaybackRate = playbackRate(status.playbackRate);
   const playbackRateIndex = PLAYBACK_RATES.indexOf(currentPlaybackRate);
   const canAdjustPlaybackRate = Boolean(source) && !status.error;
   const readerInteractionReady = readerControlsReady(
@@ -533,6 +534,7 @@ export default function ConsumeWorkScreen() {
           const canonical = progress?.alignment_id === stored.alignment?.id ? progress : null;
           setEPUBState(loadEPUB ? stored.epub_state : null);
           setAudioState(loadAudio ? stored.audio_state : null);
+          if (loadAudio) setCurrentPlaybackRate(playbackRate(stored.audio_state?.playback_speed));
           setAudioChapters(loadAudio ? (stored.audio_chapters[audioID] ?? []) : []);
           setAlignment(stored.alignment);
           if (loadEPUB && selectedEPUBChoice) {
@@ -603,6 +605,7 @@ export default function ConsumeWorkScreen() {
         if (loadEPUB) setEPUBState(nextEPUBState);
         if (loadAudio) {
           setAudioState(nextAudioState);
+          setCurrentPlaybackRate(playbackRate(nextAudioState?.playback_speed));
           setAudioChapters(nextAudioChapters);
         }
         setAlignment(nextAlignment);
@@ -1487,6 +1490,7 @@ export default function ConsumeWorkScreen() {
     if (!canAdjustPlaybackRate) return;
     try {
       const next = applyPlaybackRate(player, rate);
+      setCurrentPlaybackRate(next);
       void saveListeningPosition(Math.round(status.currentTime * 1000), next);
     } catch (error) {
       setNotice(errorMessage(error));
