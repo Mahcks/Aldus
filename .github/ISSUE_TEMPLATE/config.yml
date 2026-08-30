@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and setup help
+    url: https://github.com/Mahcks/Aldus/discussions/categories/q-a
+    about: Ask how to use Aldus, configure a server, or troubleshoot your setup with the community.
+  - name: Security vulnerability
+    url: https://github.com/Mahcks/Aldus/security/advisories/new
+    about: Privately report a vulnerability. Do not open a public issue.

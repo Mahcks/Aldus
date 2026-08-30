@@ -1,0 +1,107 @@
+name: Server or self-hosting problem
+description: Report an installation, upgrade, API, storage, streaming, or integration problem
+title: "[Server]: "
+labels:
+  - bug
+  - "area: server"
+  - "needs triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions and setup help belong in Discussions. Use this form when something appears broken. Never post passwords, API keys, cookies, private library addresses, database files, or copyrighted media.
+
+  - type: input
+    id: version
+    attributes:
+      label: Aldus version or image tag
+      placeholder: "v0.1.0-beta.x or ghcr.io/mahcks/aldus:0.1.0-beta.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Docker Compose
+        - Docker
+        - Built from source
+        - Aldus public demo
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: Host system
+      placeholder: "Ubuntu 24.04 arm64, Synology DSM 7, or macOS 15 arm64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Installation, upgrade, or startup
+        - Login, accounts, or permissions
+        - Libraries, import, or metadata
+        - Acquisition, Prowlarr, or qBittorrent
+        - Media, streaming, OPDS, or KOReader
+        - Backups or restore
+        - API or another integration
+        - Bundled web app
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the exact error message when possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: input
+    id: regression
+    attributes:
+      label: Last known working version
+      description: Leave blank if this never worked or you do not know.
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized configuration and logs
+      description: Include only the relevant section. Replace secrets and private addresses with clear placeholders.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and the documentation for this problem.
+          required: true
+        - label: I removed passwords, tokens, cookies, private addresses, personal data, database files, and copyrighted media.
+          required: true

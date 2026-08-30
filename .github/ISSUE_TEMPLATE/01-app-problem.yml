@@ -1,0 +1,101 @@
+name: App problem
+description: Report a problem with the iPhone, iPad, web, or Android app
+title: "[App]: "
+labels:
+  - bug
+  - "area: app"
+  - "needs triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Aldus. Please remove passwords, tokens, private library addresses, and copyrighted files from anything you attach.
+
+  - type: dropdown
+    id: app
+    attributes:
+      label: Where did this happen?
+      options:
+        - iPhone or iPad (TestFlight)
+        - Web app
+        - Android development build
+        - More than one app
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Aldus version or build
+      description: For TestFlight, include the build number shown in TestFlight. For web, include the server version if known.
+      placeholder: "TestFlight build 8, or server v0.1.0-beta.x"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and operating system
+      placeholder: "iPhone 15 on iOS 18.6, or Safari 18 on macOS 15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe what you saw, including any error shown by Aldus.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Sometimes
+        - Once
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Connection and media details
+      description: If relevant, say whether the server was local or remote, online or offline, and whether this affected an EPUB, audiobook, or both. Do not include the private server address.
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Drag files here if useful. Remove secrets, private addresses, personal library data, and copyrighted content first.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed passwords, tokens, private addresses, personal data, and copyrighted files.
+          required: true

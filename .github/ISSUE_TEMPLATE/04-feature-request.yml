@@ -1,0 +1,55 @@
+name: Feature request
+description: Suggest an improvement based on a real reader, administrator, or integration need
+title: "[Feature]: "
+labels:
+  - enhancement
+  - "needs triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first. This helps Aldus find the smallest useful solution instead of committing to one implementation too early.
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who needs this?
+      options:
+        - Reader or listener
+        - Server administrator or self-hoster
+        - Library administrator
+        - Developer or integrator
+        - More than one audience
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Explain the real task or limitation, not only the feature name.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would a good outcome look like?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current workarounds or alternatives
+      description: Optional. Say how you handle this today or name another product that solves it well.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and Discussions for this request.
+          required: true
+        - label: This describes a current need, not private or security-sensitive information.
+          required: true

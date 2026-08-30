@@ -4,6 +4,14 @@ Thanks for helping improve Aldus. It is public beta software, so focused bug fix
 
 Keep changes small, preserve existing user data and installed-client behavior, and avoid adding dependencies or abstractions without a current requirement.
 
+## Before contributing code
+
+- Use [GitHub Discussions Q&A](https://github.com/Mahcks/Aldus/discussions/categories/q-a) for questions and setup help, and [Ideas](https://github.com/Mahcks/Aldus/discussions/categories/ideas) to explore an idea before it is ready for an issue.
+- Use the [issue chooser](https://github.com/Mahcks/Aldus/issues/new/choose) for reproducible bugs, documentation problems, and concrete feature requests.
+- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue or Discussion.
+
+For a substantial change, open an issue or Discussion before investing in an implementation so the scope and compatibility impact can be agreed first. Small fixes can go directly to a focused pull request.
+
 ## Development setup
 
 You need Go 1.26.6+, Bun 1.3.5+, Node.js LTS, `ffprobe`, and Docker for production-image work.
