@@ -133,6 +133,15 @@ final class AldusUITests: XCTestCase {
   private func tap(_ label: String, in app: XCUIApplication) {
     let element = app.descendants(matching: .any)[label]
     XCTAssertTrue(element.waitForExistence(timeout: timeout), "Missing control: \(label)")
+    let ready = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "enabled == true AND hittable == true"),
+      object: element
+    )
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [ready], timeout: timeout),
+      .completed,
+      "Control did not become ready: \(label)"
+    )
     element.tap()
   }
 
