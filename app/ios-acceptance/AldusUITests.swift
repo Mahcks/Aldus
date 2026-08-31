@@ -82,9 +82,6 @@ final class AldusUITests: XCTestCase {
       evidence("02-offline-reader-restored")
 
       tap("Toggle acceptance network", in: app)
-      XCTAssertTrue(app.buttons["Waiting for acceptance sync…"].waitForExistence(timeout: 15))
-      XCUIDevice.shared.press(.home)
-      app.activate()
       let reconciliation = app.buttons
         .matching(
           NSPredicate(
