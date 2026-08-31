@@ -39,7 +39,8 @@ final class AldusUITests: XCTestCase {
     enter(password, in: app.secureTextFields["Confirm password"])
     tap("Create administrator", in: app)
 
-    openAliceFromHome(in: app)
+    tap("Public", in: app)
+    openAlice(in: app)
 
     tap("Download for offline", in: app)
     XCTAssertTrue(
@@ -171,7 +172,7 @@ final class AldusUITests: XCTestCase {
     enter(password, in: app.secureTextFields["Password"])
     tap("Sign in", in: app)
 
-    openAliceFromHome(in: app)
+    openAlice(in: app)
     let readInstead = app.buttons["Read instead"]
     if readInstead.waitForExistence(timeout: 5) {
       readInstead.tap()
@@ -202,12 +203,12 @@ final class AldusUITests: XCTestCase {
     field.typeText(value)
   }
 
-  private func openAliceFromHome(in app: XCUIApplication) {
+  private func openAlice(in app: XCUIApplication) {
     let title = "Alice's Adventures in Wonderland"
     let alice = app.links
       .matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", title, "Open \(title)"))
       .firstMatch
-    XCTAssertTrue(alice.waitForExistence(timeout: timeout), "Alice is missing from Home")
+    XCTAssertTrue(alice.waitForExistence(timeout: timeout), "Alice is missing from the current page")
     alice.tap()
   }
 

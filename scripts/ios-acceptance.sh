@@ -192,10 +192,15 @@ run_xcodebuild() {
     -collect-test-diagnostics never \
     -allowProvisioningUpdates \
     CODE_SIGN_STYLE=Automatic \
-    DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"
+    DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" 2>&1 | tee "$ARTIFACT_DIR/xcodebuild.log"
 }
 SELECTED_TEST=${ALDUS_ACCEPTANCE_ONLY_TEST:-testReaderAcceptance}
-run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$SELECTED_TEST"
+if ! run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$SELECTED_TEST"; then
+  if grep -q 'Not authorized for performing UI testing actions' "$ARTIFACT_DIR/xcodebuild.log"; then
+    fail "iPhone UI automation was revoked. Unlock the iPhone, accept any trust or automation prompt, keep it unlocked, and rerun make ios-acceptance."
+  fi
+  fail "iPhone acceptance failed; see $ARTIFACT_DIR/xcodebuild.log"
+fi
 [[ -d $ARTIFACT_DIR/AldusAcceptance.xcresult ]] || fail "xcodebuild did not produce a test result bundle"
 
 if [[ $EXTERNAL_SERVER == 1 && ${ALDUS_ACCEPTANCE_ONLY_TEST:-} == testEcosystemHandoff ]]; then
