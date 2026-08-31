@@ -6,11 +6,13 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CONFIG="$ROOT/scripts/ios-release.env"
 [[ -f $CONFIG ]] && source "$CONFIG"
 PORT=${ALDUS_ACCEPTANCE_PORT:-18082}
+UPSTREAM_PORT=${ALDUS_ACCEPTANCE_UPSTREAM_PORT:-18081}
 USERNAME=${ALDUS_ACCEPTANCE_USERNAME:-acceptance-admin}
 PASSWORD=${ALDUS_ACCEPTANCE_PASSWORD:-aldus-acceptance-123}
 EXTERNAL_SERVER=${ALDUS_ACCEPTANCE_EXTERNAL_SERVER:-0}
 WORKSPACE=
 SERVER_PID=
+PROXY_PID=
 
 fail() {
   echo "$*" >&2
@@ -53,6 +55,10 @@ if [[ ${1:-} == self-test ]]; then
 fi
 
 cleanup() {
+  if [[ -n $PROXY_PID ]]; then
+    kill "$PROXY_PID" >/dev/null 2>&1 || true
+    wait "$PROXY_PID" >/dev/null 2>&1 || true
+  fi
   if [[ -n $SERVER_PID ]]; then
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
@@ -127,17 +133,24 @@ else
       --fixture-dir "$ROOT/test-fixtures/alice/media" \
       --artifact "$ROOT/test-fixtures/alice/automatic/hybrid-whisperx/alignment.json"
     go build -o "$WORKSPACE/aldus-server" ./cmd/app
+    go build -o "$WORKSPACE/ios-acceptance-proxy" "$ROOT/scripts/ios-acceptance-proxy.go"
   )
 
   ALDUS_ENV=test \
-  ALDUS_ADDR="0.0.0.0:$PORT" \
+  ALDUS_ADDR="127.0.0.1:$UPSTREAM_PORT" \
   ALDUS_DATA_DIR="$WORKSPACE/data" \
   ALDUS_BACKUP_DIR="$WORKSPACE/data/backups" \
   "$WORKSPACE/aldus-server" >"$ARTIFACT_DIR/server.log" 2>&1 &
   SERVER_PID=$!
+  "$WORKSPACE/ios-acceptance-proxy" \
+    -listen "0.0.0.0:$PORT" \
+    -upstream "http://127.0.0.1:$UPSTREAM_PORT" \
+    >"$ARTIFACT_DIR/proxy.log" 2>&1 &
+  PROXY_PID=$!
 
   for _ in {1..80}; do
     kill -0 "$SERVER_PID" >/dev/null 2>&1 || fail "Fixture server exited; see $ARTIFACT_DIR/server.log"
+    kill -0 "$PROXY_PID" >/dev/null 2>&1 || fail "Acceptance proxy exited; see $ARTIFACT_DIR/proxy.log"
     curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null && break
     sleep 0.25
   done
@@ -153,7 +166,8 @@ node "$ROOT/scripts/configure-ios-acceptance.js" \
   "$ROOT/app/ios/Aldus.xcodeproj/project.pbxproj" \
   "$SERVER_URL" \
   "$USERNAME" \
-  "$PASSWORD"
+  "$PASSWORD" \
+  "$([[ $EXTERNAL_SERVER == 1 ]] && echo 0 || echo 1)"
 
 xcrun devicectl device uninstall app --device "$DEVICE" com.mahcks.aldus.acceptance >/dev/null 2>&1 || true
 
@@ -202,6 +216,7 @@ Server: $SERVER_URL
 Automated:
 - add server and bootstrap account
 - download Alice for offline use
+- disconnect the fixture server, read offline, relaunch, reconnect, and sync progress
 - open EPUB and navigate both directions
 - background, terminate, relaunch, and reopen reader
 - play/pause/seek/speed controls
@@ -211,7 +226,6 @@ Automated:
 Still manual:
 - verify the visible passage is restored exactly
 - hear audio, pitch, background playback, and lock-screen controls
-- disconnect/reconnect the fixture server and verify offline progress reconciliation
 - verify account/server data isolation
 - quick smoke of the actual TestFlight binary
 EOF

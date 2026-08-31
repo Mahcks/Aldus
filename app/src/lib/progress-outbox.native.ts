@@ -64,13 +64,15 @@ export async function reconcilePendingProgress(
   local: WorkProgressUpdate;
   remote: CanonicalPosition;
 } | null> {
+  const stillActive = () => origin === getAPIBaseURL() && scope === activeStorageScope();
   const local = await pendingProgress(workID, scope);
   if (!local) return null;
-  if (origin !== getAPIBaseURL()) throw new Error('Aldus server changed during progress sync.');
+  if (!stillActive()) throw new Error('Aldus server or account changed during progress sync.');
   const remote = await api.workProgress(workID);
   if ((remote?.revision ?? 0) !== local.expected_revision && remote) return { local, remote };
-  if (origin !== getAPIBaseURL()) throw new Error('Aldus server changed during progress sync.');
+  if (!stillActive()) throw new Error('Aldus server or account changed during progress sync.');
   await api.updateWorkProgress(workID, local);
+  if (!stillActive()) throw new Error('Aldus server or account changed during progress sync.');
   await discardPendingProgress(workID, scope);
   return null;
 }

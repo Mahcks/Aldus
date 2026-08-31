@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 final class AldusUITests: XCTestCase {
@@ -57,19 +58,42 @@ final class AldusUITests: XCTestCase {
     previousPage.tap()
     XCTAssertTrue(element(containing: "Saved here", in: app).waitForExistence(timeout: timeout))
 
+    if environment["ALDUS_ACCEPTANCE_FAULTS"] == "1" {
+      try setFixtureNetwork(false, server: server)
+      defer { try? setFixtureNetwork(true, server: server) }
+      nextPage.tap()
+      XCTAssertTrue(
+        element(containing: "Saved on this device", in: app).waitForExistence(timeout: timeout),
+        "Progress should queue while the fixture server is unavailable"
+      )
+
+      app.terminate()
+      app.launch()
+      reopenAliceIfNeeded(in: app)
+      XCTAssertTrue(app.buttons["Next page"].waitForExistence(timeout: timeout))
+      evidence("02-offline-reader-restored")
+
+      try setFixtureNetwork(true, server: server)
+      XCUIDevice.shared.press(.home)
+      app.activate()
+      XCTAssertTrue(
+        element(containing: "Resumed from Aldus on iOS", in: app).waitForExistence(timeout: timeout),
+        "Queued progress should reconcile after the fixture server returns"
+      )
+      nextPage.tap()
+      XCTAssertTrue(element(containing: "Saved here", in: app).waitForExistence(timeout: timeout))
+      evidence("03-offline-progress-reconciled")
+    }
+
     XCUIDevice.shared.press(.home)
     app.activate()
     XCTAssertTrue(nextPage.waitForExistence(timeout: timeout))
 
     app.terminate()
     app.launch()
-    if !app.buttons["Next page"].waitForExistence(timeout: 10) {
-      let continueReading = element(startingWith: "Continue reading Alice's Adventures", in: app)
-      XCTAssertTrue(continueReading.waitForExistence(timeout: timeout))
-      continueReading.tap()
-    }
+    reopenAliceIfNeeded(in: app)
     XCTAssertTrue(app.buttons["Next page"].waitForExistence(timeout: timeout))
-    evidence("02-reader-restored")
+    evidence("04-reader-restored")
 
     tap("Switch to listening", in: app)
     let play = app.buttons["Play"]
@@ -95,7 +119,7 @@ final class AldusUITests: XCTestCase {
     XCTAssertTrue(chapters.waitForExistence(timeout: timeout))
     chapters.tap()
     tap("Close dialog", in: app)
-    evidence("03-audio-playing")
+    evidence("05-audio-playing")
 
     tap("Switch to reading", in: app)
     XCTAssertTrue(app.buttons["Switch to listening"].waitForExistence(timeout: timeout))
@@ -117,7 +141,7 @@ final class AldusUITests: XCTestCase {
       app.staticTexts["Permanently delete your account?"].waitForExistence(timeout: timeout)
     )
     tap("Close dialog", in: app)
-    evidence("04-account-controls")
+    evidence("06-account-controls")
   }
 
   func testEcosystemHandoff() throws {
@@ -185,6 +209,31 @@ final class AldusUITests: XCTestCase {
       .firstMatch
     XCTAssertTrue(alice.waitForExistence(timeout: timeout), "Alice is missing from Home")
     alice.tap()
+  }
+
+  private func reopenAliceIfNeeded(in app: XCUIApplication) {
+    if app.buttons["Next page"].waitForExistence(timeout: 10) { return }
+    let continueReading = element(startingWith: "Continue reading Alice's Adventures", in: app)
+    XCTAssertTrue(continueReading.waitForExistence(timeout: timeout))
+    continueReading.tap()
+  }
+
+  private func setFixtureNetwork(_ online: Bool, server: String) throws {
+    let state = online ? "on" : "off"
+    let url = try XCTUnwrap(URL(string: "\(server)/__acceptance/network/\(state)"))
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    let completed = expectation(description: "Turn fixture network \(state)")
+    var responseCode: Int?
+    var requestError: Error?
+    URLSession.shared.dataTask(with: request) { _, response, error in
+      responseCode = (response as? HTTPURLResponse)?.statusCode
+      requestError = error
+      completed.fulfill()
+    }.resume()
+    wait(for: [completed], timeout: 10)
+    XCTAssertNil(requestError)
+    XCTAssertEqual(responseCode, 204)
   }
 
   private func tap(_ label: String, in app: XCUIApplication) {

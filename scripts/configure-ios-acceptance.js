@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const xcode = require('../app/node_modules/xcode');
 
-const [projectPath, server, username, password] = process.argv.slice(2);
+const [projectPath, server, username, password, faults = '0'] = process.argv.slice(2);
 if (!projectPath || !server || !username || !password) {
   console.error(
-    'Usage: configure-ios-acceptance.js PROJECT_PBXPROJ SERVER USERNAME PASSWORD',
+    'Usage: configure-ios-acceptance.js PROJECT_PBXPROJ SERVER USERNAME PASSWORD [FAULTS]',
   );
   process.exit(2);
 }
+if (faults !== '0' && faults !== '1') throw new Error('FAULTS must be 0 or 1.');
 
 const project = xcode.project(projectPath);
 project.parseSync();
@@ -87,6 +88,7 @@ configureTarget(tests.pbxNativeTarget, (settings) => {
   settings.SWIFT_VERSION = '5.0';
   settings.TARGETED_DEVICE_FAMILY = '"1,2"';
   settings.TEST_TARGET_NAME = 'Aldus';
+  settings.INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = 'YES';
 });
 
 fs.writeFileSync(projectPath, project.writeSync());
@@ -126,6 +128,7 @@ const scheme = `<?xml version="1.0" encoding="UTF-8"?>
          <EnvironmentVariable key="ALDUS_ACCEPTANCE_SERVER" value="${escapeXML(server)}" isEnabled="YES"/>
          <EnvironmentVariable key="ALDUS_ACCEPTANCE_USERNAME" value="${escapeXML(username)}" isEnabled="YES"/>
          <EnvironmentVariable key="ALDUS_ACCEPTANCE_PASSWORD" value="${escapeXML(password)}" isEnabled="YES"/>
+         <EnvironmentVariable key="ALDUS_ACCEPTANCE_FAULTS" value="${faults}" isEnabled="YES"/>
       </EnvironmentVariables>
       <MacroExpansion>${appBuildable}
       </MacroExpansion>

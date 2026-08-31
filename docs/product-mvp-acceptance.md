@@ -33,10 +33,10 @@ a separate `com.mahcks.aldus.acceptance` app, resets only that app, starts the f
 and stores screenshots plus `AldusAcceptance.xcresult` under `artifacts/ios/`. Set `DEVICE=<udid>`
 when more than one iPhone is connected. The TestFlight installation and its data are untouched.
 
-The runner covers server setup, EPUB controls, relaunch/reopen, offline download creation, audio
-controls, Read/Listen switching, and account/legal controls. A person must still confirm visible
-passage accuracy, audible/background/lock-screen behavior, disconnected-server recovery,
-cross-account isolation, and the actual TestFlight binary.
+The runner covers server setup, EPUB controls, relaunch/reopen, offline download creation,
+fixture-server disconnection and progress reconciliation, audio controls, Read/Listen switching,
+and account/legal controls. A person must still confirm visible passage accuracy,
+audible/background/lock-screen behavior, cross-account isolation, and the actual TestFlight binary.
 
 | Required flow | Result | Notes |
 | --- | --- | --- |
