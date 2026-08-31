@@ -5,6 +5,7 @@ const password = process.env.ALDUS_ECOSYSTEM_PASSWORD || 'aldus-ecosystem-123';
 const phase = process.env.ALDUS_ECOSYSTEM_PHASE;
 const evidence = process.env.ALDUS_ECOSYSTEM_SCREENSHOT;
 const server = process.env.ALDUS_ECOSYSTEM_SERVER;
+const resumeLabel = process.env.ALDUS_ECOSYSTEM_RESUME_LABEL || 'Resumed from KOReader';
 
 test('web participates in the KOReader progress handoff', async ({ page }) => {
   test.skip(!phase, 'Run by the KOReader acceptance job.');
@@ -22,7 +23,7 @@ test('web participates in the KOReader progress handoff', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Next page' })).toBeVisible({ timeout: 30_000 });
 
   if (phase === 'verify') {
-    await expect(page.getByText('Resumed from KOReader')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(resumeLabel)).toBeVisible({ timeout: 15_000 });
   } else {
     expect(phase).toBe('seed');
   }

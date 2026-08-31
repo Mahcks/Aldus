@@ -8,6 +8,7 @@ CONFIG="$ROOT/scripts/ios-release.env"
 PORT=${ALDUS_ACCEPTANCE_PORT:-18082}
 USERNAME=${ALDUS_ACCEPTANCE_USERNAME:-acceptance-admin}
 PASSWORD=${ALDUS_ACCEPTANCE_PASSWORD:-aldus-acceptance-123}
+EXTERNAL_SERVER=${ALDUS_ACCEPTANCE_EXTERNAL_SERVER:-0}
 WORKSPACE=
 SERVER_PID=
 
@@ -22,6 +23,27 @@ require_command() {
 
 team_id_from_subject() {
   sed -nE 's/.*(^|,)OU=([A-Z0-9]{10})(,|$).*/\2/p'
+}
+
+mark_ecosystem_complete() {
+  local cookie="$WORKSPACE/ecosystem.cookies"
+  local progress="$WORKSPACE/ecosystem-progress.json"
+  local body
+  curl --fail --silent --show-error -c "$cookie" \
+    -H 'Content-Type: application/json' \
+    --data "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
+    "$SERVER_URL/api/v1/auth/login" >/dev/null
+  for _ in 1 2 3; do
+    curl --fail --silent --show-error -b "$cookie" \
+      "$SERVER_URL/api/v1/works/alice-gutenberg-11-work/progress" >"$progress"
+    body=$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(JSON.stringify({alignment_id:p.alignment_id,segment_id:p.segment_id,offset:p.offset,expected_revision:p.revision,source_device:"ios-acceptance-complete"}))' "$progress")
+    if curl --fail --silent --show-error -b "$cookie" \
+      -H 'Content-Type: application/json' -X PUT --data "$body" \
+      "$SERVER_URL/api/v1/works/alice-gutenberg-11-work/progress" >"$ARTIFACT_DIR/ecosystem-complete.json"; then
+      return
+    fi
+  done
+  fail "Could not mark the completed iPhone ecosystem handoff"
 }
 
 if [[ ${1:-} == self-test ]]; then
@@ -41,16 +63,20 @@ WORKSPACE=$(mktemp -d "${TMPDIR:-/tmp}/aldus-ios-acceptance.XXXXXX")
 trap cleanup EXIT INT TERM
 
 [[ $(uname -s) == Darwin ]] || fail "iPhone acceptance must run on a Mac"
-for command in bun curl ffprobe go node openssl security xcodebuild xcrun; do
+for command in bun curl node openssl security xcodebuild xcrun; do
   require_command "$command"
 done
-if [[ ! -f $ROOT/test-fixtures/alice/media/alice.epub || ! -f $ROOT/test-fixtures/alice/media/alice-chapter-01.mp3 ]]; then
-  echo "Downloading the frozen Alice acceptance fixture..."
-  "$ROOT/test-fixtures/alice/fetch.sh"
+if [[ $EXTERNAL_SERVER != 1 ]]; then
+  require_command ffprobe
+  require_command go
+  if [[ ! -f $ROOT/test-fixtures/alice/media/alice.epub || ! -f $ROOT/test-fixtures/alice/media/alice-chapter-01.mp3 ]]; then
+    echo "Downloading the frozen Alice acceptance fixture..."
+    "$ROOT/test-fixtures/alice/fetch.sh"
+  fi
+  ffprobe -v error -show_entries format=duration -of json \
+    "$ROOT/test-fixtures/alice/media/alice-chapter-01.mp3" >/dev/null || \
+    fail "ffprobe could not read the Alice audio fixture"
 fi
-ffprobe -v error -show_entries format=duration -of json \
-  "$ROOT/test-fixtures/alice/media/alice-chapter-01.mp3" >/dev/null || \
-  fail "ffprobe could not read the Alice audio fixture"
 
 DEVICE=${DEVICE:-}
 if [[ -z $DEVICE ]]; then
@@ -90,29 +116,33 @@ echo "Signing team: $DEVELOPMENT_TEAM"
 echo "Fixture server: $SERVER_URL"
 echo "Evidence: $ARTIFACT_DIR"
 
-mkdir -p "$WORKSPACE/data"
-(
-  cd "$ROOT/server"
-  ALDUS_ENV=test go run ./cmd/seed-alice \
-    --data-dir "$WORKSPACE/data" \
-    --fixture-dir "$ROOT/test-fixtures/alice/media" \
-    --artifact "$ROOT/test-fixtures/alice/automatic/hybrid-whisperx/alignment.json"
-  go build -o "$WORKSPACE/aldus-server" ./cmd/app
-)
+if [[ $EXTERNAL_SERVER == 1 ]]; then
+  curl --fail --silent "$SERVER_URL/api/ready" >/dev/null || fail "External fixture server is not ready at $SERVER_URL"
+else
+  mkdir -p "$WORKSPACE/data"
+  (
+    cd "$ROOT/server"
+    ALDUS_ENV=test go run ./cmd/seed-alice \
+      --data-dir "$WORKSPACE/data" \
+      --fixture-dir "$ROOT/test-fixtures/alice/media" \
+      --artifact "$ROOT/test-fixtures/alice/automatic/hybrid-whisperx/alignment.json"
+    go build -o "$WORKSPACE/aldus-server" ./cmd/app
+  )
 
-ALDUS_ENV=test \
-ALDUS_ADDR="0.0.0.0:$PORT" \
-ALDUS_DATA_DIR="$WORKSPACE/data" \
-ALDUS_BACKUP_DIR="$WORKSPACE/data/backups" \
-"$WORKSPACE/aldus-server" >"$ARTIFACT_DIR/server.log" 2>&1 &
-SERVER_PID=$!
+  ALDUS_ENV=test \
+  ALDUS_ADDR="0.0.0.0:$PORT" \
+  ALDUS_DATA_DIR="$WORKSPACE/data" \
+  ALDUS_BACKUP_DIR="$WORKSPACE/data/backups" \
+  "$WORKSPACE/aldus-server" >"$ARTIFACT_DIR/server.log" 2>&1 &
+  SERVER_PID=$!
 
-for _ in {1..80}; do
-  kill -0 "$SERVER_PID" >/dev/null 2>&1 || fail "Fixture server exited; see $ARTIFACT_DIR/server.log"
-  curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null && break
-  sleep 0.25
-done
-curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null || fail "Fixture server did not become ready"
+  for _ in {1..80}; do
+    kill -0 "$SERVER_PID" >/dev/null 2>&1 || fail "Fixture server exited; see $ARTIFACT_DIR/server.log"
+    curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null && break
+    sleep 0.25
+  done
+  curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null || fail "Fixture server did not become ready"
+fi
 
 (
   cd "$ROOT/app"
@@ -128,6 +158,10 @@ node "$ROOT/scripts/configure-ios-acceptance.js" \
 xcrun devicectl device uninstall app --device "$DEVICE" com.mahcks.aldus.acceptance >/dev/null 2>&1 || true
 
 set -o pipefail
+TEST_SELECTION=()
+if [[ -n ${ALDUS_ACCEPTANCE_ONLY_TEST:-} ]]; then
+  TEST_SELECTION+=("-only-testing:AldusUITests/AldusUITests/$ALDUS_ACCEPTANCE_ONLY_TEST")
+fi
 xcodebuild test \
   -workspace "$ROOT/app/ios/Aldus.xcworkspace" \
   -scheme AldusAcceptance \
@@ -135,12 +169,31 @@ xcodebuild test \
   -destination "platform=iOS,id=$DEVICE" \
   -derivedDataPath "$ARTIFACT_DIR/DerivedData" \
   -resultBundlePath "$ARTIFACT_DIR/AldusAcceptance.xcresult" \
+  "${TEST_SELECTION[@]}" \
   -collect-test-diagnostics never \
   -allowProvisioningUpdates \
   CODE_SIGN_STYLE=Automatic \
   DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"
 
-cat >"$ARTIFACT_DIR/summary.txt" <<EOF
+if [[ $EXTERNAL_SERVER == 1 && ${ALDUS_ACCEPTANCE_ONLY_TEST:-} == testEcosystemHandoff ]]; then
+  mark_ecosystem_complete
+fi
+
+if [[ -n ${ALDUS_ACCEPTANCE_ONLY_TEST:-} ]]; then
+  cat >"$ARTIFACT_DIR/summary.txt" <<EOF
+Automated iPhone ecosystem handoff: PASS
+Commit: $(git -C "$ROOT" rev-parse HEAD)
+Device: $DEVICE
+Server: $SERVER_URL
+Test: $ALDUS_ACCEPTANCE_ONLY_TEST
+
+Verified:
+- sign in to the shared fixture server
+- restore canonical progress written by KOReader
+- advance the native EPUB and bridge Read → Listen → Read
+EOF
+else
+  cat >"$ARTIFACT_DIR/summary.txt" <<EOF
 Automated iPhone acceptance: PASS
 Commit: $(git -C "$ROOT" rev-parse HEAD)
 Device: $DEVICE
@@ -162,6 +215,7 @@ Still manual:
 - verify account/server data isolation
 - quick smoke of the actual TestFlight binary
 EOF
+fi
 
 echo "Automated iPhone acceptance passed"
 echo "Review $ARTIFACT_DIR/summary.txt and the screenshots in AldusAcceptance.xcresult"

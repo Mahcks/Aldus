@@ -62,19 +62,28 @@ promotion; fix it, produce a new build from the new exact commit, and start a ne
 
 ## Physical KOReader acceptance
 
-### Automated split gate
+### Automated ecosystem handoff
 
-GitHub CI runs the `koreader-e2e` job automatically. It downloads the checksum-pinned official
-KOReader Linux release onto the disposable runner, then runs Web → KOReader → Web against one
-frozen Alice fixture server. Its artifact contains screenshots, logs, and every progress revision.
-No KOReader source, build, or cache is stored on the Mac.
+On the Linux computer, run:
 
-Run `make ios-acceptance` separately on the Mac connected to the unlocked iPhone. Together with
-`TestExactProgressCrossClientAcceptance`, these checks cover the real Web and KOReader clients, the
-real native iPhone reader, and the shared canonical conversion contract. They intentionally do not
-claim that CI and the physical iPhone used one live server process; that would require a public
-staging service. The physical e-ink checks below still cover screen appearance, device sleep and
-network behavior, and HTTPS deployment.
+```sh
+make ecosystem-acceptance
+```
+
+It starts an isolated fixture server on port `18083`, then runs Web → real KOReader and pauses. It
+prints one command to run on the Mac connected to the unlocked iPhone. The iPhone connects to the
+same Linux fixture over the LAN; after its progress arrives, Linux finishes KOReader → Web. Do not
+use the development server on port `8080`: the acceptance server has disposable data and exits when
+the run finishes. Set `ALDUS_ECOSYSTEM_LAN_ADDRESS=<linux-ip>` only if automatic address detection
+picks the wrong interface.
+
+The Mac stores no KOReader source, build, or cache. The Linux runner downloads the checksum-pinned
+official release into a temporary directory and removes it afterward. Evidence is stored under
+`artifacts/ecosystem/` on Linux and `artifacts/ios/` on the Mac.
+
+GitHub CI also runs `koreader-e2e` automatically without the physical-iPhone phase. The physical
+e-ink checks below still cover screen appearance, device sleep and network behavior, and HTTPS
+deployment.
 
 Run this matrix on at least one current KOReader release before advertising KOReader support for a
 server release. Download the EPUB from Aldus's OPDS catalog; importing a different copy can produce

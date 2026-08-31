@@ -160,6 +160,7 @@ it('counts sleep timers from an absolute deadline', () => {
 
 it('labels saved progress without exposing raw device identifiers', () => {
   expect(progressSourceLabel('koreader:max:kindle')).toBe('KOReader');
+  expect(progressSourceLabel('ios-acceptance-complete')).toBe('Aldus on iOS');
   expect(progressSourceLabel('web')).toBe('Aldus web');
   expect(progressSourceLabel('unexpected-device-id')).toBe('another device');
   expect(resumedProgressLabel('koreader:max:kindle')).toBe('Resumed from KOReader');

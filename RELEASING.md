@@ -111,6 +111,7 @@ record the result in the candidate record.
 - [ ] Internal iOS build completed when required: `make ios-testflight`
 - [ ] A copy of `docs/product-mvp-acceptance.md` completed on a physical iPhone
 - [ ] CI `koreader-e2e` passes for real KOReader ↔ Web handoffs
+- [ ] `make ecosystem-acceptance` passes for Web ↔ KOReader ↔ physical iPhone handoffs
 - [ ] External TestFlight promotion completed: `make ios-external BUILD_ID=<processed-build-id>`
 
 If a phase stops, do not restart completed phases blindly. Rerun `make release-status`, then resume

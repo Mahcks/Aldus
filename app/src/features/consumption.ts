@@ -90,7 +90,7 @@ export function formatAudioTime(seconds: number) {
 export function progressSourceLabel(source?: string) {
   if (source?.startsWith('koreader')) return 'KOReader';
   if (source === 'web') return 'Aldus web';
-  if (source === 'ios') return 'Aldus on iOS';
+  if (source?.startsWith('ios')) return 'Aldus on iOS';
   if (source === 'android') return 'Aldus on Android';
   return 'another device';
 }
