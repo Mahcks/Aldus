@@ -39,6 +39,14 @@ final class AldusUITests: XCTestCase {
     enter(password, in: app.secureTextFields["Confirm password"])
     tap("Create administrator", in: app)
 
+    guard app.staticTexts["Libraries"].waitForExistence(timeout: 15) else {
+      let visibleText = app.staticTexts.allElementsBoundByIndex
+        .map(\.label)
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
+      XCTFail("Administrator creation did not reach Libraries. Visible text: \(visibleText)")
+      return
+    }
     tap("Public", in: app)
     openAlice(in: app)
 
