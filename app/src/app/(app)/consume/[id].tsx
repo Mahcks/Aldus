@@ -104,7 +104,9 @@ type ProgressConflict = { local: CanonicalPosition; remote: CanonicalPosition };
 const ACCEPTANCE_NETWORK_LABELS = {
   idle: 'Toggle acceptance network',
   busy: 'Changing acceptance network…',
-  toggled: 'Acceptance network toggled',
+  disconnected: 'Acceptance network disconnected',
+  waiting: 'Waiting for acceptance sync…',
+  reconciled: 'Acceptance progress reconciled',
   failed: 'Acceptance network toggle failed',
 } as const;
 
@@ -1533,10 +1535,40 @@ export default function ConsumeWorkScreen() {
   async function toggleAcceptanceNetwork() {
     setAcceptanceNetworkState('busy');
     try {
+      const queued = work ? await pendingProgress(work.id) : null;
       const response = await fetch(`${getAPIBaseURL()}/__acceptance/network/toggle`, {
         method: 'POST',
       });
-      setAcceptanceNetworkState(response.ok ? 'toggled' : 'failed');
+      const network = response.headers.get('X-Aldus-Acceptance-Network');
+      if (!response.ok || (network !== 'on' && network !== 'off')) throw new Error();
+      if (network === 'off') {
+        setAcceptanceNetworkState('disconnected');
+        return;
+      }
+      if (!work || !queued) throw new Error();
+      setAcceptanceNetworkState('waiting');
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        if (!(await pendingProgress(work.id))) {
+          const remote = await api.workProgress(work.id);
+          if (
+            !remote ||
+            remote.alignment_id !== queued.alignment_id ||
+            remote.segment_id !== queued.segment_id ||
+            remote.offset !== queued.offset
+          )
+            throw new Error();
+          progressRef.current = remote;
+          setProgress(remote);
+          await updateOfflineProgress(work.id, remote);
+          setSyncAvailable(true);
+          setSaveState('saved');
+          setNotice('');
+          setAcceptanceNetworkState('reconciled');
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      throw new Error();
     } catch {
       setAcceptanceNetworkState('failed');
     }

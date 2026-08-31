@@ -68,7 +68,7 @@ final class AldusUITests: XCTestCase {
     XCTAssertTrue(element(containing: "Saved here", in: app).waitForExistence(timeout: timeout))
 
     if environment["ALDUS_ACCEPTANCE_FAULTS"] == "1" {
-      toggleFixtureNetwork(in: app)
+      toggleFixtureNetwork(in: app, expecting: "Acceptance network disconnected")
       nextPage.tap()
       XCTAssertTrue(
         element(containing: "Saved on this device", in: app).waitForExistence(timeout: timeout),
@@ -81,11 +81,21 @@ final class AldusUITests: XCTestCase {
       XCTAssertTrue(app.buttons["Next page"].waitForExistence(timeout: timeout))
       evidence("02-offline-reader-restored")
 
-      toggleFixtureNetwork(in: app)
+      tap("Toggle acceptance network", in: app)
+      XCTAssertTrue(app.buttons["Waiting for acceptance sync…"].waitForExistence(timeout: 15))
       XCUIDevice.shared.press(.home)
       app.activate()
+      let reconciliation = app.buttons
+        .matching(
+          NSPredicate(
+            format: "label IN %@",
+            ["Acceptance progress reconciled", "Acceptance network toggle failed"]
+          )
+        )
+        .firstMatch
+      XCTAssertTrue(reconciliation.waitForExistence(timeout: timeout))
       XCTAssertTrue(
-        element(containing: "Resumed from Aldus on iOS", in: app).waitForExistence(timeout: timeout),
+        reconciliation.label == "Acceptance progress reconciled",
         "Queued progress should reconcile after the fixture server returns"
       )
       nextPage.tap()
@@ -226,10 +236,10 @@ final class AldusUITests: XCTestCase {
     continueReading.tap()
   }
 
-  private func toggleFixtureNetwork(in app: XCUIApplication) {
+  private func toggleFixtureNetwork(in app: XCUIApplication, expecting state: String) {
     tap("Toggle acceptance network", in: app)
     XCTAssertTrue(
-      app.buttons["Acceptance network toggled"].waitForExistence(timeout: 15),
+      app.buttons[state].waitForExistence(timeout: 15),
       "The acceptance app could not toggle the fixture network"
     )
   }

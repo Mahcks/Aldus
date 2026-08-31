@@ -25,17 +25,25 @@ func main() {
 
 	handler := http.NewServeMux()
 	handler.HandleFunc("POST /__acceptance/network/{state}", func(w http.ResponseWriter, r *http.Request) {
-		switch r.PathValue("state") {
+		state := r.PathValue("state")
+		switch state {
 		case "on":
 			online.Store(true)
 		case "off":
 			online.Store(false)
 		case "toggle":
-			online.Store(!online.Load())
+			if online.Load() {
+				online.Store(false)
+				state = "off"
+			} else {
+				online.Store(true)
+				state = "on"
+			}
 		default:
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set("X-Aldus-Acceptance-Network", state)
 		w.WriteHeader(http.StatusNoContent)
 	})
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
