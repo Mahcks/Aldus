@@ -69,13 +69,21 @@ cleanup() {
   fi
   [[ -z $WORKSPACE ]] || rm -rf "$WORKSPACE"
 }
+
+[[ $(uname -s) == Darwin ]] || fail "iPhone acceptance must run on a Mac"
+for cache in "$ROOT"/artifacts/ios/acceptance-*/DerivedData; do
+  [[ ! -d $cache ]] || rm -rf "$cache"
+done
 WORKSPACE=$(mktemp -d "${TMPDIR:-/tmp}/aldus-ios-acceptance.XXXXXX")
 trap cleanup EXIT INT TERM
 
-[[ $(uname -s) == Darwin ]] || fail "iPhone acceptance must run on a Mac"
-for command in bun curl node openssl security xcodebuild xcrun; do
+for command in bun curl df node openssl security xcodebuild xcrun; do
   require_command "$command"
 done
+FREE_KB=$(df -Pk "$ROOT" | awk 'NR == 2 { print $4 }')
+[[ $FREE_KB =~ ^[0-9]+$ ]] || fail "Could not determine available disk space"
+(( FREE_KB >= 8 * 1024 * 1024 )) || \
+  fail "iPhone acceptance needs at least 8 GB free; old disposable build caches are under $ROOT/artifacts/ios/*/DerivedData"
 if [[ $EXTERNAL_SERVER != 1 ]]; then
   require_command ffprobe
   require_command go
@@ -186,7 +194,7 @@ run_xcodebuild() {
     -scheme AldusAcceptance \
     -configuration Release \
     -destination "platform=iOS,id=$DEVICE" \
-    -derivedDataPath "$ARTIFACT_DIR/DerivedData" \
+    -derivedDataPath "$WORKSPACE/DerivedData" \
     -resultBundlePath "$ARTIFACT_DIR/AldusAcceptance.xcresult" \
     "$@" \
     -collect-test-diagnostics never \
