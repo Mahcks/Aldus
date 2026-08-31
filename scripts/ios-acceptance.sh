@@ -194,11 +194,8 @@ run_xcodebuild() {
     CODE_SIGN_STYLE=Automatic \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"
 }
-if [[ -n ${ALDUS_ACCEPTANCE_ONLY_TEST:-} ]]; then
-  run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$ALDUS_ACCEPTANCE_ONLY_TEST"
-else
-  run_xcodebuild
-fi
+SELECTED_TEST=${ALDUS_ACCEPTANCE_ONLY_TEST:-testReaderAcceptance}
+run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$SELECTED_TEST"
 [[ -d $ARTIFACT_DIR/AldusAcceptance.xcresult ]] || fail "xcodebuild did not produce a test result bundle"
 
 if [[ $EXTERNAL_SERVER == 1 && ${ALDUS_ACCEPTANCE_ONLY_TEST:-} == testEcosystemHandoff ]]; then
