@@ -20,7 +20,11 @@ func TestImportAliceEPUB(t *testing.T) {
 	}
 	const first = "Alice was beginning to get very tired of sitting by her sister on the bank"
 	found := false
+	heading := false
 	for _, paragraph := range book.Paragraphs {
+		if paragraph.Href == "OEBPS/6260297267691793459_11-h-1.htm.xhtml" && paragraph.DOMPath == "html[1]/body[1]/div[1]/h2[1]" {
+			heading = true
+		}
 		if paragraph.Href == "OEBPS/6260297267691793459_11-h-1.htm.xhtml" && paragraph.DOMPath == "html[1]/body[1]/div[1]/p[1]" && len(paragraph.Text) >= len(first) && paragraph.Text[:len(first)] == first {
 			xpointer, err := canonicalToKOReader(MarshalKOReaderParagraph(paragraph), 0)
 			if err != nil || xpointer != "/body/DocFragment[3]/body[1]/div[1]/p[1]/text()[1].1" {
@@ -31,5 +35,8 @@ func TestImportAliceEPUB(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("Chapter 1 first paragraph did not retain its real resource and DOM path")
+	}
+	if !heading {
+		t.Fatal("Chapter 1 heading was not indexed")
 	}
 }

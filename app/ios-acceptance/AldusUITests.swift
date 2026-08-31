@@ -123,6 +123,54 @@ final class AldusUITests: XCTestCase {
     evidence("04-account-controls")
   }
 
+  func testEcosystemHandoff() throws {
+    let environment = ProcessInfo.processInfo.environment
+    let server = try XCTUnwrap(environment["ALDUS_ACCEPTANCE_SERVER"])
+    let username = environment["ALDUS_ACCEPTANCE_USERNAME"] ?? "ecosystem-admin"
+    let password = environment["ALDUS_ACCEPTANCE_PASSWORD"] ?? "aldus-ecosystem-123"
+    let app = XCUIApplication()
+
+    addUIInterruptionMonitor(withDescription: "Local network access") { alert in
+      let allow = alert.buttons["Allow"]
+      guard allow.exists else { return false }
+      allow.tap()
+      return true
+    }
+
+    app.launch()
+    enter(server, in: app.textFields["Library address"])
+    tap("Continue", in: app)
+    app.tap()
+
+    let usernameField = app.textFields["Username"]
+    if !usernameField.waitForExistence(timeout: 5) {
+      tap("Continue", in: app)
+    }
+    enter(username, in: usernameField)
+    enter(password, in: app.secureTextFields["Password"])
+    tap("Sign in", in: app)
+
+    tap("Public", in: app)
+    let alice = element(startingWith: "Alice's Adventures in Wonderland", in: app)
+    XCTAssertTrue(alice.waitForExistence(timeout: timeout))
+    alice.tap()
+    tap("Continue reading", in: app)
+
+    XCTAssertTrue(app.buttons["Next page"].waitForExistence(timeout: timeout))
+    XCTAssertTrue(
+      element(containing: "Resumed from KOReader", in: app).waitForExistence(timeout: timeout),
+      "The iPhone did not restore KOReader's position"
+    )
+    evidence("ecosystem-01-koreader-restored")
+    tap("Next page", in: app)
+    XCTAssertTrue(element(containing: "Saved here", in: app).waitForExistence(timeout: timeout))
+    tap("Switch to listening", in: app)
+    XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: timeout))
+    tap("Switch to reading", in: app)
+    XCTAssertTrue(app.buttons["Next page"].waitForExistence(timeout: timeout))
+    evidence("ecosystem-02-ios-advanced")
+  }
+
   private func enter(_ value: String, in field: XCUIElement) {
     XCTAssertTrue(field.waitForExistence(timeout: timeout))
     field.tap()

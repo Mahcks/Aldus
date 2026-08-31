@@ -61,6 +61,31 @@ promotion; fix it, produce a new build from the new exact commit, and start a ne
 
 ## Physical KOReader acceptance
 
+### Automated ecosystem handoff
+
+On the Mac connected to an unlocked iPhone, run:
+
+```sh
+make ecosystem-acceptance
+```
+
+The runner uses one fixture server and runs Web → native macOS KOReader → physical iPhone →
+KOReader → Web sequentially. It does not start Android or run the clients at the same time. The
+first run builds a pinned KOReader emulator with two build jobs and caches it under `.tools/`; later
+runs reuse that build. Use `KOREADER_JOBS=1 make ecosystem-acceptance` if the first build needs an
+even lower CPU/memory ceiling. Evidence is written under `artifacts/ecosystem/`.
+
+KOReader's macOS build prerequisites are installed once with:
+
+```sh
+brew install autoconf automake bash binutils cmake coreutils findutils gettext gnu-getopt libtool make meson nasm ninja pkgconf sdl3 util-linux
+```
+
+This automation proves the real KOReader client can authenticate, download the byte-identical EPUB
+through OPDS, render each pulled XPointer, advance, and bridge canonical progress through web and
+iOS. It complements rather than replaces the physical e-ink checks below: screen appearance,
+device sleep/network behavior, and an HTTPS deployment still need a real KOReader device.
+
 Run this matrix on at least one current KOReader release before advertising KOReader support for a
 server release. Download the EPUB from Aldus's OPDS catalog; importing a different copy can produce
 a different KOReader document checksum and is not a valid sync test.

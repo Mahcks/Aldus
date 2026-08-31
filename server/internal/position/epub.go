@@ -25,8 +25,9 @@ type EPUBParagraph struct {
 }
 
 type KOReaderTextNode struct {
-	Path string `json:"path"`
-	Text string `json:"text"`
+	Path   string `json:"path"`
+	Text   string `json:"text"`
+	Offset int    `json:"offset,omitempty"`
 }
 
 type KOReaderParagraph struct {
@@ -151,7 +152,7 @@ func readParagraphs(file *zip.File, href string, fragment int) ([]EPUBParagraph,
 				index = parent.children[token.Name.Local]
 			}
 			stack = append(stack, node{name: token.Name.Local, index: index, children: map[string]int{}})
-			if token.Name.Local == "p" && paragraphDepth == 0 {
+			if textBlock(token.Name.Local) && paragraphDepth == 0 {
 				paragraphDepth = len(stack)
 				parts := make([]string, len(stack))
 				for i, item := range stack {
@@ -186,4 +187,8 @@ func readParagraphs(file *zip.File, href string, fragment int) ([]EPUBParagraph,
 		}
 	}
 	return paragraphs, nil
+}
+
+func textBlock(name string) bool {
+	return name == "p" || len(name) == 2 && name[0] == 'h' && name[1] >= '1' && name[1] <= '6'
 }

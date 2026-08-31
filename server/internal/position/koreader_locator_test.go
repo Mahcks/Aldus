@@ -1,6 +1,9 @@
 package position
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestKOReaderLocatorRoundTrip(t *testing.T) {
 	raw := MarshalKOReaderParagraph(EPUBParagraph{
@@ -28,6 +31,30 @@ func TestKOReaderLocatorRoundTrip(t *testing.T) {
 	resolved, err = koReaderToCanonical(raw, "/body/DocFragment[3]/body/div/p/text().7")
 	if err != nil || resolved == 0 {
 		t.Fatalf("legacy XPointer resolved to %d, %v", resolved, err)
+	}
+}
+
+func TestKOReaderRangeDoesNotClaimSiblingText(t *testing.T) {
+	paragraph := EPUBParagraph{KOReaderFragment: 2, KOReaderNodes: []KOReaderTextNode{
+		{Path: "html[1]/body[1]/p[1]/text()[1]", Text: "Before and "},
+		{Path: "html[1]/body[1]/p[1]/em[1]/text()[1]", Text: "inside after"},
+	}}
+	raw, err := MarshalKOReaderRange(paragraph, "html[1]/body[1]/p[1]/em[1]/text()[1]", 0, "html[1]/body[1]/p[1]/em[1]/text()[1]", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xpointer, err := canonicalToKOReader(raw, 0)
+	if err != nil || xpointer != "/body/DocFragment[2]/body[1]/p[1]/em[1]/text()[1].0" {
+		t.Fatalf("range start = %q, %v", xpointer, err)
+	}
+	if _, err := koReaderToCanonical(raw, "/body/DocFragment[2]/body/p/text().2"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("sibling text resolved: %v", err)
+	}
+	if _, err := koReaderToCanonical(raw, "/body/DocFragment[2]/body/p/em/text().8"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("later text resolved: %v", err)
+	}
+	if _, err := MarshalKOReaderRange(paragraph, paragraph.KOReaderNodes[0].Path, 0, paragraph.KOReaderNodes[0].Path, 0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("empty range accepted: %v", err)
 	}
 }
 

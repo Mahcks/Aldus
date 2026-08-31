@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/mahcks/aldus/server/internal/position"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 	JobID        = "alice-hybrid-whisperx-job"
 	epubHash     = "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c"
 	audioHash    = "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a"
+	koreaderHash = "abb11be65399f96116fd90ab861dda0e"
 )
 
 type artifact struct {
@@ -85,6 +88,14 @@ func Seed(ctx context.Context, db *sql.DB, dataDir, fixtureDir, artifactPath str
 	if err != nil {
 		return err
 	}
+	book, err := position.ImportEPUB(filepath.Join(fixtureDir, "alice.epub"))
+	if err != nil {
+		return fmt.Errorf("index Alice EPUB: %w", err)
+	}
+	paragraphs := make(map[string]position.EPUBParagraph, len(book.Paragraphs))
+	for _, paragraph := range book.Paragraphs {
+		paragraphs[paragraph.Href+"\x00"+paragraph.DOMPath] = paragraph
+	}
 	now := time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -127,6 +138,7 @@ func Seed(ctx context.Context, db *sql.DB, dataDir, fixtureDir, artifactPath str
 		{`INSERT OR IGNORE INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES(?,?,'audiobook','Chapter One narration',?,?)`, []any{audioRepID, workID, now, now}},
 		{`INSERT OR IGNORE INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'epub',?,?,?,'alice.epub',?)`, []any{epubMediaID, epubRepID, epubRel, epubHash, now, epubSize}},
 		{`INSERT OR IGNORE INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'audiobook',?,?,?,'alice-chapter-01.mp3',?)`, []any{audioMediaID, audioRepID, audioRel, audioHash, now, audioSize}},
+		{`INSERT OR IGNORE INTO koreader_aliases(document_id,media_id) VALUES(?,?)`, []any{koreaderHash, epubMediaID}},
 		{`INSERT OR IGNORE INTO alignments(id,epub_media_id,audio_media_id,revision,state,created_at) VALUES(?,?,?,1,'ready',?)`, []any{AlignmentID, epubMediaID, audioMediaID, now}},
 		{`INSERT OR IGNORE INTO alignment_inputs(alignment_id,media_id,role) VALUES(?,?,'epub'),(?,?,'audio')`, []any{AlignmentID, epubMediaID, AlignmentID, audioMediaID}},
 	}
@@ -136,10 +148,20 @@ func Seed(ctx context.Context, db *sql.DB, dataDir, fixtureDir, artifactPath str
 		}
 	}
 	for _, segment := range a.Segments {
+		startPath := paragraphPath(segment.EPUB.Start.DOMPath)
+		endPath := paragraphPath(segment.EPUB.End.DOMPath)
+		paragraph, ok := paragraphs[segment.EPUB.Href+"\x00"+startPath]
+		if !ok || startPath != endPath {
+			return fmt.Errorf("map Alice segment %s to KOReader paragraph", segment.ID)
+		}
+		koreader, err := position.MarshalKOReaderRange(paragraph, segment.EPUB.Start.DOMPath, segment.EPUB.Start.NodeOffset, segment.EPUB.End.DOMPath, segment.EPUB.End.NodeOffset)
+		if err != nil {
+			return fmt.Errorf("map Alice segment %s to KOReader range: %w", segment.ID, err)
+		}
 		locator, _ := json.Marshal(map[string]any{"type": "dom-element", "dom_path": paragraphPath(segment.EPUB.Start.DOMPath), "segment_id": segment.ID, "start": segment.EPUB.Start, "end": segment.EPUB.End})
 		confidence, _ := json.Marshal(map[string]any{"confidence": json.RawMessage(segment.Confidence), "alignment_quality": segment.Quality})
 		highlightable := segment.Quality.Status == "aligned"
-		_, err := tx.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms,word_timings,highlightable,alignment_status,confidence_signals) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(alignment_id,id) DO UPDATE SET epub_locator=excluded.epub_locator`, AlignmentID, segment.ID, segment.Sequence, segment.Text, segment.EPUB.Href, string(locator), "unavailable:"+segment.ID, segment.Audio.Resource, segment.Audio.StartMS, segment.Audio.EndMS, string(segment.WordTimings), highlightable, segment.Quality.Status, string(confidence))
+		_, err = tx.ExecContext(ctx, `INSERT INTO alignment_segments(alignment_id,id,ordinal,text,epub_href,epub_locator,koreader_locator,audio_resource,audio_start_ms,audio_end_ms,word_timings,highlightable,alignment_status,confidence_signals) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(alignment_id,id) DO UPDATE SET epub_locator=excluded.epub_locator,koreader_locator=excluded.koreader_locator`, AlignmentID, segment.ID, segment.Sequence, segment.Text, segment.EPUB.Href, string(locator), koreader, segment.Audio.Resource, segment.Audio.StartMS, segment.Audio.EndMS, string(segment.WordTimings), highlightable, segment.Quality.Status, string(confidence))
 		if err != nil {
 			return fmt.Errorf("seed Alice segment %s: %w", segment.ID, err)
 		}

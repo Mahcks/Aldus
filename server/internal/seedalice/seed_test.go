@@ -54,6 +54,10 @@ func TestSeed(t *testing.T) {
 	if inputs != 2 || segments != 87 || highlightable != 85 || unresolved != 2 {
 		t.Fatalf("invalid alignment evidence: %d %d %d %d", inputs, segments, highlightable, unresolved)
 	}
+	var unavailable int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM alignment_segments WHERE alignment_id=? AND koreader_locator LIKE 'unavailable:%'`, AlignmentID).Scan(&unavailable); err != nil || unavailable != 0 {
+		t.Fatalf("KOReader fixture ranges unavailable: %d, %v", unavailable, err)
+	}
 	var locator string
 	if err := db.QueryRow(`SELECT epub_locator FROM alignment_segments WHERE alignment_id=? AND id='item4-s57'`, AlignmentID).Scan(&locator); err != nil {
 		t.Fatal(err)
@@ -75,6 +79,14 @@ func TestSeed(t *testing.T) {
 	target, err := position.New(db).CanonicalToAudio(context.Background(), canonical)
 	if err != nil || target.TimestampMS != 33700 {
 		t.Fatalf("resolve seeded audio: %#v %v", target, err)
+	}
+	koreader, err := position.New(db).CanonicalToKOReader(context.Background(), position.Canonical{AlignmentID: AlignmentID, SegmentID: "item4-s4", Offset: 500_000})
+	if err != nil {
+		t.Fatalf("resolve seeded KOReader range: %v", err)
+	}
+	canonical, err = position.New(db).KOReaderToCanonical(context.Background(), koreader)
+	if err != nil || canonical.SegmentID != "item4-s4" {
+		t.Fatalf("round trip seeded KOReader range: %#v %v", canonical, err)
 	}
 	canonical, err = position.New(db).EPUBToCanonical(context.Background(), AlignmentID, position.EPUBLocator{Href: "OEBPS/6260297267691793459_11-h-1.htm.xhtml", Locator: []byte(`{"type":"dom-element","dom_path":"html[1]/body[1]/div[1]/p[14]","segment_id":"item4-s60"}`), Offset: 500_000})
 	if err != nil || canonical.SegmentID != "item4-s60" || canonical.Offset != 500_000 {
@@ -112,6 +124,14 @@ func TestSeed(t *testing.T) {
 		back, err := position.New(db).AudioToCanonical(context.Background(), AlignmentID, position.AudioLocator{Resource: item.resource, TimestampMS: item.start + (item.end-item.start)*2/3})
 		if err != nil || back.SegmentID == "" || back.Offset < 0 || back.Offset > 1_000_000 {
 			t.Fatalf("listen audit %s: %#v %v", item.id, back, err)
+		}
+		koreader, err := position.New(db).CanonicalToKOReader(context.Background(), position.Canonical{AlignmentID: AlignmentID, SegmentID: item.id, Offset: 430_000})
+		if err != nil {
+			t.Fatalf("KOReader audit %s: %v", item.id, err)
+		}
+		back, err = position.New(db).KOReaderToCanonical(context.Background(), koreader)
+		if err != nil || back.SegmentID != item.id || back.Offset < 0 || back.Offset > 1_000_000 {
+			t.Fatalf("KOReader round trip %s: %#v %v", item.id, back, err)
 		}
 	}
 	if len(positions) != 85 {

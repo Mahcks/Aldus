@@ -191,10 +191,14 @@ func TestJobReadyDuplicateAndAuthorization(t *testing.T) {
 	if err != nil || canonical.AlignmentID != job.ID || canonical.SegmentID != "s000001" {
 		t.Fatalf("KOReader round trip=%#v, %v", canonical, err)
 	}
+	updated, skipped, err := s.manager.BackfillKOReader(ctx)
+	if err != nil || updated != 0 || skipped != 0 {
+		t.Fatalf("current KOReader locators backfilled=%d/%d, %v", updated, skipped, err)
+	}
 	if _, err := s.manager.db.Exec(`UPDATE alignment_segments SET koreader_locator='unavailable:s000001' WHERE alignment_id=?; DELETE FROM koreader_aliases WHERE media_id='epub'`, job.ID); err != nil {
 		t.Fatal(err)
 	}
-	updated, skipped, err := s.manager.BackfillKOReader(ctx)
+	updated, skipped, err = s.manager.BackfillKOReader(ctx)
 	if err != nil || updated != 1 || skipped != 0 {
 		t.Fatalf("KOReader backfill=%d/%d, %v", updated, skipped, err)
 	}

@@ -110,6 +110,7 @@ record the result in the candidate record.
 - [ ] Tag-matched Docs workflow completed as the final server-release phase
 - [ ] Internal iOS build completed when required: `make ios-testflight`
 - [ ] A copy of `docs/product-mvp-acceptance.md` completed on a physical iPhone
+- [ ] `make ecosystem-acceptance` passes for Web ↔ KOReader ↔ physical iPhone handoffs
 - [ ] External TestFlight promotion completed: `make ios-external BUILD_ID=<processed-build-id>`
 
 If a phase stops, do not restart completed phases blindly. Rerun `make release-status`, then resume

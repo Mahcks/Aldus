@@ -18,6 +18,45 @@ func MarshalKOReaderParagraph(paragraph EPUBParagraph) string {
 	return string(data)
 }
 
+func MarshalKOReaderRange(paragraph EPUBParagraph, startPath string, start int, endPath string, end int) (string, error) {
+	if start < 0 || end < 0 {
+		return "", ErrNotFound
+	}
+	foundStart, foundEnd := false, false
+	var nodes []KOReaderTextNode
+	for _, node := range paragraph.KOReaderNodes {
+		if !foundStart {
+			if node.Path != startPath {
+				continue
+			}
+			foundStart = true
+		}
+		runes := []rune(node.Text)
+		from, to := 0, len(runes)
+		if node.Path == startPath {
+			from = start
+		}
+		if node.Path == endPath {
+			to = end
+			foundEnd = true
+		}
+		if from < 0 || from > to || to > len(runes) {
+			return "", ErrNotFound
+		}
+		if from < to {
+			nodes = append(nodes, KOReaderTextNode{Path: node.Path, Text: string(runes[from:to]), Offset: from})
+		}
+		if foundEnd {
+			break
+		}
+	}
+	if !foundStart || !foundEnd || len(nodes) == 0 {
+		return "", ErrNotFound
+	}
+	data, _ := json.Marshal(KOReaderParagraph{Fragment: paragraph.KOReaderFragment, Nodes: nodes})
+	return string(data), nil
+}
+
 func canonicalToKOReader(raw string, offset int) (string, error) {
 	paragraph, characters, err := koCharacters(raw)
 	if err != nil || len(characters) == 0 || offset < 0 || offset > OffsetMax {
@@ -38,6 +77,16 @@ func koReaderToCanonical(raw, xpointer string) (int, error) {
 	}
 	fragment, path, offset, ok := parseKOReaderXPointer(xpointer)
 	if !ok || fragment != paragraph.Fragment {
+		return 0, ErrNotFound
+	}
+	inRange := false
+	for _, node := range paragraph.Nodes {
+		if sameKOPath(node.Path, path) && offset >= node.Offset && offset < node.Offset+len([]rune(node.Text)) {
+			inRange = true
+			break
+		}
+	}
+	if !inRange {
 		return 0, ErrNotFound
 	}
 	for index, character := range characters {
@@ -62,7 +111,7 @@ func koCharacters(raw string) (KOReaderParagraph, []koCharacter, error) {
 	var pending *koCharacter
 	for _, node := range paragraph.Nodes {
 		for offset, r := range []rune(node.Text) {
-			location := koCharacter{path: node.Path, offset: offset}
+			location := koCharacter{path: node.Path, offset: node.Offset + offset}
 			if unicode.IsSpace(r) {
 				pending = &location
 				continue

@@ -179,7 +179,7 @@ func (m *Manager) Wait() {
 // BackfillKOReader upgrades ready alignments created before KOReader locators
 // were published. It leaves incompatible historical alignments untouched.
 func (m *Manager) BackfillKOReader(ctx context.Context) (updated, skipped int, err error) {
-	rows, err := m.db.QueryContext(ctx, `SELECT DISTINCT a.id,a.epub_media_id FROM alignments a JOIN alignment_segments s ON s.alignment_id=a.id WHERE a.state='ready'`)
+	rows, err := m.db.QueryContext(ctx, `SELECT DISTINCT a.id,a.epub_media_id FROM alignments a JOIN alignment_segments s ON s.alignment_id=a.id WHERE a.state='ready' AND (s.koreader_locator='' OR s.koreader_locator LIKE 'unavailable:%')`)
 	if err != nil {
 		return 0, 0, err
 	}
