@@ -38,10 +38,7 @@ final class AldusUITests: XCTestCase {
     enter(password, in: app.secureTextFields["Confirm password"])
     tap("Create administrator", in: app)
 
-    tap("Public", in: app)
-    let alice = element(startingWith: "Alice's Adventures in Wonderland", in: app)
-    XCTAssertTrue(alice.waitForExistence(timeout: timeout))
-    alice.tap()
+    openAliceFromHome(in: app)
 
     tap("Download for offline", in: app)
     XCTAssertTrue(
@@ -150,10 +147,7 @@ final class AldusUITests: XCTestCase {
     enter(password, in: app.secureTextFields["Password"])
     tap("Sign in", in: app)
 
-    tap("Public", in: app)
-    let alice = element(startingWith: "Alice's Adventures in Wonderland", in: app)
-    XCTAssertTrue(alice.waitForExistence(timeout: timeout))
-    alice.tap()
+    openAliceFromHome(in: app)
     let readInstead = app.buttons["Read instead"]
     if readInstead.waitForExistence(timeout: 5) {
       readInstead.tap()
@@ -182,6 +176,15 @@ final class AldusUITests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: timeout))
     field.tap()
     field.typeText(value)
+  }
+
+  private func openAliceFromHome(in app: XCUIApplication) {
+    let title = "Alice's Adventures in Wonderland"
+    let alice = app.links
+      .matching(NSPredicate(format: "label BEGINSWITH %@ OR label BEGINSWITH %@", title, "Open \(title)"))
+      .firstMatch
+    XCTAssertTrue(alice.waitForExistence(timeout: timeout), "Alice is missing from Home")
+    alice.tap()
   }
 
   private func tap(_ label: String, in app: XCUIApplication) {
