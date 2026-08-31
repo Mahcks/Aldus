@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev ios-acceptance ecosystem-acceptance ecosystem-acceptance-check generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
+.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev ios-acceptance koreader-acceptance koreader-acceptance-check generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -45,10 +45,10 @@ ios-dev:
 ios-acceptance:
 	DEVICE="$(DEVICE)" ./scripts/ios-acceptance.sh
 
-ecosystem-acceptance:
-	DEVICE="$(DEVICE)" ./scripts/ecosystem-acceptance.sh
+koreader-acceptance:
+	./scripts/ecosystem-acceptance.sh
 
-ecosystem-acceptance-check:
+koreader-acceptance-check:
 	./scripts/ecosystem-acceptance.sh self-test
 
 release-status:
@@ -107,7 +107,7 @@ build:
 	cd app && bun run build:web
 	cd server && go build ./...
 
-test: ecosystem-acceptance-check
+test: koreader-acceptance-check
 	cd server && go test ./...
 	cd server && go test -race ./...
 	cd app && bun run test

@@ -78,7 +78,7 @@ userpatch.registerPatchPluginFunc("kosync", function(plugin)
             end
             Screen:shot(screenshot)
             if mode == "verify" then
-                finish(true, "KOReader pulled and rendered the iPhone position")
+                finish(true, "KOReader pulled and rendered the Aldus position")
                 return
             end
             if mode ~= "advance" then

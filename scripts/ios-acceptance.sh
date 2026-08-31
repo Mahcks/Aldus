@@ -82,7 +82,6 @@ fi
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 SHORT_SHA=$(git -C "$ROOT" rev-parse --short=12 HEAD)
 ARTIFACT_DIR="$ROOT/artifacts/ios/acceptance-$SHORT_SHA-$STAMP"
-ARTIFACT_DIR=${ALDUS_ACCEPTANCE_ARTIFACT_DIR:-$ARTIFACT_DIR}
 mkdir -p "$ARTIFACT_DIR"
 
 echo "Acceptance app: com.mahcks.aldus.acceptance (your TestFlight app is untouched)"
@@ -91,33 +90,29 @@ echo "Signing team: $DEVELOPMENT_TEAM"
 echo "Fixture server: $SERVER_URL"
 echo "Evidence: $ARTIFACT_DIR"
 
-if [[ ${ALDUS_ACCEPTANCE_EXTERNAL_SERVER:-0} == 1 ]]; then
-  curl --fail --silent "$SERVER_URL/api/ready" >/dev/null || fail "External fixture server is not ready at $SERVER_URL"
-else
-  mkdir -p "$WORKSPACE/data"
-  (
-    cd "$ROOT/server"
-    ALDUS_ENV=test go run ./cmd/seed-alice \
-      --data-dir "$WORKSPACE/data" \
-      --fixture-dir "$ROOT/test-fixtures/alice/media" \
-      --artifact "$ROOT/test-fixtures/alice/automatic/hybrid-whisperx/alignment.json"
-    go build -o "$WORKSPACE/aldus-server" ./cmd/app
-  )
+mkdir -p "$WORKSPACE/data"
+(
+  cd "$ROOT/server"
+  ALDUS_ENV=test go run ./cmd/seed-alice \
+    --data-dir "$WORKSPACE/data" \
+    --fixture-dir "$ROOT/test-fixtures/alice/media" \
+    --artifact "$ROOT/test-fixtures/alice/automatic/hybrid-whisperx/alignment.json"
+  go build -o "$WORKSPACE/aldus-server" ./cmd/app
+)
 
-  ALDUS_ENV=test \
-  ALDUS_ADDR="0.0.0.0:$PORT" \
-  ALDUS_DATA_DIR="$WORKSPACE/data" \
-  ALDUS_BACKUP_DIR="$WORKSPACE/data/backups" \
-  "$WORKSPACE/aldus-server" >"$ARTIFACT_DIR/server.log" 2>&1 &
-  SERVER_PID=$!
+ALDUS_ENV=test \
+ALDUS_ADDR="0.0.0.0:$PORT" \
+ALDUS_DATA_DIR="$WORKSPACE/data" \
+ALDUS_BACKUP_DIR="$WORKSPACE/data/backups" \
+"$WORKSPACE/aldus-server" >"$ARTIFACT_DIR/server.log" 2>&1 &
+SERVER_PID=$!
 
-  for _ in {1..80}; do
-    kill -0 "$SERVER_PID" >/dev/null 2>&1 || fail "Fixture server exited; see $ARTIFACT_DIR/server.log"
-    curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null && break
-    sleep 0.25
-  done
-  curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null || fail "Fixture server did not become ready"
-fi
+for _ in {1..80}; do
+  kill -0 "$SERVER_PID" >/dev/null 2>&1 || fail "Fixture server exited; see $ARTIFACT_DIR/server.log"
+  curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null && break
+  sleep 0.25
+done
+curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null || fail "Fixture server did not become ready"
 
 (
   cd "$ROOT/app"
@@ -133,10 +128,6 @@ node "$ROOT/scripts/configure-ios-acceptance.js" \
 xcrun devicectl device uninstall app --device "$DEVICE" com.mahcks.aldus.acceptance >/dev/null 2>&1 || true
 
 set -o pipefail
-TEST_SELECTION=()
-if [[ -n ${ALDUS_ACCEPTANCE_ONLY_TEST:-} ]]; then
-  TEST_SELECTION+=("-only-testing:AldusUITests/AldusUITests/$ALDUS_ACCEPTANCE_ONLY_TEST")
-fi
 xcodebuild test \
   -workspace "$ROOT/app/ios/Aldus.xcworkspace" \
   -scheme AldusAcceptance \
@@ -144,27 +135,12 @@ xcodebuild test \
   -destination "platform=iOS,id=$DEVICE" \
   -derivedDataPath "$ARTIFACT_DIR/DerivedData" \
   -resultBundlePath "$ARTIFACT_DIR/AldusAcceptance.xcresult" \
-  "${TEST_SELECTION[@]}" \
   -collect-test-diagnostics never \
   -allowProvisioningUpdates \
   CODE_SIGN_STYLE=Automatic \
   DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"
 
-if [[ -n ${ALDUS_ACCEPTANCE_ONLY_TEST:-} ]]; then
-  cat >"$ARTIFACT_DIR/summary.txt" <<EOF
-Automated iPhone ecosystem handoff: PASS
-Commit: $(git -C "$ROOT" rev-parse HEAD)
-Device: $DEVICE
-Server: $SERVER_URL
-Test: $ALDUS_ACCEPTANCE_ONLY_TEST
-
-Verified:
-- sign in to the shared fixture server
-- restore canonical progress written by KOReader
-- advance the native EPUB and bridge Read → Listen → Read
-EOF
-else
-  cat >"$ARTIFACT_DIR/summary.txt" <<EOF
+cat >"$ARTIFACT_DIR/summary.txt" <<EOF
 Automated iPhone acceptance: PASS
 Commit: $(git -C "$ROOT" rev-parse HEAD)
 Device: $DEVICE
@@ -186,7 +162,6 @@ Still manual:
 - verify account/server data isolation
 - quick smoke of the actual TestFlight binary
 EOF
-fi
 
 echo "Automated iPhone acceptance passed"
 echo "Review $ARTIFACT_DIR/summary.txt and the screenshots in AldusAcceptance.xcresult"

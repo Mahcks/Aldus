@@ -22,6 +22,7 @@ template is a checklist, not evidence that any public build passed.
 | Standard AMD64 image | Pending | Release workflow |
 | Standard ARM64 image | Pending | Release workflow |
 | NVIDIA CUDA image | Pending | Release workflow |
+| Real KOReader ↔ Web | Pending | CI `koreader-e2e` artifact |
 
 ## Physical iPhone acceptance
 
@@ -61,30 +62,19 @@ promotion; fix it, produce a new build from the new exact commit, and start a ne
 
 ## Physical KOReader acceptance
 
-### Automated ecosystem handoff
+### Automated split gate
 
-On the Mac connected to an unlocked iPhone, run:
+GitHub CI runs the `koreader-e2e` job automatically. It downloads the checksum-pinned official
+KOReader Linux release onto the disposable runner, then runs Web → KOReader → Web against one
+frozen Alice fixture server. Its artifact contains screenshots, logs, and every progress revision.
+No KOReader source, build, or cache is stored on the Mac.
 
-```sh
-make ecosystem-acceptance
-```
-
-The runner uses one fixture server and runs Web → native macOS KOReader → physical iPhone →
-KOReader → Web sequentially. It does not start Android or run the clients at the same time. The
-first run builds a pinned KOReader emulator with two build jobs and caches it under `.tools/`; later
-runs reuse that build. Use `KOREADER_JOBS=1 make ecosystem-acceptance` if the first build needs an
-even lower CPU/memory ceiling. Evidence is written under `artifacts/ecosystem/`.
-
-KOReader's macOS build prerequisites are installed once with:
-
-```sh
-brew install autoconf automake bash binutils cmake coreutils findutils gettext gnu-getopt libtool make meson nasm ninja pkgconf sdl3 util-linux
-```
-
-This automation proves the real KOReader client can authenticate, download the byte-identical EPUB
-through OPDS, render each pulled XPointer, advance, and bridge canonical progress through web and
-iOS. It complements rather than replaces the physical e-ink checks below: screen appearance,
-device sleep/network behavior, and an HTTPS deployment still need a real KOReader device.
+Run `make ios-acceptance` separately on the Mac connected to the unlocked iPhone. Together with
+`TestExactProgressCrossClientAcceptance`, these checks cover the real Web and KOReader clients, the
+real native iPhone reader, and the shared canonical conversion contract. They intentionally do not
+claim that CI and the physical iPhone used one live server process; that would require a public
+staging service. The physical e-ink checks below still cover screen appearance, device sleep and
+network behavior, and HTTPS deployment.
 
 Run this matrix on at least one current KOReader release before advertising KOReader support for a
 server release. Download the EPUB from Aldus's OPDS catalog; importing a different copy can produce

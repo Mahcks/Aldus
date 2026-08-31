@@ -6,8 +6,8 @@ const phase = process.env.ALDUS_ECOSYSTEM_PHASE;
 const evidence = process.env.ALDUS_ECOSYSTEM_SCREENSHOT;
 const server = process.env.ALDUS_ECOSYSTEM_SERVER;
 
-test('web participates in the cross-client progress handoff', async ({ page }) => {
-  test.skip(!phase, 'Run by make ecosystem-acceptance.');
+test('web participates in the KOReader progress handoff', async ({ page }) => {
+  test.skip(!phase, 'Run by the KOReader acceptance job.');
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Sign in to your library' })).toBeVisible();
@@ -17,13 +17,12 @@ test('web participates in the cross-client progress handoff', async ({ page }) =
   await expect(page).toHaveURL(/\/home$/);
 
   await page.goto('/work/alice-gutenberg-11-work');
-  await page
-    .getByRole('button', { name: phase === 'seed' ? 'Start reading' : 'Continue reading' })
-    .click();
+  const openReader = phase === 'seed' ? 'Start reading' : /Continue reading|Read instead/;
+  await page.getByRole('button', { name: openReader }).click();
   await expect(page.getByRole('button', { name: 'Next page' })).toBeVisible({ timeout: 30_000 });
 
   if (phase === 'verify') {
-    await expect(page.getByText('Resumed from Aldus on iOS')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Resumed from KOReader')).toBeVisible({ timeout: 15_000 });
   } else {
     expect(phase).toBe('seed');
   }
