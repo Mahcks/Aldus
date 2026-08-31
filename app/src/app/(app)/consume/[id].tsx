@@ -75,6 +75,7 @@ import {
 import { AppIcon } from '@/features/icons';
 import { Pressable, ScrollView, Text, View } from '@/features/tw';
 import { APIError, api, errorMessage } from '@/lib/api';
+import { getAPIBaseURL } from '@/lib/api-base';
 import { cachedReaderPreferences, cacheReaderPreferences } from '@/lib/reader-preferences-cache';
 import { productEPUBSource } from '@/lib/epub-source';
 import { goBackOr } from '@/lib/navigation';
@@ -100,6 +101,12 @@ import {
 type Mode = 'read' | 'listen';
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
 type ProgressConflict = { local: CanonicalPosition; remote: CanonicalPosition };
+const ACCEPTANCE_NETWORK_LABELS = {
+  idle: 'Toggle acceptance network',
+  busy: 'Changing acceptance network…',
+  toggled: 'Acceptance network toggled',
+  failed: 'Acceptance network toggle failed',
+} as const;
 
 function PassageHandoff({
   mode,
@@ -209,6 +216,8 @@ export default function ConsumeWorkScreen() {
   const [syncAvailable, setSyncAvailable] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [notice, setNotice] = useState('');
+  const [acceptanceNetworkState, setAcceptanceNetworkState] =
+    useState<keyof typeof ACCEPTANCE_NETWORK_LABELS>('idle');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [modeSwitching, setModeSwitching] = useState(false);
   const [resumeMessage, setResumeMessage] = useState('');
@@ -1521,6 +1530,17 @@ export default function ConsumeWorkScreen() {
     if (mode === 'read' && readerLocation?.sync && alignmentID) void switchToListen();
     else setMode('listen');
   }
+  async function toggleAcceptanceNetwork() {
+    setAcceptanceNetworkState('busy');
+    try {
+      const response = await fetch(`${getAPIBaseURL()}/__acceptance/network/toggle`, {
+        method: 'POST',
+      });
+      setAcceptanceNetworkState(response.ok ? 'toggled' : 'failed');
+    } catch {
+      setAcceptanceNetworkState('failed');
+    }
+  }
   const scrubberKeyboardProps = Platform.OS === 'web' ? { onKeyDown: handleScrubberKeyDown } : {};
 
   if (loading || !work)
@@ -1623,6 +1643,16 @@ export default function ConsumeWorkScreen() {
           ) : null}
         </View>
       </View>
+      {process.env.EXPO_PUBLIC_ALDUS_IOS_ACCEPTANCE === '1' ? (
+        <View className="border-b border-line bg-paper px-3 py-1">
+          <Button
+            label={ACCEPTANCE_NETWORK_LABELS[acceptanceNetworkState]}
+            kind="quiet"
+            disabled={acceptanceNetworkState === 'busy'}
+            onPress={() => void toggleAcceptanceNetwork()}
+          />
+        </View>
+      ) : null}
       {!compactNative ? (
         <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
           <Text accessibilityLiveRegion="polite" className="text-xs font-sans-semibold text-muted">

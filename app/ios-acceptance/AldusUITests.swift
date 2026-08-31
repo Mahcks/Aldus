@@ -68,8 +68,7 @@ final class AldusUITests: XCTestCase {
     XCTAssertTrue(element(containing: "Saved here", in: app).waitForExistence(timeout: timeout))
 
     if environment["ALDUS_ACCEPTANCE_FAULTS"] == "1" {
-      try setFixtureNetwork(false, server: server)
-      defer { try? setFixtureNetwork(true, server: server) }
+      toggleFixtureNetwork(in: app)
       nextPage.tap()
       XCTAssertTrue(
         element(containing: "Saved on this device", in: app).waitForExistence(timeout: timeout),
@@ -82,7 +81,7 @@ final class AldusUITests: XCTestCase {
       XCTAssertTrue(app.buttons["Next page"].waitForExistence(timeout: timeout))
       evidence("02-offline-reader-restored")
 
-      try setFixtureNetwork(true, server: server)
+      toggleFixtureNetwork(in: app)
       XCUIDevice.shared.press(.home)
       app.activate()
       XCTAssertTrue(
@@ -227,31 +226,12 @@ final class AldusUITests: XCTestCase {
     continueReading.tap()
   }
 
-  private func setFixtureNetwork(_ online: Bool, server: String) throws {
-    let state = online ? "on" : "off"
-    let url = try XCTUnwrap(URL(string: "\(server)/__acceptance/network/\(state)"))
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.waitsForConnectivity = true
-    let session = URLSession(configuration: configuration)
-    defer { session.invalidateAndCancel() }
-    let completed = expectation(description: "Turn fixture network \(state)")
-    var responseCode: Int?
-    var requestError: Error?
-    session.dataTask(with: request) { _, response, error in
-      responseCode = (response as? HTTPURLResponse)?.statusCode
-      requestError = error
-      completed.fulfill()
-    }.resume()
-    let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-      .alerts.firstMatch.buttons["Allow"]
-    if allow.waitForExistence(timeout: 3) {
-      allow.tap()
-    }
-    wait(for: [completed], timeout: 15)
-    XCTAssertNil(requestError)
-    XCTAssertEqual(responseCode, 204)
+  private func toggleFixtureNetwork(in app: XCUIApplication) {
+    tap("Toggle acceptance network", in: app)
+    XCTAssertTrue(
+      app.buttons["Acceptance network toggled"].waitForExistence(timeout: 15),
+      "The acceptance app could not toggle the fixture network"
+    )
   }
 
   private func tap(_ label: String, in app: XCUIApplication) {

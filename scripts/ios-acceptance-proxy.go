@@ -30,6 +30,8 @@ func main() {
 			online.Store(true)
 		case "off":
 			online.Store(false)
+		case "toggle":
+			online.Store(!online.Load())
 		default:
 			http.NotFound(w, r)
 			return

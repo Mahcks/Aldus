@@ -181,7 +181,7 @@ xcrun devicectl device uninstall app --device "$DEVICE" com.mahcks.aldus.accepta
 
 set -o pipefail
 run_xcodebuild() {
-  xcodebuild test \
+  EXPO_PUBLIC_ALDUS_IOS_ACCEPTANCE=1 xcodebuild test \
     -workspace "$ROOT/app/ios/Aldus.xcworkspace" \
     -scheme AldusAcceptance \
     -configuration Release \
@@ -198,9 +198,6 @@ SELECTED_TEST=${ALDUS_ACCEPTANCE_ONLY_TEST:-testReaderAcceptance}
 if ! run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$SELECTED_TEST"; then
   if grep -q 'Not authorized for performing UI testing actions' "$ARTIFACT_DIR/xcodebuild.log"; then
     fail "iPhone UI automation was revoked. Unlock the iPhone, accept any trust or automation prompt, keep it unlocked, and rerun make ios-acceptance."
-  fi
-  if grep -q 'Local network prohibited' "$ARTIFACT_DIR/xcodebuild.log"; then
-    fail "Local network access was denied for AldusUITests-Runner. Allow it in iPhone Settings > Privacy & Security > Local Network, then rerun make ios-acceptance."
   fi
   fail "iPhone acceptance failed; see $ARTIFACT_DIR/xcodebuild.log"
 fi
