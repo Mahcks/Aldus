@@ -13,6 +13,7 @@ EXTERNAL_SERVER=${ALDUS_ACCEPTANCE_EXTERNAL_SERVER:-0}
 WORKSPACE=
 SERVER_PID=
 PROXY_PID=
+PACKAGE_JSON_BACKUP=
 
 fail() {
   echo "$*" >&2
@@ -55,6 +56,9 @@ if [[ ${1:-} == self-test ]]; then
 fi
 
 cleanup() {
+  if [[ -n $PACKAGE_JSON_BACKUP && -f $PACKAGE_JSON_BACKUP ]]; then
+    cp "$PACKAGE_JSON_BACKUP" "$ROOT/app/package.json"
+  fi
   if [[ -n $PROXY_PID ]]; then
     kill "$PROXY_PID" >/dev/null 2>&1 || true
     wait "$PROXY_PID" >/dev/null 2>&1 || true
@@ -157,11 +161,15 @@ else
   curl --fail --silent "http://127.0.0.1:$PORT/api/ready" >/dev/null || fail "Fixture server did not become ready"
 fi
 
+PACKAGE_JSON_BACKUP="$WORKSPACE/package.json"
+cp "$ROOT/app/package.json" "$PACKAGE_JSON_BACKUP"
 (
   cd "$ROOT/app"
   bun install --frozen-lockfile
   CI=1 bunx expo prebuild --platform ios --clean
 )
+cp "$WORKSPACE/package.json" "$ROOT/app/package.json"
+PACKAGE_JSON_BACKUP=
 node "$ROOT/scripts/configure-ios-acceptance.js" \
   "$ROOT/app/ios/Aldus.xcodeproj/project.pbxproj" \
   "$SERVER_URL" \
@@ -172,22 +180,26 @@ node "$ROOT/scripts/configure-ios-acceptance.js" \
 xcrun devicectl device uninstall app --device "$DEVICE" com.mahcks.aldus.acceptance >/dev/null 2>&1 || true
 
 set -o pipefail
-TEST_SELECTION=()
+run_xcodebuild() {
+  xcodebuild test \
+    -workspace "$ROOT/app/ios/Aldus.xcworkspace" \
+    -scheme AldusAcceptance \
+    -configuration Release \
+    -destination "platform=iOS,id=$DEVICE" \
+    -derivedDataPath "$ARTIFACT_DIR/DerivedData" \
+    -resultBundlePath "$ARTIFACT_DIR/AldusAcceptance.xcresult" \
+    "$@" \
+    -collect-test-diagnostics never \
+    -allowProvisioningUpdates \
+    CODE_SIGN_STYLE=Automatic \
+    DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"
+}
 if [[ -n ${ALDUS_ACCEPTANCE_ONLY_TEST:-} ]]; then
-  TEST_SELECTION+=("-only-testing:AldusUITests/AldusUITests/$ALDUS_ACCEPTANCE_ONLY_TEST")
+  run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$ALDUS_ACCEPTANCE_ONLY_TEST"
+else
+  run_xcodebuild
 fi
-xcodebuild test \
-  -workspace "$ROOT/app/ios/Aldus.xcworkspace" \
-  -scheme AldusAcceptance \
-  -configuration Release \
-  -destination "platform=iOS,id=$DEVICE" \
-  -derivedDataPath "$ARTIFACT_DIR/DerivedData" \
-  -resultBundlePath "$ARTIFACT_DIR/AldusAcceptance.xcresult" \
-  "${TEST_SELECTION[@]}" \
-  -collect-test-diagnostics never \
-  -allowProvisioningUpdates \
-  CODE_SIGN_STYLE=Automatic \
-  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" | tee "$ARTIFACT_DIR/xcodebuild.log"
+[[ -d $ARTIFACT_DIR/AldusAcceptance.xcresult ]] || fail "xcodebuild did not produce a test result bundle"
 
 if [[ $EXTERNAL_SERVER == 1 && ${ALDUS_ACCEPTANCE_ONLY_TEST:-} == testEcosystemHandoff ]]; then
   mark_ecosystem_complete
