@@ -199,6 +199,9 @@ if ! run_xcodebuild "-only-testing:AldusUITests/AldusUITests/$SELECTED_TEST"; th
   if grep -q 'Not authorized for performing UI testing actions' "$ARTIFACT_DIR/xcodebuild.log"; then
     fail "iPhone UI automation was revoked. Unlock the iPhone, accept any trust or automation prompt, keep it unlocked, and rerun make ios-acceptance."
   fi
+  if grep -q 'Local network prohibited' "$ARTIFACT_DIR/xcodebuild.log"; then
+    fail "Local network access was denied for AldusUITests-Runner. Allow it in iPhone Settings > Privacy & Security > Local Network, then rerun make ios-acceptance."
+  fi
   fail "iPhone acceptance failed; see $ARTIFACT_DIR/xcodebuild.log"
 fi
 [[ -d $ARTIFACT_DIR/AldusAcceptance.xcresult ]] || fail "xcodebuild did not produce a test result bundle"

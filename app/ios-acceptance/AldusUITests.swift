@@ -232,15 +232,24 @@ final class AldusUITests: XCTestCase {
     let url = try XCTUnwrap(URL(string: "\(server)/__acceptance/network/\(state)"))
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.waitsForConnectivity = true
+    let session = URLSession(configuration: configuration)
+    defer { session.invalidateAndCancel() }
     let completed = expectation(description: "Turn fixture network \(state)")
     var responseCode: Int?
     var requestError: Error?
-    URLSession.shared.dataTask(with: request) { _, response, error in
+    session.dataTask(with: request) { _, response, error in
       responseCode = (response as? HTTPURLResponse)?.statusCode
       requestError = error
       completed.fulfill()
     }.resume()
-    wait(for: [completed], timeout: 10)
+    let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+      .alerts.firstMatch.buttons["Allow"]
+    if allow.waitForExistence(timeout: 3) {
+      allow.tap()
+    }
+    wait(for: [completed], timeout: 15)
     XCTAssertNil(requestError)
     XCTAssertEqual(responseCode, 204)
   }

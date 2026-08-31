@@ -89,6 +89,8 @@ configureTarget(tests.pbxNativeTarget, (settings) => {
   settings.TARGETED_DEVICE_FAMILY = '"1,2"';
   settings.TEST_TARGET_NAME = 'Aldus';
   settings.INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = 'YES';
+  settings.INFOPLIST_KEY_NSLocalNetworkUsageDescription =
+    '"Aldus acceptance tests control the local fixture server."';
 });
 
 fs.writeFileSync(projectPath, project.writeSync());
