@@ -94,7 +94,7 @@ func TestExactProgressCrossClientAcceptance(t *testing.T) {
 	if err := json.Unmarshal(canonical.Body.Bytes(), &progress); err != nil {
 		t.Fatal(err)
 	}
-	if progress.SegmentID != "s0003" || progress.SourceDevice != "koreader:Kobo acceptance" {
+	if progress.SegmentID != "s0003" || progress.SourceDevice != "koreader:Kobo" {
 		t.Fatalf("canonical progress = %#v", progress)
 	}
 	audio := apiRequest(http.MethodPost, "/api/alignments/fixture-alignment/locators/audio", `{"segment_id":"s0003","offset":0}`)

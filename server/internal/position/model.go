@@ -9,9 +9,10 @@ import (
 const OffsetMax = 1_000_000
 
 var (
-	ErrConflict = errors.New("progress revision conflict")
-	ErrInvalid  = errors.New("invalid position")
-	ErrNotFound = errors.New("position not found")
+	ErrConflict  = errors.New("progress revision conflict")
+	ErrInvalid   = errors.New("invalid position")
+	ErrNotFound  = errors.New("position not found")
+	ErrAmbiguous = errors.New("ambiguous position identity")
 )
 
 type Canonical struct {
@@ -22,6 +23,7 @@ type Canonical struct {
 	Revision       int64     `json:"revision,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at,omitempty"`
 	SourceDevice   string    `json:"source_device,omitempty"`
+	SourceDeviceID string    `json:"-"`
 	AlignmentState string    `json:"alignment_state,omitempty"`
 	Resolvable     *bool     `json:"resolvable,omitempty"`
 }
@@ -86,6 +88,7 @@ type Update struct {
 	Offset           int    `json:"offset"`
 	ExpectedRevision int64  `json:"expected_revision"`
 	SourceDevice     string `json:"source_device"`
+	SourceDeviceID   string `json:"-"`
 }
 type Alignment struct {
 	ID          string    `json:"id"`
@@ -114,4 +117,20 @@ type KOReaderLocator struct {
 	DocumentID string  `json:"document"`
 	Progress   string  `json:"progress"`
 	Percentage float64 `json:"percentage,omitempty"`
+}
+
+type KOReaderDocument struct {
+	UserID           string
+	WorkID           string
+	RepresentationID string
+	MediaID          string
+	AlignmentID      string
+}
+
+type KOReaderProgress struct {
+	Progress   string
+	Percentage float64
+	Device     string
+	DeviceID   string
+	UpdatedAt  time.Time
 }

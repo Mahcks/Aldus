@@ -61,15 +61,15 @@ The native locator is `{resource, timestamp_ms}`. Timestamps remain integer mill
 
 ### KOReader
 
-Aldus implements KOReader's current custom progress server endpoints: `GET /users/auth`, `PUT /syncs/progress`, and `GET /syncs/progress/{document}`, using the `application/vnd.koreader.v1+json` contract and `x-auth-user`/`x-auth-key` headers. The configured `ALDUS_KOREADER_USER` must name an enabled Aldus account; the configured key authenticates the adapter, and library membership authorizes the mapped Work.
+Aldus implements KOReader's current custom progress server endpoints: `GET /users/auth`, `PUT /syncs/progress`, and `GET /syncs/progress/{document}`, using the `application/vnd.koreader.v1+json` contract and `x-auth-user`/`x-auth-key` headers. A user creates a separate reader credential for each device under **Account → KOReader and OPDS**. The credential authenticates the adapter, and library membership authorizes the mapped Work.
 
-For reflowable EPUB, KOReader's `progress` value is its exact XPointer and is retained verbatim. `percentage` is returned for protocol compatibility only. KOReader identifies the document with `partial_md5_checksum`: MD5 over up to 1 KiB at offset 0, then offsets 1024, 4096, and each successive offset multiplied by four, stopping when a read returns no bytes. The frozen Alice EPUB vector is `abb11be65399f96116fd90ab861dda0e`. Import records this alias alongside SHA-256 so it can only resolve to the exact EPUB revision that was aligned.
+For reflowable EPUB, KOReader's `progress` value is its exact XPointer and is retained verbatim. `percentage` is returned for protocol compatibility only. KOReader identifies the document with `partial_md5_checksum`: MD5 over up to 1 KiB at offset 0, then offsets 1024, 4096, and each successive offset multiplied by four, stopping when a read returns no bytes. The frozen Alice EPUB vector is `abb11be65399f96116fd90ab861dda0e`. Import records this protocol identity alongside Aldus's full SHA-256. Because partial MD5 samples the file rather than hashing every byte, duplicate aliases are treated as ambiguous and fail closed instead of being silently rebound.
 
-The KOReader adapter maps `(document alias, XPointer)` to a segment and stores the XPointer. Pulling after an audiobook update returns the aligned segment's KOReader XPointer. Unrecognized documents or locators fail; percentage is never used to invent a canonical position.
+The KOReader adapter stores one native `(document alias, XPointer)` state per user and EPUB, so ordinary KOReader synchronization works without an audiobook or ready alignment. When a ready alignment can resolve the XPointer exactly, the adapter also updates canonical segment-plus-offset progress. Pulling after a newer audiobook or Aldus-reader update returns the aligned segment's KOReader XPointer. Unrecognized document identities fail; an unrecognized locator remains valid native KOReader state but is never used to invent a canonical position.
 
 ## Progress conflict semantics
 
-There is one canonical progress row per user and Work. `GET` and `PUT /api/v1/works/{workID}/progress` read and update it; an update names the validated alignment explicitly. A client reads revision `N` and updates with `expected_revision: N`. The server commits `N+1` atomically. A mismatched revision returns `409 Conflict` and the current position; it never silently overwrites it. A new client starts with expected revision `0`.
+There is one canonical progress row per user and Work. `GET` and `PUT /api/v1/works/{workID}/progress` read and update it; an update names the validated alignment explicitly. A client reads revision `N` and updates with `expected_revision: N`. The server commits `N+1` atomically. A mismatched revision returns `409 Conflict` and the current position; it never silently overwrites it. A new client starts with expected revision `0`. KOReader's protocol has no revision field, so its adapter performs a bounded retry against the newest revision and reports success only after the accepted native state has been saved.
 
 There is separately one native-state row per user and Representation at `GET` and `PUT /api/v1/representations/{representationID}/state`, with its own optimistic revision. If an alignment becomes stale, Aldus preserves the exact canonical row and reports it as unresolved instead of rebinding or interpreting it against another revision. Native state remains writable even when no canonical mapping can be resolved.
 
@@ -77,7 +77,7 @@ This is deliberately not a CRDT. A user resolving a conflict submits again again
 
 ## Database
 
-SQLite owns works, immutable media revisions and hashes, alignments, segments, native locators, KOReader aliases, per-user canonical progress, and per-user Representation state. Foreign keys and uniqueness constraints protect revision identity. Ordered embedded SQL migrations initialize the database; there is no ORM.
+SQLite owns works, immutable media revisions and hashes, alignments, segments, native locators, KOReader aliases and native progress, per-user canonical progress, and per-user Representation state. Foreign keys and uniqueness constraints protect revision identity. Ordered embedded SQL migrations initialize the database; there is no ORM.
 
 ## Automatic alignment
 
@@ -87,7 +87,7 @@ Alignment is preprocessing, never playback work. WhisperX 3.8.6 is the adopted M
 
 Exact DOM-range restoration is validated against the frozen Alice EPUB. Automatic spoken onset uses the separately human-authored audible-onset fixture; manual-seek anchors retain their distinct restoration/listening-position semantics. A deliberate text selection preserves the starting character within its aligned segment and seeks to the corresponding word onset when validated timing exists. Ordinary page navigation preserves the renderer's first visible location, not the reader's unseen eye position. Exact word highlighting still requires validated word timing for that segment.
 
-Resolution fails closed when a source hash changed, an alignment is not ready, a document alias is unknown, a locator has no exact segment mapping, a timestamp is out of bounds, segment ordering is non-monotonic, or a client revision is stale. Text quotes are recovery evidence for diagnostics and future controlled re-anchoring, never permission to reuse an alignment against changed media.
+Canonical resolution fails closed when a source hash changed, an alignment is not ready, a document alias is unknown or ambiguous, a locator has no exact segment mapping, a timestamp is out of bounds, segment ordering is non-monotonic, or a client revision is stale. Native KOReader progress remains available when only the canonical mapping is unavailable. Text quotes are recovery evidence for diagnostics and future controlled re-anchoring, never permission to reuse an alignment against changed media.
 
 ## Research basis
 

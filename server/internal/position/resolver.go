@@ -212,12 +212,23 @@ func normalizeText(text string) string {
 }
 
 func (s *Store) KOReaderToCanonical(ctx context.Context, locator KOReaderLocator) (Canonical, error) {
+	return s.koReaderToCanonical(ctx, locator, "")
+}
+
+func (s *Store) KOReaderToCanonicalForAlignment(ctx context.Context, locator KOReaderLocator, alignmentID string) (Canonical, error) {
+	if alignmentID == "" {
+		return Canonical{}, ErrNotFound
+	}
+	return s.koReaderToCanonical(ctx, locator, alignmentID)
+}
+
+func (s *Store) koReaderToCanonical(ctx context.Context, locator KOReaderLocator, alignmentID string) (Canonical, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT s.alignment_id, s.id, s.koreader_locator
-		FROM koreader_aliases k
-		JOIN alignments a ON a.epub_media_id = k.media_id AND a.state = 'ready'
-		JOIN alignment_segments s ON s.alignment_id = a.id
-		WHERE k.document_id = ? AND s.highlightable = 1 ORDER BY s.ordinal`, locator.DocumentID)
+			SELECT s.alignment_id, s.id, s.koreader_locator
+			FROM koreader_aliases k
+			JOIN alignments a ON a.epub_media_id = k.media_id AND a.state = 'ready'
+			JOIN alignment_segments s ON s.alignment_id = a.id
+			WHERE k.document_id = ? AND (? = '' OR a.id = ?) AND s.highlightable = 1 ORDER BY s.ordinal`, locator.DocumentID, alignmentID, alignmentID)
 	if err != nil {
 		return Canonical{}, fmt.Errorf("resolve KOReader locator: %w", err)
 	}
@@ -247,30 +258,6 @@ func (s *Store) KOReaderToCanonical(ctx context.Context, locator KOReaderLocator
 		return structuralFallback, nil
 	}
 	return Canonical{}, ErrNotFound
-}
-
-func (s *Store) AlignmentForKOReaderDocument(ctx context.Context, documentID string) (string, error) {
-	var alignmentID string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT a.id FROM koreader_aliases k
-		JOIN alignments a ON a.epub_media_id = k.media_id AND a.state = 'ready'
-		WHERE k.document_id = ?`, documentID,
-	).Scan(&alignmentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", fmt.Errorf("resolve KOReader document: %w", err)
-	}
-	return alignmentID, nil
-}
-
-func (s *Store) KOReaderOwner(ctx context.Context, username, documentID string) (userID, workID, alignmentID string, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT u.id,w.id,a.id FROM users u CROSS JOIN works w JOIN representations r ON r.work_id=w.id JOIN media m ON m.representation_id=r.id JOIN koreader_aliases k ON k.media_id=m.id JOIN alignments a ON a.epub_media_id=m.id WHERE u.username_normalized=lower(trim(?)) AND u.disabled=0 AND (EXISTS(SELECT 1 FROM library_members exclusive_grant WHERE exclusive_grant.user_id=u.id AND exclusive_grant.library_id=w.library_id AND exclusive_grant.exclusive=1) OR (NOT EXISTS(SELECT 1 FROM library_members exclusive_override WHERE exclusive_override.user_id=u.id AND exclusive_override.exclusive=1) AND (u.is_admin=1 OR EXISTS(SELECT 1 FROM library_members additive_grant WHERE additive_grant.user_id=u.id AND additive_grant.library_id=w.library_id)))) AND k.document_id=? AND a.state='ready'`, username, documentID).Scan(&userID, &workID, &alignmentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = ErrNotFound
-	}
-	return
 }
 
 func (s *Store) CanonicalToKOReader(ctx context.Context, p Canonical) (KOReaderLocator, error) {

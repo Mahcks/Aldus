@@ -88,7 +88,7 @@ func progressRow(row dbsql.GetProgressRow, err error) (Canonical, error) {
 	}
 	p := Canonical{
 		WorkID: row.WorkID, AlignmentID: row.AlignmentID, SegmentID: row.SegmentID,
-		Offset: int(row.Offset), Revision: row.Revision, SourceDevice: row.SourceDevice,
+		Offset: int(row.Offset), Revision: row.Revision, SourceDevice: row.SourceDevice, SourceDeviceID: row.SourceDeviceID,
 		AlignmentState: row.AlignmentState,
 	}
 	p.UpdatedAt, err = time.Parse(time.RFC3339Nano, row.UpdatedAt)
@@ -153,13 +153,14 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 		Revision:       currentRevision + 1,
 		UpdatedAt:      time.Now().UTC(),
 		SourceDevice:   update.SourceDevice,
+		SourceDeviceID: update.SourceDeviceID,
 		AlignmentState: "ready",
 	}
 	resolvable := true
 	p.Resolvable = &resolvable
 	err = queries.UpsertProgress(ctx, dbsql.UpsertProgressParams{
 		UserID: userID, WorkID: p.WorkID, AlignmentID: p.AlignmentID, SegmentID: p.SegmentID,
-		Offset: int64(p.Offset), Revision: p.Revision, UpdatedAt: p.UpdatedAt.Format(time.RFC3339Nano), SourceDevice: p.SourceDevice,
+		Offset: int64(p.Offset), Revision: p.Revision, UpdatedAt: p.UpdatedAt.Format(time.RFC3339Nano), SourceDevice: p.SourceDevice, SourceDeviceID: p.SourceDeviceID,
 	})
 	if err != nil {
 		return Canonical{}, fmt.Errorf("save progress: %w", err)

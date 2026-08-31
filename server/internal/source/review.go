@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/position"
 )
 
 var ErrConflict = errors.New("proposal changed")
@@ -55,6 +56,7 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		return "", ErrConflict
 	}
 	verified := make(map[string]bool, len(request.Items))
+	koReaderDocuments := make(map[string]string, len(request.Items))
 	for _, item := range request.Items {
 		kind := item.Kind
 		if kind == "audiobook" {
@@ -80,6 +82,13 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		file, err := openEntry(ctx, s.db, entryID)
 		if err != nil {
 			return "", ErrConflict
+		}
+		if kind == "epub" {
+			koReaderDocuments[entryID], err = position.KOReaderPartialMD5(file)
+			if err != nil {
+				file.Close()
+				return "", ErrConflict
+			}
 		}
 		if err := file.Close(); err != nil {
 			return "", ErrConflict
@@ -203,6 +212,11 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 			}
 		} else if err != nil {
 			return "", err
+		}
+		if documentID := koReaderDocuments[entryID]; documentID != "" {
+			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO koreader_aliases(document_id,media_id) VALUES(?,?)`, documentID, mediaID); err != nil {
+				return "", err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO media_locations(media_id,source_entry_id,created_at) VALUES(?,?,?)`, mediaID, entryID, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return "", err

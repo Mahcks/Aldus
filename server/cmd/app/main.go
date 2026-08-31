@@ -160,6 +160,13 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+	if updated, err := ingestStore.BackfillKOReaderAliases(ctx); err != nil {
+		slog.Error("upgrade KOReader EPUB identities", "error", err)
+		db.Close()
+		os.Exit(1)
+	} else if updated > 0 {
+		slog.Info("KOReader EPUB identity upgrade complete", "updated", updated)
+	}
 	alignmentManager, err := alignment.New(db, alignment.Options{
 		MediaRoot:    mediaDir,
 		Media:        sourceStore,

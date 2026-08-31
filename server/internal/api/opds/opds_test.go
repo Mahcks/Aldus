@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,12 +40,20 @@ func TestCatalogAndDownloadsAreIsolatedByUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	if err := store.UploadCover(ctx, admin.User, work.ID, bytes.NewReader(png)); err != nil {
+		t.Fatal(err)
+	}
+	covers, err := store.Covers(ctx, admin.User, work.ID)
+	if err != nil || len(covers) != 1 {
+		t.Fatalf("covers = %#v, %v", covers, err)
+	}
 	readerCredential, _ := accounts.CreateReaderCredential(ctx, reader, "Kobo")
 	outsiderCredential, _ := accounts.CreateReaderCredential(ctx, outsider, "Kobo")
 	handler := Handler(Dependencies{Auth: accounts, Catalog: store, Ingest: mediaStore})
 
 	readerFeed := opdsRequest(handler, reader.Username, readerCredential.Secret, "/")
-	if readerFeed.Code != http.StatusOK || !strings.Contains(readerFeed.Body.String(), "Alice") || !strings.Contains(readerFeed.Body.String(), media.ID) {
+	if readerFeed.Code != http.StatusOK || !strings.Contains(readerFeed.Body.String(), "Alice") || !strings.Contains(readerFeed.Body.String(), media.ID) || !strings.Contains(readerFeed.Body.String(), "<name>Aldus</name>") || !strings.Contains(readerFeed.Body.String(), "/opds/covers/") {
 		t.Fatalf("reader feed = %d %s", readerFeed.Code, readerFeed.Body.String())
 	}
 	outsiderFeed := opdsRequest(handler, outsider.Username, outsiderCredential.Secret, "/")
@@ -56,11 +66,57 @@ func TestCatalogAndDownloadsAreIsolatedByUser(t *testing.T) {
 	if response := opdsRequest(handler, reader.Username, readerCredential.Secret, "/media/"+media.ID); response.Code != http.StatusOK || response.Header().Get("Content-Type") != "application/epub+zip" {
 		t.Fatalf("reader download = %d %#v", response.Code, response.Header())
 	}
+	mediaHead := opdsRequestMethod(handler, reader.Username, readerCredential.Secret, http.MethodHead, "/media/"+media.ID)
+	if mediaHead.Code != http.StatusOK || mediaHead.Body.Len() != 0 || !strings.Contains(mediaHead.Header().Get("Content-Disposition"), "alice.epub") || mediaHead.Header().Get("Content-Length") == "" {
+		t.Fatalf("media HEAD = %d %#v %q", mediaHead.Code, mediaHead.Header(), mediaHead.Body.String())
+	}
+	feedHead := opdsRequestMethod(handler, reader.Username, readerCredential.Secret, http.MethodHead, "/")
+	if feedHead.Code != http.StatusOK || feedHead.Body.Len() != 0 || feedHead.Header().Get("Last-Modified") == "" {
+		t.Fatalf("feed HEAD = %d %#v %q", feedHead.Code, feedHead.Header(), feedHead.Body.String())
+	}
+	cover := opdsRequest(handler, reader.Username, readerCredential.Secret, "/covers/"+covers[0].ID)
+	if cover.Code != http.StatusOK || cover.Header().Get("Content-Type") != "image/png" || !bytes.Equal(cover.Body.Bytes(), png) {
+		t.Fatalf("cover = %d %#v", cover.Code, cover.Header())
+	}
+	searchDescription := opdsRequest(handler, reader.Username, readerCredential.Secret, "/search.xml")
+	if searchDescription.Code != http.StatusOK || !strings.Contains(searchDescription.Body.String(), "{searchTerms}") {
+		t.Fatalf("search description = %d %s", searchDescription.Code, searchDescription.Body.String())
+	}
+	missingSearch := opdsRequest(handler, reader.Username, readerCredential.Secret, "/?q=missing")
+	if missingSearch.Code != http.StatusOK || strings.Contains(missingSearch.Body.String(), "Alice") {
+		t.Fatalf("missing search = %d %s", missingSearch.Code, missingSearch.Body.String())
+	}
+
+	for i := range 50 {
+		item, err := store.CreateWork(ctx, admin.User, library.ID, fmt.Sprintf("Book %02d", i), "Author")
+		if err != nil {
+			t.Fatal(err)
+		}
+		representation, err := store.CreateRepresentation(ctx, admin.User, item.ID, "epub", "EPUB")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES(?,?,'epub',?,?,?,'book.epub',1)`, fmt.Sprintf("media-%02d", i), representation.ID, fmt.Sprintf("book-%02d.epub", i), fmt.Sprintf("%064d", i+1), fmt.Sprintf("2026-01-01T00:%02d:00Z", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firstPage := opdsRequest(handler, reader.Username, readerCredential.Secret, "/")
+	if firstPage.Code != http.StatusOK || !strings.Contains(firstPage.Body.String(), `rel="next"`) || !strings.Contains(firstPage.Body.String(), `page=2`) {
+		t.Fatalf("first page = %d %s", firstPage.Code, firstPage.Body.String())
+	}
+	secondPage := opdsRequest(handler, reader.Username, readerCredential.Secret, "/?page=2")
+	if secondPage.Code != http.StatusOK || strings.Contains(secondPage.Body.String(), `rel="next"`) {
+		t.Fatalf("second page = %d %s", secondPage.Code, secondPage.Body.String())
+	}
 }
 
 func opdsRequest(handler http.Handler, username, password, target string) *httptest.ResponseRecorder {
+	return opdsRequestMethod(handler, username, password, http.MethodGet, target)
+}
+
+func opdsRequestMethod(handler http.Handler, username, password, method, target string) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, target, nil)
+	request := httptest.NewRequest(method, target, nil)
 	request.SetBasicAuth(username, password)
 	handler.ServeHTTP(recorder, request)
 	return recorder

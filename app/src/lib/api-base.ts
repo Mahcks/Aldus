@@ -22,6 +22,22 @@ export function resolveAPIBaseURL(
   return 'http://localhost:8080';
 }
 
+export function isLoopbackURL(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname.startsWith('127.') ||
+      hostname === '0.0.0.0' ||
+      hostname === '[::1]' ||
+      hostname === '[::]'
+    );
+  } catch {
+    return false;
+  }
+}
+
 export let apiBaseURL = resolveAPIBaseURL(
   process.env.EXPO_PUBLIC_API_URL,
   Platform.OS,

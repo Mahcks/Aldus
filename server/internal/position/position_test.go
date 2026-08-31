@@ -126,7 +126,7 @@ func TestKOReaderContainerStartResolvesToFirstFragmentSegment(t *testing.T) {
 	}
 	got, err := store.KOReaderToCanonical(ctx, KOReaderLocator{
 		DocumentID: "fixture-koreader-document",
-		Progress:   "/body/DocFragment[4]/body/div.0",
+		Progress:   "/body/DocFragment[4].0",
 	})
 	if err != nil || got.SegmentID != "s0002" || got.Offset != 0 {
 		t.Fatalf("container start = %#v, %v", got, err)

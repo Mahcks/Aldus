@@ -110,6 +110,10 @@ func TestEPUBUploadImmutableAndAuthorized(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.root, "media", media.SHA256[:2], media.SHA256+".epub")); err != nil {
 		t.Fatal(err)
 	}
+	var documentID string
+	if err := s.store.db.QueryRow(`SELECT document_id FROM koreader_aliases WHERE media_id=?`, media.ID).Scan(&documentID); err != nil || len(documentID) != 32 {
+		t.Fatalf("KOReader identity = %q, %v", documentID, err)
+	}
 	duplicate, err := s.store.Upload(ctx, s.editor, s.libraryID, s.epubID, "again.epub", bytes.NewReader(content))
 	if err != nil || duplicate.ID != media.ID {
 		t.Fatalf("duplicate=%#v, %v", duplicate, err)
@@ -117,6 +121,12 @@ func TestEPUBUploadImmutableAndAuthorized(t *testing.T) {
 	changed, err := s.store.Upload(ctx, s.editor, s.libraryID, s.epubID, "changed.epub", bytes.NewReader(validEPUB(t, "chapter two")))
 	if err != nil || changed.ID == media.ID {
 		t.Fatalf("changed=%#v, %v", changed, err)
+	}
+	if _, err := s.store.db.Exec(`DELETE FROM koreader_aliases WHERE media_id=?`, changed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if updated, err := s.store.BackfillKOReaderAliases(ctx); err != nil || updated != 1 {
+		t.Fatalf("KOReader backfill = %d, %v", updated, err)
 	}
 	listed, err := s.store.Media(ctx, s.reader, s.libraryID, s.epubID, 50, 0)
 	if err != nil || len(listed) != 2 {

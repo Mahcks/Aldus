@@ -78,25 +78,37 @@ func koCharacters(raw string) (KOReaderParagraph, []koCharacter, error) {
 }
 
 func parseKOReaderXPointer(value string) (int, string, int, bool) {
-	const prefix = "/body/DocFragment["
+	const prefix = "/body/DocFragment"
 	if !strings.HasPrefix(value, prefix) {
 		return 0, "", 0, false
 	}
-	end := strings.IndexByte(value[len(prefix):], ']')
-	if end < 1 {
+	rest := value[len(prefix):]
+	fragment := 1
+	if strings.HasPrefix(rest, "[") {
+		end := strings.IndexByte(rest, ']')
+		if end < 2 {
+			return 0, "", 0, false
+		}
+		var err error
+		fragment, err = strconv.Atoi(rest[1:end])
+		if err != nil || fragment <= 0 {
+			return 0, "", 0, false
+		}
+		rest = rest[end+1:]
+	}
+	dot := strings.LastIndexByte(rest, '.')
+	if dot < 0 {
 		return 0, "", 0, false
 	}
-	end += len(prefix)
-	fragment, err := strconv.Atoi(value[len(prefix):end])
-	dot := strings.LastIndexByte(value, '.')
-	if err != nil || fragment <= 0 || dot <= end+1 {
-		return 0, "", 0, false
-	}
-	offset, err := strconv.Atoi(value[dot+1:])
+	offset, err := strconv.Atoi(rest[dot+1:])
 	if err != nil || offset < 0 {
 		return 0, "", 0, false
 	}
-	return fragment, strings.TrimPrefix(value[end+1:dot], "/"), offset, true
+	path := strings.TrimPrefix(rest[:dot], "/")
+	if rest[:dot] != "" && !strings.HasPrefix(rest[:dot], "/") {
+		return 0, "", 0, false
+	}
+	return fragment, path, offset, true
 }
 
 func koReaderHeading(value string) (int, bool) {
@@ -117,6 +129,9 @@ func koReaderStructuralStart(value string) (int, bool) {
 	fragment, path, offset, ok := parseKOReaderXPointer(value)
 	if !ok || offset != 0 {
 		return 0, false
+	}
+	if path == "" {
+		return fragment, true
 	}
 	parts := strings.Split(path, "/")
 	last := stripFirstIndex(parts[len(parts)-1])

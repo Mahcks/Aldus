@@ -23,9 +23,13 @@ In your OPDS-compatible app, add a new catalog using the **OPDS catalog** URL fr
 
 Aldus applies your normal library permissions to the catalog: you'll only see the libraries and titles you already have access to in the app, nothing more.
 
+KOReader can search the catalog, page through large libraries, display available cover art, and preserve the original EPUB filename when downloading. If a title is not visible, confirm that your Aldus account belongs to its library and that the title has an EPUB representation.
+
 ## What OPDS gives you — and what it doesn't
 
 OPDS provides catalog browsing and file download: you can see your library's titles and pull the ebook files down to your reader. It does not carry Aldus's exact ebook↔audiobook synchronization — that depends on the reader app itself. Plain OPDS clients simply download the file with no progress sync back to Aldus. KOReader is the exception: it has a dedicated sync adapter (see [KOReader](/ereaders/koreader/)) that reports reading progress back to Aldus using the same credential.
+
+Use the OPDS-downloaded EPUB unchanged when you want binary progress matching. Renaming or moving it is safe; converting, rebuilding, or editing it changes its document identity.
 
 ## Revoke access
 

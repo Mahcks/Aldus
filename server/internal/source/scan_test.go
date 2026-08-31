@@ -117,6 +117,11 @@ func TestAliceScanIsIdempotentAndReconcilesChanges(t *testing.T) {
 	if works != 1 || reps != 2 || media != 2 {
 		t.Fatalf("accepted counts=%d %d %d", works, reps, media)
 	}
+	var koReaderAliases int
+	db.QueryRow(`SELECT COUNT(*) FROM koreader_aliases k JOIN media m ON m.id=k.media_id JOIN representations r ON r.id=m.representation_id WHERE r.work_id=? AND m.kind='epub'`, workID).Scan(&koReaderAliases)
+	if koReaderAliases != 1 {
+		t.Fatalf("accepted KOReader aliases=%d", koReaderAliases)
+	}
 	var coverURL string
 	if err := db.QueryRow(`SELECT c.image_url FROM works w JOIN work_covers c ON c.id=w.selected_cover_id WHERE w.id=?`, workID).Scan(&coverURL); err != nil || !strings.HasSuffix(coverURL, "/cover") {
 		t.Fatalf("selected embedded cover=%q, %v", coverURL, err)

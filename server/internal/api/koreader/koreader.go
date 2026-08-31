@@ -96,11 +96,12 @@ func authenticate(r *http.Request, accounts *auth.Store, fallback Credentials, u
 }
 
 type progressRequest struct {
-	Document   string  `json:"document"`
-	Progress   string  `json:"progress"`
-	Percentage float64 `json:"percentage"`
-	Device     string  `json:"device"`
-	DeviceID   string  `json:"device_id"`
+	Document   string          `json:"document"`
+	Metadata   json.RawMessage `json:"metadata,omitempty"`
+	Progress   string          `json:"progress"`
+	Percentage float64         `json:"percentage"`
+	Device     string          `json:"device"`
+	DeviceID   string          `json:"device_id"`
 }
 
 func putProgress(store *position.Store) http.HandlerFunc {
@@ -110,100 +111,139 @@ func putProgress(store *position.Store) http.HandlerFunc {
 		if !decode(w, r, &request) {
 			return
 		}
-		if request.Document == "" || request.Progress == "" || request.Device == "" {
+		if request.Document == "" || request.Progress == "" || request.Device == "" || request.DeviceID == "" || request.Percentage < 0 || request.Percentage > 1 {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"code": 2003, "message": "invalid fields"})
 			return
 		}
-		incoming, err := store.KOReaderToCanonical(r.Context(), position.KOReaderLocator{
-			DocumentID: request.Document,
-			Progress:   request.Progress,
-		})
+		document, err := store.KOReaderDocument(r.Context(), username, request.Document)
 		if err != nil {
-			if !errors.Is(err, position.ErrNotFound) {
-				slog.Error("KOReader progress resolution failed", "document", request.Document, "error", err)
-				http.Error(w, "resolve progress", http.StatusInternalServerError)
-				return
-			}
-			slog.Warn("KOReader progress rejected", "diagnosis", "document bytes or XPointer do not match a ready alignment", "document", request.Document, "xpointer", request.Progress)
-			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
-			return
-		}
-		userID, workID, alignmentID, err := store.KOReaderOwner(r.Context(), username, request.Document)
-		if err != nil {
-			if !errors.Is(err, position.ErrNotFound) {
-				slog.Error("KOReader progress authorization failed", "username", username, "document", request.Document, "error", err)
+			if !errors.Is(err, position.ErrNotFound) && !errors.Is(err, position.ErrAmbiguous) {
+				slog.Error("KOReader document authorization failed", "username", username, "document", request.Document, "error", err)
 				http.Error(w, "authorize progress", http.StatusInternalServerError)
 				return
 			}
-			slog.Warn("KOReader progress rejected", "diagnosis", "user cannot access the aligned work", "username", username, "document", request.Document)
-			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
+			diagnosis := "unknown or inaccessible EPUB"
+			if errors.Is(err, position.ErrAmbiguous) {
+				diagnosis = "KOReader partial-MD5 collision across accessible EPUBs"
+			}
+			slog.Warn("KOReader progress rejected", "diagnosis", diagnosis, "username", username, "document", request.Document)
+			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document"})
 			return
 		}
-		if alignmentID != incoming.AlignmentID {
-			slog.Warn("KOReader progress rejected", "diagnosis", "document resolved to a different ready alignment", "document", request.Document, "expected_alignment", alignmentID, "resolved_alignment", incoming.AlignmentID)
-			writeJSON(w, http.StatusNotFound, map[string]any{"code": 2004, "message": "unknown document or locator"})
-			return
-		}
-		current, err := store.Progress(r.Context(), userID, workID)
-		expected := int64(0)
-		if err == nil {
-			expected = current.Revision
-		} else if !errors.Is(err, position.ErrNotFound) {
-			http.Error(w, "get progress", http.StatusInternalServerError)
-			return
-		}
-		device := strings.TrimPrefix(strings.TrimSpace(request.Device+" "+request.DeviceID), " ")
-		updated, err := store.UpdateProgress(r.Context(), userID, workID, incoming.AlignmentID, position.Update{
-			SegmentID: incoming.SegmentID, Offset: incoming.Offset, ExpectedRevision: expected, SourceDevice: "koreader:" + device,
+		native, err := store.SaveKOReaderProgress(r.Context(), document.UserID, document.MediaID, position.KOReaderProgress{
+			Progress: request.Progress, Percentage: request.Percentage, Device: request.Device, DeviceID: request.DeviceID,
 		})
-		if errors.Is(err, position.ErrConflict) {
-			writeJSON(w, http.StatusAccepted, map[string]any{"document": request.Document, "conflict": true})
-			return
-		}
 		if err != nil {
-			slog.Error("KOReader progress save failed", "username", username, "document", request.Document, "error", err)
+			if errors.Is(err, position.ErrInvalid) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"code": 2003, "message": "invalid fields"})
+				return
+			}
+			slog.Error("KOReader native progress save failed", "username", username, "document", request.Document, "error", err)
 			http.Error(w, "save progress", http.StatusInternalServerError)
 			return
 		}
-		slog.Debug("KOReader progress saved", "username", username, "document", request.Document, "segment", updated.SegmentID, "offset", updated.Offset, "revision", updated.Revision)
-		writeJSON(w, http.StatusOK, map[string]any{"document": request.Document, "timestamp": updated.UpdatedAt.Unix()})
+		if document.AlignmentID != "" {
+			incoming, resolveErr := store.KOReaderToCanonicalForAlignment(r.Context(), position.KOReaderLocator{DocumentID: request.Document, Progress: request.Progress}, document.AlignmentID)
+			if resolveErr == nil {
+				updated, updateErr := updateCanonical(r.Context(), store, document, incoming, request.Device, request.DeviceID)
+				if updateErr != nil {
+					slog.Error("KOReader canonical progress save failed", "username", username, "document", request.Document, "error", updateErr)
+					http.Error(w, "save progress", http.StatusInternalServerError)
+					return
+				}
+				native.UpdatedAt = updated.UpdatedAt
+			} else if !errors.Is(resolveErr, position.ErrNotFound) {
+				slog.Error("KOReader progress resolution failed", "document", request.Document, "error", resolveErr)
+				http.Error(w, "resolve progress", http.StatusInternalServerError)
+				return
+			} else {
+				slog.Debug("KOReader progress retained without canonical mapping", "username", username, "document", request.Document, "xpointer", request.Progress)
+			}
+		}
+		slog.Debug("KOReader progress saved", "username", username, "document", request.Document)
+		writeJSON(w, http.StatusOK, map[string]any{"document": request.Document, "timestamp": native.UpdatedAt.Unix()})
 	}
+}
+
+func updateCanonical(ctx context.Context, store *position.Store, document position.KOReaderDocument, incoming position.Canonical, device, deviceID string) (position.Canonical, error) {
+	for range 3 {
+		expected := int64(0)
+		current, err := store.Progress(ctx, document.UserID, document.WorkID)
+		if err == nil {
+			expected = current.Revision
+		} else if !errors.Is(err, position.ErrNotFound) {
+			return position.Canonical{}, err
+		}
+		updated, err := store.UpdateProgress(ctx, document.UserID, document.WorkID, document.AlignmentID, position.Update{
+			SegmentID: incoming.SegmentID, Offset: incoming.Offset, ExpectedRevision: expected,
+			SourceDevice: "koreader:" + strings.TrimSpace(device), SourceDeviceID: strings.TrimSpace(deviceID),
+		})
+		if !errors.Is(err, position.ErrConflict) {
+			return updated, err
+		}
+	}
+	return position.Canonical{}, position.ErrConflict
 }
 
 func getProgress(store *position.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, _ := r.Context().Value(usernameContextKey{}).(string)
 		document := chi.URLParam(r, "document")
-		userID, workID, _, err := store.KOReaderOwner(r.Context(), username, document)
+		matched, err := store.KOReaderDocument(r.Context(), username, document)
 		if err != nil {
-			if !errors.Is(err, position.ErrNotFound) {
+			if !errors.Is(err, position.ErrNotFound) && !errors.Is(err, position.ErrAmbiguous) {
 				slog.Error("KOReader progress lookup failed", "username", username, "document", document, "error", err)
 				http.Error(w, "find progress", http.StatusInternalServerError)
 				return
 			}
-			slog.Debug("KOReader progress unavailable", "diagnosis", "document is not an accessible ready alignment", "username", username, "document", document)
+			slog.Debug("KOReader progress unavailable", "diagnosis", "document is unknown, inaccessible, or ambiguous", "username", username, "document", document)
 			writeJSON(w, http.StatusOK, map[string]any{})
 			return
 		}
-		progress, err := store.Progress(r.Context(), userID, workID)
-		if errors.Is(err, position.ErrNotFound) {
-			writeJSON(w, http.StatusOK, map[string]any{})
-			return
-		}
-		if err != nil {
+		native, nativeErr := store.KOReaderProgress(r.Context(), matched.UserID, matched.MediaID)
+		if nativeErr != nil && !errors.Is(nativeErr, position.ErrNotFound) {
 			http.Error(w, "get progress", http.StatusInternalServerError)
 			return
 		}
-		locator, err := store.CanonicalToKOReader(r.Context(), progress)
-		if err != nil {
-			slog.Error("KOReader progress conversion failed", "username", username, "document", document, "alignment", progress.AlignmentID, "segment", progress.SegmentID, "offset", progress.Offset, "error", err)
-			http.Error(w, "resolve progress", http.StatusInternalServerError)
+		canonical, canonicalErr := store.Progress(r.Context(), matched.UserID, matched.WorkID)
+		if canonicalErr != nil && !errors.Is(canonicalErr, position.ErrNotFound) {
+			http.Error(w, "get progress", http.StatusInternalServerError)
 			return
 		}
-		slog.Debug("KOReader progress returned", "username", username, "document", document, "segment", progress.SegmentID, "offset", progress.Offset, "revision", progress.Revision, "xpointer", locator.Progress)
+		canonicalRepeatsNative := nativeErr == nil && strings.HasPrefix(canonical.SourceDevice, "koreader:") && canonical.SourceDeviceID == native.DeviceID
+		if canonicalErr == nil && matched.AlignmentID == canonical.AlignmentID && !canonicalRepeatsNative && (nativeErr != nil || !native.UpdatedAt.After(canonical.UpdatedAt)) {
+			locator, convertErr := store.CanonicalToKOReader(r.Context(), canonical)
+			if convertErr == nil {
+				device, deviceID := canonical.SourceDevice, canonical.SourceDeviceID
+				if strings.HasPrefix(device, "koreader:") {
+					device = strings.TrimPrefix(device, "koreader:")
+					if deviceID == "" && nativeErr == nil {
+						device, deviceID = native.Device, native.DeviceID
+					}
+				}
+				response := map[string]any{
+					"document": document, "progress": locator.Progress, "percentage": locator.Percentage,
+					"device": device, "timestamp": canonical.UpdatedAt.Truncate(time.Second).Unix(),
+				}
+				if deviceID != "" {
+					response["device_id"] = deviceID
+				}
+				writeJSON(w, http.StatusOK, response)
+				return
+			}
+			if !errors.Is(convertErr, position.ErrNotFound) {
+				slog.Error("KOReader progress conversion failed", "username", username, "document", document, "alignment", canonical.AlignmentID, "segment", canonical.SegmentID, "offset", canonical.Offset, "error", convertErr)
+				http.Error(w, "resolve progress", http.StatusInternalServerError)
+				return
+			}
+		}
+		if nativeErr != nil {
+			writeJSON(w, http.StatusOK, map[string]any{})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"document": document, "progress": locator.Progress, "percentage": locator.Percentage,
-			"device": progress.SourceDevice, "timestamp": progress.UpdatedAt.Truncate(time.Second).Unix(),
+			"document": document, "progress": native.Progress, "percentage": native.Percentage,
+			"device": native.Device, "device_id": native.DeviceID, "timestamp": native.UpdatedAt.Truncate(time.Second).Unix(),
 		})
 	}
 }

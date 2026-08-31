@@ -58,3 +58,20 @@ cross-account isolation, and the actual TestFlight binary.
 
 Promote the TestFlight build externally only after every physical row passes. A failed row blocks
 promotion; fix it, produce a new build from the new exact commit, and start a new acceptance copy.
+
+## Physical KOReader acceptance
+
+Run this matrix on at least one current KOReader release before advertising KOReader support for a
+server release. Download the EPUB from Aldus's OPDS catalog; importing a different copy can produce
+a different KOReader document checksum and is not a valid sync test.
+
+| Required flow | Result | Notes |
+| --- | --- | --- |
+| Add the authenticated Aldus OPDS catalog and search for a title | Pending | |
+| Download the EPUB, open it, and turn several pages | Pending | |
+| Configure KOReader progress sync with the Aldus reader credential and Binary matching | Pending | |
+| Push progress from KOReader, open Aldus, and confirm the same passage | Pending | |
+| Move in Aldus, pull in KOReader, and confirm the same passage | Pending | |
+| Repeat push/pull on an EPUB without an alignment and confirm native KOReader position sync | Pending | |
+| Confirm covers render and the downloaded file keeps its original filename | Pending | |
+| Restart KOReader and repeat a pull using both HTTP on a trusted LAN and the documented HTTPS setup | Pending | |

@@ -177,7 +177,7 @@ docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
 
 The override replaces the same `aldus` container and requests one GPU. Aldus selects CUDA, FP16, and a conservative memory profile internally. If CUDA is unavailable, the alignment job reports a useful error while the rest of Aldus remains available. Return to CPU processing with `docker compose up -d --pull always`.
 
-For e-ink devices, create a credential under **Account → KOReader and OPDS**, then add the displayed `/opds/` URL as an OPDS catalog and use the Aldus origin as KOReader's custom progress server.
+For e-ink devices, create a credential under **Account → KOReader and OPDS**, then add the displayed `/opds/` URL as an OPDS catalog and use the Aldus origin as KOReader's custom progress server. Keep KOReader's document matching method set to **Binary**; Aldus preserves native progress for every recognized EPUB and bridges it to read↔listen progress whenever an exact alignment is ready.
 
 <br>
 

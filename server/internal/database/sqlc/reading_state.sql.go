@@ -12,7 +12,7 @@ import (
 
 const getProgress = `-- name: GetProgress :one
 SELECT p.work_id, p.alignment_id, p.segment_id, p.offset, p.revision,
-       p.updated_at, p.source_device, a.state AS alignment_state,
+	   p.updated_at, p.source_device, p.source_device_id, a.state AS alignment_state,
        a.state = 'ready' AND s.highlightable = 1 AS resolvable
 FROM progress p
 JOIN alignments a ON a.id = p.alignment_id
@@ -33,6 +33,7 @@ type GetProgressRow struct {
 	Revision       int64
 	UpdatedAt      string
 	SourceDevice   string
+	SourceDeviceID string
 	AlignmentState string
 	Resolvable     sql.NullBool
 }
@@ -48,6 +49,7 @@ func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (GetPr
 		&i.Revision,
 		&i.UpdatedAt,
 		&i.SourceDevice,
+		&i.SourceDeviceID,
 		&i.AlignmentState,
 		&i.Resolvable,
 	)
@@ -182,26 +184,28 @@ func (q *Queries) GetRepresentationStateRevision(ctx context.Context, arg GetRep
 }
 
 const upsertProgress = `-- name: UpsertProgress :exec
-INSERT INTO progress (user_id, work_id, alignment_id, segment_id, offset, revision, updated_at, source_device)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO progress (user_id, work_id, alignment_id, segment_id, offset, revision, updated_at, source_device, source_device_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(user_id, work_id) DO UPDATE SET
     alignment_id = excluded.alignment_id,
     segment_id = excluded.segment_id,
     offset = excluded.offset,
     revision = excluded.revision,
-    updated_at = excluded.updated_at,
-    source_device = excluded.source_device
+	updated_at = excluded.updated_at,
+	source_device = excluded.source_device,
+	source_device_id = excluded.source_device_id
 `
 
 type UpsertProgressParams struct {
-	UserID       string
-	WorkID       string
-	AlignmentID  string
-	SegmentID    string
-	Offset       int64
-	Revision     int64
-	UpdatedAt    string
-	SourceDevice string
+	UserID         string
+	WorkID         string
+	AlignmentID    string
+	SegmentID      string
+	Offset         int64
+	Revision       int64
+	UpdatedAt      string
+	SourceDevice   string
+	SourceDeviceID string
 }
 
 func (q *Queries) UpsertProgress(ctx context.Context, arg UpsertProgressParams) error {
@@ -214,6 +218,7 @@ func (q *Queries) UpsertProgress(ctx context.Context, arg UpsertProgressParams) 
 		arg.Revision,
 		arg.UpdatedAt,
 		arg.SourceDevice,
+		arg.SourceDeviceID,
 	)
 	return err
 }

@@ -7,7 +7,7 @@ WHERE a.id = ?;
 
 -- name: GetProgress :one
 SELECT p.work_id, p.alignment_id, p.segment_id, p.offset, p.revision,
-       p.updated_at, p.source_device, a.state AS alignment_state,
+	   p.updated_at, p.source_device, p.source_device_id, a.state AS alignment_state,
        a.state = 'ready' AND s.highlightable = 1 AS resolvable
 FROM progress p
 JOIN alignments a ON a.id = p.alignment_id
@@ -18,15 +18,16 @@ WHERE p.user_id = ? AND p.work_id = ?;
 SELECT revision FROM progress WHERE user_id = ? AND work_id = ?;
 
 -- name: UpsertProgress :exec
-INSERT INTO progress (user_id, work_id, alignment_id, segment_id, offset, revision, updated_at, source_device)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO progress (user_id, work_id, alignment_id, segment_id, offset, revision, updated_at, source_device, source_device_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(user_id, work_id) DO UPDATE SET
     alignment_id = excluded.alignment_id,
     segment_id = excluded.segment_id,
     offset = excluded.offset,
     revision = excluded.revision,
-    updated_at = excluded.updated_at,
-    source_device = excluded.source_device;
+	updated_at = excluded.updated_at,
+	source_device = excluded.source_device,
+	source_device_id = excluded.source_device_id;
 
 -- name: GetRepresentationState :one
 SELECT representation_id, epub_locator, audio_timestamp_ms, playback_speed_milli,

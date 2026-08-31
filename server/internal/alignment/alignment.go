@@ -268,7 +268,7 @@ func (m *Manager) backfillKOReaderAlignment(ctx context.Context, alignmentID, me
 			return false, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO koreader_aliases(document_id,media_id) VALUES(?,?) ON CONFLICT(document_id) DO UPDATE SET media_id=excluded.media_id WHERE (SELECT representation_id FROM media WHERE id=koreader_aliases.media_id)=(SELECT representation_id FROM media WHERE id=excluded.media_id)`, documentID, mediaID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO koreader_aliases(document_id,media_id) VALUES(?,?)`, documentID, mediaID); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()
@@ -726,7 +726,7 @@ func (m *Manager) publish(ctx context.Context, job Job, path, artifactID string)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO alignment_inputs(alignment_id,media_id,role) VALUES(?,?,'epub'),(?,?,'audio')`, alignmentID, job.EPUBMediaID, alignmentID, job.AudioMediaID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO koreader_aliases(document_id,media_id) VALUES(?,?) ON CONFLICT(document_id) DO UPDATE SET media_id=excluded.media_id WHERE (SELECT representation_id FROM media WHERE id=koreader_aliases.media_id)=(SELECT representation_id FROM media WHERE id=excluded.media_id)`, input.KOReaderDocumentID, job.EPUBMediaID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO koreader_aliases(document_id,media_id) VALUES(?,?)`, input.KOReaderDocumentID, job.EPUBMediaID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE alignments SET state='stale' WHERE id!=? AND state='ready' AND EXISTS(SELECT 1 FROM alignment_inputs ai WHERE ai.alignment_id=alignments.id AND ai.media_id IN (?,?))`, alignmentID, job.EPUBMediaID, job.AudioMediaID); err != nil {

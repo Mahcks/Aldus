@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 mock.module('react-native', () => ({ Platform: { OS: 'web' } }));
 const { api, APIError, errorMessage } = await import('./api');
-const { resolveAPIBaseURL } = await import('./api-base');
+const { isLoopbackURL, resolveAPIBaseURL } = await import('./api-base');
 const { productMediaURL } = await import('./media');
 
 const originalFetch = globalThis.fetch;
@@ -24,6 +24,15 @@ describe('API transport', () => {
     expect(resolveAPIBaseURL(undefined, 'ios', undefined, '192.168.86.28:8081')).toBe(
       'http://192.168.86.28:8080',
     );
+  });
+
+  it('warns when a reader address points back to its own device', () => {
+    expect(isLoopbackURL('http://localhost:8080')).toBe(true);
+    expect(isLoopbackURL('http://127.2.3.4:8080')).toBe(true);
+    expect(isLoopbackURL('http://0.0.0.0:8080')).toBe(true);
+    expect(isLoopbackURL('http://[::1]:8080')).toBe(true);
+    expect(isLoopbackURL('http://192.168.1.25:8080')).toBe(false);
+    expect(isLoopbackURL('https://books.example.com')).toBe(false);
   });
   it('uses credentialed requests and generated setup fields', async () => {
     let request: RequestInit | undefined;

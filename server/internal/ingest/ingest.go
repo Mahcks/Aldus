@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
 )
 
@@ -171,6 +172,21 @@ func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, represen
 	if err != nil {
 		return Media{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
+	var koReaderDocumentID string
+	if kind == "epub" {
+		file, err := os.Open(stagedPath)
+		if err != nil {
+			return Media{}, fmt.Errorf("open EPUB identity: %w", err)
+		}
+		koReaderDocumentID, err = position.KOReaderPartialMD5(file)
+		closeErr := file.Close()
+		if err != nil {
+			return Media{}, fmt.Errorf("identify KOReader EPUB: %w", err)
+		}
+		if closeErr != nil {
+			return Media{}, fmt.Errorf("close EPUB identity: %w", closeErr)
+		}
+	}
 	digest := hex.EncodeToString(hash.Sum(nil))
 	extension := ".audio"
 	if kind == "epub" {
@@ -196,6 +212,11 @@ func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, represen
 	if existing, found, err := s.existing(ctx, representationID, digest); err != nil {
 		return Media{}, err
 	} else if found {
+		if koReaderDocumentID != "" {
+			if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO koreader_aliases(document_id,media_id) VALUES(?,?)`, koReaderDocumentID, existing.ID); err != nil {
+				return Media{}, fmt.Errorf("record KOReader EPUB identity: %w", err)
+			}
+		}
 		return existing, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(final), 0o750); err != nil {
@@ -236,6 +257,14 @@ func (s *Store) Upload(ctx context.Context, actor auth.User, libraryID, represen
 			os.Remove(final)
 		}
 		return Media{}, fmt.Errorf("record media: %w", err)
+	}
+	if koReaderDocumentID != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO koreader_aliases(document_id,media_id) VALUES(?,?)`, koReaderDocumentID, id); err != nil {
+			if created {
+				os.Remove(final)
+			}
+			return Media{}, fmt.Errorf("record KOReader EPUB identity: %w", err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE alignments SET state='stale' WHERE state!='stale' AND EXISTS(SELECT 1 FROM alignment_inputs ai JOIN media old ON old.id=ai.media_id WHERE ai.alignment_id=alignments.id AND old.representation_id=? AND old.id!=?)`, representationID, id); err != nil {
 		if created {

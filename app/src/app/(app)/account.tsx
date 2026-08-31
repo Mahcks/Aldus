@@ -27,10 +27,11 @@ import {
   StatusBadge,
 } from '@/features/ui';
 import { api, errorMessage } from '@/lib/api';
-import { apiBaseURL } from '@/lib/api-base';
+import { apiBaseURL, isLoopbackURL } from '@/lib/api-base';
 
 const supportURL = 'https://aldus.media/support/';
 const privacyURL = 'https://aldus.media/privacy/';
+const koreaderURL = 'https://aldus.media/ereaders/koreader/';
 
 export default function AccountScreen() {
   const auth = useAuth();
@@ -210,6 +211,7 @@ export default function AccountScreen() {
   const readingSeconds = activity.reduce((total, work) => total + work.reading_seconds, 0);
   const listeningSeconds = activity.reduce((total, work) => total + work.listening_seconds, 0);
   const opdsURL = serverOrigin ? `${serverOrigin}/opds/` : '/opds/';
+  const readerAddressIsLocal = isLoopbackURL(serverOrigin);
   const nativeBuild =
     Platform.OS === 'ios'
       ? Constants.platform?.ios?.buildNumber
@@ -359,6 +361,12 @@ export default function AccountScreen() {
               Create a reader credential for each device. It gives that device access only to your
               libraries and reading progress.
             </Notice>
+            {readerAddressIsLocal ? (
+              <Notice tone="warning">
+                This server address points back to this device. KOReader needs your server&apos;s
+                LAN or HTTPS address instead of localhost.
+              </Notice>
+            ) : null}
             <View className="gap-3 border-b border-line pb-5">
               <Field
                 label="Device name"
@@ -389,11 +397,17 @@ export default function AccountScreen() {
                 <CredentialValue label="Password" value={createdCredential.secret} />
                 <CredentialValue label="OPDS catalog" value={opdsURL} />
                 <CredentialValue label="KOReader sync server" value={serverOrigin} />
-                <View className="flex-row">
+                <View className="flex-row flex-wrap gap-2">
                   <Button
                     label="I saved it"
                     kind="secondary"
                     onPress={() => setCreatedCredential(undefined)}
+                  />
+                  <Button
+                    label="KOReader setup guide"
+                    kind="quiet"
+                    icon="read"
+                    onPress={() => void openExternalURL(koreaderURL)}
                   />
                 </View>
               </View>
@@ -598,15 +612,36 @@ export default function AccountScreen() {
 }
 
 function CredentialValue({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      // The value remains selectable when browser clipboard permission is denied.
+    }
+  }
+
   return (
     <View className="gap-1">
       <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
-      <Text
-        selectable
-        className="rounded-control border border-line bg-panel px-3 py-2 text-sm text-ink"
-      >
-        {value}
-      </Text>
+      <View className="flex-row items-center gap-2">
+        <Text
+          selectable
+          className="min-w-0 flex-1 rounded-control border border-line bg-panel px-3 py-2 text-sm text-ink"
+        >
+          {value}
+        </Text>
+        {Platform.OS === 'web' ? (
+          <Button
+            label={copied ? 'Copied' : 'Copy'}
+            kind="quiet"
+            icon="copy"
+            onPress={() => void copyValue()}
+          />
+        ) : null}
+      </View>
     </View>
   );
 }

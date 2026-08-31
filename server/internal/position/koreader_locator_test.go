@@ -43,6 +43,7 @@ func TestKOReaderHeading(t *testing.T) {
 
 func TestKOReaderStructuralStart(t *testing.T) {
 	for _, xpointer := range []string{
+		"/body/DocFragment[4].0",
 		"/body/DocFragment[4]/body/div.0",
 		"/body/DocFragment[4]/body/section[1].0",
 		"/body/DocFragment[4]/body/div/h2/text()[1].0",
@@ -54,5 +55,33 @@ func TestKOReaderStructuralStart(t *testing.T) {
 	}
 	if _, ok := koReaderStructuralStart("/body/DocFragment[4]/body/div.2"); ok {
 		t.Fatal("nonzero container offset classified as structural start")
+	}
+	if fragment, _, _, ok := parseKOReaderXPointer("/body/DocFragment/body/p/text().3"); !ok || fragment != 1 {
+		t.Fatalf("unindexed first fragment = %d, %v", fragment, ok)
+	}
+}
+
+func TestKOReaderObservedXPointerForms(t *testing.T) {
+	tests := []struct {
+		name       string
+		xpointer   string
+		fragment   int
+		structural bool
+	}{
+		{"document fragment", "/body/DocFragment[30].0", 30, true},
+		{"nested emphasized text", "/body/DocFragment[12]/body/p[23]/em/text().5", 12, false},
+		{"unindexed first fragment", "/body/DocFragment/body/p/text().3", 1, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fragment, _, _, ok := parseKOReaderXPointer(test.xpointer)
+			if !ok || fragment != test.fragment {
+				t.Fatalf("parse %q = fragment %d, %v", test.xpointer, fragment, ok)
+			}
+			_, structural := koReaderStructuralStart(test.xpointer)
+			if structural != test.structural {
+				t.Fatalf("structural %q = %v, want %v", test.xpointer, structural, test.structural)
+			}
+		})
 	}
 }
