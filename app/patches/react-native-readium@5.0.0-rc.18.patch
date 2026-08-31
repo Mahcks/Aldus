@@ -12,7 +12,7 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..d713e4a972631733eb657db3d5344353
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..5248bb1adde287e79c30a38c248d54c20169e0fa 100644
+index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..d7a6a0183b868494f0c05ce4753007f2674fd176 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -208,5 +208,4 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -21,16 +21,61 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..5248bb1adde287e79c30a38c248d54c2
      hostView.addSubview(rootView)
 -    viewController!.addChild(readerViewController!)
      readerViewController!.didMove(toParent: viewController!)
-@@ -276,6 +275,22 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -276,6 +275,67 @@ class HybridReadiumView: HybridReadiumViewSpec {
      }
    }
  
 +  func currentVisibleLocation() throws -> Promise<SearchPage> {
 +    Promise.async { @MainActor [weak self] in
 +      guard
-+        let navigator = self?.readerViewController?.navigator as? EPUBNavigatorViewController,
-+        let locator = await navigator.firstVisibleElementLocator()
++        let navigator = self?.readerViewController?.navigator as? EPUBNavigatorViewController
 +      else { return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true) }
++      let script = """
++      (() => {
++        const visible = (rect) =>
++          rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth;
++        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
++        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
++          const nodeRange = document.createRange();
++          nodeRange.selectNodeContents(node);
++          if (!Array.from(nodeRange.getClientRects()).some(visible)) continue;
++          for (const word of node.data.matchAll(/[\\p{L}\\p{N}]+/gu)) {
++            const range = document.createRange();
++            const start = word.index;
++            range.setStart(node, start);
++            range.setEnd(node, start + Array.from(word[0])[0].length);
++            if (!Array.from(range.getClientRects()).some(visible)) continue;
++            let block = node.parentElement;
++            while (block && getComputedStyle(block).display !== "block") block = block.parentElement;
++            if (!block) return null;
++            const prefix = document.createRange();
++            prefix.selectNodeContents(block);
++            prefix.setEnd(node, start);
++            const text = block.textContent || "";
++            const offset = prefix.toString().length;
++            return {
++              before: text.slice(Math.max(0, offset - 80), offset),
++              highlight: word[0],
++              after: text.slice(offset + word[0].length, offset + word[0].length + 80),
++            };
++          }
++        }
++        return null;
++      })()
++      """
++      let locator: RLocator?
++      let textResult = await navigator.evaluateJavaScript(script)
++      if case let .success(value) = textResult,
++         let text = try? ReadiumShared.Locator.Text(json: value),
++         text.highlight != nil,
++         let current = navigator.currentLocation {
++        locator = current.copy(text: { $0 = text })
++      } else {
++        locator = await navigator.firstVisibleElementLocator()
++      }
++      guard let locator else {
++        return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true)
++      }
 +      let result = SearchResult(
 +        locator: readiumLocatorToNitro(locator),
 +        before: locator.text.before,

@@ -42,6 +42,8 @@ describe('Readium config plugin', () => {
     expect(swift.indexOf('func currentVisibleLocation()')).toBeLessThan(
       swift.indexOf('func destroy()'),
     );
+    expect(swift).toContain('NodeFilter.SHOW_TEXT');
+    expect(swift).toContain('navigator.currentLocation');
     expect(swift.match(/addChild\(readerViewController!\)/g)).toHaveLength(1);
   });
 });
