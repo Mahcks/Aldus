@@ -42,6 +42,24 @@ afterEach(() => {
   setStorageUserID('');
 });
 
+test('reconciles queued progress and removes it from the outbox', async () => {
+  globalThis.fetch = (async () => {
+    throw new Error('offline');
+  }) as unknown as typeof fetch;
+  expect(await saveWorkProgress('work', update)).toBeNull();
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) =>
+    Response.json({
+      ...update,
+      work_id: 'work',
+      revision: init?.method === 'PUT' ? 1 : 0,
+      resolvable: true,
+    })) as unknown as typeof fetch;
+
+  expect(await reconcilePendingProgress('work')).toBeNull();
+  expect(await pendingProgress('work')).toBeNull();
+});
+
 test('pending progress is not submitted after the active account changes', async () => {
   globalThis.fetch = (async () => {
     throw new Error('offline');

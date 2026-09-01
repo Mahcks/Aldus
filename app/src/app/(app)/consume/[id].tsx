@@ -105,9 +105,11 @@ const ACCEPTANCE_NETWORK_LABELS = {
   idle: 'Toggle acceptance network',
   busy: 'Changing acceptance network…',
   disconnected: 'Acceptance network disconnected',
-  waiting: 'Waiting for acceptance sync…',
   reconciled: 'Acceptance progress reconciled',
-  failed: 'Acceptance network toggle failed',
+  missing: 'Acceptance failed: queued progress missing',
+  conflict: 'Acceptance failed: queued progress conflicted',
+  mismatch: 'Acceptance failed: server position mismatch',
+  failed: 'Acceptance failed: network or server request',
 } as const;
 
 function PassageHandoff({
@@ -1545,32 +1547,35 @@ export default function ConsumeWorkScreen() {
         setAcceptanceNetworkState('disconnected');
         return;
       }
-      if (!work || !queued) throw new Error();
-      setAcceptanceNetworkState('waiting');
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        if (!(await pendingProgress(work.id))) {
-          const remote = await api.workProgress(work.id);
-          if (
-            !remote ||
-            remote.alignment_id !== queued.alignment_id ||
-            remote.segment_id !== queued.segment_id ||
-            remote.offset !== queued.offset
-          )
-            throw new Error();
-          progressRef.current = remote;
-          setProgress(remote);
-          await updateOfflineProgress(work.id, remote);
-          setSyncAvailable(true);
-          setSaveState('saved');
-          setNotice('');
-          setAcceptanceNetworkState('reconciled');
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250));
+      if (!work || !queued) {
+        setAcceptanceNetworkState('missing');
+        return;
       }
-      throw new Error();
-    } catch {
-      setAcceptanceNetworkState('failed');
+      if (await reconcilePendingProgress(work.id)) {
+        setAcceptanceNetworkState('conflict');
+        return;
+      }
+      const remote = await api.workProgress(work.id);
+      if (
+        !remote ||
+        remote.alignment_id !== queued.alignment_id ||
+        remote.segment_id !== queued.segment_id ||
+        remote.offset !== queued.offset
+      ) {
+        setAcceptanceNetworkState('mismatch');
+        return;
+      }
+      progressRef.current = remote;
+      setProgress(remote);
+      await updateOfflineProgress(work.id, remote);
+      setSyncAvailable(true);
+      setSaveState('saved');
+      setNotice('');
+      setAcceptanceNetworkState('reconciled');
+    } catch (error) {
+      setAcceptanceNetworkState(
+        error instanceof APIError && error.status === 409 ? 'conflict' : 'failed',
+      );
     }
   }
   const scrubberKeyboardProps = Platform.OS === 'web' ? { onKeyDown: handleScrubberKeyDown } : {};

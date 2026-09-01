@@ -85,15 +85,16 @@ final class AldusUITests: XCTestCase {
       let reconciliation = app.buttons
         .matching(
           NSPredicate(
-            format: "label IN %@",
-            ["Acceptance progress reconciled", "Acceptance network toggle failed"]
+            format: "label == %@ OR label BEGINSWITH %@",
+            "Acceptance progress reconciled",
+            "Acceptance failed:"
           )
         )
         .firstMatch
       XCTAssertTrue(reconciliation.waitForExistence(timeout: timeout))
       XCTAssertTrue(
         reconciliation.label == "Acceptance progress reconciled",
-        "Queued progress should reconcile after the fixture server returns"
+        "Queued progress should reconcile after the fixture server returns. Outcome: \(reconciliation.label)"
       )
       nextPage.tap()
       XCTAssertTrue(element(containing: "Saved here", in: app).waitForExistence(timeout: timeout))
