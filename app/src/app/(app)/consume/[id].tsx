@@ -105,6 +105,7 @@ const ACCEPTANCE_NETWORK_LABELS = {
   idle: 'Toggle acceptance network',
   busy: 'Changing acceptance network…',
   disconnected: 'Acceptance network disconnected',
+  queued: 'Acceptance progress queued',
   reconciled: 'Acceptance progress reconciled',
   missing: 'Acceptance failed: queued progress missing',
   conflict: 'Acceptance failed: queued progress conflicted',
@@ -1095,6 +1096,8 @@ export default function ConsumeWorkScreen() {
               setProgress(local);
               await updateOfflineProgress(work.id, local);
               if (attempt === saveAttempt.current) setSaveState('offline');
+              if (process.env.EXPO_PUBLIC_ALDUS_IOS_ACCEPTANCE === '1')
+                setAcceptanceNetworkState('queued');
               return;
             }
             next = result;

@@ -69,7 +69,15 @@ final class AldusUITests: XCTestCase {
 
     if environment["ALDUS_ACCEPTANCE_FAULTS"] == "1" {
       toggleFixtureNetwork(in: app, expecting: "Acceptance network disconnected")
-      nextPage.tap()
+      let queued = app.buttons["Acceptance progress queued"]
+      for _ in 0..<8 where !queued.exists {
+        nextPage.tap()
+        if queued.waitForExistence(timeout: 3) { break }
+      }
+      XCTAssertTrue(
+        queued.exists,
+        "Reader navigation did not produce a canonical progress update to queue"
+      )
       XCTAssertTrue(
         element(containing: "Saved on this device", in: app).waitForExistence(timeout: timeout),
         "Progress should queue while the fixture server is unavailable"
