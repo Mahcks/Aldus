@@ -146,12 +146,15 @@ func putProgress(store *position.Store) http.HandlerFunc {
 			incoming, resolveErr := store.KOReaderToCanonicalForAlignment(r.Context(), position.KOReaderLocator{DocumentID: request.Document, Progress: request.Progress}, document.AlignmentID)
 			if resolveErr == nil {
 				updated, updateErr := updateCanonical(r.Context(), store, document, incoming, request.Device, request.DeviceID)
-				if updateErr != nil {
+				if errors.Is(updateErr, position.ErrConflict) {
+					slog.Debug("KOReader canonical progress deferred after concurrent updates", "username", username, "document", request.Document)
+				} else if updateErr != nil {
 					slog.Error("KOReader canonical progress save failed", "username", username, "document", request.Document, "error", updateErr)
 					http.Error(w, "save progress", http.StatusInternalServerError)
 					return
+				} else {
+					native.UpdatedAt = updated.UpdatedAt
 				}
-				native.UpdatedAt = updated.UpdatedAt
 			} else if !errors.Is(resolveErr, position.ErrNotFound) {
 				slog.Error("KOReader progress resolution failed", "document", request.Document, "error", resolveErr)
 				http.Error(w, "resolve progress", http.StatusInternalServerError)

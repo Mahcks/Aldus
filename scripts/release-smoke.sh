@@ -146,7 +146,7 @@ upgrade_from_previous() {
     echo "Schema version is unchanged; previous-image refusal is not applicable"
   fi
 
-  upgrade_compose rm --force aldus >/dev/null 2>&1 || true
+  upgrade_compose rm --stop --force aldus
   UPGRADE_TAG=$previous_tag
   data_volume=$(docker volume ls \
     --filter "label=com.docker.compose.project=$UPGRADE_PROJECT" \
