@@ -2,24 +2,58 @@ import type { Alignment, AudioLocator, CanonicalPosition, EPUBLocator } from '@/
 
 const OFFSET_MAX = 1_000_000;
 type TimedWord = { startTime: number; endTime: number; text: string };
+type PersistedTimedWord = Partial<
+  TimedWord & { word: string; start: number; end: number; confidence: number; score: number }
+>;
 
-function timedWords(value: unknown): TimedWord[] | undefined {
+function timedWords(
+  value: unknown,
+  segmentStartMS: number,
+  segmentEndMS: number,
+): TimedWord[] | undefined {
   if (!Array.isArray(value) || value.length === 0) return;
-  const words = value.filter(
-    (word): word is TimedWord =>
-      Boolean(word) &&
-      typeof word.text === 'string' &&
-      word.text !== '' &&
-      typeof word.startTime === 'number' &&
-      word.startTime > 0 &&
-      typeof word.endTime === 'number' &&
-      word.endTime >= word.startTime,
-  );
-  return words.length === value.length ? words : undefined;
+  const words: TimedWord[] = [];
+  let format: 'canonical' | 'legacy' | undefined;
+  let lastEnd = segmentStartMS / 1000 - 0.002;
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') return;
+    const word = candidate as PersistedTimedWord;
+    const canonical =
+      'text' in word || 'startTime' in word || 'endTime' in word || 'confidence' in word;
+    const legacy = 'word' in word || 'start' in word || 'end' in word || 'score' in word;
+    if (canonical === legacy) return;
+    const currentFormat = canonical ? 'canonical' : 'legacy';
+    if (format && format !== currentFormat) return;
+    format = currentFormat;
+    const text = canonical ? word.text : word.word;
+    const startTime = canonical ? word.startTime : word.start;
+    const endTime = canonical ? word.endTime : word.end;
+    if (
+      typeof text !== 'string' ||
+      text.trim() === '' ||
+      typeof startTime !== 'number' ||
+      !Number.isFinite(startTime) ||
+      typeof endTime !== 'number' ||
+      !Number.isFinite(endTime) ||
+      startTime < lastEnd ||
+      endTime < startTime ||
+      endTime > segmentEndMS / 1000 + 0.002
+    )
+      return;
+    words.push({ text, startTime, endTime });
+    lastEnd = endTime;
+  }
+  return words;
 }
 
-function wordOffset(text: string | undefined, value: unknown, timestampMS: number) {
-  const timings = timedWords(value);
+function wordOffset(
+  text: string | undefined,
+  value: unknown,
+  timestampMS: number,
+  segmentStartMS: number,
+  segmentEndMS: number,
+) {
+  const timings = timedWords(value, segmentStartMS, segmentEndMS);
   const normalized = (text ?? '').trim().split(/\s+/).join(' ');
   const words = normalized ? normalized.split(' ') : [];
   if (!timings || words.length === 0) return;
@@ -30,8 +64,14 @@ function wordOffset(text: string | undefined, value: unknown, timestampMS: numbe
   return Math.floor((cursor * OFFSET_MAX) / Array.from(normalized).length);
 }
 
-function wordTimestamp(text: string | undefined, value: unknown, offset: number) {
-  const timings = timedWords(value);
+function wordTimestamp(
+  text: string | undefined,
+  value: unknown,
+  offset: number,
+  segmentStartMS: number,
+  segmentEndMS: number,
+) {
+  const timings = timedWords(value, segmentStartMS, segmentEndMS);
   const normalized = (text ?? '').trim().split(/\s+/).join(' ');
   const words = normalized ? normalized.split(' ') : [];
   if (!timings || words.length === 0) return;
@@ -84,7 +124,13 @@ export function offlineAudioToCanonical(
   if (!segment || segment.audio_end_ms <= segment.audio_start_ms) return;
   const exactOffset =
     locator.timestamp_ms > segment.audio_start_ms && locator.timestamp_ms < segment.audio_end_ms
-      ? wordOffset(segment.text, segment.word_timings, locator.timestamp_ms)
+      ? wordOffset(
+          segment.text,
+          segment.word_timings,
+          locator.timestamp_ms,
+          segment.audio_start_ms,
+          segment.audio_end_ms,
+        )
       : undefined;
   return {
     alignment_id: alignment.id,
@@ -121,7 +167,13 @@ export function offlineCanonicalToAudio(
     (item) => item.highlightable && item.id === position.segment_id,
   );
   if (!segment) return;
-  const exactTimestamp = wordTimestamp(segment.text, segment.word_timings, position.offset);
+  const exactTimestamp = wordTimestamp(
+    segment.text,
+    segment.word_timings,
+    position.offset,
+    segment.audio_start_ms,
+    segment.audio_end_ms,
+  );
   return {
     resource: segment.audio_resource,
     timestamp_ms:

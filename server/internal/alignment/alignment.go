@@ -694,7 +694,7 @@ func (m *Manager) publish(ctx context.Context, job Job, path, artifactID string)
 	if err != nil {
 		return err
 	}
-	if err := validate(artifact, input, m.options.WorkerVersion); err != nil {
+	if err := validate(&artifact, input, m.options.WorkerVersion); err != nil {
 		return err
 	}
 	// Publish every segment and retire the previous alignment in one transaction.
@@ -748,13 +748,14 @@ func (m *Manager) publish(ctx context.Context, job Job, path, artifactID string)
 	return tx.Commit()
 }
 
-func validate(a Artifact, input workerInput, tool string) error {
+func validate(a *Artifact, input workerInput, tool string) error {
 	if a.Version != ContractVersion || a.Tool != tool || a.Model != input.Model || a.EPUBSHA256 != input.EPUBSHA256 || a.AudioSHA256 != input.AudioSHA256 || len(a.Segments) != len(input.Segments) {
 		return errors.New("artifact contract or input mismatch")
 	}
 	lastEnd := int64(-1)
 	ids := map[string]bool{}
-	for i, s := range a.Segments {
+	for i := range a.Segments {
+		s := &a.Segments[i]
 		expected := input.Segments[i]
 		if s.ID != expected.ID || ids[s.ID] || s.Ordinal != expected.Ordinal || s.Text != expected.Text || strings.Join(strings.Fields(s.NormalizedText), " ") != strings.Join(strings.Fields(expected.Text), " ") || s.EPUB.Href != expected.Href || s.EPUB.DOMPath != expected.DOMPath || !validLocator(s.EPUB.Locator, expected.DOMPath) || s.Audio.Resource != input.AudioResource || s.Audio.StartMS < 0 || s.Audio.EndMS <= s.Audio.StartMS || s.Audio.EndMS > input.AudioDuration || s.Audio.StartMS < lastEnd {
 			return fmt.Errorf("invalid segment %d", i)
@@ -768,12 +769,11 @@ func validate(a Artifact, input workerInput, tool string) error {
 		if len(s.Confidence) > 0 && !json.Valid(s.Confidence) {
 			return fmt.Errorf("invalid confidence %d", i)
 		}
-		if len(s.WordTimings) > 0 && !json.Valid(s.WordTimings) {
+		words, err := normalizeWordTimings(s.WordTimings, s.Audio.StartMS, s.Audio.EndMS)
+		if err != nil {
 			return fmt.Errorf("invalid words %d", i)
 		}
-		if err := validateWords(s.WordTimings, s.Audio.StartMS, s.Audio.EndMS); err != nil {
-			return fmt.Errorf("invalid words %d", i)
-		}
+		s.WordTimings = words
 		ids[s.ID] = true
 		lastEnd = s.Audio.EndMS
 	}
@@ -788,25 +788,64 @@ func validLocator(raw json.RawMessage, expectedPath string) bool {
 	return json.Unmarshal(raw, &locator) == nil && locator.Type == "dom-element" && locator.DOMPath == expectedPath
 }
 
-func validateWords(raw json.RawMessage, segmentStart, segmentEnd int64) error {
+type timedWord struct {
+	Text       string   `json:"text"`
+	StartTime  float64  `json:"startTime"`
+	EndTime    float64  `json:"endTime"`
+	Confidence *float64 `json:"confidence,omitempty"`
+}
+
+type inputTimedWord struct {
+	Text       *string  `json:"text"`
+	StartTime  *float64 `json:"startTime"`
+	EndTime    *float64 `json:"endTime"`
+	Confidence *float64 `json:"confidence"`
+	Word       *string  `json:"word"`
+	Start      *float64 `json:"start"`
+	End        *float64 `json:"end"`
+	Score      *float64 `json:"score"`
+}
+
+func normalizeWordTimings(raw json.RawMessage, segmentStart, segmentEnd int64) (json.RawMessage, error) {
+	var input []inputTimedWord
 	if len(raw) == 0 {
-		return nil
+		return nil, nil
 	}
-	var words []struct {
-		Start float64 `json:"start"`
-		End   float64 `json:"end"`
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return nil, err
 	}
-	if err := json.Unmarshal(raw, &words); err != nil {
-		return err
+	if len(input) == 0 {
+		return nil, nil
 	}
+
+	words := make([]timedWord, len(input))
+	canonicalFormat := input[0].Text != nil || input[0].StartTime != nil || input[0].EndTime != nil || input[0].Confidence != nil
 	last := float64(segmentStart)/1000 - .002
-	for _, word := range words {
-		if math.IsNaN(word.Start) || math.IsInf(word.Start, 0) || math.IsNaN(word.End) || math.IsInf(word.End, 0) || word.Start < last || word.End <= word.Start || word.End > float64(segmentEnd)/1000+.002 {
-			return ErrInvalid
+	for i, value := range input {
+		canonical := value.Text != nil || value.StartTime != nil || value.EndTime != nil || value.Confidence != nil
+		legacy := value.Word != nil || value.Start != nil || value.End != nil || value.Score != nil
+		if canonical == legacy || canonical != canonicalFormat {
+			return nil, ErrInvalid
 		}
-		last = word.End
+		word := timedWord{Confidence: value.Confidence}
+		if canonical {
+			if value.Text == nil || value.StartTime == nil || value.EndTime == nil {
+				return nil, ErrInvalid
+			}
+			word.Text, word.StartTime, word.EndTime = *value.Text, *value.StartTime, *value.EndTime
+		} else {
+			if value.Word == nil || value.Start == nil || value.End == nil {
+				return nil, ErrInvalid
+			}
+			word.Text, word.StartTime, word.EndTime, word.Confidence = *value.Word, *value.Start, *value.End, value.Score
+		}
+		if strings.TrimSpace(word.Text) == "" || math.IsNaN(word.StartTime) || math.IsInf(word.StartTime, 0) || math.IsNaN(word.EndTime) || math.IsInf(word.EndTime, 0) || word.StartTime < last || word.EndTime < word.StartTime || word.EndTime > float64(segmentEnd)/1000+.002 {
+			return nil, ErrInvalid
+		}
+		words[i] = word
+		last = word.EndTime
 	}
-	return nil
+	return json.Marshal(words)
 }
 
 type scanner interface{ Scan(...any) error }

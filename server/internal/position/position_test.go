@@ -134,24 +134,43 @@ func TestKOReaderContainerStartResolvesToFirstFragmentSegment(t *testing.T) {
 }
 
 func TestWordAwareOffsets(t *testing.T) {
-	words := `[{"text":"Alice","startTime":10.0,"endTime":10.4},{"text":"opened","startTime":10.6,"endTime":11.0},{"text":"the","startTime":11.1,"endTime":11.3},{"text":"door","startTime":11.4,"endTime":11.8}]`
 	text := "Alice opened the door"
-	if timestamp, ok := wordTimestamp(500_000, text, words); !ok || timestamp != 10_600 {
-		t.Fatalf("middle text position = %d, %v", timestamp, ok)
+	formats := map[string]string{
+		"canonical": `[{"text":"Alice","startTime":10.0,"endTime":10.4},{"text":"opened","startTime":10.6,"endTime":11.0},{"text":"the","startTime":11.1,"endTime":11.3},{"text":"door","startTime":11.4,"endTime":11.8}]`,
+		"beta.18":   `[{"word":"Alice","start":10.0,"end":10.4},{"word":"opened","start":10.6,"end":11.0},{"word":"the","start":11.1,"end":11.3},{"word":"door","start":11.4,"end":11.8}]`,
 	}
-	if offset, ok := wordOffset(11_200, text, words); !ok || offset != 619_047 {
-		t.Fatalf("audio word position = %d, %v", offset, ok)
+	for name, words := range formats {
+		t.Run(name, func(t *testing.T) {
+			if timestamp, ok := wordTimestamp(500_000, text, words, 10_000, 11_800); !ok || timestamp != 10_600 {
+				t.Fatalf("middle text position = %d, %v", timestamp, ok)
+			}
+			if offset, ok := wordOffset(11_200, text, words, 10_000, 11_800); !ok || offset != 619_047 {
+				t.Fatalf("audio word position = %d, %v", offset, ok)
+			}
+		})
 	}
-	if _, ok := wordTimestamp(500_000, text, `[{"text":"","startTime":0}]`); ok {
-		t.Fatal("malformed timing did not fail closed")
+	malformed := map[string]string{
+		"empty":          `[]`,
+		"partial":        `[{"text":"Alice","startTime":10}]`,
+		"mixed":          `[{"text":"Alice","startTime":10,"endTime":10.4},{"word":"opened","start":10.6,"end":11}]`,
+		"non-monotonic":  `[{"text":"Alice","startTime":10.6,"endTime":11},{"text":"opened","startTime":10,"endTime":10.4}]`,
+		"out-of-segment": `[{"text":"Alice","startTime":9,"endTime":9.4}]`,
+		"non-finite":     `[{"text":"Alice","startTime":1e999,"endTime":1e999}]`,
+	}
+	for name, words := range malformed {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := timedWords(words, 10_000, 11_800); ok {
+				t.Fatal("malformed timing did not fail closed")
+			}
+		})
 	}
 	punctuated := "Alice said, ‘cut your finger very deeply.’"
-	punctuatedWords := `[{"text":"Alice","startTime":1,"endTime":1.1},{"text":"said","startTime":2,"endTime":2.1},{"text":"cut","startTime":3,"endTime":3.1},{"text":"your","startTime":4,"endTime":4.1},{"text":"finger","startTime":5,"endTime":5.1},{"text":"deeply","startTime":6,"endTime":6.1}]`
+	punctuatedWords := `[{"word":"Alice","start":1,"end":1.1},{"word":"said","start":2,"end":2.1},{"word":"cut","start":3,"end":3.1},{"word":"your","start":4,"end":4.1},{"word":"finger","start":5,"end":5.1},{"word":"deeply","start":6,"end":6.1}]`
 	fingerOffset := len([]rune("Alice said, ‘cut your ")) * OffsetMax / len([]rune(punctuated))
-	if timestamp, ok := wordTimestamp(fingerOffset, punctuated, punctuatedWords); !ok || timestamp != 5_000 {
+	if timestamp, ok := wordTimestamp(fingerOffset, punctuated, punctuatedWords, 1_000, 6_100); !ok || timestamp != 5_000 {
 		t.Fatalf("punctuated text position = %d, %v", timestamp, ok)
 	}
-	if offset, ok := wordOffset(5_050, punctuated, punctuatedWords); !ok || offset != fingerOffset {
+	if offset, ok := wordOffset(5_050, punctuated, punctuatedWords, 1_000, 6_100); !ok || offset != fingerOffset {
 		t.Fatalf("punctuated audio position = %d, %v", offset, ok)
 	}
 }

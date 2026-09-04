@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -99,7 +100,7 @@ func (s *Store) AudioToCanonical(ctx context.Context, alignmentID string, locato
 		p.Offset = 0
 	} else if locator.TimestampMS >= end {
 		p.Offset = OffsetMax
-	} else if offset, ok := wordOffset(locator.TimestampMS, text, timings.String); timings.Valid && ok {
+	} else if offset, ok := wordOffset(locator.TimestampMS, text, timings.String, start, end); timings.Valid && ok {
 		p.Offset = offset
 	} else {
 		p.Offset = int((locator.TimestampMS - start) * OffsetMax / (end - start))
@@ -127,7 +128,7 @@ func (s *Store) CanonicalToAudio(ctx context.Context, p Canonical) (AudioLocator
 	if err != nil {
 		return AudioLocator{}, fmt.Errorf("resolve canonical audio locator: %w", err)
 	}
-	if timestamp, ok := wordTimestamp(p.Offset, text, timings.String); timings.Valid && ok && timestamp >= start && timestamp <= end {
+	if timestamp, ok := wordTimestamp(p.Offset, text, timings.String, start, end); timings.Valid && ok && timestamp >= start && timestamp <= end {
 		locator.TimestampMS = timestamp
 	} else {
 		locator.TimestampMS = start + int64(p.Offset)*(end-start)/OffsetMax
@@ -136,26 +137,59 @@ func (s *Store) CanonicalToAudio(ctx context.Context, p Canonical) (AudioLocator
 }
 
 type timedWord struct {
-	Text      string  `json:"text"`
-	StartTime float64 `json:"startTime"`
-	EndTime   float64 `json:"endTime"`
+	Text      string
+	StartTime float64
+	EndTime   float64
 }
 
-func timedWords(raw string) ([]timedWord, bool) {
-	var words []timedWord
-	if json.Unmarshal([]byte(raw), &words) != nil || len(words) == 0 {
+type persistedTimedWord struct {
+	Text       *string  `json:"text"`
+	StartTime  *float64 `json:"startTime"`
+	EndTime    *float64 `json:"endTime"`
+	Confidence *float64 `json:"confidence"`
+	Word       *string  `json:"word"`
+	Start      *float64 `json:"start"`
+	End        *float64 `json:"end"`
+	Score      *float64 `json:"score"`
+}
+
+func timedWords(raw string, segmentStart, segmentEnd int64) ([]timedWord, bool) {
+	var persisted []persistedTimedWord
+	if json.Unmarshal([]byte(raw), &persisted) != nil || len(persisted) == 0 {
 		return nil, false
 	}
-	for _, word := range words {
-		if word.Text == "" || word.StartTime <= 0 || word.EndTime < word.StartTime {
+	words := make([]timedWord, len(persisted))
+	canonicalFormat := persisted[0].Text != nil || persisted[0].StartTime != nil || persisted[0].EndTime != nil || persisted[0].Confidence != nil
+	last := float64(segmentStart)/1000 - .002
+	for i, value := range persisted {
+		canonical := value.Text != nil || value.StartTime != nil || value.EndTime != nil || value.Confidence != nil
+		legacy := value.Word != nil || value.Start != nil || value.End != nil || value.Score != nil
+		if canonical == legacy || canonical != canonicalFormat {
 			return nil, false
 		}
+		word := timedWord{}
+		if canonical {
+			if value.Text == nil || value.StartTime == nil || value.EndTime == nil {
+				return nil, false
+			}
+			word = timedWord{Text: *value.Text, StartTime: *value.StartTime, EndTime: *value.EndTime}
+		} else {
+			if value.Word == nil || value.Start == nil || value.End == nil {
+				return nil, false
+			}
+			word = timedWord{Text: *value.Word, StartTime: *value.Start, EndTime: *value.End}
+		}
+		if strings.TrimSpace(word.Text) == "" || math.IsNaN(word.StartTime) || math.IsInf(word.StartTime, 0) || math.IsNaN(word.EndTime) || math.IsInf(word.EndTime, 0) || word.StartTime < last || word.EndTime < word.StartTime || word.EndTime > float64(segmentEnd)/1000+.002 {
+			return nil, false
+		}
+		words[i] = word
+		last = word.EndTime
 	}
 	return words, true
 }
 
-func wordTimestamp(offset int, text, raw string) (int64, bool) {
-	words, ok := timedWords(raw)
+func wordTimestamp(offset int, text, raw string, segmentStart, segmentEnd int64) (int64, bool) {
+	words, ok := timedWords(raw, segmentStart, segmentEnd)
 	if !ok {
 		return 0, false
 	}
@@ -180,8 +214,8 @@ func wordTimestamp(offset int, text, raw string) (int64, bool) {
 	return int64(words[len(words)-1].StartTime * 1000), true
 }
 
-func wordOffset(timestamp int64, text, raw string) (int, bool) {
-	words, ok := timedWords(raw)
+func wordOffset(timestamp int64, text, raw string, segmentStart, segmentEnd int64) (int, bool) {
+	words, ok := timedWords(raw, segmentStart, segmentEnd)
 	if !ok {
 		return 0, false
 	}

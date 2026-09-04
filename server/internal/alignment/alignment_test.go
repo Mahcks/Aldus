@@ -179,6 +179,28 @@ func TestJobReadyDuplicateAndAuthorization(t *testing.T) {
 	if alignments != 1 || segments != 1 || inputs != 2 {
 		t.Fatalf("published=%d/%d/%d", alignments, segments, inputs)
 	}
+	var rawWords string
+	if err := s.manager.db.QueryRow(`SELECT word_timings FROM alignment_segments WHERE alignment_id=?`, job.ID).Scan(&rawWords); err != nil {
+		t.Fatal(err)
+	}
+	var words []map[string]any
+	if err := json.Unmarshal([]byte(rawWords), &words); err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 7 || words[0]["text"] != "Alice" || words[0]["startTime"] != 0.1 || words[0]["confidence"] != 0.9 {
+		t.Fatalf("canonical words=%s", rawWords)
+	}
+	for _, field := range []string{"word", "start", "end", "score"} {
+		if _, exists := words[0][field]; exists {
+			t.Fatalf("legacy field %q persisted in %s", field, rawWords)
+		}
+	}
+	text := "Alice was beginning to get very tired."
+	wordStart := len([]rune("Alice was ")) * position.OffsetMax / len([]rune(text))
+	audio, err := position.New(s.manager.db).CanonicalToAudio(ctx, position.Canonical{AlignmentID: job.ID, SegmentID: "s000001", Offset: wordStart})
+	if err != nil || audio.TimestampMS != 190 {
+		t.Fatalf("word-aware audio locator=%#v, %v", audio, err)
+	}
 	var documentID string
 	if err := s.manager.db.QueryRow(`SELECT document_id FROM koreader_aliases WHERE media_id='epub'`).Scan(&documentID); err != nil {
 		t.Fatal(err)
@@ -321,8 +343,45 @@ func TestValidateRejectsNonMonotonicTimings(t *testing.T) {
 		artifact.Segments = append(artifact.Segments, segment)
 	}
 	artifact.Segments[1].Audio.StartMS = 400
-	if err := validate(artifact, input, artifact.Tool); err == nil {
+	if err := validate(&artifact, input, artifact.Tool); err == nil {
 		t.Fatal("non-monotonic artifact accepted")
+	}
+}
+
+func TestNormalizeWordTimings(t *testing.T) {
+	want := `[{"text":"one","startTime":1,"endTime":1.4,"confidence":0.8},{"text":"two","startTime":1.5,"endTime":1.5}]`
+	formats := map[string]string{
+		"canonical": want,
+		"whisperx":  `[{"word":"one","start":1,"end":1.4,"score":0.8},{"word":"two","start":1.5,"end":1.5}]`,
+	}
+	for name, raw := range formats {
+		t.Run(name, func(t *testing.T) {
+			got, err := normalizeWordTimings(json.RawMessage(raw), 1_000, 2_000)
+			if err != nil || string(got) != want {
+				t.Fatalf("normalized words=%s, %v", got, err)
+			}
+		})
+	}
+	empty, err := normalizeWordTimings(json.RawMessage(`[]`), 1_000, 2_000)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty words=%s, %v", empty, err)
+	}
+	invalid := map[string]string{
+		"partial":        `[{"text":"one","startTime":1}]`,
+		"mixed fields":   `[{"text":"one","startTime":1,"endTime":1.4,"score":0.8}]`,
+		"mixed array":    `[{"text":"one","startTime":1,"endTime":1.4},{"word":"two","start":1.5,"end":1.9}]`,
+		"empty text":     `[{"text":"","startTime":1,"endTime":1.4}]`,
+		"non-monotonic":  `[{"text":"one","startTime":1.5,"endTime":1.9},{"text":"two","startTime":1,"endTime":1.4}]`,
+		"before segment": `[{"text":"one","startTime":0.5,"endTime":0.9}]`,
+		"after segment":  `[{"text":"one","startTime":2,"endTime":2.1}]`,
+		"non-finite":     `[{"text":"one","startTime":1e999,"endTime":1e999}]`,
+	}
+	for name, raw := range invalid {
+		t.Run(name, func(t *testing.T) {
+			if _, err := normalizeWordTimings(json.RawMessage(raw), 1_000, 2_000); err == nil {
+				t.Fatal("invalid timing accepted")
+			}
+		})
 	}
 }
 
@@ -417,7 +476,7 @@ if mode=='gpu_unavailable': sys.exit(78)
 if mode=='sleep': time.sleep(10)
 if mode=='malformed': open(out,'w').write('{');sys.exit(0)
 s=inp['segments'][0]
-segment={'id':s['id'],'ordinal':0,'text':s['text'],'normalized_text':' '.join(s['text'].split()),'epub':{'href':s['href'],'dom_path':s['dom_path'],'locator':{'type':'dom-element','dom_path':s['dom_path']}},'audio':{'resource':inp['audio_resource'],'start_ms':100,'end_ms':500},'status':'aligned','highlightable':True,'confidence_signals':{'score':0.9},'word_timings':[]}
+segment={'id':s['id'],'ordinal':0,'text':s['text'],'normalized_text':' '.join(s['text'].split()),'epub':{'href':s['href'],'dom_path':s['dom_path'],'locator':{'type':'dom-element','dom_path':s['dom_path']}},'audio':{'resource':inp['audio_resource'],'start_ms':100,'end_ms':500},'status':'aligned','highlightable':True,'confidence_signals':{'score':0.9},'word_timings':[{'word':'Alice','start':0.1,'end':0.14,'score':0.9},{'word':'was','start':0.15,'end':0.18},{'word':'beginning','start':0.19,'end':0.24},{'word':'to','start':0.25,'end':0.28},{'word':'get','start':0.29,'end':0.32},{'word':'very','start':0.33,'end':0.36},{'word':'tired','start':0.37,'end':0.4}]}
 if mode=='unresolved': segment['status']='unresolved';segment['highlightable']=False
 segments=[segment]
 artifact={'version':1,'tool':'whisperx 3.8.6','model':inp['model'],'epub_sha256':inp['epub_sha256'],'audio_sha256':inp['audio_sha256'],'segments':segments}

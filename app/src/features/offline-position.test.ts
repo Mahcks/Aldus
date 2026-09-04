@@ -15,6 +15,13 @@ const alignment = {
   ],
 } as Alignment;
 
+function withTimings(wordTimings: unknown, text = 'one two three') {
+  return {
+    ...alignment,
+    segments: [{ ...alignment.segments[0], text, word_timings: wordTimings }],
+  } as Alignment;
+}
+
 test('offline audio positions preserve canonical segment offsets', () => {
   const canonical = offlineAudioToCanonical(alignment, {
     resource: 'book.m4b',
@@ -40,24 +47,70 @@ test('offline audio positions snap gaps to the nearest readable boundary', () =>
 });
 
 test('offline audio positions use the server word timing model when available', () => {
-  const timed = {
-    ...alignment,
-    segments: [
-      {
-        ...alignment.segments[0],
-        text: 'one two three',
-        word_timings: [
-          { text: 'one', startTime: 1, endTime: 1.4 },
-          { text: 'two', startTime: 1.5, endTime: 1.9 },
-          { text: 'three', startTime: 2, endTime: 2.8 },
-        ],
-      },
+  const formats = [
+    [
+      { text: 'one', startTime: 1, endTime: 1.4 },
+      { text: 'two', startTime: 1.5, endTime: 1.9 },
+      { text: 'three', startTime: 2, endTime: 2.8 },
     ],
-  } as Alignment;
+    [
+      { word: 'one', start: 1, end: 1.4 },
+      { word: 'two', start: 1.5, end: 1.9 },
+      { word: 'three', start: 2, end: 2.8 },
+    ],
+  ];
+  for (const wordTimings of formats) {
+    const timed = withTimings(wordTimings);
+    const canonical = offlineAudioToCanonical(timed, {
+      resource: 'book.m4b',
+      timestamp_ms: 1_700,
+    });
+    expect(canonical?.offset).toBe(307_692);
+    expect(offlineCanonicalToAudio(timed, canonical!)?.timestamp_ms).toBe(1_500);
+  }
+});
+
+test('offline timing fallback rejects malformed arrays', () => {
+  const malformed = [
+    [],
+    [{ text: 'one', startTime: 1 }],
+    [
+      { text: 'one', startTime: 1, endTime: 1.4 },
+      { word: 'two', start: 1.5, end: 1.9 },
+    ],
+    [
+      { text: 'one', startTime: 1.5, endTime: 1.9 },
+      { text: 'two', startTime: 1, endTime: 1.4 },
+    ],
+    [
+      { text: 'one', startTime: 0.5, endTime: 0.9 },
+      { text: 'two', startTime: 1.5, endTime: 1.9 },
+    ],
+    [{ text: 'one', startTime: 1, endTime: Number.POSITIVE_INFINITY }],
+  ];
+  for (const wordTimings of malformed) {
+    expect(
+      offlineAudioToCanonical(withTimings(wordTimings), {
+        resource: 'book.m4b',
+        timestamp_ms: 1_700,
+      })?.offset,
+    ).toBe(350_000);
+  }
+});
+
+test('offline timings preserve punctuation and repeated-word positions', () => {
+  const timed = withTimings(
+    [
+      { word: 'one', start: 1, end: 1.4 },
+      { word: 'two', start: 1.5, end: 1.9 },
+      { word: 'one', start: 2, end: 2.8 },
+    ],
+    'one, two one',
+  );
   const canonical = offlineAudioToCanonical(timed, {
     resource: 'book.m4b',
     timestamp_ms: 1_700,
   });
-  expect(canonical?.offset).toBe(307_692);
+  expect(canonical?.offset).toBe(416_666);
   expect(offlineCanonicalToAudio(timed, canonical!)?.timestamp_ms).toBe(1_500);
 });
