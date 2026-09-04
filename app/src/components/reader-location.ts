@@ -69,6 +69,19 @@ export function segmentRangeMode(locator: { dom_path?: string; start?: unknown; 
   return locator.start && locator.end ? ('boundaries' as const) : ('element' as const);
 }
 
+export function canonicalTextOffset(prefix: string, text: string) {
+  const total = Array.from(text).length;
+  return total
+    ? Math.min(1_000_000, Math.round((Array.from(prefix).length * 1_000_000) / total))
+    : 0;
+}
+
+export function utf16IndexAtCanonicalOffset(text: string, offset: number) {
+  const points = Array.from(text);
+  const index = Math.round((Math.max(0, Math.min(1_000_000, offset)) * points.length) / 1_000_000);
+  return points.slice(0, index).join('').length;
+}
+
 export function disposeReaderView(view?: { close?: () => void; remove?: () => void }) {
   try {
     view?.close?.();

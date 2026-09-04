@@ -7,6 +7,7 @@ import { flattenReaderContents } from '@/features/reader-navigation';
 import { Text, View } from '@/features/tw';
 import {
   activeContentIndex,
+  canonicalTextOffset,
   classifyPageSync,
   commitsFoliateRelocation,
   directionAfterRelocation,
@@ -516,16 +517,10 @@ function containingSegment(point: Range, href: string, segments: SyncSegment[]) 
         continue;
       const before = range.cloneRange();
       before.setEnd(point.startContainer, point.startOffset);
-      const total = normalize(range.toString()).length;
       return {
         id: segment.id,
         domPath: locator.dom_path,
-        offset: total
-          ? Math.min(
-              1_000_000,
-              Math.round((normalize(before.toString()).length * 1_000_000) / total),
-            )
-          : 0,
+        offset: canonicalTextOffset(normalize(before.toString()), normalize(range.toString())),
       };
     } catch {
       /* malformed boundaries fail closed */

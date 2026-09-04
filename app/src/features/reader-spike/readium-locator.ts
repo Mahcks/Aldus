@@ -1,5 +1,6 @@
 import type { AlignmentSegment, EPUBLocator } from '@/generated/api';
 import type { DecorationGroup, Locator } from 'react-native-readium';
+import { canonicalTextOffset, utf16IndexAtCanonicalOffset } from '@/components/reader-location';
 
 export function parseReadiumLocator(value: unknown): Locator | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -118,9 +119,7 @@ export function mapReadiumSelection(
     return [
       {
         segment,
-        offset: Math.round(
-          (codePoints(text.slice(0, match.indexes[0])) * 1_000_000) / codePoints(text),
-        ),
+        offset: canonicalTextOffset(text.slice(0, match.indexes[0]), text),
         contextual: match.contextual,
       },
     ];
@@ -139,7 +138,7 @@ export function mapReadiumSelection(
 
 export function readiumSearchQuery(segment: AlignmentSegment, offset: number) {
   const text = fold(segment.text);
-  const target = Math.round((Math.max(0, Math.min(1_000_000, offset)) * text.length) / 1_000_000);
+  const target = utf16IndexAtCanonicalOffset(text, offset);
   const words = [...text.matchAll(/\S+/g)];
   const index = Math.max(
     0,
@@ -158,7 +157,7 @@ export function readiumSearchQueries(
 ) {
   const phrase = readiumSearchQuery(segment, offset);
   const text = fold(segment.text);
-  const target = Math.round((Math.max(0, Math.min(1_000_000, offset)) * text.length) / 1_000_000);
+  const target = utf16IndexAtCanonicalOffset(text, offset);
   const uniqueWords = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
     .sort(
       (left, right) => Math.abs((left.index ?? 0) - target) - Math.abs((right.index ?? 0) - target),
@@ -200,7 +199,6 @@ const normalize = (value: string) =>
     .trim();
 const fold = (value: string) =>
   value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
-const codePoints = (value: string) => [...value].length;
 function selectionMatch(text: string, selected: string, before: string, after: string) {
   for (const window of [80, 40, 20, 8]) {
     const anchors = [

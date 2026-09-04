@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/catalog"
@@ -73,6 +74,16 @@ func TestCatalogAndDownloadsAreIsolatedByUser(t *testing.T) {
 	feedHead := opdsRequestMethod(handler, reader.Username, readerCredential.Secret, http.MethodHead, "/")
 	if feedHead.Code != http.StatusOK || feedHead.Body.Len() != 0 || feedHead.Header().Get("Last-Modified") == "" {
 		t.Fatalf("feed HEAD = %d %#v %q", feedHead.Code, feedHead.Header(), feedHead.Body.String())
+	}
+	const revisedAt = "2030-01-02T03:04:05Z"
+	if _, err := db.Exec(`INSERT INTO media(id,representation_id,kind,path,sha256,created_at,original_filename,size_bytes) VALUES('alice-revised',?,'epub','alice-revised.epub',?,?,'alice-revised.epub',1)`, representation.ID, strings.Repeat("b", 64), revisedAt); err != nil {
+		t.Fatal(err)
+	}
+	revisedFeed := opdsRequest(handler, reader.Username, readerCredential.Secret, "/")
+	revisedHead := opdsRequestMethod(handler, reader.Username, readerCredential.Secret, http.MethodHead, "/")
+	wantModified, _ := time.Parse(time.RFC3339, revisedAt)
+	if !strings.Contains(revisedFeed.Body.String(), "/opds/media/alice-revised") || strings.Contains(revisedFeed.Body.String(), "/opds/media/"+media.ID) || !strings.Contains(revisedFeed.Body.String(), "<updated>"+revisedAt+"</updated>") || revisedHead.Header().Get("Last-Modified") != wantModified.Format(http.TimeFormat) || revisedHead.Header().Get("Last-Modified") == feedHead.Header().Get("Last-Modified") {
+		t.Fatalf("revised feed = %s, initial modified=%q revised modified=%q", revisedFeed.Body.String(), feedHead.Header().Get("Last-Modified"), revisedHead.Header().Get("Last-Modified"))
 	}
 	cover := opdsRequest(handler, reader.Username, readerCredential.Secret, "/covers/"+covers[0].ID)
 	if cover.Code != http.StatusOK || cover.Header().Get("Content-Type") != "image/png" || !bytes.Equal(cover.Body.Bytes(), png) {

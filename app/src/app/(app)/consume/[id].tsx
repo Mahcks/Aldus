@@ -237,7 +237,9 @@ export default function ConsumeWorkScreen() {
   const epubSourceID = useRef('');
   const audioSourceID = useRef('');
   const restoredAudio = useRef('');
-  const playAfterRestore = useRef(false);
+  const pendingAudioHandoff = useRef<{ audioID: string; timestampMS: number } | undefined>(
+    undefined,
+  );
   const lastAudioSave = useRef(-1);
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
@@ -410,6 +412,7 @@ export default function ConsumeWorkScreen() {
       setSource(null);
       epubSourceID.current = '';
       audioSourceID.current = '';
+      pendingAudioHandoff.current = undefined;
       setAlignment(undefined);
       queueReaderRestore(undefined);
       setReaderCommit(undefined);
@@ -531,7 +534,6 @@ export default function ConsumeWorkScreen() {
       }
       if (loadAudio) {
         restoredAudio.current = '';
-        playAfterRestore.current = false;
       }
       setSyncAvailable(false);
       if (loadAudio) {
@@ -842,11 +844,15 @@ export default function ConsumeWorkScreen() {
         applyPlaybackRate(player, audioState?.playback_speed);
         restoredAudio.current = `${audioID}:${initialAudioMS}`;
         setAudioReady(true);
-        if (!playAfterRestore.current) return;
-        playAfterRestore.current = false;
+        const handoff = pendingAudioHandoff.current;
+        if (handoff?.audioID !== audioID || handoff.timestampMS !== initialAudioMS) return;
+        pendingAudioHandoff.current = undefined;
         player.play();
       } catch (error) {
-        playAfterRestore.current = false;
+        const handoff = pendingAudioHandoff.current;
+        if (handoff?.audioID === audioID && handoff.timestampMS === initialAudioMS) {
+          pendingAudioHandoff.current = undefined;
+        }
         setAudioReady(false);
         setNotice(errorMessage(error));
       }
@@ -1320,19 +1326,20 @@ export default function ConsumeWorkScreen() {
       progressRef.current = next;
       setProgress(next);
       setAudioReady(false);
-      playAfterRestore.current = true;
+      pendingAudioHandoff.current = { audioID, timestampMS: target.timestamp_ms };
       restoredAudio.current = '';
       setInitialAudioMS(target.timestamp_ms);
       setMode('listen');
       setNotice('');
     } catch (error) {
-      playAfterRestore.current = false;
+      pendingAudioHandoff.current = undefined;
       if (error instanceof APIError && error.status === 0 && alignment) {
         const canonical = offlineEPUBToCanonical(alignmentID, location.sync);
         const target = canonical && offlineCanonicalToAudio(alignment, canonical);
         if (canonical && target) {
           await saveCanonical(canonical);
           setAudioReady(false);
+          pendingAudioHandoff.current = { audioID, timestampMS: target.timestamp_ms };
           restoredAudio.current = '';
           setInitialAudioMS(target.timestamp_ms);
           setMode('listen');
@@ -1376,6 +1383,7 @@ export default function ConsumeWorkScreen() {
 
   async function switchToRead() {
     if (switching.current) return;
+    pendingAudioHandoff.current = undefined;
     if (!work || !alignmentID || !alignment?.segments[0])
       return setNotice('Synchronized reading is unavailable at this point.');
     switching.current = true;
@@ -1529,13 +1537,19 @@ export default function ConsumeWorkScreen() {
   function handleReadMode() {
     if (formatSwitchBusy) return;
     if (mode === 'listen' && alignmentID && status.isLoaded) void switchToRead();
-    else setMode('read');
+    else {
+      pendingAudioHandoff.current = undefined;
+      setMode('read');
+    }
   }
   function handleListenMode() {
     if (formatSwitchBusy) return;
     setSettingsOpen(false);
     if (mode === 'read' && readerLocation?.sync && alignmentID) void switchToListen();
-    else setMode('listen');
+    else {
+      pendingAudioHandoff.current = undefined;
+      setMode('listen');
+    }
   }
   async function toggleAcceptanceNetwork() {
     setAcceptanceNetworkState('busy');

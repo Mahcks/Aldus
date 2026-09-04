@@ -78,7 +78,9 @@ classify_paths() {
     RELEASE_CHANGED=1
 
     case "$path" in
-      server/internal/api/contracts/*|server/internal/api/v1/*|app/src/generated/api.ts)
+      server/internal/api/koreader/*_test.go|server/internal/api/opds/*_test.go)
+        ;;
+      server/internal/api/contracts/*|server/internal/api/v1/*|server/internal/api/koreader/*|server/internal/api/opds/*|app/src/generated/api.ts)
         RELEASE_COMPATIBILITY=1
         ;;
     esac
@@ -604,6 +606,19 @@ EOF
 server/internal/api/v1/setup.go
 EOF
     [[ $RELEASE_COMPATIBILITY == 1 ]]
+    classify_paths <<'EOF'
+server/internal/api/koreader/sync.go
+EOF
+    [[ $RELEASE_COMPATIBILITY == 1 ]]
+    classify_paths <<'EOF'
+server/internal/api/opds/opds.go
+EOF
+    [[ $RELEASE_COMPATIBILITY == 1 ]]
+    classify_paths <<'EOF'
+server/internal/api/koreader/sync_test.go
+server/internal/api/opds/opds_test.go
+EOF
+    [[ $RELEASE_COMPATIBILITY == 0 && $RELEASE_CONTAINER == 0 ]]
     (
       fixture=$(mktemp -d "${TMPDIR:-/tmp}/aldus-release-test.XXXXXX")
       trap 'rm -rf "$fixture"' EXIT

@@ -49,7 +49,7 @@ func (s *Store) OPDSPublications(ctx context.Context, actor auth.User, search st
 	}
 
 	var updatedRaw string
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(w.updated_at),'1970-01-01T00:00:00Z')`+joins+where, args...).Scan(&updatedRaw); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ',MAX(MAX(julianday(w.updated_at),julianday(m.created_at)))),'1970-01-01T00:00:00Z')`+joins+where, args...).Scan(&updatedRaw); err != nil {
 		return nil, false, time.Time{}, fmt.Errorf("read OPDS catalog revision: %w", err)
 	}
 	updated, _ := time.Parse(time.RFC3339Nano, updatedRaw)
@@ -57,7 +57,8 @@ func (s *Store) OPDSPublications(ctx context.Context, actor auth.User, search st
 	pageArgs := append(append([]any{}, args...), limit+1, offset)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.id,l.name,w.title,COALESCE(w.author,''),
-			COALESCE(c.id,''),COALESCE(c.source,''),COALESCE(c.source_id,''),COALESCE(c.image_url,''),COALESCE(c.image_type,''),w.updated_at`+
+			COALESCE(c.id,''),COALESCE(c.source,''),COALESCE(c.source_id,''),COALESCE(c.image_url,''),COALESCE(c.image_type,''),
+			CASE WHEN julianday(m.created_at)>julianday(w.updated_at) THEN m.created_at ELSE w.updated_at END`+
 		joins+where+`
 		ORDER BY w.updated_at DESC,w.title COLLATE NOCASE,w.author COLLATE NOCASE,m.id
 		LIMIT ? OFFSET ?`, pageArgs...)

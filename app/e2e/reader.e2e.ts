@@ -19,13 +19,44 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   await expect(page.getByText('Typography', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close reader settings' }).click();
 
+  // An ordinary format change keeps playback paused.
+  const readURL = page.url();
   await page.getByRole('button', { name: 'Switch to listening' }).click();
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Switch to reading' }).click();
-  await expect(page.getByRole('button', { name: 'Switch to listening' })).toBeVisible({
+
+  await page.goto(readURL);
+  await expect(page.getByRole('button', { name: 'Open table of contents' })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('button', { name: 'Next page' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open table of contents' }).click();
+  await page.getByRole('button', { name: 'CHAPTER I. Down the Rabbit-Hole' }).click();
+  await expect(page.getByRole('button', { name: 'Listen from here' })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // A synchronized handoff carries the user's intent to continue with narration.
+  await page.getByRole('button', { name: 'Switch to listening' }).click();
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto(readURL);
+  await expect(page.getByRole('button', { name: 'Open table of contents' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole('button', { name: 'Open table of contents' }).click();
+  await page.getByRole('button', { name: 'CHAPTER I. Down the Rabbit-Hole' }).click();
+  await expect(page.getByRole('button', { name: 'Listen from here' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole('button', { name: 'Switch to listening' })).toBeEnabled();
+
+  await page.route('**/works/alice-gutenberg-11-work/progress', async (route) => {
+    if (route.request().method() === 'PUT') await route.abort('failed');
+    else await route.continue();
+  });
+  await page.getByRole('button', { name: 'Switch to listening' }).click();
+  await expect(page.getByText(/Offline mode/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible({ timeout: 30_000 });
+  await page.unroute('**/works/alice-gutenberg-11-work/progress');
 
   await page.goto('/account');
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();

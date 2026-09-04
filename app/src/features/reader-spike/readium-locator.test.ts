@@ -249,6 +249,19 @@ describe('Readium spike locator', () => {
     expect(readiumSearchQuery(long, 500_000)).toBe('five six seven eight nine ten');
   });
 
+  test('round-trips canonical offsets across non-BMP text', () => {
+    const unicode = { ...segment, text: '😀😀😀😀😀 a b c d e f' };
+    const locator = {
+      href: segment.epub_href,
+      type: 'application/xhtml+xml',
+      locations: { progression: 0.5 },
+      text: { before: '😀😀😀😀😀 a b ', highlight: 'c', after: ' d e f' },
+    };
+    const mapped = mapReadiumSelection(locator, 'c', [unicode]);
+    expect(mapped?.offset).toBe(588_235);
+    expect(readiumSearchQuery(unicode, mapped!.offset)).toBe('c d e f');
+  });
+
   test('falls back to a nearby word that is unique across the book', () => {
     const target = {
       ...segment,

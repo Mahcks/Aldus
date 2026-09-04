@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   activeContentIndex,
+  canonicalTextOffset,
   classifyPageSync,
   commitsFoliateRelocation,
   commitsReadingProgress,
@@ -12,6 +13,7 @@ import {
   relocationCursor,
   relocatedCursor,
   segmentRangeMode,
+  utf16IndexAtCanonicalOffset,
 } from './reader-location';
 
 describe('EPUB relocation', () => {
@@ -114,6 +116,13 @@ describe('EPUB relocation', () => {
       }),
     ).toBe('boundaries');
     expect(segmentRangeMode({})).toBeUndefined();
+  });
+
+  test('measures canonical text offsets in Unicode code points', () => {
+    const text = '😀😀😀😀😀 a b c d e f';
+    const offset = canonicalTextOffset('😀😀😀😀😀 a b', text);
+    expect(offset).toBe(529_412);
+    expect(text.slice(utf16IndexAtCanonicalOffset(text, offset)).trimStart()[0]).toBe('c');
   });
 
   test('closes Foliate before removing its element', () => {
