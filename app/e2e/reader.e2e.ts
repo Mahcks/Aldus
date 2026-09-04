@@ -1,21 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { signInAsTestAdmin } from './auth';
 
-test('a new administrator can read, listen, and configure KOReader safely', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Create the first administrator' })).toBeVisible();
-
-  await page.getByLabel('Username').fill('beta-admin');
-  await page.getByLabel('Display name').fill('Beta Admin');
-  await page.getByLabel('Password (12 characters minimum)').fill('beta-password-123');
-  await page.getByLabel('Confirm password').fill('beta-password-123');
-  await page.getByRole('button', { name: 'Create administrator' }).click();
-  await expect(page).toHaveURL(/\/libraries$/);
+test('an administrator can read, listen, and configure KOReader safely', async ({ page }) => {
+  await signInAsTestAdmin(page);
 
   await page.goto('/work/alice-gutenberg-11-work');
   await expect(
     page.getByRole('heading', { name: "Alice's Adventures in Wonderland" }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Start reading' }).click();
+  await page.getByRole('button', { name: /Start reading|Continue reading|Read instead/ }).click();
 
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });

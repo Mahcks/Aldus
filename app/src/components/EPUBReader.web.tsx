@@ -16,6 +16,7 @@ import {
   relocationCursor,
   segmentRangeMode,
 } from './reader-location';
+import { installEPUBContentSecurity } from './epub-security';
 
 const openDyslexicURL = Asset.fromModule(
   // Metro resolves bundled font assets through its static CommonJS lookup.
@@ -395,6 +396,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             ? new File([source], 'book.epub', { type: 'application/epub+zip' })
             : source,
         );
+        installEPUBContentSecurity(view.book);
         await initializeReaderView(view);
         disposal.settle();
         if (disposed) {
