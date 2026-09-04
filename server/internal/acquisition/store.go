@@ -526,10 +526,10 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 }
 
 func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestID string) error {
-	var state string
+	var state, torrentHash string
 	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
 	args = append(args, actor.Admin, actor.ID)
-	err := s.db.QueryRowContext(ctx, `SELECT r.fulfillment_state FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&state)
+	err := s.db.QueryRowContext(ctx, `SELECT r.fulfillment_state,COALESCE(r.torrent_hash,'') FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&state, &torrentHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -543,7 +543,7 @@ func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestI
 	if err != nil {
 		return err
 	}
-	if err := client.CancelTagged(ctx, requestID); err != nil {
+	if err := client.CancelTracked(ctx, torrentHash, requestID); err != nil {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_error='Canceled by user.',updated_at=? WHERE id=? AND fulfillment_state IN ('submitting','downloading')`, time.Now().UTC().Format(time.RFC3339Nano), requestID)

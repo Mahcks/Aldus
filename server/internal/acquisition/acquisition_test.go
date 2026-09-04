@@ -340,25 +340,49 @@ func TestPairedDiscoveryPersistsIntentBeforeSubmittingBothHalves(t *testing.T) {
 
 func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *testing.T) {
 	ctx := context.Background()
-	active, adds, deletes := false, 0, 0
+	active, tagged, rejectDelete := false, false, false
+	reportedHash, deletedHash, deleteFiles := "hash", "", ""
+	adds, deletes := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/auth/login":
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
 			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{"aldus":{}}`))
 		case "/api/v2/torrents/info":
+			if r.URL.Query().Get("category") != "aldus" {
+				t.Errorf("category = %q", r.URL.Query().Get("category"))
+			}
 			if active {
-				_, _ = w.Write([]byte(`[{"hash":"hash","tags":"request","state":"downloading","progress":0.5}]`))
+				tag := ""
+				if tagged {
+					tag = "request"
+				}
+				_, _ = w.Write([]byte(`[{"hash":"other","tags":"other","state":"downloading","progress":0.5},{"hash":"` + reportedHash + `","tags":"` + tag + `","state":"downloading","progress":0.5}]`))
 			} else {
 				_, _ = w.Write([]byte(`[]`))
 			}
 		case "/api/v2/torrents/add":
 			adds++
 			active = true
+			tagged = true
 			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/removeTags":
+			if r.FormValue("hashes") != reportedHash || r.FormValue("tags") != "request" {
+				t.Errorf("remove tag form = %#v", r.Form)
+			}
+			tagged = false
 		case "/api/v2/torrents/delete":
 			deletes++
+			deletedHash = r.FormValue("hashes")
+			deleteFiles = r.FormValue("deleteFiles")
+			if rejectDelete {
+				http.Error(w, "no", http.StatusBadGateway)
+				return
+			}
 			active = false
+			tagged = false
 			w.WriteHeader(http.StatusOK)
 		default:
 			http.NotFound(w, r)
@@ -374,8 +398,9 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, _ := New(Options{QBitURL: server.URL})
+	client, _ := New(Options{QBitURL: server.URL, Category: "aldus"})
 	store := NewStore(db, client)
+	store.SetHandoff(func(context.Context, string, string, string, string) (string, error) { return "", nil })
 	store.markDownloadProblem(ctx, "request", "download client unavailable")
 	var failedState, diagnosis string
 	if err := db.QueryRow(`SELECT fulfillment_state,download_error FROM acquisition_requests WHERE id='request'`).Scan(&failedState, &diagnosis); err != nil || failedState != "failed" || diagnosis != "download client unavailable" {
@@ -388,14 +413,48 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 1 {
 		t.Fatalf("retry adds=%d err=%v", adds, err)
 	}
-	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 1 {
-		t.Fatalf("cancel deletes=%d err=%v", deletes, err)
+	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 1 || deletedHash != "hash" || deleteFiles != "true" {
+		t.Fatalf("pre-hash cancel deletes=%d hash=%q deleteFiles=%q err=%v", deletes, deletedHash, deleteFiles, err)
 	}
 	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 2 {
 		t.Fatalf("retry after cancel adds=%d err=%v", adds, err)
 	}
-	if err := store.Cancel(ctx, reader, "library", "request"); err != nil {
+	if err := store.Poll(ctx); err != nil {
 		t.Fatal(err)
+	}
+	var torrentHash string
+	if err := db.QueryRow(`SELECT torrent_hash FROM acquisition_requests WHERE id='request'`).Scan(&torrentHash); err != nil || torrentHash != "hash" || !active || tagged {
+		t.Fatalf("poll hash=%q active=%t tagged=%t err=%v", torrentHash, active, tagged, err)
+	}
+	if err := store.Cancel(ctx, auth.User{ID: "other"}, "library", "request"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user cancel = %v", err)
+	}
+	reportedHash = "HASH"
+	rejectDelete = true
+	if err := store.Cancel(ctx, reader, "library", "request"); err == nil || deletes != 2 {
+		t.Fatalf("failed cancel deletes=%d err=%v", deletes, err)
+	}
+	assertAcquisitionState(t, db, "request", "downloading", "")
+	if !active {
+		t.Fatal("failed delete removed download")
+	}
+	rejectDelete = false
+	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 3 || deletedHash != "HASH" || deleteFiles != "true" {
+		t.Fatalf("hash cancel deletes=%d hash=%q deleteFiles=%q err=%v", deletes, deletedHash, deleteFiles, err)
+	}
+	if err := store.Cancel(ctx, reader, "library", "request"); !errors.Is(err, ErrInvalid) || deletes != 3 {
+		t.Fatalf("repeated cancel deletes=%d err=%v", deletes, err)
+	}
+	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 3 {
+		t.Fatalf("retry before missing cancel adds=%d err=%v", adds, err)
+	}
+	active = false
+	tagged = false
+	if _, err := db.Exec(`UPDATE acquisition_requests SET torrent_hash='missing' WHERE id='request'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 3 {
+		t.Fatalf("missing cancel deletes=%d err=%v", deletes, err)
 	}
 	if err := store.Dismiss(ctx, reader, "library", "request"); err != nil {
 		t.Fatal(err)

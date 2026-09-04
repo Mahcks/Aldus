@@ -574,7 +574,7 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 	return downloads, nil
 }
 
-func (c *Client) CancelTagged(ctx context.Context, tag string) error {
+func (c *Client) CancelTracked(ctx context.Context, hash, tag string) error {
 	if !validTag(tag) {
 		return errors.New("invalid download tag")
 	}
@@ -584,8 +584,16 @@ func (c *Client) CancelTagged(ctx context.Context, tag string) error {
 	}
 	var hashes []string
 	for _, download := range downloads {
-		if download.HasTag(tag) && download.Hash != "" {
-			hashes = append(hashes, download.Hash)
+		if download.Hash != "" && hash != "" && strings.EqualFold(download.Hash, hash) {
+			hashes = []string{download.Hash}
+			break
+		}
+	}
+	if len(hashes) == 0 {
+		for _, download := range downloads {
+			if download.HasTag(tag) && download.Hash != "" {
+				hashes = append(hashes, download.Hash)
+			}
 		}
 	}
 	if len(hashes) == 0 {
