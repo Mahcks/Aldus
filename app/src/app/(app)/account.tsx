@@ -7,6 +7,7 @@ import Animated from 'react-native-reanimated';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { useServer } from '@/features/auth/ServerProvider';
 import { LibraryCard } from '@/features/bookshelf';
+import { DownloadStatus } from '@/features/download-status';
 import { formatDuration } from '@/features/format';
 import { AppIcon } from '@/features/icons';
 import { listItemEnter } from '@/features/motion';
@@ -226,6 +227,7 @@ export default function AccountScreen() {
 
   return (
     <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
+      {Platform.OS !== 'web' ? <DownloadStatus /> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
       {Platform.OS !== 'web' ? (

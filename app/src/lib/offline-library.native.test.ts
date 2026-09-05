@@ -15,6 +15,10 @@ mock.module('@react-native-async-storage/async-storage', () => ({
   },
 }));
 mock.module('react-native', () => ({ Platform: { OS: 'ios' } }));
+mock.module('expo-file-system/legacy', () => ({
+  createDownloadResumable: () => {},
+  FileSystemSessionType: { FOREGROUND: 0 },
+}));
 mock.module('expo-file-system', () => ({
   File: class {
     exists = true;

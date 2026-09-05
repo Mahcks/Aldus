@@ -44,8 +44,14 @@ import {
   resolvePressStateClass,
 } from '@/features/ui';
 import { APIError, api, errorMessage } from '@/lib/api';
+import { DownloadFormatDialog } from '@/features/download-format-dialog';
+import { DownloadStatus } from '@/features/download-status';
+import { activeStorageScope } from '@/lib/storage-scope';
+import { DownloadInterrupted } from '@/lib/download-interrupted';
+import { listDownloads, subscribeDownloads } from '@/lib/native-download';
+import { getAPIBaseURL } from '@/lib/api-base';
 import { goBackOr } from '@/lib/navigation';
-import { downloadOfflineWork, offlineWork, removeOfflineWork } from '@/lib/offline-library';
+import { downloadOfflineWork, offlineWork } from '@/lib/offline-library';
 
 /** Open Library reports language as an ISO 639-2 code (e.g. "eng"); shown to readers as a name. */
 const languageNames: Record<string, string> = {
@@ -105,6 +111,8 @@ export default function WorkScreen() {
   const [audioID, setAudioID] = useState('');
   const [downloaded, setDownloaded] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
   const [offline, setOffline] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -170,9 +178,28 @@ export default function WorkScreen() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || Platform.OS === 'web') return;
+    let disposed = false;
+    let revision = 0;
+    const unsubscribe = subscribeDownloads(() => {
+      const request = ++revision;
+      const scope = activeStorageScope();
+      void offlineWork(id)
+        .then((value) => {
+          if (!disposed && request === revision && scope === activeStorageScope())
+            setDownloaded(Boolean(value));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
   }, [id]);
 
   if (loading)
@@ -281,16 +308,16 @@ export default function WorkScreen() {
     }
   }
 
-  async function toggleOfflineDownload() {
+  async function startOfflineDownload(format: 'epub' | 'audio' | 'both') {
     if (!id || !work || downloadBusy) return;
+    const scope = activeStorageScope();
+    const origin = getAPIBaseURL();
+    setDownloadOpen(false);
     setDownloadBusy(true);
+    setDownloadError('');
     setError('');
+    let transferStarted = false;
     try {
-      if (downloaded) {
-        await removeOfflineWork(id);
-        setDownloaded(false);
-        return;
-      }
       const selectedJob = readyJob(jobs, epubID, audioID);
       const [alignment, progress, epubState, audioState, audioChapters] = await Promise.all([
         selectedJob?.alignment_id ? api.alignment(selectedJob.alignment_id) : undefined,
@@ -299,10 +326,13 @@ export default function WorkScreen() {
         selectedAudio ? api.representationState(selectedAudio.representation.id) : null,
         selectedAudio ? api.audioChapters(selectedAudio.id).catch(() => []) : [],
       ]);
+      if (scope !== activeStorageScope() || origin !== getAPIBaseURL())
+        throw new Error('The account changed. Retry.');
+      transferStarted = true;
       await downloadOfflineWork({
         work,
-        epubs: selectedEPUB ? [selectedEPUB] : [],
-        audio: selectedAudio ? [selectedAudio] : [],
+        epubs: selectedEPUB && format !== 'audio' ? [selectedEPUB] : [],
+        audio: selectedAudio && format !== 'epub' ? [selectedAudio] : [],
         jobs: selectedJob ? [selectedJob] : [],
         epub_id: selectedEPUB?.id ?? '',
         audio_id: selectedAudio?.id ?? '',
@@ -314,7 +344,23 @@ export default function WorkScreen() {
       });
       setDownloaded(true);
     } catch (value) {
-      setError(errorMessage(value));
+      if (!(value instanceof DownloadInterrupted) && scope === activeStorageScope()) {
+        const latest = transferStarted ? await listDownloads().catch(() => []) : [];
+        const alreadyReported =
+          value instanceof Error &&
+          latest.some(
+            (item) =>
+              (item.id === selectedEPUB?.id || item.id === selectedAudio?.id) &&
+              item.status === 'failed' &&
+              item.error === value.message,
+          );
+        if (!alreadyReported)
+          setDownloadError(
+            value instanceof Error && !(value instanceof APIError)
+              ? value.message
+              : errorMessage(value),
+          );
+      }
     } finally {
       setDownloadBusy(false);
     }
@@ -471,18 +517,19 @@ export default function WorkScreen() {
         />
         {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
           <Button
-            label={downloaded ? 'Remove download' : 'Download'}
-            accessibilityLabel={
-              downloaded ? 'Remove download from this device' : 'Download for offline'
-            }
+            label={downloaded ? 'Downloads' : 'Download'}
+            accessibilityLabel={downloaded ? 'Manage offline downloads' : 'Download for offline'}
             icon={downloaded ? 'enabled' : 'acquire'}
             kind="quiet"
             loading={downloadBusy}
             disabled={offline}
-            onPress={() => void toggleOfflineDownload()}
+            onPress={() => setDownloadOpen(true)}
           />
         ) : null}
       </View>
+      {Platform.OS !== 'web' ? (
+        <DownloadStatus compact mediaIDs={media.map((item) => item.id)} error={downloadError} />
+      ) : null}
     </View>
   );
 
@@ -605,6 +652,13 @@ export default function WorkScreen() {
         />
       </View>
 
+      <DownloadFormatDialog
+        visible={downloadOpen}
+        epubBytes={selectedEPUB?.size_bytes}
+        audioBytes={selectedAudio?.size_bytes}
+        onClose={() => setDownloadOpen(false)}
+        onDownload={(format) => void startOfflineDownload(format)}
+      />
       <ReadingStatusDialog
         work={work}
         visible={statusOpen}

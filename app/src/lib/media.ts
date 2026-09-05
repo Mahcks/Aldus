@@ -36,6 +36,9 @@ export async function downloadProductAudio(
   id: string,
   expectedSize?: number,
   originalFilename?: string,
+  _sha256?: string,
+  _label?: string,
+  _workID?: string,
 ) {
   return productAudioSource(id, expectedSize, originalFilename);
 }

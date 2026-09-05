@@ -5,7 +5,20 @@ description: Keep books available when your Aldus server cannot be reached.
 
 Offline downloads are available in the iOS and Android apps. The web app requires a connection to its Aldus server.
 
-While connected in a mobile app, open a title and select **Download**. Aldus stores what it needs on that device so you can read or listen without a connection. Select **Remove download** when you're done.
+While connected in a mobile app, open a title and select **Download**. Choose **Ebook only**, **Audiobook only**, or **Both** for a paired title; each option shows its size. Adding a format keeps files already saved on this device.
+
+## Pause, resume, or cancel a download
+
+The title page and **Account** show downloads saved for the current server and account, including interrupted transfers. Each file shows its downloaded size and status. Keep Aldus open while downloading; finishing transfers in the background is not guaranteed.
+
+- **Pause** keeps verified downloaded chunks. **Resume download** continues from the last saved chunk, including after restarting Aldus.
+- A lost connection keeps verified chunks too. Resume when the server is reachable again.
+- **Cancel download** removes unfinished bytes. A successfully downloaded ebook is kept if its paired audiobook fails; retry reuses it.
+- **Saved** beside a file means that file finished. A title is available offline only after every selected file and its reading metadata have finished saving.
+
+Downloads use up to two transfers at once. A server that ignores resume requests can supply a fresh complete file safely. If the app stops during a chunk checkpoint, Aldus may restart that file to avoid trusting incomplete bytes. Downloads do not currently enforce Wi-Fi-only use.
+
+Use **Remove ebook** or **Remove audiobook** beside a saved file on the title page or in **Account**. Removing one format keeps the other available offline. Aldus asks you to sync pending reading progress before removing a download or replacing a downloaded edition.
 
 ## What gets stored on the device
 

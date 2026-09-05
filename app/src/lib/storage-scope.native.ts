@@ -7,7 +7,13 @@ let activeUserID = '';
 const migratedKey = 'aldus:storage-v2-migrated';
 
 export function setStorageUserID(userID: string) {
+  const previous = activeStorageScope();
   activeUserID = userID;
+  if (previous && previous !== activeStorageScope()) {
+    void import('./native-download.native')
+      .then(({ stopDownloads }) => stopDownloads(previous))
+      .catch(() => {});
+  }
 }
 
 export function activeStorageScope() {
@@ -35,6 +41,9 @@ export async function prepareStorageScope(userID: string) {
 
 export async function clearStorageScope(origin: string, userID: string) {
   const scope = serverStorageScope(origin, userID);
+  if (scope === activeStorageScope()) setStorageUserID('');
+  const { stopOfflineDownloads } = await import('./offline-library.native');
+  await stopOfflineDownloads(scope);
   const prefix = `aldus:${scope}:`;
   const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefix));
   if (keys.length) await AsyncStorage.multiRemove(keys);
@@ -45,6 +54,9 @@ export async function clearStorageScope(origin: string, userID: string) {
 }
 
 export async function clearServerStorage(origin: string) {
+  if (origin === getAPIBaseURL()) setStorageUserID('');
+  const { stopServerOfflineDownloads } = await import('./offline-library.native');
+  await stopServerOfflineDownloads(origin);
   const prefixes = serverStoragePrefixes(origin);
   const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefixes.storage));
   if (keys.length) await AsyncStorage.multiRemove(keys);

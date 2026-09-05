@@ -14,10 +14,18 @@ import type { MediaChoice } from '@/features/consumption';
 import { offlineAudioChapters } from '@/features/offline-chapters';
 import { representationStateUpdate } from '@/features/offline-representation';
 import { APIError, api } from './api';
+import { DownloadInterrupted } from './download-interrupted';
 import { getAPIBaseURL } from './api-base';
-import { productEPUBSource } from './epub-source';
-import { downloadProductAudio, productAudioFileName } from './media';
-import { pendingProgress } from './progress-outbox';
+import { productEPUBSource } from './epub-source.native';
+import { downloadProductAudio, productAudioFileName } from './media.native';
+import {
+  notifyDownloads,
+  removeDownloadRecord,
+  retryDownload,
+  stopDownloads,
+  stopServerDownloads,
+} from './native-download.native';
+import { pendingProgress } from './progress-outbox.native';
 import { parseStoredJSON } from './stored-json';
 import { activeStorageScope, scopedMediaFileName, scopedStorageKey } from './storage-scope';
 
@@ -37,7 +45,31 @@ export type OfflineWork = {
   downloaded_at: string;
 };
 
+// ponytail: one queue for short manifest mutations; split by account if contention becomes measurable.
+let mutations = Promise.resolve();
+function serialize<T>(mutation: () => Promise<T>) {
+  const result = mutations.then(mutation);
+  mutations = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+const removals = new Set<string>();
+const downloads = new Map<
+  string,
+  {
+    promise: Promise<OfflineWork>;
+    cancelled: boolean;
+    value: Omit<OfflineWork, 'downloaded_at'>;
+    scope: string;
+    origin: string;
+  }
+>();
+
 const key = (scope: string, workID: string) => scopedStorageKey(`offline-work:${workID}`, scope);
+const pendingKey = (scope: string, workID: string) =>
+  scopedStorageKey(`offline-pending:${workID}`, scope);
 const prefix = (scope: string) => scopedStorageKey('offline-work:', scope);
 const librariesKey = (scope: string) => scopedStorageKey('offline-libraries', scope);
 
@@ -152,38 +184,186 @@ export async function offlineWork(
       return !file.exists || file.size !== item.size_bytes;
     })
   ) {
-    deleteOfflineFiles(value, scope);
-    await AsyncStorage.removeItem(key(scope, workID));
+    // Keep independently complete files and pending reading state available for retry.
     return null;
   }
   return value;
 }
 
-export async function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_at'>) {
+export function downloadOfflineWork(value: Omit<OfflineWork, 'downloaded_at'>) {
   const scope = activeStorageScope();
+  const origin = getAPIBaseURL();
+  const downloadKey = key(scope, value.work.id);
+  if (removals.has(downloadKey))
+    return Promise.reject(new Error('The download is being removed. Retry shortly.'));
+  const existing = downloads.get(downloadKey);
+  if (existing) return existing.promise;
+  const owner = {
+    promise: Promise.resolve({ ...value, downloaded_at: '' }),
+    cancelled: false,
+    value: { ...value },
+    scope,
+    origin,
+  };
+  downloads.set(downloadKey, owner);
+  owner.promise = performDownload(owner).finally(() => {
+    if (downloads.get(downloadKey) === owner) downloads.delete(downloadKey);
+  });
+  return owner.promise;
+}
+
+async function performDownload(owner: {
+  cancelled: boolean;
+  value: Omit<OfflineWork, 'downloaded_at'>;
+  scope: string;
+  origin: string;
+}) {
+  const { value, scope, origin } = owner;
+  const check = () => {
+    if (owner.cancelled || scope !== activeStorageScope() || origin !== getAPIBaseURL()) {
+      throw new DownloadInterrupted('Download stopped. Return to this account to retry.');
+    }
+  };
+  const existing = parseStoredJSON<OfflineWork>(
+    await AsyncStorage.getItem(key(scope, value.work.id)),
+  );
+  check();
+  if (existing) {
+    if (!value.epubs.length && existing.epub_id === value.epub_id) value.epubs = existing.epubs;
+    if (!value.audio.length && existing.audio_id === value.audio_id) value.audio = existing.audio;
+  }
+  if (
+    existing &&
+    (existing.pending_representation_states?.epub ||
+      existing.pending_representation_states?.audio ||
+      (await pendingProgress(value.work.id, scope))) &&
+    (existing.epub_id !== value.epub_id || existing.audio_id !== value.audio_id)
+  ) {
+    throw new Error('Sync this device before changing the downloaded edition.');
+  }
+  await AsyncStorage.setItem(pendingKey(scope, value.work.id), JSON.stringify(value));
+  check();
   const results = await Promise.allSettled([
-    ...value.epubs.map((item) => productEPUBSource(item.id, item.size_bytes)),
+    ...value.epubs.map((item) =>
+      productEPUBSource(
+        item.id,
+        item.size_bytes,
+        item.sha256,
+        `${value.work.title}: Ebook`,
+        value.work.id,
+      ),
+    ),
     ...value.audio.map((item) =>
-      downloadProductAudio(item.id, item.size_bytes, item.original_filename),
+      downloadProductAudio(
+        item.id,
+        item.size_bytes,
+        item.original_filename,
+        item.sha256,
+        `${value.work.title}: Audiobook`,
+        value.work.id,
+      ),
     ),
   ]);
   const failed = results.find((result) => result.status === 'rejected');
   if (failed?.status === 'rejected') {
-    deleteOfflineFiles(value, scope);
     throw failed.reason;
   }
-  const stored = { ...value, downloaded_at: new Date().toISOString() };
-  await AsyncStorage.setItem(key(scope, value.work.id), JSON.stringify(stored));
-  return stored;
+  check();
+  return serialize(async () => {
+    const previous = parseStoredJSON<OfflineWork>(
+      await AsyncStorage.getItem(key(scope, value.work.id)),
+    );
+    check();
+    const pending = await pendingProgress(value.work.id, scope);
+    check();
+    const stored = { ...value, downloaded_at: new Date().toISOString() };
+    if (previous) {
+      if (
+        (previous.pending_representation_states?.epub ||
+          previous.pending_representation_states?.audio ||
+          pending) &&
+        (previous.epub_id !== value.epub_id ||
+          previous.audio_id !== value.audio_id ||
+          (pending && previous.alignment?.id !== value.alignment?.id))
+      ) {
+        throw new Error('Sync this device before changing the downloaded edition.');
+      }
+      if (
+        previous.progress &&
+        previous.progress.alignment_id === (value.alignment?.id ?? value.progress?.alignment_id) &&
+        (pending || (previous.progress.updated_at ?? '') > (value.progress?.updated_at ?? ''))
+      )
+        stored.progress = previous.progress;
+      if (previous.pending_representation_states?.epub) stored.epub_state = previous.epub_state;
+      if (previous.pending_representation_states?.audio) stored.audio_state = previous.audio_state;
+      stored.pending_representation_states = previous.pending_representation_states;
+    }
+    await AsyncStorage.setItem(key(scope, value.work.id), JSON.stringify(stored));
+    await AsyncStorage.removeItem(pendingKey(scope, value.work.id));
+    notifyDownloads();
+    return stored;
+  });
 }
 
-export async function removeOfflineWork(workID: string) {
+export async function removeOfflineWork(workID: string, format?: 'epub' | 'audio') {
   const scope = activeStorageScope();
+  const removalKey = key(scope, workID);
+  if (removals.has(removalKey)) throw new Error('The download is already being removed.');
+  removals.add(removalKey);
+  try {
+    await performRemoval(workID, scope, format);
+  } finally {
+    removals.delete(removalKey);
+  }
+}
+async function performRemoval(workID: string, scope: string, format?: 'epub' | 'audio') {
   if (await pendingProgress(workID, scope))
     throw new Error('Sync this device before removing the download.');
-  const value = await offlineWork(workID, scope);
-  if (value) deleteOfflineFiles(value, scope);
-  await AsyncStorage.removeItem(key(scope, workID));
+  const owner = downloads.get(key(scope, workID));
+  if (owner && format) throw new Error('Pause the downloads before removing a saved format.');
+  if (owner) {
+    owner.cancelled = true;
+    for (const item of [...owner.value.epubs, ...owner.value.audio])
+      await removeDownloadRecord(item.id, scope);
+    await owner.promise.catch(() => {});
+  }
+  return serialize(async () => {
+    const values = await Promise.all(
+      [key(scope, workID), pendingKey(scope, workID)].map(async (storedKey) =>
+        parseStoredJSON<OfflineWork>(await AsyncStorage.getItem(storedKey)),
+      ),
+    );
+    if (
+      values.some(
+        (value) =>
+          value?.pending_representation_states?.epub || value?.pending_representation_states?.audio,
+      )
+    ) {
+      throw new Error('Sync this device before removing the download.');
+    }
+    for (const [index, value] of values.entries()) {
+      if (value) {
+        const removed = {
+          epubs: format === 'audio' ? [] : value.epubs,
+          audio: format === 'epub' ? [] : value.audio,
+        };
+        for (const item of [...removed.epubs, ...removed.audio])
+          await removeDownloadRecord(item.id, scope);
+        deleteOfflineFiles(removed, scope);
+        const storedKey = index === 0 ? key(scope, workID) : pendingKey(scope, workID);
+        if (format) {
+          if (format === 'epub') value.epubs = [];
+          else value.audio = [];
+        }
+        if (format && (value.epubs.length || value.audio.length)) {
+          await AsyncStorage.setItem(storedKey, JSON.stringify(value));
+        } else {
+          await AsyncStorage.removeItem(storedKey);
+        }
+      }
+    }
+    notifyDownloads();
+  });
 }
 
 function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: string) {
@@ -195,8 +375,12 @@ function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: 
 
 export async function updateOfflineProgress(workID: string, progress: CanonicalPosition) {
   const scope = activeStorageScope();
-  const value = await offlineWork(workID, scope);
-  if (value) await AsyncStorage.setItem(key(scope, workID), JSON.stringify({ ...value, progress }));
+  return serialize(async () => {
+    if (scope !== activeStorageScope()) return;
+    const value = await offlineWork(workID, scope);
+    if (value)
+      await AsyncStorage.setItem(key(scope, workID), JSON.stringify({ ...value, progress }));
+  });
 }
 
 export async function updateOfflineRepresentationState(
@@ -206,20 +390,23 @@ export async function updateOfflineRepresentationState(
   pending = false,
   scope = activeStorageScope(),
 ) {
-  const value = await offlineWork(workID, scope);
-  if (!value) return false;
-  await AsyncStorage.setItem(
-    key(scope, workID),
-    JSON.stringify({
-      ...value,
-      [kind === 'epub' ? 'epub_state' : 'audio_state']: state,
-      pending_representation_states: {
-        ...value.pending_representation_states,
-        [kind]: pending,
-      },
-    }),
-  );
-  return true;
+  return serialize(async () => {
+    if (scope !== activeStorageScope()) return false;
+    const value = await offlineWork(workID, scope);
+    if (!value) return false;
+    await AsyncStorage.setItem(
+      key(scope, workID),
+      JSON.stringify({
+        ...value,
+        [kind === 'epub' ? 'epub_state' : 'audio_state']: state,
+        pending_representation_states: {
+          ...value.pending_representation_states,
+          [kind]: pending,
+        },
+      }),
+    );
+    return true;
+  });
 }
 
 export async function reconcileOfflineRepresentationStates() {
@@ -254,4 +441,41 @@ export async function reconcileOfflineRepresentationStates() {
       }
     }
   }
+}
+
+export async function retryOfflineDownload(mediaID: string) {
+  const scope = activeStorageScope();
+  const prefix = scopedStorageKey('offline-pending:', scope);
+  const keys = (await AsyncStorage.getAllKeys()).filter((item) => item.startsWith(prefix));
+  for (const storedKey of keys) {
+    const value = parseStoredJSON<Omit<OfflineWork, 'downloaded_at'>>(
+      await AsyncStorage.getItem(storedKey),
+    );
+    if (value && [...value.epubs, ...value.audio].some((item) => item.id === mediaID)) {
+      if (scope !== activeStorageScope()) throw new Error('The account changed. Retry.');
+      await downloadOfflineWork(value);
+      return;
+    }
+  }
+  if (scope !== activeStorageScope()) throw new Error('The account changed. Retry.');
+  await retryDownload(mediaID);
+}
+
+export async function stopOfflineDownloads(scope: string) {
+  const owners = [...downloads.values()].filter((owner) => owner.scope === scope);
+  owners.forEach((owner) => {
+    owner.cancelled = true;
+  });
+  await stopDownloads(scope);
+  await Promise.allSettled(owners.map((owner) => owner.promise));
+  await mutations;
+}
+export async function stopServerOfflineDownloads(origin: string) {
+  const owners = [...downloads.values()].filter((owner) => owner.origin === origin);
+  owners.forEach((owner) => {
+    owner.cancelled = true;
+  });
+  await stopServerDownloads(origin);
+  await Promise.allSettled(owners.map((owner) => owner.promise));
+  await mutations;
 }
