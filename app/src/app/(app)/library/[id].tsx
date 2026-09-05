@@ -485,7 +485,7 @@ export default function LibraryScreen() {
     <Page
       title={library.name}
       back={
-        <Button label="Libraries" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />
+        <IconButton label="Back" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />
       }
       actions={
         compact ? undefined : (

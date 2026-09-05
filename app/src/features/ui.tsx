@@ -17,6 +17,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 import Head from 'expo-router/head';
+import { router, usePathname } from 'expo-router';
+import { goBackOr, pageBackFallback } from '@/lib/navigation';
 import { AppIcon, isAppIconName, type AppIconName } from './icons';
 import { fadeIn } from './motion';
 import { colors } from './theme';
@@ -434,7 +436,9 @@ export function SearchField({
   onChangeText,
   onSubmit,
   placeholder,
+  hideLabel = false,
 }: {
+  hideLabel?: boolean;
   label?: string;
   value: string;
   onChangeText: (value: string) => void;
@@ -451,7 +455,7 @@ export function SearchField({
 
   return (
     <View className="gap-1.5">
-      <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
+      {hideLabel ? null : <Text className="text-sm font-sans-semibold text-ink">{label}</Text>}
       <View
         className={`min-h-11 flex-row items-center gap-2 rounded-control px-3 ${backgroundClass} ${borderClass}`}
       >
@@ -1027,7 +1031,7 @@ export function IconRow({
 
   return (
     <Pressable
-      accessibilityRole="link"
+      accessibilityRole="button"
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
@@ -1084,7 +1088,7 @@ export function PageHeader({
     <View
       className={`min-h-[72px] flex-row flex-wrap justify-between gap-3 border-b border-line py-3 ${paddingClass} ${layoutClass}`}
     >
-      <View className="min-w-0 flex-row items-center gap-2.5">
+      <View className="min-w-0 max-w-full flex-row items-center gap-2.5">
         {back}
         <Text
           accessibilityRole="header"
@@ -1106,31 +1110,74 @@ export function Page({
   children,
   title,
   actions,
+  mobileActions,
   back,
   hideHeader = false,
   editorial = true,
 }: PropsWithChildren<{
   title: string;
   actions?: ReactNode;
+  /** A single icon action in the mobile bar; other actions stay in the content toolbar. */
+  mobileActions?: ReactNode;
   back?: ReactNode;
+  /** Hide the desktop title row; mobile always retains its navigation bar. */
   hideHeader?: boolean;
   /** See `PageHeader`'s `editorial` prop — set false for administration screens. */
   editorial?: boolean;
 }>) {
-  const compact = useWindowDimensions().width < 600;
-  const contentPaddingClass = compact
-    ? `gap-6 px-4 pb-6 ${hideHeader ? 'pt-3' : 'pt-6'}`
-    : 'gap-8 px-6 py-8';
+  const width = useWindowDimensions().width;
+  const compact = width < 600;
+  const mobile = width < 820;
+  const path = usePathname();
+  const fallback = pageBackFallback(path);
+  const mobileBack =
+    back ||
+    (fallback ? (
+      <IconButton icon="back" label="Back" kind="quiet" onPress={() => goBackOr(fallback)} />
+    ) : undefined);
+  const contentPaddingClass = compact ? 'gap-5 px-4 pb-6 pt-3' : 'gap-8 px-6 py-8';
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={{ flex: 1 }}>
+    <SafeAreaView edges={mobile ? ['top', 'left', 'right'] : ['left', 'right']} style={{ flex: 1 }}>
       {Platform.OS === 'web' ? (
         <Head>
           <title>{`${title} · Aldus`}</title>
         </Head>
       ) : null}
       <View className="flex-1 bg-canvas">
-        {hideHeader ? null : (
+        {mobile ? (
+          <View className="min-h-14 flex-row items-center border-b border-line bg-panel px-3 py-1">
+            <View className="w-[72px] items-start">
+              {mobileBack || (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Aldus home"
+                  onPress={() => router.navigate('/home')}
+                  className="min-h-11 min-w-11 items-center justify-center rounded-control focus-visible:bg-accent-soft active:bg-accent-soft"
+                >
+                  <Text className="font-editorial-bold text-lg text-accent">Aldus</Text>
+                </Pressable>
+              )}
+            </View>
+            <Text
+              accessibilityRole="header"
+              numberOfLines={1}
+              className="min-w-0 flex-1 text-center text-lg font-sans-bold text-ink"
+            >
+              {title}
+            </Text>
+            <View className="w-[72px] items-end">
+              {mobileActions || (
+                <IconButton
+                  icon="account"
+                  label="Open account"
+                  kind="quiet"
+                  onPress={() => router.navigate('/account')}
+                />
+              )}
+            </View>
+          </View>
+        ) : hideHeader ? null : (
           <PageHeader
             title={title}
             actions={actions}
@@ -1144,6 +1191,9 @@ export function Page({
           className="flex-1"
           contentContainerClassName={`w-full max-w-[1240px] flex-grow self-center ${contentPaddingClass}`}
         >
+          {mobile && actions && !mobileActions ? (
+            <View className="flex-row flex-wrap gap-2">{actions}</View>
+          ) : null}
           {children}
         </ScrollView>
       </View>

@@ -167,10 +167,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [server.origin, state.user]);
   useEffect(() => {
     if (!state.user || Platform.OS === 'web') return;
-    void Promise.all([reconcileAllPendingProgress(), reconcileOfflineRepresentationStates()]);
+    function reconcileOfflineState() {
+      void Promise.all([
+        reconcileAllPendingProgress(),
+        reconcileOfflineRepresentationStates(),
+      ]).catch((error: unknown) => {
+        console.warn('Aldus could not sync offline changes; they remain queued.', error);
+      });
+    }
+    reconcileOfflineState();
     const subscription = AppState.addEventListener('change', (value) => {
-      if (value === 'active')
-        void Promise.all([reconcileAllPendingProgress(), reconcileOfflineRepresentationStates()]);
+      if (value === 'active') reconcileOfflineState();
     });
     return () => subscription.remove();
   }, [state.user]);

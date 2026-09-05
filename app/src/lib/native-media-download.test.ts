@@ -649,3 +649,11 @@ test('cookie-authenticated native transport works without SecureStore bearer and
   expect(requestHeaders[1]).toEqual({ Range: 'bytes=0-11' });
   expect([...files.keys()].some((uri) => uri.includes('unauthenticated'))).toBe(false);
 });
+
+test('missing server media reports source recovery instructions', async () => {
+  responseStatus = 404;
+  await expect(productEPUBSource('missing-source', 12)).rejects.toThrow(
+    'check the source folder and rescan',
+  );
+  expect([...files.keys()].some((uri) => uri.includes('missing-source'))).toBe(false);
+});

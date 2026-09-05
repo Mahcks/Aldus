@@ -97,6 +97,8 @@ type ImportProposalItem struct {
 	Evidence      map[string]any `json:"evidence"`
 }
 type AcceptImportProposalRequest struct {
+	Series           *string            `json:"series,omitempty"`
+	SeriesPosition   *string            `json:"series_position,omitempty"`
 	ExpectedRevision int                `json:"expected_revision"`
 	WorkID           string             `json:"work_id,omitempty"`
 	Title            string             `json:"title"`
@@ -104,10 +106,11 @@ type AcceptImportProposalRequest struct {
 	Items            []AcceptImportItem `json:"items"`
 }
 type AcceptImportItem struct {
-	SourceEntryID    string `json:"source_entry_id"`
-	RepresentationID string `json:"representation_id,omitempty"`
-	Kind             string `json:"kind"`
-	Label            string `json:"label"`
+	Narrators        *[]string `json:"narrators,omitempty"`
+	SourceEntryID    string    `json:"source_entry_id"`
+	RepresentationID string    `json:"representation_id,omitempty"`
+	Kind             string    `json:"kind"`
+	Label            string    `json:"label"`
 }
 type AcceptImportProposalResponse struct {
 	WorkID string `json:"work_id"`

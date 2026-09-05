@@ -259,7 +259,7 @@ export default function SourcesAdministration() {
 
   function updateReviewItem(
     entryID: string,
-    key: 'kind' | 'label' | 'representationID',
+    key: 'kind' | 'label' | 'representationID' | 'narrators',
     value: string,
   ) {
     setDraft((current) =>
@@ -295,8 +295,14 @@ export default function SourcesAdministration() {
         work_id: draft.workID,
         title: draft.title,
         author: draft.author,
+        series: draft.series,
+        series_position: draft.seriesPosition,
         items: review.items.map((item) => ({
           source_entry_id: item.source_entry_id,
+          narrators: draft.items[item.source_entry_id].narrators
+            ?.split('\n')
+            .map((name) => name.trim())
+            .filter(Boolean),
           kind: draft.items[item.source_entry_id].kind,
           label: draft.items[item.source_entry_id].label,
           representation_id: draft.items[item.source_entry_id].representationID,

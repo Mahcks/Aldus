@@ -3,21 +3,21 @@ import type {
   AcquisitionResult,
   Library,
   TitleSearchResult,
-  WorkSummary,
 } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { groupAcquisitionResults } from '@/features/acquisition';
 import { BookCover } from '@/features/bookshelf';
-import { AcquisitionGroupRow, BrowseControls, BrowseFacet, WorkGrid } from '@/features/browse';
+import { AcquisitionGroupRow } from '@/features/browse';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { titleRequestPresentation } from '@/features/title-search';
-import { offlineBrowseWorks } from '@/features/offline-browse';
 import { Text, View } from '@/features/tw';
 import {
   Button,
+  IconButton,
   Dialog,
   EmptyState,
+  ErrorState,
   LoadingState,
   Notice,
   Page,
@@ -26,12 +26,6 @@ import {
   StatusBadge,
 } from '@/features/ui';
 import { APIError, api, errorMessage } from '@/lib/api';
-import { offlineWorkSummaries } from '@/lib/offline-library';
-
-const statusTitles: Record<string, string> = {
-  want_to_read: 'Want to read or listen',
-  finished: 'Finished',
-};
 
 type BookFormat = 'ebook' | 'audiobook';
 type ReleaseStatus = 'idle' | 'sending' | 'queued' | 'error';
@@ -55,19 +49,6 @@ function destinationFor(
     return destinations.find((destination) => destination.library_id === result.library_id);
   }
   return destinations[0];
-}
-
-function localResult(work: WorkSummary): TitleSearchResult {
-  return {
-    work_id: work.id,
-    library_id: work.library_id,
-    title: work.title,
-    author: work.author,
-    cover_url: work.cover_url,
-    readable: work.readable,
-    listenable: work.listenable,
-    synchronized: work.synchronized,
-  };
 }
 
 function FormatAction({
@@ -98,6 +79,8 @@ function FormatAction({
           kind="primary"
           onPress={onOpen}
         />
+      ) : (!state || state.requestable) && !requestEnabled ? (
+        <Text className="py-2 text-sm text-muted">{label} unavailable</Text>
       ) : !state || state.requestable ? (
         <Button
           label={
@@ -153,6 +136,9 @@ function TitleRow({
           <Text numberOfLines={1} className="mt-1 text-sm text-muted">
             {result.author || 'Unknown author'}
           </Text>
+          <Text className="mt-1 text-sm text-muted">
+            {canOpen ? 'In your library' : 'Not in your library'}
+          </Text>
           {result.synchronized ? (
             <View className="mt-2">
               <StatusBadge tone="info" label="Read & Listen" icon="synced" />
@@ -182,7 +168,12 @@ function TitleRow({
               onRequest={() => onRequest('audiobook')}
             />
             {canChooseRelease ? (
-              <Button label="Choose release" kind="quiet" onPress={onChooseRelease} />
+              <IconButton
+                icon="more"
+                label={`Request options for ${result.title}`}
+                kind="quiet"
+                onPress={onChooseRelease}
+              />
             ) : null}
           </View>
         </View>
@@ -194,20 +185,16 @@ function TitleRow({
 export default function SearchScreen() {
   const auth = useAuth();
   const params = useLocalSearchParams<{ q?: string; status?: string }>();
-  const status = params.status || '';
   const [query, setQuery] = useState(params.q || '');
-  const [sort, setSort] = useState('recent');
-  const [availability, setAvailability] = useState('all');
-  const [browseWorks, setBrowseWorks] = useState<WorkSummary[]>([]);
-  const [browseHasMore, setBrowseHasMore] = useState(false);
-  const [browseLoadingMore, setBrowseLoadingMore] = useState(false);
   const [results, setResults] = useState<TitleSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(params.q?.trim()));
+  const [retry, setRetry] = useState(0);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
   const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
-  const [libraryID, setLibraryID] = useState('');
+  const libraryID = '';
+
   const [acquisitionEnabled, setAcquisitionEnabled] = useState(false);
   const [requestBusy, setRequestBusy] = useState<Record<string, string>>({});
   const [requestErrors, setRequestErrors] = useState<Record<string, string>>({});
@@ -218,10 +205,8 @@ export default function SearchScreen() {
   const [releaseStatuses, setReleaseStatuses] = useState<Record<string, ReleaseStatus>>({});
   const [releaseErrors, setReleaseErrors] = useState<Record<string, string>>({});
   const [discoveryID, setDiscoveryID] = useState('');
-  const searchSequence = useRef(0);
 
   const trimmedQuery = query.trim();
-  const effectiveLibraries = libraries.filter((library) => library.effective);
   const canAdvanced =
     Boolean(auth.user?.admin) ||
     libraries.some((library) => library.can_advanced_acquisition_request);
@@ -244,91 +229,39 @@ export default function SearchScreen() {
     };
   }, []);
 
-  async function loadBrowse(offset = 0) {
-    const sequence = ++searchSequence.current;
-    if (offset === 0) setLoading(true);
-    else setBrowseLoadingMore(true);
-    setError('');
-    try {
-      const page = await api.browseWorks({
-        libraryID,
-        sort,
-        availability,
-        status,
-        limit: 24,
-        offset,
-      });
-      if (sequence !== searchSequence.current) return;
-      setBrowseWorks((current) => (offset ? [...current, ...page.items] : page.items));
-      setBrowseHasMore(page.has_more);
-      setOffline(false);
-    } catch (value) {
-      if (sequence !== searchSequence.current) return;
-      if (!(value instanceof APIError && value.status === 0)) {
-        setError(errorMessage(value));
-        return;
-      }
-      const saved = offlineBrowseWorks(await offlineWorkSummaries(libraryID || undefined), {
-        availability,
-        sort,
-        status,
-      });
-      if (sequence !== searchSequence.current) return;
-      setBrowseWorks(saved);
-      setBrowseHasMore(false);
-      setOffline(true);
-      if (!saved.length) setError(errorMessage(value));
-    } finally {
-      if (sequence === searchSequence.current) {
-        setLoading(false);
-        setBrowseLoadingMore(false);
-      }
-    }
-  }
-
   useEffect(() => {
-    const sequence = ++searchSequence.current;
-    if (!trimmedQuery) {
-      setResults([]);
-      void loadBrowse();
-      return;
-    }
-    const timer = setTimeout(() => {
+    let active = true;
+    if (!trimmedQuery) return;
+    const timer = setTimeout(async () => {
       setLoading(true);
       setError('');
-      api
-        .searchTitles(trimmedQuery, libraryID)
-        .then((values) => {
-          if (sequence !== searchSequence.current) return;
+      try {
+        const values = await api.searchTitles(trimmedQuery);
+        if (active) {
           setResults(values);
           setOffline(false);
-        })
-        .catch(async (value: unknown) => {
-          if (sequence !== searchSequence.current) return;
-          if (!(value instanceof APIError && value.status === 0)) {
-            setError(errorMessage(value));
-            setResults([]);
-            return;
-          }
-          const normalized = trimmedQuery.toLocaleLowerCase();
-          const saved = (await offlineWorkSummaries())
-            .filter((work) => !libraryID || work.library_id === libraryID)
-            .filter((work) =>
-              `${work.title} ${work.author ?? ''}`.toLocaleLowerCase().includes(normalized),
-            )
-            .map(localResult);
-          if (sequence !== searchSequence.current) return;
-          setResults(saved);
-          setOffline(true);
-          if (!saved.length) setError(errorMessage(value));
-        })
-        .finally(() => {
-          if (sequence === searchSequence.current) setLoading(false);
-        });
+        }
+      } catch (value) {
+        if (active) {
+          setOffline(value instanceof APIError && value.status === 0);
+          setError(errorMessage(value));
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
     }, 300);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmedQuery, libraryID, sort, availability, status]);
+    return () => {
+      clearTimeout(timer);
+      active = false;
+    };
+  }, [trimmedQuery, retry]);
+
+  function search(value: string) {
+    setQuery(value);
+    setResults([]);
+    setError('');
+    setLoading(Boolean(value.trim()));
+  }
 
   async function requestFormat(result: TitleSearchResult, format: BookFormat) {
     const destination = destinationFor(result, destinations, libraryID);
@@ -452,76 +385,52 @@ export default function SearchScreen() {
   }
 
   return (
-    <Page title={statusTitles[status] || 'Discover'} hideHeader>
-      <View className="max-w-[760px]">
-        <SearchField
-          label="Search title, author, or ISBN"
-          value={query}
-          onChangeText={setQuery}
-          placeholder="What do you want to read or listen to?"
-        />
-      </View>
-      {effectiveLibraries.length > 1 ? (
-        <BrowseFacet
-          label="Library"
-          options={[
-            { value: '', label: 'All libraries' },
-            ...effectiveLibraries.map((library) => ({ value: library.id, label: library.name })),
-          ]}
-          value={libraryID}
-          onChange={setLibraryID}
-        />
-      ) : null}
+    <Page title="Discover" editorial={false}>
+      <SearchField
+        label="Search for books to request"
+        hideLabel
+        value={query}
+        onChangeText={search}
+        placeholder="Search by title, author, or ISBN"
+      />
       {!trimmedQuery ? (
-        <BrowseControls
-          sort={sort}
-          availability={availability}
-          onSortChange={setSort}
-          onAvailabilityChange={setAvailability}
-        />
-      ) : null}
-      {offline ? (
-        <Notice>
-          Offline · {trimmedQuery ? 'searching' : 'showing'} books downloaded to this device.
-        </Notice>
-      ) : null}
-      {!acquisitionEnabled && trimmedQuery && !offline ? (
-        <Notice tone="warning">
-          Missing formats cannot be requested until an owner finishes download setup.
-        </Notice>
-      ) : null}
-      {error ? <Notice tone="danger">{error}</Notice> : null}
-      {!trimmedQuery ? (
-        loading && browseWorks.length === 0 ? (
-          <LoadingState label="Finding books…" />
-        ) : browseWorks.length === 0 ? (
-          <EmptyState icon="read" title="Nothing here yet">
-            {"Books you have access to will show up here once they're added."}
-          </EmptyState>
-        ) : (
-          <View className="items-start gap-6">
-            <WorkGrid works={browseWorks} onOpen={(work) => router.push(`/work/${work.id}`)} />
-            {browseHasMore ? (
-              <Button
-                label={browseLoadingMore ? 'Loading…' : 'Load more'}
-                disabled={browseLoadingMore}
-                onPress={() => void loadBrowse(browseWorks.length)}
-              />
-            ) : null}
-          </View>
-        )
-      ) : loading && results.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <LoadingState label="Searching titles…" />
-        </View>
+        <EmptyState
+          icon="discover"
+          title="Find your next read"
+          action={
+            <Button
+              label="Open your library"
+              kind="quiet"
+              onPress={() => router.navigate('/books')}
+            />
+          }
+        >
+          Search for books to request as ebooks or audiobooks. Books you already have are marked in
+          the results.
+        </EmptyState>
+      ) : offline ? (
+        <EmptyState
+          icon="search"
+          title="Discover needs a connection"
+          action={<Button label="Open your library" onPress={() => router.navigate('/books')} />}
+        >
+          You can still read and listen to downloaded books in Library.
+        </EmptyState>
+      ) : error ? (
+        <ErrorState
+          title="Couldn’t search for books"
+          action={<Button label="Retry" onPress={() => setRetry((value) => value + 1)} />}
+        >
+          {error}
+        </ErrorState>
+      ) : loading ? (
+        <LoadingState label="Finding books…" />
       ) : results.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <EmptyState icon="search" title="No matching titles">
-            Check the title or author and try again.
-          </EmptyState>
-        </View>
+        <EmptyState icon="search" title="No matching books">
+          Try another title, author, or ISBN.
+        </EmptyState>
       ) : (
-        <Section title={`${results.length} ${results.length === 1 ? 'title' : 'titles'}`}>
+        <Section title="Search results">
           <View className="max-w-[900px]">
             {results.map((result) => {
               const key = resultKey(result);
@@ -556,7 +465,6 @@ export default function SearchScreen() {
           </View>
         </Section>
       )}
-
       <Dialog
         visible={Boolean(advancedTarget)}
         title={advancedTarget ? `Choose release · ${advancedTarget.title}` : 'Choose release'}

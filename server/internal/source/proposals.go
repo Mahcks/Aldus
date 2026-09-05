@@ -139,6 +139,14 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 			confidence, state = "medium", "review_required"
 			reasons = []string{"Multiple distinct files of the same Representation kind require edition or narration review."}
 		}
+		metadata := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			metadata = append(metadata, item.Metadata)
+		}
+		if _, _, agrees := agreedSeries(metadata); !agrees {
+			confidence, state = "medium", "review_required"
+			reasons = append(reasons, "Series tags conflict or contain an invalid position. Review the series fields; no series will be inferred.")
+		}
 		sum := sha256.Sum256([]byte(key))
 		logical := fmt.Sprintf("%x", sum)
 		var id string
@@ -191,7 +199,8 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 			if duplicate == "" {
 				duplicates[item.Hash] = item.ID
 			}
-			evidence, _ := json.Marshal(map[string]any{"raw_title": item.Title, "raw_author": item.Author, "normalized_title": normalize(item.Title), "normalized_author": normalize(item.Author), "relative_path": item.Path, "sha256": item.Hash, "kind": kind, "advisory_title": item.AdvisoryTitle, "advisory_author": item.AdvisoryAuthor, "advisory_isbn": item.AdvisoryISBN, "advisory_year": item.AdvisoryYear, "advisory_cover_url": item.AdvisoryCover, "advisory_source": "open_library"})
+			series, seriesPosition, narrators := catalogMetadata(item.Metadata)
+			evidence, _ := json.Marshal(map[string]any{"series": series, "series_position": seriesPosition, "narrators": narrators, "raw_title": item.Title, "raw_author": item.Author, "normalized_title": normalize(item.Title), "normalized_author": normalize(item.Author), "relative_path": item.Path, "sha256": item.Hash, "kind": kind, "advisory_title": item.AdvisoryTitle, "advisory_author": item.AdvisoryAuthor, "advisory_isbn": item.AdvisoryISBN, "advisory_year": item.AdvisoryYear, "advisory_cover_url": item.AdvisoryCover, "advisory_source": "open_library"})
 			if _, err = tx.ExecContext(ctx, `INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,duplicate_of_entry_id,evidence_json) VALUES(?,?,?,?,?,?)`, id, item.ID, kind, label, nullValue(duplicate), string(evidence)); err != nil {
 				return err
 			}

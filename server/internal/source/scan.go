@@ -573,10 +573,18 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 			key = m.Property
 		}
 		if key == "calibre:series" || key == "belongs-to-collection" {
-			out["series"] = strings.TrimSpace(first(m.Content, m.Value))
+			value := strings.TrimSpace(first(m.Content, m.Value))
+			if previous, ok := out["series"].(string); ok && previous != value {
+				out["series_conflict"] = true
+			}
+			out["series"] = value
 		}
 		if key == "calibre:series_index" || key == "group-position" {
-			out["series_index"] = strings.TrimSpace(first(m.Content, m.Value))
+			value := strings.TrimSpace(first(m.Content, m.Value))
+			if previous, ok := out["series_index"].(string); ok && previous != value {
+				out["series_conflict"] = true
+			}
+			out["series_index"] = value
 		}
 		if m.Name == "cover" {
 			coverID = m.Content

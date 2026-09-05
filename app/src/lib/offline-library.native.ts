@@ -169,6 +169,7 @@ export async function offlineWork(
   workID: string,
   scope = activeStorageScope(),
 ): Promise<OfflineWork | null> {
+  if (!scope) return null;
   const raw = await AsyncStorage.getItem(key(scope, workID));
   if (!raw) return null;
   const value = parseStoredJSON<OfflineWork>(raw);
@@ -411,6 +412,7 @@ export async function updateOfflineRepresentationState(
 
 export async function reconcileOfflineRepresentationStates() {
   const scope = activeStorageScope();
+  if (!scope) return;
   const origin = getAPIBaseURL();
   const stillActive = () => origin === getAPIBaseURL() && scope === activeStorageScope();
   for (const work of await offlineWorks(scope)) {

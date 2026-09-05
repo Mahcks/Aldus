@@ -49,7 +49,7 @@ func updateRepresentation(s *catalog.Store) http.HandlerFunc {
 		if !decode(w, r, &b) {
 			return
 		}
-		writeNoContent(w, s.UpdateRepresentation(r.Context(), actor(r), chi.URLParam(r, "representationID"), b.Kind, b.Label))
+		writeNoContent(w, s.UpdateRepresentation(r.Context(), actor(r), chi.URLParam(r, "representationID"), b.Kind, b.Label, b.Narrators))
 	}
 }
 func deleteRepresentation(s *catalog.Store) http.HandlerFunc {

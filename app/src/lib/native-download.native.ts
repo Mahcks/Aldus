@@ -5,6 +5,7 @@ import type { DownloadResumable } from 'expo-file-system/legacy';
 import { DownloadInterrupted } from './download-interrupted';
 import { getAPIBaseURL } from './api-base';
 import { getToken } from './auth-token';
+import { APIError } from './api';
 import { activeStorageScope, scopedStorageKey } from './storage-scope';
 import type { DownloadItem } from './native-download';
 
@@ -253,6 +254,12 @@ async function execute(owner: {
       if (response.status === 401 || response.status === 403) {
         throw new Error('Sign in to the original account, then resume this download.');
       }
+      if (response.status === 404) {
+        throw new APIError(
+          404,
+          'This file is unavailable on the server. Ask a library administrator to check the source folder and rescan it.',
+        );
+      }
       if (response.status >= 500 && response.status <= 599) {
         throw new Error('The server is unavailable. Resume the download when it is reachable.');
       }
@@ -270,6 +277,15 @@ async function execute(owner: {
         (contentLength != null && Number(contentLength) !== temporary.size) ||
         (headers.get('content-encoding') && headers.get('content-encoding') !== 'identity')
       ) {
+        console.warn('Aldus download response validation failed.', {
+          status: response.status,
+          expectedRange,
+          receivedRange: range ?? null,
+          expectedSize: item.expectedSize,
+          receivedSize: temporary.size,
+          contentLength: contentLength ?? null,
+          contentEncoding: headers.get('content-encoding') ?? null,
+        });
         discard(item, '.part');
         item.bytes = 0;
         throw new Error('The download response was invalid or incomplete. Retry.');

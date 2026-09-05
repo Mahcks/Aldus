@@ -299,7 +299,7 @@ export function WorkCard({
 
   return (
     <Pressable
-      accessibilityRole="link"
+      accessibilityRole="button"
       accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
       onBlur={handleBlur}
       onFocus={handleFocus}

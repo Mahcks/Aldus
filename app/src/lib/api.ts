@@ -1,4 +1,5 @@
 import type {
+  CatalogGroupPage,
   AcquisitionRequest,
   AcquisitionResult,
   AcquisitionSettings,
@@ -406,9 +407,15 @@ export const api = {
     }),
 
   works: (libraryID: string) => request<Work[]>(`/libraries/${libraryID}/works`),
+  catalogGroups: (kind: 'series' | 'narrators', q = '', offset = 0) =>
+    request<CatalogGroupPage>(
+      `/catalog/${kind}?${new URLSearchParams({ q, offset: String(offset) })}`,
+    ),
   browseWorks: (
     options: {
       libraryID?: string;
+      series?: string;
+      narrator?: string;
       q?: string;
       sort?: string;
       availability?: string;
@@ -419,6 +426,8 @@ export const api = {
   ) => {
     const query = new URLSearchParams();
     if (options.libraryID) query.set('library_id', options.libraryID);
+    if (options.series) query.set('series', options.series);
+    if (options.narrator) query.set('narrator', options.narrator);
     if (options.q) query.set('q', options.q);
     if (options.sort) query.set('sort', options.sort);
     if (options.availability) query.set('availability', options.availability);

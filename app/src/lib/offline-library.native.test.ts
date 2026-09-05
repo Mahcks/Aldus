@@ -29,7 +29,8 @@ mock.module('expo-file-system', () => ({
 }));
 
 const { getAPIBaseURL, setAPIBaseURL } = await import('./api-base');
-const { reconcileOfflineRepresentationStates } = await import('./offline-library.native');
+const { offlineWork, reconcileOfflineRepresentationStates } =
+  await import('./offline-library.native');
 const { serverStorageScope } = await import('./server-origin');
 const { setStorageUserID } = await import('./storage-scope');
 const originalAPIBaseURL = getAPIBaseURL();
@@ -97,4 +98,15 @@ test('offline representation sync stops when the server or account changes', asy
 
   expect(JSON.parse(storage.get(oldKey) ?? '{}').pending_representation_states.epub).toBe(true);
   expect([...storage.keys()].some((key) => key.includes('reader-two'))).toBe(false);
+});
+
+test('foreground representation sync does nothing without an active account', async () => {
+  setStorageUserID('');
+  await expect(reconcileOfflineRepresentationStates()).resolves.toBeUndefined();
+  expect(storage.size).toBe(0);
+});
+
+test('reading an offline book without an account returns no cached book', async () => {
+  setStorageUserID('');
+  await expect(offlineWork('work')).resolves.toBeNull();
 });

@@ -11,7 +11,12 @@ export type ReviewDraft = {
   title: string;
   author: string;
   workID: string;
-  items: Record<string, { kind: string; label: string; representationID: string }>;
+  series?: string;
+  seriesPosition?: string;
+  items: Record<
+    string,
+    { kind: string; label: string; representationID: string; narrators?: string }
+  >;
 };
 
 export function canManageSources(admin: boolean, library?: Library) {
@@ -40,6 +45,8 @@ export function mergeReviewDraft(proposal: ImportProposal, current?: ReviewDraft
     title: current.title,
     author: current.author,
     workID: current.workID,
+    series: current.series,
+    seriesPosition: current.seriesPosition,
     items: Object.fromEntries(
       proposal.items.map((item) => [
         item.source_entry_id,

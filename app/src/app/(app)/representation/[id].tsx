@@ -1,3 +1,4 @@
+import { narratorNamesError } from '@/features/catalog-metadata';
 import type { Library, Media, Representation } from '@/generated/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams } from 'expo-router';
@@ -8,6 +9,7 @@ import { TechnicalDetails } from '@/features/sources/TechnicalDetails';
 import { Text, View } from '@/features/tw';
 import {
   Button,
+  IconButton,
   ConfirmDialog,
   EmptyState,
   Field,
@@ -29,6 +31,7 @@ export default function RepresentationScreen() {
   const [library, setLibrary] = useState<Library>();
   const [media, setMedia] = useState<Media[]>([]);
   const [kind, setKind] = useState('');
+  const [narrators, setNarrators] = useState('');
   const [label, setLabel] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -50,6 +53,7 @@ export default function RepresentationScreen() {
       setLibrary(nextLibrary);
       setKind(next.kind);
       setLabel(next.label);
+      setNarrators((next.narrators ?? []).join('\n'));
       setMedia(revisions);
     } catch (value) {
       setError(errorMessage(value));
@@ -103,11 +107,22 @@ export default function RepresentationScreen() {
   }
 
   async function saveRepresentation() {
-    if (saving || !label.trim()) return;
+    if (saving || !label.trim() || narratorNamesError(narrators)) return;
     setSaving(true);
     setError('');
     try {
-      await api.updateRepresentation(id, { kind, label });
+      await api.updateRepresentation(id, {
+        kind,
+        label,
+        ...(narrators !== (representation?.narrators ?? []).join('\n')
+          ? {
+              narrators: narrators
+                .split('\n')
+                .map((name) => name.trim())
+                .filter(Boolean),
+            }
+          : {}),
+      });
       await load();
     } catch (value) {
       setError(errorMessage(value));
@@ -132,8 +147,8 @@ export default function RepresentationScreen() {
     <Page
       title={representation.label}
       back={
-        <Button
-          label="Files"
+        <IconButton
+          label="Back"
           icon="back"
           kind="quiet"
           onPress={() => goBackOr(`/work/${representation.work_id}/manage?tab=files`)}
@@ -204,6 +219,16 @@ export default function RepresentationScreen() {
               />
             )}
             <Field label="Label" value={label} onChangeText={setLabel} />
+            {kind !== 'epub' ? (
+              <Field
+                label="Narrators"
+                error={narratorNamesError(narrators)}
+                value={narrators}
+                onChangeText={setNarrators}
+                multiline
+                help="One narrator per line, in credit order."
+              />
+            ) : null}
             <Row>
               <Button
                 label="Save changes"

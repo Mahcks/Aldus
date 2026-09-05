@@ -45,8 +45,13 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 mock.module('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 const { getAPIBaseURL, setAPIBaseURL } = await import('./api-base');
-const { discardPendingProgress, pendingProgress, reconcilePendingProgress, saveWorkProgress } =
-  await import('./progress-outbox.native');
+const {
+  reconcileAllPendingProgress,
+  discardPendingProgress,
+  pendingProgress,
+  reconcilePendingProgress,
+  saveWorkProgress,
+} = await import('./progress-outbox.native');
 const { activeStorageScope, setStorageUserID } = await import('./storage-scope');
 const originalAPIBaseURL = getAPIBaseURL();
 const originalFetch = globalThis.fetch;
@@ -155,4 +160,10 @@ test('a new save cannot be unindexed by overlapping discard', async () => {
 
   expect(indexedWorkIDs()).toEqual(['work']);
   expect(await pendingProgress('work')).toEqual(next);
+});
+
+test('foreground progress sync does nothing without an active account', async () => {
+  setStorageUserID('');
+  await expect(reconcileAllPendingProgress()).resolves.toBeUndefined();
+  expect(storage.size).toBe(0);
 });

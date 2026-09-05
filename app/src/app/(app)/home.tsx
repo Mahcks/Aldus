@@ -312,7 +312,7 @@ export default function HomeScreen() {
               label="Search for a book"
               icon="search"
               kind="primary"
-              onPress={() => router.push('/search')}
+              onPress={() => router.push('/books')}
             />
           }
         >
@@ -347,7 +347,7 @@ export default function HomeScreen() {
             <Section
               title="Recently added"
               action={
-                <Button label="Browse all" kind="quiet" onPress={() => router.push('/search')} />
+                <Button label="Browse all" kind="quiet" onPress={() => router.push('/books')} />
               }
             >
               <WorkShelf works={recent} />
@@ -360,7 +360,7 @@ export default function HomeScreen() {
                 <Button
                   label="Browse all"
                   kind="quiet"
-                  onPress={() => router.push('/search?status=want_to_read')}
+                  onPress={() => router.push('/books?status=want_to_read')}
                 />
               }
             >
@@ -374,7 +374,7 @@ export default function HomeScreen() {
                 <Button
                   label="Browse all"
                   kind="quiet"
-                  onPress={() => router.push('/search?status=finished')}
+                  onPress={() => router.push('/books?status=finished')}
                 />
               }
             >

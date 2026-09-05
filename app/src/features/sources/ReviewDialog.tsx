@@ -29,7 +29,7 @@ export function ReviewDialog({
   onChooseWork: (workID: string) => void;
   onItemChange: (
     entryID: string,
-    key: 'kind' | 'label' | 'representationID',
+    key: 'kind' | 'label' | 'representationID' | 'narrators',
     value: string,
   ) => void;
   onAccept: () => void;
@@ -99,6 +99,26 @@ export function ReviewDialog({
           </View>
         </View>
 
+        {!draft.workID ? (
+          <View className="gap-3">
+            <Field
+              label="Series override"
+              value={draft.series ?? ''}
+              onChangeText={(series) => onDraftChange({ ...draft, series })}
+              help="Leave untouched to use agreeing embedded tags. Edit to choose a series; clear it to omit series metadata."
+            />
+            <Field
+              label="Position override"
+              value={draft.seriesPosition ?? ''}
+              onChangeText={(seriesPosition) => onDraftChange({ ...draft, seriesPosition })}
+              help="Optional, for example 0 or 1.5."
+            />
+          </View>
+        ) : (
+          <Text className="text-sm text-muted">
+            The existing book’s series metadata will be kept.
+          </Text>
+        )}
         <View className="gap-2.5">
           <Text className="text-sm font-sans-bold text-ink">Representations</Text>
           {proposal.items.map((item) => (
@@ -166,7 +186,7 @@ function ReviewItemRow({
   representations: Representation[];
   onItemChange: (
     entryID: string,
-    key: 'kind' | 'label' | 'representationID',
+    key: 'kind' | 'label' | 'representationID' | 'narrators',
     value: string,
   ) => void;
 }) {
@@ -181,6 +201,31 @@ function ReviewItemRow({
         {item.relative_path}
       </Text>
       {item.duplicate ? <Text className="text-sm text-muted">Exact duplicate</Text> : null}
+      {typeof item.evidence.series === 'string' && item.evidence.series ? (
+        <Text className="text-sm text-muted">
+          Embedded series: {item.evidence.series}
+          {typeof item.evidence.series_position === 'string' && item.evidence.series_position
+            ? ` · ${item.evidence.series_position}`
+            : ''}
+        </Text>
+      ) : null}
+      {Array.isArray(item.evidence.narrators) && item.evidence.narrators.length ? (
+        <Text className="text-sm text-muted">
+          Embedded narrators: {item.evidence.narrators.join(', ')}
+        </Text>
+      ) : null}
+      {edit.kind !== 'epub' && !edit.representationID ? (
+        <Field
+          label="Narrators"
+          value={
+            edit.narrators ??
+            (Array.isArray(item.evidence.narrators) ? item.evidence.narrators.join('\n') : '')
+          }
+          multiline
+          help="One narrator per line, in credit order."
+          onChangeText={(value) => onItemChange(item.source_entry_id, 'narrators', value)}
+        />
+      ) : null}
       <TechnicalDetails rows={[{ label: 'SHA-256', value: item.sha256, copyable: true }]} />
       <View className="flex-row flex-wrap gap-3">
         <View className="grow basis-[240px]">

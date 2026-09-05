@@ -13,6 +13,7 @@ import (
 
 func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.Store, tags *genretag.Store) {
 	router.Get("/works", browseWorks(store))
+	router.Get("/catalog/{kind}", catalogGroups(store))
 	router.Get("/libraries/{libraryID}/works", listWorks(store))
 	router.Post("/libraries/{libraryID}/works", createWork(store))
 	router.Get("/works/{workID}", getWork(store, tags))
@@ -112,7 +113,7 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit, offset := pageParams(r)
 		values, hasMore, err := s.BrowseWorks(r.Context(), actor(r), catalog.BrowseOptions{
-			LibraryID: r.URL.Query().Get("library_id"), Query: r.URL.Query().Get("q"),
+			Series: r.URL.Query().Get("series"), Narrator: r.URL.Query().Get("narrator"), LibraryID: r.URL.Query().Get("library_id"), Query: r.URL.Query().Get("q"),
 			Sort: r.URL.Query().Get("sort"), Availability: r.URL.Query().Get("availability"), Status: r.URL.Query().Get("status"),
 			Limit: limit, Offset: offset,
 		})
@@ -122,7 +123,7 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		}
 		items := make([]contracts.WorkSummary, len(values))
 		for i, value := range values {
-			items[i] = contracts.WorkSummary{ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, CoverFit: value.CoverFit, CoverFocalX: value.CoverFocalX, CoverFocalY: value.CoverFocalY, GeneratedCoverStyle: value.GeneratedCoverStyle, GeneratedCoverTone: value.GeneratedCoverTone, GeneratedCoverLayout: value.GeneratedCoverLayout, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, ReadingStatus: value.ReadingStatus, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+			items[i] = contracts.WorkSummary{Series: value.Series, SeriesPosition: catalog.SeriesPosition(value.SeriesOrder), ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, CoverFit: value.CoverFit, CoverFocalX: value.CoverFocalX, CoverFocalY: value.CoverFocalY, GeneratedCoverStyle: value.GeneratedCoverStyle, GeneratedCoverTone: value.GeneratedCoverTone, GeneratedCoverLayout: value.GeneratedCoverLayout, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, ReadingStatus: value.ReadingStatus, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 		}
 		writeJSON(w, http.StatusOK, contracts.WorkBrowsePage{Items: items, Offset: offset, HasMore: hasMore})
 	}
@@ -244,6 +245,7 @@ func updateWork(s *catalog.Store) http.HandlerFunc {
 			return
 		}
 		update := catalog.WorkUpdate{
+			Series: b.Series, SeriesPosition: b.SeriesPosition,
 			Title: b.Title, Author: b.Author, Description: current.Description, ISBN: current.ISBN,
 			FirstPublishYear: current.FirstPublishYear, Publisher: current.Publisher, Language: current.Language, Subjects: current.SubjectValues,
 		}
@@ -271,5 +273,21 @@ func updateWork(s *catalog.Store) http.HandlerFunc {
 func deleteWork(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeNoContent(w, s.DeleteWork(r.Context(), actor(r), chi.URLParam(r, "workID")))
+	}
+}
+
+func catalogGroups(s *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit, offset := pageParams(r)
+		values, more, err := s.CatalogGroups(r.Context(), actor(r), chi.URLParam(r, "kind"), r.URL.Query().Get("q"), limit, offset)
+		if err != nil {
+			writeCatalogResult(w, nil, err)
+			return
+		}
+		items := make([]contracts.CatalogGroup, len(values))
+		for i, v := range values {
+			items[i] = contracts.CatalogGroup{Name: v.Name, LibraryID: v.LibraryID, LibraryName: v.LibraryName, WorkCount: v.WorkCount}
+		}
+		writeJSON(w, http.StatusOK, contracts.CatalogGroupPage{Items: items, Offset: offset, HasMore: more})
 	}
 }

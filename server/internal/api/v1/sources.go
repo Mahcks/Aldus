@@ -72,9 +72,9 @@ func acceptImportProposal(s *source.Store) http.HandlerFunc {
 		}
 		items := make([]source.AcceptItem, len(b.Items))
 		for i, item := range b.Items {
-			items[i] = source.AcceptItem{SourceEntryID: item.SourceEntryID, RepresentationID: item.RepresentationID, Kind: item.Kind, Label: item.Label}
+			items[i] = source.AcceptItem{Narrators: item.Narrators, SourceEntryID: item.SourceEntryID, RepresentationID: item.RepresentationID, Kind: item.Kind, Label: item.Label}
 		}
-		workID, err := s.AcceptProposal(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "proposalID"), source.AcceptRequest{ExpectedRevision: b.ExpectedRevision, WorkID: b.WorkID, Title: b.Title, Author: b.Author, Items: items})
+		workID, err := s.AcceptProposal(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "proposalID"), source.AcceptRequest{Series: b.Series, SeriesPosition: b.SeriesPosition, ExpectedRevision: b.ExpectedRevision, WorkID: b.WorkID, Title: b.Title, Author: b.Author, Items: items})
 		if err != nil {
 			writeSourceError(w, err)
 			return

@@ -15,9 +15,12 @@ type NavItem = { label: string; href: string; icon: AppIconName; badge?: number 
 function isActive(path: string, href: string) {
   return (
     path === href ||
+    (href === '/books' &&
+      (path === '/catalog' || path === '/collections' || path.startsWith('/collection/'))) ||
     (href === '/sources' && path.startsWith('/sources')) ||
     (href === '/acquisitions' && path.startsWith('/acquisitions')) ||
-    (href === '/collections' && path.startsWith('/collections')) ||
+    (href === '/collections' &&
+      (path.startsWith('/collections') || path.startsWith('/collection/'))) ||
     (href === '/activity' && path.startsWith('/activity')) ||
     (href === '/system' && path.startsWith('/system')) ||
     (href === '/genre-tags' && path.startsWith('/genre-tags')) ||
@@ -46,11 +49,15 @@ function AppShellChrome() {
   const desktop = useWindowDimensions().width >= 820;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [originPath, setOriginPath] = useState('/books');
+  const nestedBook = path.startsWith('/work/');
+  if (!nestedBook && originPath !== path) setOriginPath(path);
+  const navigationPath = nestedBook ? originPath : path;
 
   const consumerLinks: NavItem[] = [
     { label: 'Home', href: '/home', icon: 'home' },
+    { label: 'Library', href: '/books', icon: 'libraries' },
     { label: 'Discover', href: '/search', icon: 'discover' },
-    { label: 'Collections', href: '/collections', icon: 'collections' },
     { label: 'Activity', href: '/activity', icon: 'activity', badge: unreadNotifications },
     { label: 'Account', href: '/account', icon: 'account' },
   ];
@@ -113,7 +120,7 @@ function AppShellChrome() {
     return (
       <View className="min-h-full flex-1 flex-row bg-canvas">
         <DesktopNav
-          path={path}
+          path={navigationPath}
           consumerLinks={consumerLinks}
           adminLinks={adminLinks}
           userLabel={userLabel}
@@ -129,21 +136,17 @@ function AppShellChrome() {
 
   return (
     <View className="min-h-full flex-1 bg-canvas">
-      <MobileHeader
-        topInset={insets.top}
-        onBrandPress={handleBrandPress}
-        onAccountPress={() => router.push('/account')}
-      />
       <View className="min-h-0 flex-1">
         <Slot />
       </View>
       <MobileTabBar
-        path={path}
+        path={navigationPath}
         consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
         bottomInset={insets.bottom}
         sheetOpen={sheetOpen}
         moreSelected={
-          path.startsWith('/account') || adminLinks.some((link) => isActive(path, link.href))
+          navigationPath.startsWith('/account') ||
+          adminLinks.some((link) => isActive(navigationPath, link.href))
         }
         onOpenSheet={openSheet}
       />
@@ -251,7 +254,7 @@ function NavLink({
       onFocus={() => setFocused(true)}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      onPress={() => router.push(href as Href)}
+      onPress={() => router.navigate(href as Href)}
       className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
     >
       <View>
@@ -268,52 +271,6 @@ function NavLink({
         {label}
       </Text>
     </Pressable>
-  );
-}
-
-/** Compact mobile masthead: centered brand with a familiar account affordance. */
-function MobileHeader({
-  topInset,
-  onBrandPress,
-  onAccountPress,
-}: {
-  topInset: number;
-  onBrandPress: () => void;
-  onAccountPress: () => void;
-}) {
-  const [accountFocused, setAccountFocused] = useState(false);
-  const [accountPressed, setAccountPressed] = useState(false);
-  const accountStateClass = resolvePressStateClass({
-    focused: accountFocused,
-    pressed: accountPressed,
-  });
-
-  return (
-    <View
-      className="w-full flex-row items-center border-b border-line bg-panel px-4 pb-2.5"
-      style={{ paddingTop: topInset + 6 }}
-    >
-      <View className="h-11 w-11" />
-      <Pressable
-        accessibilityRole="link"
-        onPress={onBrandPress}
-        className="min-h-11 flex-1 items-center justify-center"
-      >
-        <Text className="font-editorial-bold text-2xl text-accent">Aldus</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Open account"
-        onBlur={() => setAccountFocused(false)}
-        onFocus={() => setAccountFocused(true)}
-        onPressIn={() => setAccountPressed(true)}
-        onPressOut={() => setAccountPressed(false)}
-        onPress={onAccountPress}
-        className={`h-11 w-11 items-center justify-center rounded-control ${accountStateClass}`}
-      >
-        <AppIcon name="account" size={22} color={colors.muted} />
-      </Pressable>
-    </View>
   );
 }
 
@@ -346,7 +303,7 @@ function MobileTabBar({
           icon={link.icon}
           badge={link.badge}
           selected={isActive(path, link.href)}
-          onPress={() => router.push(link.href as Href)}
+          onPress={() => router.navigate(link.href as Href)}
         />
       ))}
       <MobileTab
@@ -385,6 +342,7 @@ function MobileTab({
       accessibilityRole="tab"
       accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
       accessibilityState={{ selected, expanded }}
+      aria-selected={selected}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onPressIn={() => setPressed(true)}
@@ -435,7 +393,7 @@ function MoreSheet({
 
   function handleLinkPress(href: string) {
     onClose();
-    router.push(href as Href);
+    router.navigate(href as Href);
   }
 
   return (

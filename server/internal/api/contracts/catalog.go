@@ -25,6 +25,8 @@ type Membership struct {
 	CanAdvancedAcquisitionRequest bool   `json:"can_advanced_acquisition_request"`
 }
 type Work struct {
+	Series               string    `json:"series,omitempty"`
+	SeriesPosition       string    `json:"series_position,omitempty"`
 	ID                   string    `json:"id"`
 	LibraryID            string    `json:"library_id"`
 	Title                string    `json:"title"`
@@ -40,6 +42,7 @@ type Work struct {
 	UpdatedAt            time.Time `json:"updated_at"`
 }
 type WorkDetail struct {
+	NextInSeries      *Work `json:"next_in_series,omitempty"`
 	Work              `tstype:",extends,required"`
 	Description       string     `json:"description,omitempty"`
 	ISBN              string     `json:"isbn,omitempty"`
@@ -75,6 +78,8 @@ type UnmatchedGenreSubjectPage struct {
 	HasMore bool                    `json:"has_more"`
 }
 type WorkSummary struct {
+	Series               string    `json:"series,omitempty"`
+	SeriesPosition       string    `json:"series_position,omitempty"`
 	ID                   string    `json:"id"`
 	LibraryID            string    `json:"library_id"`
 	LibraryName          string    `json:"library_name"`
@@ -107,6 +112,7 @@ type WorkBrowsePage struct {
 	HasMore bool          `json:"has_more"`
 }
 type Representation struct {
+	Narrators []string  `json:"narrators,omitempty"`
 	ID        string    `json:"id"`
 	WorkID    string    `json:"work_id"`
 	Kind      string    `json:"kind"`
@@ -132,6 +138,8 @@ type CreateWorkRequest struct {
 	Author string `json:"author"`
 }
 type UpdateWorkRequest struct {
+	Series           *string   `json:"series,omitempty"`
+	SeriesPosition   *string   `json:"series_position,omitempty"`
 	Title            string    `json:"title"`
 	Author           string    `json:"author"`
 	Description      *string   `json:"description,omitempty"`
@@ -193,6 +201,19 @@ type CreateRepresentationRequest struct {
 	Label string `json:"label"`
 }
 type UpdateRepresentationRequest struct {
-	Kind  string `json:"kind"`
-	Label string `json:"label"`
+	Narrators *[]string `json:"narrators,omitempty"`
+	Kind      string    `json:"kind"`
+	Label     string    `json:"label"`
+}
+
+type CatalogGroup struct {
+	Name        string `json:"name"`
+	LibraryID   string `json:"library_id,omitempty"`
+	LibraryName string `json:"library_name,omitempty"`
+	WorkCount   int    `json:"work_count"`
+}
+type CatalogGroupPage struct {
+	Items   []CatalogGroup `json:"items"`
+	Offset  int            `json:"offset"`
+	HasMore bool           `json:"has_more"`
 }

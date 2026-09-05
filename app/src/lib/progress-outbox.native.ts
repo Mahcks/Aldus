@@ -101,6 +101,7 @@ export function reconcilePendingProgress(
 
 export async function reconcileAllPendingProgress() {
   const scope = activeStorageScope();
+  if (!scope) return;
   const origin = getAPIBaseURL();
   for (const workID of await serialize(() => pendingWorkIDs(scope))) {
     try {

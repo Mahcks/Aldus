@@ -13,12 +13,16 @@ import (
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	"github.com/mahcks/aldus/server/internal/catalog"
+	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
 var ErrConflict = errors.New("proposal changed")
 
 type AcceptRequest struct {
+	Series           *string
+	SeriesPosition   *string
 	ExpectedRevision int
 	WorkID           string
 	Title            string
@@ -27,6 +31,7 @@ type AcceptRequest struct {
 }
 
 type AcceptItem struct {
+	Narrators        *[]string
 	SourceEntryID    string
 	RepresentationID string
 	Kind             string
@@ -118,6 +123,32 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 	if revision != request.ExpectedRevision || decision != "" || state == "obsolete" {
 		return "", ErrConflict
 	}
+	metadata := make([]map[string]any, 0, len(request.Items))
+	for _, item := range request.Items {
+		var raw string
+		if err := tx.QueryRowContext(ctx, `SELECT e.metadata_json FROM source_entries e JOIN import_items i ON i.source_entry_id=e.id WHERE i.group_id=? AND e.id=?`, proposalID, item.SourceEntryID).Scan(&raw); err != nil {
+			return "", err
+		}
+		var value map[string]any
+		if err := json.Unmarshal([]byte(raw), &value); err != nil {
+			return "", err
+		}
+		metadata = append(metadata, value)
+	}
+	series, seriesPosition, _ := agreedSeries(metadata)
+	if request.Series != nil {
+		series = *request.Series
+		if series == "" {
+			seriesPosition = ""
+		}
+	}
+	if request.SeriesPosition != nil {
+		seriesPosition = *request.SeriesPosition
+	}
+	series, seriesKey, seriesOrder, err := catalog.SeriesMetadata(series, seriesPosition)
+	if err != nil {
+		return "", ErrInvalid
+	}
 	workID := request.WorkID
 	if workID != "" {
 		var n int
@@ -142,6 +173,12 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 			return "", err
 		}
 	}
+	if request.WorkID == "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE works SET series_name=?,series_key=?,series_order=? WHERE id=?`, series, seriesKey, seriesOrder, workID); err != nil {
+			return "", err
+		}
+	}
+	// Existing Works retain manually curated series; imports only fill new Works.
 	seen := map[string]string{}
 	coverMediaID := ""
 	for _, item := range request.Items {
@@ -190,6 +227,27 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 			now := time.Now().UTC().Format(time.RFC3339Nano)
 			if _, err := tx.ExecContext(ctx, `INSERT INTO representations(id,work_id,kind,label,created_at,updated_at) VALUES(?,?,?,?,?,?)`, representationID, workID, kind, label, now, now); err != nil {
 				return "", err
+			}
+			var embedded map[string]any
+			if err := json.Unmarshal([]byte(metadataJSON), &embedded); err != nil {
+				return "", err
+			}
+			_, _, names := catalogMetadata(embedded)
+			if item.Narrators != nil {
+				names, err = catalog.NarratorNames(*item.Narrators)
+				if err != nil {
+					return "", ErrInvalid
+				}
+			}
+			if kind == "epub" && item.Narrators != nil && len(names) > 0 {
+				return "", ErrInvalid
+			}
+			if kind != "epub" {
+				for i, name := range names {
+					if err := dbsql.New(tx).InsertRepresentationNarrator(ctx, dbsql.InsertRepresentationNarratorParams{RepresentationID: representationID, Ordinal: int64(i), Name: name, NameKey: catalog.MetadataKey(name)}); err != nil {
+						return "", err
+					}
+				}
 			}
 		}
 		seen[kind+"\x00"+hash] = representationID

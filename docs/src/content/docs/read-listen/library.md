@@ -32,3 +32,19 @@ From a title, select **Set status** and choose **Want to read**, **Reading**, or
 ## Manage your account
 
 Under **Account**, change your display name or password, sign out of the current device, sign out everywhere, and create or revoke KOReader and OPDS credentials. Account deletion is also available there; see the [privacy policy](/privacy/) before using it.
+
+## Series and narrators
+
+Open **Library** to browse books your account can access. **Collections** lives inside Library, alongside populated series and narrator sections. Library search stays within your catalog; Books appear directly in the Library grid, with server-paginated batches and **Load more books** on the same screen. **Filter & sort** refines books by library and format.
+
+Use **Discover** to search external book catalogs and request ebooks or audiobooks. Results already in your library are marked and can be opened directly. The bottom navigation remains five items: Home, Library, Discover, Activity, and More. Each series belongs to its library, so matching names in different libraries stay separate. Counts and results include only books your account can access.
+
+Series pages put numbered books first, in reading order, then books with an unknown position. Positions can include zero and up to three decimal places, such as `0`, `1`, or `1.5`. A book's details link to its series and the next book in that order; this does not change your reading progress or mean the next book is unread.
+
+Library owners and editors can set **Series** and **Position in series** under a book's **Manage** controls. Leave position empty when unknown. Clear the series name and position to remove the membership. A book currently has one primary series.
+
+Edit an audiobook file entry to set **Narrators**, one name per line in credit order. Its book page links to each narrator's audiobooks. Aldus matches names across case and whitespace while keeping their display spelling; it does not try to identify people from old edition labels.
+
+Import review shows embedded series and narrator evidence. Agreeing series tags are carried into new books; conflicts require an explicit series override or are left empty. Existing books and editions keep their curated series and narrator values. No source file is rewritten.
+
+If this navigation reports that a server update is required, existing library browsing remains available in Discover.

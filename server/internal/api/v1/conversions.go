@@ -26,13 +26,18 @@ func libraryDTO(v catalog.Library) contracts.Library {
 	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, Exclusive: v.Exclusive, Effective: v.Effective, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func workDTO(v catalog.Work) contracts.Work {
-	return contracts.Work{ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CoverURL: v.CoverURL, CoverFit: v.CoverFit, CoverFocalX: v.CoverFocalX, CoverFocalY: v.CoverFocalY, GeneratedCoverStyle: v.GeneratedCoverStyle, GeneratedCoverTone: v.GeneratedCoverTone, GeneratedCoverLayout: v.GeneratedCoverLayout, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.Work{Series: v.Series, SeriesPosition: catalog.SeriesPosition(v.SeriesOrder), ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CoverURL: v.CoverURL, CoverFit: v.CoverFit, CoverFocalX: v.CoverFocalX, CoverFocalY: v.CoverFocalY, GeneratedCoverStyle: v.GeneratedCoverStyle, GeneratedCoverTone: v.GeneratedCoverTone, GeneratedCoverLayout: v.GeneratedCoverLayout, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func workDetailDTO(v catalog.WorkDetail) contracts.WorkDetail {
-	return contracts.WorkDetail{Work: workDTO(v.Work), Description: v.Description, ISBN: v.ISBN, FirstPublishYear: v.FirstPublishYear, Publisher: v.Publisher, Language: v.Language, Subjects: v.Subjects, SubjectValues: v.SubjectValues, GenreTags: []contracts.GenreTag{}, InProgress: v.InProgress, ProgressUpdatedAt: v.ProgressUpdatedAt, CompletionPercent: v.CompletionPercent, ActiveSeconds: v.ActiveSeconds, ReadingSeconds: v.ReadingSeconds, ListeningSeconds: v.ListeningSeconds, LastMode: v.LastMode, ReadingStatus: v.ReadingStatus}
+	var next *contracts.Work
+	if v.NextInSeries != nil {
+		converted := workDTO(*v.NextInSeries)
+		next = &converted
+	}
+	return contracts.WorkDetail{NextInSeries: next, Work: workDTO(v.Work), Description: v.Description, ISBN: v.ISBN, FirstPublishYear: v.FirstPublishYear, Publisher: v.Publisher, Language: v.Language, Subjects: v.Subjects, SubjectValues: v.SubjectValues, GenreTags: []contracts.GenreTag{}, InProgress: v.InProgress, ProgressUpdatedAt: v.ProgressUpdatedAt, CompletionPercent: v.CompletionPercent, ActiveSeconds: v.ActiveSeconds, ReadingSeconds: v.ReadingSeconds, ListeningSeconds: v.ListeningSeconds, LastMode: v.LastMode, ReadingStatus: v.ReadingStatus}
 }
 func representationDTO(v catalog.Representation) contracts.Representation {
-	return contracts.Representation{ID: v.ID, WorkID: v.WorkID, Kind: v.Kind, Label: v.Label, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.Representation{Narrators: v.Narrators, ID: v.ID, WorkID: v.WorkID, Kind: v.Kind, Label: v.Label, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func membershipDTO(v catalog.Membership) contracts.Membership {
 	return contracts.Membership{UserID: v.UserID, Username: v.Username, DisplayName: v.DisplayName, Role: v.Role, Exclusive: v.Exclusive, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest}

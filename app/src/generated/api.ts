@@ -290,6 +290,8 @@ export interface Membership {
   can_advanced_acquisition_request: boolean;
 }
 export interface Work {
+  series?: string;
+  series_position?: string;
   id: string;
   library_id: string;
   title: string;
@@ -305,6 +307,7 @@ export interface Work {
   updated_at: string;
 }
 export interface WorkDetail extends Work {
+  next_in_series?: Work;
   description?: string;
   isbn?: string;
   first_publish_year?: number /* int */;
@@ -339,6 +342,8 @@ export interface UnmatchedGenreSubjectPage {
   has_more: boolean;
 }
 export interface WorkSummary {
+  series?: string;
+  series_position?: string;
   id: string;
   library_id: string;
   library_name: string;
@@ -371,6 +376,7 @@ export interface WorkBrowsePage {
   has_more: boolean;
 }
 export interface Representation {
+  narrators?: string[];
   id: string;
   work_id: string;
   kind: string;
@@ -396,6 +402,8 @@ export interface CreateWorkRequest {
   author: string;
 }
 export interface UpdateWorkRequest {
+  series?: string;
+  series_position?: string;
   title: string;
   author: string;
   description?: string;
@@ -457,8 +465,20 @@ export interface CreateRepresentationRequest {
   label: string;
 }
 export interface UpdateRepresentationRequest {
+  narrators?: string[];
   kind: string;
   label: string;
+}
+export interface CatalogGroup {
+  name: string;
+  library_id?: string;
+  library_name?: string;
+  work_count: number /* int */;
+}
+export interface CatalogGroupPage {
+  items: CatalogGroup[];
+  offset: number /* int */;
+  has_more: boolean;
 }
 
 //////////
@@ -661,6 +681,8 @@ export interface ImportProposalItem {
   evidence: { [key: string]: any};
 }
 export interface AcceptImportProposalRequest {
+  series?: string;
+  series_position?: string;
   expected_revision: number /* int */;
   work_id?: string;
   title: string;
@@ -668,6 +690,7 @@ export interface AcceptImportProposalRequest {
   items: AcceptImportItem[];
 }
 export interface AcceptImportItem {
+  narrators?: string[];
   source_entry_id: string;
   representation_id?: string;
   kind: string;

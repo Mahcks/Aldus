@@ -22,7 +22,7 @@ import {
 } from '@/features/consumption';
 import { formatDuration } from '@/features/format';
 import { AppIcon } from '@/features/icons';
-import { fadeIn, listItemEnter } from '@/features/motion';
+import { fadeIn } from '@/features/motion';
 import {
   ReadingStatusDialog,
   readingStatusLabel,
@@ -96,7 +96,8 @@ function syncNote(label: ReturnType<typeof synchronizationLabel>): string | unde
 }
 
 export default function WorkScreen() {
-  const narrow = useWindowDimensions().width < 600;
+  const { width } = useWindowDimensions();
+  const narrow = width < 600;
   const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
   const auth = useAuth();
   const [work, setWork] = useState<WorkDetail>();
@@ -218,14 +219,14 @@ export default function WorkScreen() {
 
   if (loading)
     return (
-      <Page title="Work" hideHeader>
+      <Page title="Book details" hideHeader>
         <LoadingState label="Loading this book…" />
       </Page>
     );
 
   if (!work)
     return (
-      <Page title="Work" hideHeader>
+      <Page title="Book details" hideHeader>
         <ErrorState
           title={offlineUnreachable ? 'Not downloaded yet' : "Couldn't load this book"}
           action={<Button label="Go back" kind="secondary" onPress={() => goBackOr('/home')} />}
@@ -548,27 +549,24 @@ export default function WorkScreen() {
   );
 
   return (
-    <Page title="Work" hideHeader>
-      <View className="flex-row items-center justify-between">
-        <Button
-          label="Library"
-          icon="back"
-          kind="quiet"
-          onPress={() => goBackOr(`/library/${work.library_id}`)}
-        />
-        {canEdit ? (
-          narrow ? (
-            <IconButton
-              icon="settings"
-              label="Manage this work"
-              kind="quiet"
-              onPress={openManage}
-            />
-          ) : (
+    <Page
+      title="Book details"
+      hideHeader
+      back={<IconButton icon="back" label="Back" kind="quiet" onPress={() => goBackOr('/books')} />}
+      mobileActions={
+        canEdit ? (
+          <IconButton icon="settings" label="Manage this work" kind="quiet" onPress={openManage} />
+        ) : undefined
+      }
+    >
+      {width >= 820 ? (
+        <View className="flex-row items-center justify-between">
+          <IconButton icon="back" label="Back" kind="quiet" onPress={() => goBackOr('/books')} />
+          {canEdit ? (
             <Button label="Manage this work" icon="settings" kind="quiet" onPress={openManage} />
-          )
-        ) : null}
-      </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {offline ? (
         <Notice tone="info">
@@ -605,6 +603,37 @@ export default function WorkScreen() {
         </View>
       </Animated.View>
 
+      {work.series || selectedAudio?.representation.narrators?.length ? (
+        <View className="mx-auto w-full max-w-[1000px] gap-2 border-t border-line py-4">
+          {work.series ? (
+            <Button
+              kind="quiet"
+              label={`${work.series}${work.series_position ? ` · Book ${work.series_position}` : ''}`}
+              onPress={() =>
+                router.push({
+                  pathname: '/catalog',
+                  params: { series: work.series, library_id: work.library_id },
+                })
+              }
+            />
+          ) : null}
+          {selectedAudio?.representation.narrators?.map((name) => (
+            <Button
+              key={name}
+              kind="quiet"
+              label={`Narrated by ${name}`}
+              onPress={() => router.push({ pathname: '/catalog', params: { narrator: name } })}
+            />
+          ))}
+          {work.next_in_series ? (
+            <Button
+              kind="secondary"
+              label={`Next in series: ${work.next_in_series.title}`}
+              onPress={() => router.push(`/work/${work.next_in_series!.id}`)}
+            />
+          ) : null}
+        </View>
+      ) : null}
       {description || details.length || genreTags.length || canEdit ? (
         <View
           className={`mx-auto w-full max-w-[1000px] gap-3 ${narrow ? 'pb-6' : 'border-t border-line py-8'}`}
@@ -786,21 +815,21 @@ function EditionGroup({
   onSelect: (id: string) => void;
 }) {
   return (
-    <View className="min-w-[240px] flex-1 gap-1">
+    <View className="w-full min-w-0 gap-2 sm:flex-1">
       <View className="flex-row items-center gap-1.5 pb-1">
         <AppIcon name={icon} size={15} color={colors.subtle} />
         <Text className="text-xs font-sans-bold uppercase tracking-wide text-subtle">{label}</Text>
       </View>
       <View accessibilityRole="radiogroup" accessibilityLabel={label}>
-        {items.map((item, index) => (
-          <Animated.View key={item.id} entering={listItemEnter(index)}>
+        {items.map((item) => (
+          <View key={item.id}>
             <EditionOption
               label={item.representation.label}
               detail={formatBytes(item.size_bytes)}
               selected={selected === item.id}
               onPress={() => onSelect(item.id)}
             />
-          </Animated.View>
+          </View>
         ))}
       </View>
     </View>

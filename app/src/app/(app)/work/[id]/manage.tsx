@@ -1,3 +1,4 @@
+import { seriesPositionError } from '@/features/catalog-metadata';
 import type {
   AlignmentJob,
   CoverAsset,
@@ -19,6 +20,7 @@ import { TechnicalDetails } from '@/features/sources/TechnicalDetails';
 import { Pressable, ScrollView, Text, View } from '@/features/tw';
 import {
   Button,
+  IconButton,
   Checkbox,
   ConfirmDialog,
   Dialog,
@@ -132,6 +134,8 @@ export default function ManageWorkScreen() {
   const [description, setDescription] = useState('');
   const [isbn, setISBN] = useState('');
   const [publishYear, setPublishYear] = useState('');
+  const [series, setSeries] = useState('');
+  const [seriesPosition, setSeriesPosition] = useState('');
   const [publisher, setPublisher] = useState('');
   const [language, setLanguage] = useState('');
   const [subjects, setSubjects] = useState('');
@@ -174,6 +178,8 @@ export default function ManageWorkScreen() {
       setISBN(nextWork.isbn || '');
       setPublishYear(nextWork.first_publish_year ? String(nextWork.first_publish_year) : '');
       setPublisher(nextWork.publisher || '');
+      setSeries(nextWork.series || '');
+      setSeriesPosition(nextWork.series_position || '');
       setLanguage(nextWork.language || '');
       setSubjects((nextWork.subject_values ?? []).join('\n'));
       setAllGenreTags(nextGenreTags);
@@ -352,6 +358,7 @@ export default function ManageWorkScreen() {
       setError('Publication year must be a four-digit year.');
       return;
     }
+    if (seriesPositionError(seriesPosition)) return;
     setSavingDetails(true);
     setError('');
     setMetadataMessage('');
@@ -364,6 +371,9 @@ export default function ManageWorkScreen() {
         first_publish_year: year,
         publisher,
         language,
+        ...(series !== (work?.series || '') || seriesPosition !== (work?.series_position || '')
+          ? { series, series_position: seriesPosition }
+          : {}),
         subjects: subjects
           .split('\n')
           .map((subject) => subject.trim())
@@ -431,6 +441,8 @@ export default function ManageWorkScreen() {
       setISBN(nextWork.isbn || '');
       setPublishYear(nextWork.first_publish_year ? String(nextWork.first_publish_year) : '');
       setPublisher(nextWork.publisher || '');
+      setSeries(nextWork.series || '');
+      setSeriesPosition(nextWork.series_position || '');
       setLanguage(nextWork.language || '');
       setSubjects((nextWork.subject_values ?? []).join('\n'));
       setCoverAssets(await api.covers(id));
@@ -543,7 +555,7 @@ export default function ManageWorkScreen() {
     return (
       <Page
         title="Manage work"
-        back={<Button label="Work" icon="back" kind="quiet" onPress={backToWork} />}
+        back={<IconButton label="Back" icon="back" kind="quiet" onPress={backToWork} />}
         editorial={false}
       >
         <Notice danger>You don&apos;t have permission to manage this work.</Notice>
@@ -553,7 +565,7 @@ export default function ManageWorkScreen() {
   return (
     <Page
       title="Manage work"
-      back={<Button label="Work" icon="back" kind="quiet" onPress={backToWork} />}
+      back={<IconButton label="Back" icon="back" kind="quiet" onPress={backToWork} />}
       editorial={false}
     >
       <View className="w-full max-w-[1000px] self-center gap-6">
@@ -1019,6 +1031,28 @@ export default function ManageWorkScreen() {
                   className="min-h-32"
                   onChangeText={setDescription}
                 />
+                <View className="flex-row flex-wrap gap-4">
+                  <View className="min-w-[220px] flex-grow basis-[280px]">
+                    <Field
+                      label="Series"
+                      maxLength={200}
+                      value={series}
+                      onChangeText={(value) => {
+                        setSeries(value);
+                        if (!value.trim()) setSeriesPosition('');
+                      }}
+                    />
+                  </View>
+                  <View className="min-w-[160px] flex-grow basis-[180px]">
+                    <Field
+                      label="Position in series"
+                      error={seriesPositionError(seriesPosition)}
+                      value={seriesPosition}
+                      onChangeText={setSeriesPosition}
+                      help="Optional. Use 0, 1, or 1.5; up to three decimal places."
+                    />
+                  </View>
+                </View>
                 <View className="flex-row flex-wrap gap-4">
                   <View className="min-w-[220px] flex-grow basis-[280px]">
                     <Field label="Publisher" value={publisher} onChangeText={setPublisher} />

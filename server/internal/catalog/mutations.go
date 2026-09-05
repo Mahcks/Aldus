@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
+	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 )
 
 var ErrReferenced = errors.New("catalog resource is referenced")
@@ -58,6 +59,8 @@ func (s *Store) DeleteLibrary(ctx context.Context, actor auth.User, id string) e
 }
 
 type WorkUpdate struct {
+	Series           *string
+	SeriesPosition   *string
 	Title            string
 	Author           string
 	Description      string
@@ -119,6 +122,30 @@ func (s *Store) UpdateWork(ctx context.Context, actor auth.User, id string, upda
 			return err
 		}
 	}
+	if update.Series != nil || update.SeriesPosition != nil {
+		var name string
+		var order *int64
+		if err := tx.QueryRowContext(ctx, `SELECT series_name,series_order FROM works WHERE id=?`, id).Scan(&name, &order); err != nil {
+			return err
+		}
+		position := SeriesPosition(order)
+		if update.Series != nil {
+			name = *update.Series
+			if name == "" {
+				position = ""
+			}
+		}
+		if update.SeriesPosition != nil {
+			position = *update.SeriesPosition
+		}
+		name, normalized, order, err := SeriesMetadata(name, position)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE works SET series_name=?,series_key=?,series_order=? WHERE id=?`, name, normalized, order, id); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -149,16 +176,21 @@ func (s *Store) DeleteWork(ctx context.Context, actor auth.User, id string) erro
 	return nil
 }
 
-func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, kind, label string) error {
+func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, kind, label string, narrators ...*[]string) error {
 	kind = strings.TrimSpace(kind)
 	label = strings.TrimSpace(label)
 	if !validRepresentationKind(kind) || label == "" || len(label) > 300 {
 		return ErrInvalid
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var existingKind string
 	var mediaCount int
 	args := append([]any{actor.ID, id}, auth.LibraryEditArgs(actor)...)
-	err := s.db.QueryRowContext(ctx, `SELECT r.kind,COUNT(md.id) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN media md ON md.representation_id=r.id WHERE r.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+` GROUP BY r.id`, args...).Scan(&existingKind, &mediaCount)
+	err = tx.QueryRowContext(ctx, `SELECT r.kind,COUNT(md.id) FROM representations r JOIN works w ON w.id=r.work_id LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? LEFT JOIN media md ON md.representation_id=r.id WHERE r.id=? AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+` GROUP BY r.id`, args...).Scan(&existingKind, &mediaCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -169,7 +201,7 @@ func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, k
 		return ErrReferenced
 	}
 	args = append([]any{kind, label, time.Now().UTC().Format(time.RFC3339Nano), id, actor.ID}, auth.LibraryEditArgs(actor)...)
-	result, err := s.db.ExecContext(ctx, `UPDATE representations SET kind=?,label=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=representations.work_id AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+`)`, args...)
+	result, err := tx.ExecContext(ctx, `UPDATE representations SET kind=?,label=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM works w LEFT JOIN library_members m ON m.library_id=w.library_id AND m.user_id=? WHERE w.id=representations.work_id AND `+auth.EffectiveLibraryEditSQL("w.library_id", "m")+`)`, args...)
 	if err != nil {
 		return err
 	}
@@ -177,7 +209,29 @@ func (s *Store) UpdateRepresentation(ctx context.Context, actor auth.User, id, k
 	if n != 1 {
 		return ErrNotFound
 	}
-	return nil
+	if len(narrators) > 0 && narrators[0] != nil {
+		names, err := NarratorNames(*narrators[0])
+		if err != nil {
+			return err
+		}
+		if kind == "epub" && len(names) > 0 {
+			return ErrInvalid
+		}
+		q := dbsql.New(tx)
+		if err := q.DeleteRepresentationNarrators(ctx, id); err != nil {
+			return err
+		}
+		for i, name := range names {
+			if err := q.InsertRepresentationNarrator(ctx, dbsql.InsertRepresentationNarratorParams{RepresentationID: id, Ordinal: int64(i), Name: name, NameKey: MetadataKey(name)}); err != nil {
+				return err
+			}
+		}
+	} else if kind == "epub" {
+		if err := dbsql.New(tx).DeleteRepresentationNarrators(ctx, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteRepresentation(ctx context.Context, actor auth.User, id string) error {
