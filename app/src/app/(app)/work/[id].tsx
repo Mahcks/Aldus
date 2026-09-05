@@ -97,7 +97,7 @@ function syncNote(label: ReturnType<typeof synchronizationLabel>): string | unde
 
 export default function WorkScreen() {
   const narrow = useWindowDimensions().width < 600;
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, action } = useLocalSearchParams<{ id: string; action?: string }>();
   const auth = useAuth();
   const [work, setWork] = useState<WorkDetail>();
   const [library, setLibrary] = useState<Library>();
@@ -201,6 +201,20 @@ export default function WorkScreen() {
       unsubscribe();
     };
   }, [id]);
+
+  useEffect(() => {
+    if (loading || !work || !action) return;
+    router.setParams({ action: undefined });
+    if (offline) {
+      setError('Connect to your server to change collections, status, or download more files.');
+      return;
+    }
+    if (action === 'downloads' && Platform.OS !== 'web') setDownloadOpen(true);
+    if (action === 'status') setStatusOpen(true);
+    if (action === 'collection') void openCollections();
+    // Consume the requested action once after this book is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action, loading, work, offline]);
 
   if (loading)
     return (

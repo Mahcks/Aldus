@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { Collection, Notification, Work, WorkSummary } from '@/generated/api';
 import type { Href } from 'expo-router';
 import { router, useFocusEffect } from 'expo-router';
@@ -64,6 +65,37 @@ function ContinueShelf({ works }: { works: WorkSummary[] }) {
               size="hero"
               onOpen={() => router.push(workHref(work))}
               onContinue={() => router.push(`/consume/${work.id}?mode=${mode}`)}
+              continueHref={`/consume/${work.id}?mode=${mode}`}
+              actions={[
+                { label: 'Book details', onPress: () => router.push(workHref(work)) },
+                ...(work.readable
+                  ? [{ label: 'Read', onPress: () => router.push(`/consume/${work.id}?mode=read`) }]
+                  : []),
+                ...(work.listenable
+                  ? [
+                      {
+                        label: 'Listen',
+                        onPress: () => router.push(`/consume/${work.id}?mode=listen`),
+                      },
+                    ]
+                  : []),
+                ...(Platform.OS !== 'web'
+                  ? [
+                      {
+                        label: 'Downloads',
+                        onPress: () => router.push(`/work/${work.id}?action=downloads`),
+                      },
+                    ]
+                  : []),
+                {
+                  label: 'Add to collection',
+                  onPress: () => router.push(`/work/${work.id}?action=collection`),
+                },
+                {
+                  label: 'Reading status',
+                  onPress: () => router.push(`/work/${work.id}?action=status`),
+                },
+              ]}
             />
           </Animated.View>
         );

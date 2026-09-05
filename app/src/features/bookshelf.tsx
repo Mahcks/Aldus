@@ -1,8 +1,10 @@
+import { Link, type Href } from 'expo-router';
+import { Platform } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from './icons';
-import { colors, resolvePressStateClass } from './ui';
+import { Button, Dialog, IconButton, colors, resolvePressStateClass } from './ui';
 import { Pressable, Text, View } from './tw';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
@@ -480,8 +482,8 @@ function AvailabilityLabel({ value }: { value: WorkAvailability }) {
  * standing on a shelf, so the primary "pick up where I left off" action is
  * a single tap on the cover itself (the ribbon names it) rather than a
  * full-width button competing with title/author/context text underneath.
- * Switching read/listen mid-book is a detail-page action now — this tile
- * only shows what's needed to recognize the book and resume it.
+ * Long-press exposes secondary book actions; the visible menu button keeps
+ * the same actions available without a gesture.
  */
 const continueSizeClass = {
   continue: { width: 'w-[106px]', title: 'text-sm leading-4 min-h-[32px]', titleLines: 2 },
@@ -498,6 +500,8 @@ export function ContinueCard({
   size = 'continue',
   onOpen,
   onContinue,
+  continueHref,
+  actions,
 }: {
   title: string;
   author?: string;
@@ -511,9 +515,12 @@ export function ContinueCard({
   size?: keyof typeof continueSizeClass;
   onOpen: () => void;
   onContinue: () => void;
+  continueHref: Href;
+  actions: { label: string; onPress: () => void }[];
   onRead?: () => void;
   onListen?: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [coverFocused, setCoverFocused] = useState(false);
   const [coverPressed, setCoverPressed] = useState(false);
   const [titleFocused, setTitleFocused] = useState(false);
@@ -522,63 +529,107 @@ export function ContinueCard({
   const titleStateClass = resolvePressStateClass({ focused: titleFocused, pressed: titlePressed });
   const dimensions = continueSizeClass[size];
 
-  return (
-    <View className={`${dimensions.width} gap-1.5`}>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`Continue ${continueMode === 'read' ? 'reading' : 'listening to'} ${title}`}
-        onBlur={() => setCoverFocused(false)}
-        onFocus={() => setCoverFocused(true)}
-        onPressIn={() => setCoverPressed(true)}
-        onPressOut={() => setCoverPressed(false)}
-        onPress={onContinue}
-        className={`relative rounded-control ${coverStateClass}`}
-      >
-        <BookCover
-          title={title}
-          author={author}
-          coverURL={coverURL}
-          size={size}
-          {...coverPresentation}
-        />
-        {progress ? (
-          <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">
-            <Text numberOfLines={1} className="text-[10px] font-sans-bold text-paper">
-              {progress}
-            </Text>
-          </View>
-        ) : null}
-        <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-1 rounded-b-control bg-accent/95 py-1.5">
-          <AppIcon
-            name={continueMode === 'read' ? 'read' : 'listen'}
-            size={12}
-            color={colors.onAccent}
-          />
-          <Text className="text-[10px] font-sans-bold uppercase tracking-wide text-on-accent">
-            Continue
+  const cover = (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Continue ${continueMode === 'read' ? 'reading' : 'listening to'} ${title}`}
+      onBlur={() => setCoverFocused(false)}
+      onFocus={() => setCoverFocused(true)}
+      onPressIn={() => setCoverPressed(true)}
+      onPressOut={() => setCoverPressed(false)}
+      accessibilityHint="Press and hold for book actions"
+      onPress={Platform.OS === 'ios' ? undefined : onContinue}
+      onLongPress={Platform.OS === 'ios' ? undefined : () => setMenuOpen(true)}
+      className={`relative rounded-control ${coverStateClass}`}
+    >
+      <BookCover
+        title={title}
+        author={author}
+        coverURL={coverURL}
+        size={size}
+        {...coverPresentation}
+      />
+      {progress ? (
+        <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">
+          <Text numberOfLines={1} className="text-[10px] font-sans-bold text-paper">
+            {progress}
           </Text>
         </View>
-      </Pressable>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`Open ${title}`}
-        onBlur={() => setTitleFocused(false)}
-        onFocus={() => setTitleFocused(true)}
-        onPressIn={() => setTitlePressed(true)}
-        onPressOut={() => setTitlePressed(false)}
-        onPress={onOpen}
-        className={`gap-0.5 rounded-control px-0.5 ${titleStateClass}`}
-      >
-        <Text
-          numberOfLines={dimensions.titleLines}
-          className={`font-editorial-bold text-ink ${dimensions.title}`}
+      ) : null}
+      <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-1 rounded-b-control bg-accent/95 py-1.5">
+        <AppIcon
+          name={continueMode === 'read' ? 'read' : 'listen'}
+          size={12}
+          color={colors.onAccent}
+        />
+        <Text className="text-[10px] font-sans-bold uppercase tracking-wide text-on-accent">
+          Continue
+        </Text>
+      </View>
+    </Pressable>
+  );
+
+  return (
+    <View className={`${dimensions.width} gap-1.5`}>
+      {Platform.OS === 'ios' ? (
+        <Link href={continueHref} asChild>
+          <Link.Trigger>{cover}</Link.Trigger>
+          <Link.Menu title={title}>
+            {actions.map((action) => (
+              <Link.MenuAction key={action.label} onPress={action.onPress}>
+                {action.label}
+              </Link.MenuAction>
+            ))}
+          </Link.Menu>
+        </Link>
+      ) : (
+        cover
+      )}
+      <View>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`Open ${title}`}
+          onBlur={() => setTitleFocused(false)}
+          onFocus={() => setTitleFocused(true)}
+          onPressIn={() => setTitlePressed(true)}
+          onPressOut={() => setTitlePressed(false)}
+          onPress={onOpen}
+          className={`min-h-11 rounded-control px-0.5 ${titleStateClass}`}
         >
-          {title}
-        </Text>
-        <Text numberOfLines={1} className="text-[11px] text-muted">
-          {author || 'Unknown author'}
-        </Text>
-      </Pressable>
+          <Text
+            numberOfLines={dimensions.titleLines}
+            className={`font-editorial-bold text-ink ${dimensions.title}`}
+          >
+            {title}
+          </Text>
+        </Pressable>
+        <View className="flex-row items-center justify-between">
+          <Text numberOfLines={1} className="min-w-0 flex-1 px-0.5 text-[11px] text-muted">
+            {author || 'Unknown author'}
+          </Text>
+          <IconButton
+            icon="more"
+            kind="quiet"
+            label={`Book actions for ${title}`}
+            onPress={() => setMenuOpen(true)}
+          />
+        </View>
+      </View>
+      <Dialog visible={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
+        <View className="gap-1">
+          {actions.map((action) => (
+            <Button
+              key={action.label}
+              label={action.label}
+              kind="quiet"
+              onPress={() => {
+                setMenuOpen(false);
+                action.onPress();
+              }}
+            />
+          ))}
+        </View>
+      </Dialog>
     </View>
   );
 }
