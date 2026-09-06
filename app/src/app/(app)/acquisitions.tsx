@@ -60,6 +60,7 @@ export default function AcquisitionsAdministration() {
   const [qBitTorrentPassword, setQBitTorrentPassword] = useState('');
   const [qBitTorrentCategory, setQBitTorrentCategory] = useState('aldus');
   const [qBitTorrentDownloadRoot, setQBitTorrentDownloadRoot] = useState('');
+  const [nytAPIKey, setNYTAPIKey] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   const [testingSettings, setTestingSettings] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<AcquisitionConnectionStatus | null>(
@@ -136,7 +137,7 @@ export default function AcquisitionsAdministration() {
     return () => clearInterval(timer);
   }, [libraries, reloadApprovals]);
 
-  async function saveSettings() {
+  async function saveSettings(testConnections = true) {
     if (savingSettings) return;
     setSavingSettings(true);
     setError('');
@@ -146,6 +147,7 @@ export default function AcquisitionsAdministration() {
         indexer_url: indexerURL.trim(),
         indexer_kind: indexerKind,
         indexer_api_key: indexerAPIKey.trim(),
+        nyt_api_key: nytAPIKey.trim(),
         qbittorrent_url: qBitTorrentURL.trim(),
         qbittorrent_username: qBitTorrentUsername.trim(),
         qbittorrent_password: qBitTorrentPassword,
@@ -154,9 +156,14 @@ export default function AcquisitionsAdministration() {
       });
       setSettings(configured);
       setIndexerAPIKey('');
+      setNYTAPIKey('');
       setQBitTorrentPassword('');
-      setConnectionStatus(await api.testAcquisitionSettings());
-      setSuccess('Acquisition settings saved and tested.');
+      if (testConnections) {
+        setConnectionStatus(await api.testAcquisitionSettings());
+        setSuccess('Acquisition settings saved and tested.');
+      } else {
+        setSuccess('Trending settings saved.');
+      }
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -505,6 +512,33 @@ export default function AcquisitionsAdministration() {
               {connectionStatus?.qbittorrent_error ? (
                 <Notice tone="danger">{connectionStatus.qbittorrent_error}</Notice>
               ) : null}
+            </View>
+          </Section>
+
+          <Section title="Trending books">
+            <View className="max-w-[720px] gap-4">
+              <Notice>
+                Optional. Once configured, Discover shows NYT Best Sellers alongside its always-on
+                Open Library trending feed. Registering a key is free at developer.nytimes.com.
+              </Notice>
+              <Field
+                label="NYT API key"
+                value={nytAPIKey}
+                onChangeText={setNYTAPIKey}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                placeholder={settings?.has_nyt_api_key ? 'Saved, leave blank to keep it' : ''}
+              />
+              <View className="items-start">
+                <Button
+                  label="Save trending settings"
+                  icon="check"
+                  kind="primary"
+                  loading={savingSettings}
+                  onPress={() => void saveSettings(false)}
+                />
+              </View>
             </View>
           </Section>
         </View>

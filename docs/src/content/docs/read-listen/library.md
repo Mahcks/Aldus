@@ -35,9 +35,13 @@ Under **Account**, change your display name or password, sign out of the current
 
 ## Series and narrators
 
-Open **Library** to browse books your account can access. **Collections** lives inside Library, alongside populated series and narrator sections. Library search stays within your catalog; Books appear directly in the Library grid, with server-paginated batches and **Load more books** on the same screen. **Filter & sort** refines books by library and format.
+Open **Library** to browse books your account can access. Books appear directly in a virtualized grid, with search built in: typing a title, author, series, or narrator name searches across all of them at once, surfacing any matching series or narrators above the matching books. The next batch of books loads automatically as you approach the bottom; a failed batch offers **Retry** while keeping loaded books visible. Returning from a book restores your library position and filters.
 
-Use **Discover** to search external book catalogs and request ebooks or audiobooks. Results already in your library are marked and can be opened directly. The bottom navigation remains five items: Home, Library, Discover, Activity, and More. Each series belongs to its library, so matching names in different libraries stay separate. Counts and results include only books your account can access.
+**Browse** opens **Collections**, **Series**, and **Narrators** — the three structured ways to look through your library besides searching. **Filter & sort** refines the current book grid by library and format. Its **Book size** control switches between **Comfortable** (two columns on phones) and **Compact** (three columns); this preference is saved on the device, and larger screens adapt the number of columns to their width.
+
+Press and hold any book — in Library or on Home — to open its quick-action menu: jump to its detail page, start reading or listening, manage downloads, add it to a collection, or change its reading status, all without leaving the grid.
+
+Use **Discover** to search external book catalogs and request ebooks or audiobooks. Tap a result to see its cover and description before requesting a format, or to choose a specific release if your account can. Results already in your library are marked and open directly to that book instead. Before you search, Discover shows what's trending: an always-on Open Library feed, plus NYT Best Sellers lists once a server owner adds an API key under Acquisitions. The bottom navigation remains five items: Home, Library, Discover, Activity, and More. Each series belongs to its library, so matching names in different libraries stay separate. Counts and results include only books your account can access.
 
 Series pages put numbered books first, in reading order, then books with an unknown position. Positions can include zero and up to three decimal places, such as `0`, `1`, or `1.5`. A book's details link to its series and the next book in that order; this does not change your reading progress or mean the next book is unread.
 

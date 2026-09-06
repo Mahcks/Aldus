@@ -1,0 +1,95 @@
+import { useRef, useState, type ReactNode } from 'react';
+import { useWindowDimensions, type FlatList as NativeFlatList } from 'react-native';
+import type { WorkSummary } from '@/generated/api';
+import { WorkCard, coverPresentation } from '@/features/bookshelf';
+import { FlatList, View } from '@/features/tw';
+import { workHref, type WorkQuickAction } from './work-actions';
+import { libraryColumns, type LibraryDensity } from './library-layout';
+
+export function LibraryGrid({
+  works,
+  density,
+  header,
+  footer,
+  onEndReached,
+  onOpen,
+  actions,
+  onBeforeOpen,
+  initialOffset = 0,
+  onScrollOffset,
+}: {
+  works: WorkSummary[];
+  density: LibraryDensity;
+  header: ReactNode;
+  footer: ReactNode;
+  onEndReached: () => void;
+  onOpen: (work: WorkSummary) => void;
+  /** Builds the press-and-hold quick-action menu for a card; omit to disable it. */
+  actions?: (work: WorkSummary) => WorkQuickAction[];
+  /** Pure side effect run before a card opens, by tap or by quick action — Library uses it to save scroll/filter state for Back. */
+  onBeforeOpen?: () => void;
+  initialOffset?: number;
+  onScrollOffset: (offset: number) => void;
+}) {
+  const { width, fontScale } = useWindowDimensions();
+  const columns = libraryColumns(width, density);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const available = Math.min(width - (width >= 820 ? 224 : 0), 1240) - 32;
+  const rowHeight = ((available / columns - 12) * 218) / 148 + 128 * fontScale;
+  const list = useRef<NativeFlatList<WorkSummary>>(null);
+  const restored = useRef(false);
+  return (
+    <FlatList
+      ref={list}
+      key={columns}
+      role="main"
+      className="flex-1"
+      contentContainerClassName="w-full max-w-[1240px] self-center px-4 pb-6 pt-3"
+      data={works}
+      numColumns={columns}
+      keyExtractor={(work) => work.id}
+      ListHeaderComponent={
+        <View onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>{header}</View>
+      }
+      ListFooterComponent={<>{footer}</>}
+      renderItem={({ item }) => (
+        <View style={{ width: `${100 / columns}%`, height: rowHeight }} className="px-1.5 pb-6">
+          <WorkCard
+            title={item.title}
+            author={item.author}
+            coverURL={item.cover_url}
+            coverPresentation={coverPresentation(item)}
+            availability={item}
+            narrow
+            dense={density === 'compact'}
+            href={workHref(item)}
+            actions={actions?.(item)}
+            onBeforeOpen={onBeforeOpen}
+            onPress={() => onOpen(item)}
+          />
+        </View>
+      )}
+      getItemLayout={(_, index) => ({
+        length: rowHeight,
+        offset: headerHeight + index * rowHeight,
+        index,
+      })}
+      initialNumToRender={12}
+      maxToRenderPerBatch={12}
+      windowSize={5}
+      onEndReachedThreshold={0.5}
+      onEndReached={onEndReached}
+      onScroll={(event) => {
+        const offset = event.nativeEvent.contentOffset.y;
+        if (Math.abs(offset - initialOffset) < 2) restored.current = true;
+        onScrollOffset(offset);
+      }}
+      scrollEventThrottle={100}
+      onContentSizeChange={() => {
+        if (!restored.current && initialOffset > 0 && works.length) {
+          list.current?.scrollToOffset({ offset: initialOffset, animated: false });
+        }
+      }}
+    />
+  );
+}

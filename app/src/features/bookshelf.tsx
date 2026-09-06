@@ -6,6 +6,7 @@ import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from './icons';
 import { Button, Dialog, IconButton, colors, resolvePressStateClass } from './ui';
 import { Pressable, Text, View } from './tw';
+import type { WorkQuickAction } from './work-actions';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
 /**
@@ -272,10 +273,26 @@ type WorkPresentationProps = {
   availability?: WorkAvailability;
   progress?: string;
   narrow?: boolean;
+  dense?: boolean;
   onPress: () => void;
 };
 
-/** Card-shaped presentation of a Work, for grids. */
+/**
+ * Card-shaped presentation of a Work, for grids. `actions`, when given, turns
+ * on a press-and-hold quick menu — the same affordance `ContinueCard` offers
+ * on Home. With `href` also given, iOS gets the real native context menu
+ * (`Link.Menu`); everywhere else falls back to a plain `Dialog` opened on
+ * long-press. Neither adds visible chrome to the card at rest, so dense
+ * grids (Library) stay exactly the size their layout math already accounts
+ * for.
+ *
+ * `onBeforeOpen` is a pure side effect (no navigation of its own) run right
+ * before the card opens, by tap or by any quick action — Library uses it to
+ * stash scroll position and filters so Back can restore them. It matters
+ * only on the native-menu path: there, `Link` owns the actual navigation via
+ * `href`, so `onPress` must not also push the route, or Back would have to
+ * pop the same screen twice.
+ */
 export function WorkCard({
   title,
   author,
@@ -284,10 +301,29 @@ export function WorkCard({
   availability,
   progress,
   narrow,
+  dense,
+  href,
+  actions,
+  onBeforeOpen,
   onPress,
-}: WorkPresentationProps) {
+}: WorkPresentationProps & {
+  href?: Href;
+  actions?: WorkQuickAction[];
+  onBeforeOpen?: () => void;
+}) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuActions = actions ?? [];
+  const hasActions = menuActions.length > 0;
+  const useNativeMenu = hasActions && Platform.OS === 'ios' && Boolean(href);
+  const wrappedActions = menuActions.map((action) => ({
+    label: action.label,
+    onPress: () => {
+      onBeforeOpen?.();
+      action.onPress();
+    },
+  }));
 
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
@@ -297,15 +333,17 @@ export function WorkCard({
   const widthClass = narrow ? 'w-full' : 'w-[184px]';
   const stateClass = resolvePressStateClass({ focused, pressed });
 
-  return (
+  const card = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
+      accessibilityHint={hasActions ? 'Press and hold for book actions' : undefined}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      onPress={onPress}
+      onPress={useNativeMenu ? undefined : onPress}
+      onLongPress={hasActions && !useNativeMenu ? () => setMenuOpen(true) : undefined}
       className={`gap-1.5 rounded-control ${widthClass} ${stateClass}`}
     >
       <View className="relative">
@@ -328,14 +366,62 @@ export function WorkCard({
           </View>
         ) : null}
       </View>
-      <Text numberOfLines={2} className="mt-1 font-editorial-bold text-base leading-5 text-ink">
+      <Text
+        numberOfLines={2}
+        className={
+          dense
+            ? 'mt-1 font-editorial-bold text-sm leading-5 text-ink'
+            : 'mt-1 font-editorial-bold text-base leading-5 text-ink'
+        }
+      >
         {title}
       </Text>
-      <Text numberOfLines={1} className="text-sm leading-[18px] text-muted">
+      <Text
+        numberOfLines={1}
+        className={
+          dense ? 'text-xs leading-[18px] text-muted' : 'text-sm leading-[18px] text-muted'
+        }
+      >
         {author || 'Unknown author'}
       </Text>
       {availability ? <AvailabilityLabel value={availability} /> : null}
     </Pressable>
+  );
+
+  return (
+    <>
+      {href && useNativeMenu ? (
+        <Link href={href} asChild onPress={onBeforeOpen}>
+          <Link.Trigger>{card}</Link.Trigger>
+          <Link.Menu title={title}>
+            {wrappedActions.map((action) => (
+              <Link.MenuAction key={action.label} onPress={action.onPress}>
+                {action.label}
+              </Link.MenuAction>
+            ))}
+          </Link.Menu>
+        </Link>
+      ) : (
+        card
+      )}
+      {hasActions && !useNativeMenu ? (
+        <Dialog title={title} visible={menuOpen} onClose={() => setMenuOpen(false)}>
+          <View className="gap-1">
+            {wrappedActions.map((action) => (
+              <Button
+                key={action.label}
+                label={action.label}
+                kind="quiet"
+                onPress={() => {
+                  setMenuOpen(false);
+                  action.onPress();
+                }}
+              />
+            ))}
+          </View>
+        </Dialog>
+      ) : null}
+    </>
   );
 }
 
@@ -516,7 +602,7 @@ export function ContinueCard({
   onOpen: () => void;
   onContinue: () => void;
   continueHref: Href;
-  actions: { label: string; onPress: () => void }[];
+  actions: WorkQuickAction[];
   onRead?: () => void;
   onListen?: () => void;
 }) {

@@ -3,24 +3,27 @@ import type {
   AcquisitionResult,
   Library,
   TitleSearchResult,
+  TrendingSection,
 } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { groupAcquisitionResults } from '@/features/acquisition';
+import { AppIcon } from '@/features/icons';
 import { BookCover } from '@/features/bookshelf';
 import { AcquisitionGroupRow } from '@/features/browse';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { titleRequestPresentation } from '@/features/title-search';
-import { Text, View } from '@/features/tw';
+import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
-  IconButton,
+  colors,
   Dialog,
   EmptyState,
   ErrorState,
   LoadingState,
   Notice,
   Page,
+  resolvePressStateClass,
   SearchField,
   Section,
   StatusBadge,
@@ -56,6 +59,7 @@ function FormatAction({
   available,
   requestState,
   busy,
+  pending,
   requestEnabled,
   onOpen,
   onRequest,
@@ -64,6 +68,7 @@ function FormatAction({
   available: boolean;
   requestState?: string;
   busy: boolean;
+  pending: boolean;
   requestEnabled: boolean;
   onOpen: () => void;
   onRequest: () => void;
@@ -90,7 +95,7 @@ function FormatAction({
           }
           kind="secondary"
           loading={busy}
-          disabled={!requestEnabled}
+          disabled={!requestEnabled || pending}
           onPress={onRequest}
         />
       ) : (
@@ -103,82 +108,133 @@ function FormatAction({
   );
 }
 
-function TitleRow({
+/**
+ * A book on Discover is never in-hand yet, so the row itself stays a plain
+ * "learn more" trigger — cover, title, author, and whether it's already in
+ * the library — with every request/format decision pushed into the detail
+ * dialog. This is the same declutter as Library's grid: the list stays
+ * scannable, the decisions live one tap away.
+ */
+function TitleRow({ result, onPress }: { result: TitleSearchResult; onPress: () => void }) {
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${result.title}${result.author ? ` by ${result.author}` : ''}`}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-16 flex-row items-center gap-4 rounded-control border-b border-line py-4 ${stateClass}`}
+    >
+      <BookCover
+        title={result.title}
+        author={result.author}
+        coverURL={result.cover_url}
+        size="mini"
+      />
+      <View className="min-w-0 flex-1 gap-1">
+        <Text numberOfLines={2} className="font-editorial-bold text-lg leading-6 text-ink">
+          {result.title}
+        </Text>
+        <Text numberOfLines={1} className="text-sm text-muted">
+          {result.author || 'Unknown author'}
+        </Text>
+        <Text className="text-sm text-muted">
+          {result.work_id ? 'In your library' : 'Not in your library'}
+        </Text>
+        {result.synchronized ? (
+          <View className="mt-1 self-start">
+            <StatusBadge tone="info" label="Read & Listen" icon="synced" />
+          </View>
+        ) : null}
+      </View>
+      <AppIcon name="chevron" size={20} color={colors.muted} />
+    </Pressable>
+  );
+}
+
+/** "Learn more before requesting" — cover, description, and the same request/format controls the row used to carry directly. */
+function DiscoverDetailDialog({
   result,
+  description,
+  descriptionLoading,
   requestBusy,
+  requestError,
   requestEnabled,
   canChooseRelease,
   onRequest,
   onChooseRelease,
+  onClose,
 }: {
   result: TitleSearchResult;
+  description: string;
+  descriptionLoading: boolean;
   requestBusy: string;
+  requestError: string;
   requestEnabled: boolean;
   canChooseRelease: boolean;
   onRequest: (format: BookFormat) => void;
   onChooseRelease: () => void;
+  onClose: () => void;
 }) {
-  const canOpen = Boolean(result.work_id);
-
   return (
-    <View className="border-b border-line py-4">
-      <View className="flex-row items-start gap-4">
-        <BookCover
-          title={result.title}
-          author={result.author}
-          coverURL={result.cover_url}
-          size="mini"
-        />
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={2} className="font-editorial-bold text-lg leading-6 text-ink">
-            {result.title}
-          </Text>
-          <Text numberOfLines={1} className="mt-1 text-sm text-muted">
-            {result.author || 'Unknown author'}
-          </Text>
-          <Text className="mt-1 text-sm text-muted">
-            {canOpen ? 'In your library' : 'Not in your library'}
-          </Text>
-          {result.synchronized ? (
-            <View className="mt-2">
-              <StatusBadge tone="info" label="Read & Listen" icon="synced" />
-            </View>
-          ) : null}
-          <View className="mt-3 flex-row flex-wrap items-center gap-2">
-            <FormatAction
-              format="ebook"
-              available={result.readable}
-              requestState={result.ebook_request_state}
-              busy={requestBusy === 'ebook'}
-              requestEnabled={requestEnabled}
-              onOpen={() => {
-                if (canOpen) router.push(`/consume/${result.work_id}?mode=read`);
-              }}
-              onRequest={() => onRequest('ebook')}
-            />
-            <FormatAction
-              format="audiobook"
-              available={result.listenable}
-              requestState={result.audiobook_request_state}
-              busy={requestBusy === 'audiobook'}
-              requestEnabled={requestEnabled}
-              onOpen={() => {
-                if (canOpen) router.push(`/consume/${result.work_id}?mode=listen`);
-              }}
-              onRequest={() => onRequest('audiobook')}
-            />
-            {canChooseRelease ? (
-              <IconButton
-                icon="more"
-                label={`Request options for ${result.title}`}
-                kind="quiet"
-                onPress={onChooseRelease}
-              />
-            ) : null}
+    <Dialog title={result.title} visible onClose={onClose}>
+      <View className="gap-4">
+        <View className="flex-row items-start gap-4">
+          <BookCover
+            title={result.title}
+            author={result.author}
+            coverURL={result.cover_url}
+            size="small"
+          />
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="font-editorial-bold text-xl leading-6 text-ink">{result.title}</Text>
+            <Text className="text-base text-muted">{result.author || 'Unknown author'}</Text>
+            <Text className="text-sm text-muted">Not in your library</Text>
           </View>
         </View>
+        {descriptionLoading ? (
+          <LoadingState label="Loading description…" />
+        ) : description ? (
+          <Text className="text-sm leading-6 text-muted">{description}</Text>
+        ) : null}
+        {requestError ? (
+          <Text accessibilityRole="alert" className="text-sm text-danger">
+            {requestError}
+          </Text>
+        ) : null}
+        <View className="gap-3 border-t border-line pt-4">
+          <FormatAction
+            format="ebook"
+            available={false}
+            requestState={result.ebook_request_state}
+            busy={requestBusy === 'ebook'}
+            pending={Boolean(requestBusy)}
+            requestEnabled={requestEnabled}
+            onOpen={() => {}}
+            onRequest={() => onRequest('ebook')}
+          />
+          <FormatAction
+            format="audiobook"
+            available={false}
+            requestState={result.audiobook_request_state}
+            busy={requestBusy === 'audiobook'}
+            pending={Boolean(requestBusy)}
+            requestEnabled={requestEnabled}
+            onOpen={() => {}}
+            onRequest={() => onRequest('audiobook')}
+          />
+        </View>
+        {canChooseRelease ? (
+          <Button label="Choose a specific release" kind="quiet" onPress={onChooseRelease} />
+        ) : null}
       </View>
-    </View>
+    </Dialog>
   );
 }
 
@@ -195,9 +251,16 @@ export default function SearchScreen() {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const libraryID = '';
 
+  const [trending, setTrending] = useState<TrendingSection[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
+  const [trendingError, setTrendingError] = useState('');
+
   const [acquisitionEnabled, setAcquisitionEnabled] = useState(false);
   const [requestBusy, setRequestBusy] = useState<Record<string, string>>({});
   const [requestErrors, setRequestErrors] = useState<Record<string, string>>({});
+  const [detailTarget, setDetailTarget] = useState<TitleSearchResult>();
+  const [detailDescription, setDetailDescription] = useState('');
+  const [detailDescriptionLoading, setDetailDescriptionLoading] = useState(false);
   const [advancedTarget, setAdvancedTarget] = useState<TitleSearchResult>();
   const [advancedResults, setAdvancedResults] = useState<AcquisitionResult[]>([]);
   const [advancedSearching, setAdvancedSearching] = useState(false);
@@ -205,6 +268,13 @@ export default function SearchScreen() {
   const [releaseStatuses, setReleaseStatuses] = useState<Record<string, ReleaseStatus>>({});
   const [releaseErrors, setReleaseErrors] = useState<Record<string, string>>({});
   const [discoveryID, setDiscoveryID] = useState('');
+  const advancedGeneration = useRef(0);
+  useEffect(
+    () => () => {
+      advancedGeneration.current++;
+    },
+    [],
+  );
 
   const trimmedQuery = query.trim();
   const canAdvanced =
@@ -224,6 +294,26 @@ export default function SearchScreen() {
       .catch(() => {
         if (active) setAcquisitionEnabled(false);
       });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .trending()
+      .then((sections) => {
+        if (!active) return;
+        setTrending(sections);
+        setTrendingError('');
+      })
+      .catch((value) => {
+        if (!active) return;
+        setTrending([]);
+        setTrendingError(errorMessage(value));
+      })
+      .finally(() => active && setTrendingLoading(false));
     return () => {
       active = false;
     };
@@ -258,14 +348,60 @@ export default function SearchScreen() {
 
   function search(value: string) {
     setQuery(value);
+    if (value.trim() === trimmedQuery) return;
+    setOffline(false);
     setResults([]);
     setError('');
     setLoading(Boolean(value.trim()));
   }
 
+  function canChooseReleaseFor(result: TitleSearchResult) {
+    const destination = destinationFor(result, destinations, libraryID);
+    return (
+      canAdvanced &&
+      Boolean(destination) &&
+      (Boolean(auth.user?.admin) ||
+        libraries.some(
+          (library) =>
+            library.id === destination?.library_id && library.can_advanced_acquisition_request,
+        ))
+    );
+  }
+
+  function openResult(result: TitleSearchResult) {
+    if (result.work_id) {
+      router.push(`/work/${result.work_id}`);
+      return;
+    }
+    setDetailTarget(result);
+  }
+
+  useEffect(() => {
+    let active = true;
+    setDetailDescription('');
+    const source = detailTarget?.external_source;
+    const id = detailTarget?.external_id;
+    setDetailDescriptionLoading(source === 'open_library' && Boolean(id));
+    if (source === 'open_library' && id) {
+      void api
+        .discoverDetail(source, id)
+        .then((detail) => {
+          if (active) setDetailDescription(detail.description);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (active) setDetailDescriptionLoading(false);
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [detailTarget?.external_source, detailTarget?.external_id]);
+
   async function requestFormat(result: TitleSearchResult, format: BookFormat) {
     const destination = destinationFor(result, destinations, libraryID);
     const key = resultKey(result);
+    if (requestBusy[key]) return;
     if (!destination) {
       setRequestErrors((current) => ({
         ...current,
@@ -286,16 +422,18 @@ export default function SearchScreen() {
         formats: [format],
       });
       const state = request.formats.find((item) => item.format === format)?.state ?? 'wanted';
-      setResults((current) =>
-        current.map((item) =>
-          resultKey(item) === key
-            ? {
-                ...item,
-                [format === 'ebook' ? 'ebook_request_state' : 'audiobook_request_state']: state,
-              }
-            : item,
-        ),
+      const applyState = (item: TitleSearchResult) =>
+        resultKey(item) === key
+          ? {
+              ...item,
+              [format === 'ebook' ? 'ebook_request_state' : 'audiobook_request_state']: state,
+            }
+          : item;
+      setResults((current) => current.map(applyState));
+      setTrending((current) =>
+        current.map((section) => ({ ...section, items: section.items.map(applyState) })),
       );
+      setDetailTarget((current) => (current ? applyState(current) : current));
     } catch (value) {
       const message =
         value instanceof APIError && value.status === 400
@@ -308,13 +446,16 @@ export default function SearchScreen() {
   }
 
   async function openAdvanced(result: TitleSearchResult) {
+    const generation = ++advancedGeneration.current;
     const destination = destinationFor(result, destinations, libraryID);
+    setDetailTarget(undefined);
     setAdvancedTarget(result);
     setAdvancedResults([]);
     setAdvancedError('');
     setReleaseStatuses({});
     setReleaseErrors({});
     setDiscoveryID('');
+    setAdvancedSearching(false);
     if (!destination) {
       setAdvancedError('An owner needs to finish download setup first.');
       return;
@@ -325,17 +466,19 @@ export default function SearchScreen() {
         query: [result.title, result.author].filter(Boolean).join(' '),
         source_id: destination.source_id,
       });
+      if (generation !== advancedGeneration.current) return;
       setDiscoveryID(discovery.id);
       setAdvancedResults(discovery.results);
     } catch (value) {
-      setAdvancedError(errorMessage(value));
+      if (generation === advancedGeneration.current) setAdvancedError(errorMessage(value));
     } finally {
-      setAdvancedSearching(false);
+      if (generation === advancedGeneration.current) setAdvancedSearching(false);
     }
   }
 
   async function chooseRelease(result: AcquisitionResult) {
     if (!advancedTarget || !discoveryID) return;
+    const generation = advancedGeneration.current;
     const destination = destinationFor(advancedTarget, destinations, libraryID);
     if (!destination) return;
     setReleaseStatuses((current) => ({ ...current, [result.id]: 'sending' }));
@@ -344,8 +487,10 @@ export default function SearchScreen() {
       await api.selectAcquisitionDiscovery(destination.library_id, discoveryID, {
         result_id: result.id,
       });
+      if (generation !== advancedGeneration.current) return;
       setReleaseStatuses((current) => ({ ...current, [result.id]: 'queued' }));
     } catch (value) {
+      if (generation !== advancedGeneration.current) return;
       setReleaseStatuses((current) => ({ ...current, [result.id]: 'error' }));
       setReleaseErrors((current) => ({ ...current, [result.id]: errorMessage(value) }));
     }
@@ -353,6 +498,7 @@ export default function SearchScreen() {
 
   async function choosePair(first: AcquisitionResult, second: AcquisitionResult) {
     if (!advancedTarget || !discoveryID) return;
+    const generation = advancedGeneration.current;
     const destination = destinationFor(advancedTarget, destinations, libraryID);
     if (!destination) return;
     setReleaseStatuses((current) => ({
@@ -364,12 +510,14 @@ export default function SearchScreen() {
       await api.selectAcquisitionPair(destination.library_id, discoveryID, {
         result_ids: [first.id, second.id],
       });
+      if (generation !== advancedGeneration.current) return;
       setReleaseStatuses((current) => ({
         ...current,
         [first.id]: 'queued',
         [second.id]: 'queued',
       }));
     } catch (value) {
+      if (generation !== advancedGeneration.current) return;
       const message = errorMessage(value);
       setReleaseStatuses((current) => ({
         ...current,
@@ -394,20 +542,47 @@ export default function SearchScreen() {
         placeholder="Search by title, author, or ISBN"
       />
       {!trimmedQuery ? (
-        <EmptyState
-          icon="discover"
-          title="Find your next read"
-          action={
-            <Button
-              label="Open your library"
-              kind="quiet"
-              onPress={() => router.navigate('/books')}
-            />
-          }
-        >
-          Search for books to request as ebooks or audiobooks. Books you already have are marked in
-          the results.
-        </EmptyState>
+        trendingLoading ? (
+          <LoadingState label="Finding what's popular…" />
+        ) : trending.length ? (
+          <View className="gap-8">
+            {trending.map((section) => (
+              <Section key={section.source} title={section.title}>
+                <View className="max-w-[900px]">
+                  {section.items.map((result) => (
+                    <TitleRow
+                      key={resultKey(result)}
+                      result={result}
+                      onPress={() => openResult(result)}
+                    />
+                  ))}
+                </View>
+              </Section>
+            ))}
+          </View>
+        ) : (
+          <>
+            <Notice>
+              {trendingError
+                ? `Trending books couldn't load: ${trendingError}`
+                : "Trending books couldn't load right now — this usually means the server can't reach the internet. You can still search."}
+            </Notice>
+            <EmptyState
+              icon="discover"
+              title="Find your next read"
+              action={
+                <Button
+                  label="Open your library"
+                  kind="quiet"
+                  onPress={() => router.navigate('/books')}
+                />
+              }
+            >
+              Search for books to request as ebooks or audiobooks. Books you already have are marked
+              in the results.
+            </EmptyState>
+          </>
+        )
       ) : offline ? (
         <EmptyState
           icon="search"
@@ -432,44 +607,42 @@ export default function SearchScreen() {
       ) : (
         <Section title="Search results">
           <View className="max-w-[900px]">
-            {results.map((result) => {
-              const key = resultKey(result);
-              const destination = destinationFor(result, destinations, libraryID);
-              const advancedForDestination =
-                canAdvanced &&
-                Boolean(destination) &&
-                (Boolean(auth.user?.admin) ||
-                  libraries.some(
-                    (library) =>
-                      library.id === destination?.library_id &&
-                      library.can_advanced_acquisition_request,
-                  ));
-              return (
-                <View key={key}>
-                  <TitleRow
-                    result={result}
-                    requestBusy={requestBusy[key] ?? ''}
-                    requestEnabled={acquisitionEnabled && Boolean(destination) && !offline}
-                    canChooseRelease={advancedForDestination && !offline}
-                    onRequest={(format) => void requestFormat(result, format)}
-                    onChooseRelease={() => void openAdvanced(result)}
-                  />
-                  {requestErrors[key] ? (
-                    <Text accessibilityRole="alert" className="pb-3 text-sm text-danger">
-                      {requestErrors[key]}
-                    </Text>
-                  ) : null}
-                </View>
-              );
-            })}
+            {results.map((result) => (
+              <TitleRow
+                key={resultKey(result)}
+                result={result}
+                onPress={() => openResult(result)}
+              />
+            ))}
           </View>
         </Section>
       )}
+      {detailTarget ? (
+        <DiscoverDetailDialog
+          result={detailTarget}
+          description={detailDescription}
+          descriptionLoading={detailDescriptionLoading}
+          requestBusy={requestBusy[resultKey(detailTarget)] ?? ''}
+          requestError={requestErrors[resultKey(detailTarget)] ?? ''}
+          requestEnabled={
+            acquisitionEnabled &&
+            Boolean(destinationFor(detailTarget, destinations, libraryID)) &&
+            !offline
+          }
+          canChooseRelease={canChooseReleaseFor(detailTarget) && !offline}
+          onRequest={(format) => void requestFormat(detailTarget, format)}
+          onChooseRelease={() => void openAdvanced(detailTarget)}
+          onClose={() => setDetailTarget(undefined)}
+        />
+      ) : null}
       <Dialog
         visible={Boolean(advancedTarget)}
         title={advancedTarget ? `Choose release · ${advancedTarget.title}` : 'Choose release'}
         wide
-        onClose={() => setAdvancedTarget(undefined)}
+        onClose={() => {
+          advancedGeneration.current++;
+          setAdvancedTarget(undefined);
+        }}
       >
         <View className="gap-4">
           <Notice>

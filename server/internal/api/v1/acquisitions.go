@@ -12,6 +12,8 @@ import (
 
 func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Get("/search/titles", searchTitles(store))
+	router.Get("/discover/trending", discoverTrending(store))
+	router.Get("/discover/detail", discoverDetail(store))
 	router.Get("/acquisition-settings", getAcquisitionSettings(store))
 	router.Put("/acquisition-settings", updateAcquisitionSettings(store))
 	router.Post("/acquisition-settings/test", testAcquisitionSettings(store))
@@ -132,6 +134,28 @@ func testAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 	}
 }
 
+func discoverTrending(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		values, err := store.Trending(r.Context(), actor(r), r.URL.Query().Get("library_id"))
+		sections := make([]contracts.TrendingSection, len(values))
+		for i, value := range values {
+			items := make([]contracts.TitleSearchResult, len(value.Items))
+			for j, item := range value.Items {
+				items[j] = contracts.TitleSearchResult{WorkID: item.WorkID, LibraryID: item.LibraryID, Title: item.Title, Author: item.Author, CoverURL: item.CoverURL, ExternalSource: item.ExternalSource, ExternalID: item.ExternalID, Readable: item.Readable, Listenable: item.Listenable, Synchronized: item.Synchronized, EbookRequestState: item.EbookRequestState, AudiobookRequestState: item.AudiobookRequestState}
+			}
+			sections[i] = contracts.TrendingSection{Source: value.Source, Title: value.Title, Items: items}
+		}
+		writeAcquisitionResult(w, sections, err)
+	}
+}
+
+func discoverDetail(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		description, err := store.Detail(r.Context(), r.URL.Query().Get("source"), r.URL.Query().Get("id"))
+		writeAcquisitionResult(w, contracts.TrendingDetail{Description: description}, err)
+	}
+}
+
 func getAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		value, err := store.Settings(r.Context(), actor(r))
@@ -145,13 +169,13 @@ func updateAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		value, err := store.UpdateSettings(r.Context(), actor(r), acquisition.SettingsUpdate{IndexerKind: body.IndexerKind, IndexerURL: body.IndexerURL, IndexerAPIKey: body.IndexerAPIKey, QBitURL: body.QBitTorrentURL, QBitUsername: body.QBitTorrentUsername, QBitPassword: body.QBitTorrentPassword, QBitCategory: body.QBitTorrentCategory, QBitDownloadRoot: body.QBitTorrentDownloadRoot})
+		value, err := store.UpdateSettings(r.Context(), actor(r), acquisition.SettingsUpdate{IndexerKind: body.IndexerKind, IndexerURL: body.IndexerURL, IndexerAPIKey: body.IndexerAPIKey, NYTAPIKey: body.NYTAPIKey, QBitURL: body.QBitTorrentURL, QBitUsername: body.QBitTorrentUsername, QBitPassword: body.QBitTorrentPassword, QBitCategory: body.QBitTorrentCategory, QBitDownloadRoot: body.QBitTorrentDownloadRoot})
 		writeAcquisitionResult(w, acquisitionSettingsDTO(value), err)
 	}
 }
 
 func acquisitionSettingsDTO(value acquisition.Settings) contracts.AcquisitionSettings {
-	return contracts.AcquisitionSettings{IndexerKind: value.IndexerKind, IndexerURL: value.IndexerURL, HasIndexerAPIKey: value.HasIndexerAPIKey, QBitTorrentURL: value.QBitURL, QBitTorrentUsername: value.QBitUsername, HasQBitTorrentPassword: value.HasQBitPassword, QBitTorrentCategory: value.QBitCategory, QBitTorrentDownloadRoot: value.QBitDownloadRoot}
+	return contracts.AcquisitionSettings{IndexerKind: value.IndexerKind, IndexerURL: value.IndexerURL, HasIndexerAPIKey: value.HasIndexerAPIKey, HasNYTAPIKey: value.HasNYTAPIKey, QBitTorrentURL: value.QBitURL, QBitTorrentUsername: value.QBitUsername, HasQBitTorrentPassword: value.HasQBitPassword, QBitTorrentCategory: value.QBitCategory, QBitTorrentDownloadRoot: value.QBitDownloadRoot}
 }
 
 func listAcquisitionRequests(store *acquisition.Store) http.HandlerFunc {

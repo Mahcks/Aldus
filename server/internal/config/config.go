@@ -30,6 +30,7 @@ type Config struct {
 	IndexerKind             string
 	IndexerURL              string
 	IndexerAPIKey           string
+	NYTAPIKey               string
 	QBitTorrentURL          string
 	QBitTorrentUser         string
 	QBitTorrentPass         string
@@ -66,6 +67,7 @@ func Load() (Config, error) {
 		IndexerKind:             envOr("ALDUS_INDEXER_KIND", "prowlarr"),
 		IndexerURL:              os.Getenv("ALDUS_INDEXER_URL"),
 		IndexerAPIKey:           os.Getenv("ALDUS_INDEXER_API_KEY"),
+		NYTAPIKey:               os.Getenv("ALDUS_NYT_API_KEY"),
 		QBitTorrentURL:          os.Getenv("ALDUS_QBITTORRENT_URL"),
 		QBitTorrentUser:         os.Getenv("ALDUS_QBITTORRENT_USERNAME"),
 		QBitTorrentPass:         os.Getenv("ALDUS_QBITTORRENT_PASSWORD"),

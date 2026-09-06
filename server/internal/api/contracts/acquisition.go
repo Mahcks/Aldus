@@ -78,6 +78,7 @@ type AcquisitionSettings struct {
 	IndexerKind             string `json:"indexer_kind" tstype:"'prowlarr' | 'torznab'"`
 	IndexerURL              string `json:"indexer_url"`
 	HasIndexerAPIKey        bool   `json:"has_indexer_api_key"`
+	HasNYTAPIKey            bool   `json:"has_nyt_api_key"`
 	QBitTorrentURL          string `json:"qbittorrent_url"`
 	QBitTorrentUsername     string `json:"qbittorrent_username"`
 	HasQBitTorrentPassword  bool   `json:"has_qbittorrent_password"`
@@ -89,6 +90,7 @@ type UpdateAcquisitionSettingsRequest struct {
 	IndexerKind             string `json:"indexer_kind" tstype:"'prowlarr' | 'torznab'"`
 	IndexerURL              string `json:"indexer_url"`
 	IndexerAPIKey           string `json:"indexer_api_key"`
+	NYTAPIKey               string `json:"nyt_api_key"`
 	QBitTorrentURL          string `json:"qbittorrent_url"`
 	QBitTorrentUsername     string `json:"qbittorrent_username"`
 	QBitTorrentPassword     string `json:"qbittorrent_password"`

@@ -35,12 +35,14 @@ type Settings struct {
 	QBitDownloadRoot string
 	HasIndexerAPIKey bool
 	HasQBitPassword  bool
+	HasNYTAPIKey     bool
 }
 
 type SettingsUpdate struct {
 	IndexerKind      string
 	IndexerURL       string
 	IndexerAPIKey    string
+	NYTAPIKey        string
 	QBitURL          string
 	QBitUsername     string
 	QBitPassword     string
@@ -153,28 +155,34 @@ type discoverySession struct {
 }
 
 type Store struct {
-	db              *sql.DB
-	client          *Client
-	handoff         func(context.Context, string, string, string, string) (string, error)
-	pairHandoff     func(context.Context, ReadyPair) error
-	retryScan       func(context.Context, string, string) error
-	downloadIngress string
-	selectMu        sync.Mutex
-	metadataMu      sync.Mutex
-	metadataCache   map[string]cachedMetadata
-	discoveryMu     sync.Mutex
-	discoveries     map[string]discoverySession
-	startOnce       sync.Once
-	done            chan struct{}
+	db               *sql.DB
+	client           *Client
+	handoff          func(context.Context, string, string, string, string) (string, error)
+	pairHandoff      func(context.Context, ReadyPair) error
+	retryScan        func(context.Context, string, string) error
+	downloadIngress  string
+	selectMu         sync.Mutex
+	metadataMu       sync.Mutex
+	metadataCache    map[string]cachedMetadata
+	trendingMu       sync.Mutex
+	trendingCache    map[string]cachedTrending
+	descriptionMu    sync.Mutex
+	descriptionCache map[string]cachedDescription
+	discoveryMu      sync.Mutex
+	discoveries      map[string]discoverySession
+	startOnce        sync.Once
+	done             chan struct{}
 }
 
 func NewStore(db *sql.DB, client *Client) *Store {
 	return &Store{
-		db:            db,
-		client:        client,
-		metadataCache: make(map[string]cachedMetadata),
-		discoveries:   make(map[string]discoverySession),
-		done:          make(chan struct{}),
+		db:               db,
+		client:           client,
+		metadataCache:    make(map[string]cachedMetadata),
+		trendingCache:    make(map[string]cachedTrending),
+		descriptionCache: make(map[string]cachedDescription),
+		discoveries:      make(map[string]discoverySession),
+		done:             make(chan struct{}),
 	}
 }
 
@@ -214,6 +222,7 @@ func (s *Store) Settings(ctx context.Context, actor auth.User) (Settings, error)
 		QBitDownloadRoot: options.DownloadRoot,
 		HasIndexerAPIKey: options.IndexerAPIKey != "",
 		HasQBitPassword:  options.QBitPassword != "",
+		HasNYTAPIKey:     options.NYTAPIKey != "",
 	}, nil
 }
 
@@ -229,6 +238,7 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 		IndexerKind:   strings.TrimSpace(update.IndexerKind),
 		IndexerURL:    strings.TrimSpace(update.IndexerURL),
 		IndexerAPIKey: strings.TrimSpace(update.IndexerAPIKey),
+		NYTAPIKey:     strings.TrimSpace(update.NYTAPIKey),
 		QBitURL:       strings.TrimSpace(update.QBitURL),
 		QBitUsername:  strings.TrimSpace(update.QBitUsername),
 		QBitPassword:  update.QBitPassword,
@@ -244,6 +254,9 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 	if options.IndexerAPIKey == "" {
 		options.IndexerAPIKey = current.IndexerAPIKey
 	}
+	if options.NYTAPIKey == "" {
+		options.NYTAPIKey = current.NYTAPIKey
+	}
 	if options.QBitPassword == "" {
 		options.QBitPassword = current.QBitPassword
 	}
@@ -258,6 +271,7 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 			id,
 			indexer_url,
 			indexer_api_key,
+			nyt_api_key,
 			qbittorrent_url,
 			qbittorrent_username,
 			qbittorrent_password,
@@ -266,10 +280,11 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 			qbittorrent_download_root,
 			updated_at
 		)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			indexer_url = excluded.indexer_url,
 			indexer_api_key = excluded.indexer_api_key,
+			nyt_api_key = excluded.nyt_api_key,
 			qbittorrent_url = excluded.qbittorrent_url,
 			qbittorrent_username = excluded.qbittorrent_username,
 			qbittorrent_password = excluded.qbittorrent_password,
@@ -279,6 +294,7 @@ func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update Sett
 			updated_at = excluded.updated_at`,
 		options.IndexerURL,
 		options.IndexerAPIKey,
+		options.NYTAPIKey,
 		options.QBitURL,
 		options.QBitUsername,
 		options.QBitPassword,
@@ -299,6 +315,7 @@ func (s *Store) options(ctx context.Context) (Options, error) {
 		SELECT
 			indexer_url,
 			indexer_api_key,
+			nyt_api_key,
 			qbittorrent_url,
 			qbittorrent_username,
 			qbittorrent_password,
@@ -310,6 +327,7 @@ func (s *Store) options(ctx context.Context) (Options, error) {
 	).Scan(
 		&options.IndexerURL,
 		&options.IndexerAPIKey,
+		&options.NYTAPIKey,
 		&options.QBitURL,
 		&options.QBitUsername,
 		&options.QBitPassword,

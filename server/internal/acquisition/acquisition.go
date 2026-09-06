@@ -27,6 +27,7 @@ type Options struct {
 	IndexerKind   string
 	IndexerURL    string
 	IndexerAPIKey string
+	NYTAPIKey     string
 	QBitURL       string
 	QBitUsername  string
 	QBitPassword  string

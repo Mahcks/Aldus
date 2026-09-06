@@ -4,6 +4,8 @@ import { Link as RouterLink } from 'expo-router';
 import Animated from 'react-native-reanimated';
 import React from 'react';
 import {
+  FlatList as RNFlatList,
+  type FlatListProps,
   View as RNView,
   Text as RNText,
   Pressable as RNPressable,
@@ -123,3 +125,17 @@ export const AnimatedScrollView = (props: AnimatedScrollViewProps): React.ReactE
   }) as React.ReactElement;
 };
 AnimatedScrollView.displayName = 'CSS(AnimatedScrollView)';
+
+/** CSS-enabled virtualized list; keep it outside another vertical ScrollView. */
+export function FlatList<T>(
+  props: FlatListProps<T> & {
+    className?: string;
+    contentContainerClassName?: string;
+    ref?: React.Ref<RNFlatList<T>>;
+  },
+) {
+  return useCssElement(RNFlatList as unknown as MinimalStyledScrollComponent, props, {
+    className: 'style',
+    contentContainerClassName: 'contentContainerStyle',
+  }) as React.ReactElement;
+}

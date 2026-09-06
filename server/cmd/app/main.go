@@ -218,6 +218,7 @@ func main() {
 		IndexerKind:   cfg.IndexerKind,
 		IndexerURL:    cfg.IndexerURL,
 		IndexerAPIKey: cfg.IndexerAPIKey,
+		NYTAPIKey:     cfg.NYTAPIKey,
 		QBitURL:       cfg.QBitTorrentURL,
 		QBitUsername:  cfg.QBitTorrentUser,
 		QBitPassword:  cfg.QBitTorrentPass,

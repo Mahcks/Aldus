@@ -1113,9 +1113,12 @@ export function Page({
   mobileActions,
   back,
   hideHeader = false,
+  scrollable = true,
   editorial = true,
 }: PropsWithChildren<{
   title: string;
+  /** Virtualized screens provide their own scrolling surface. */
+  scrollable?: boolean;
   actions?: ReactNode;
   /** A single icon action in the mobile bar; other actions stay in the content toolbar. */
   mobileActions?: ReactNode;
@@ -1186,16 +1189,20 @@ export function Page({
             editorial={editorial}
           />
         )}
-        <ScrollView
-          role="main"
-          className="flex-1"
-          contentContainerClassName={`w-full max-w-[1240px] flex-grow self-center ${contentPaddingClass}`}
-        >
-          {mobile && actions && !mobileActions ? (
-            <View className="flex-row flex-wrap gap-2">{actions}</View>
-          ) : null}
-          {children}
-        </ScrollView>
+        {scrollable ? (
+          <ScrollView
+            role="main"
+            className="flex-1"
+            contentContainerClassName={`w-full max-w-[1240px] flex-grow self-center ${contentPaddingClass}`}
+          >
+            {mobile && actions && !mobileActions ? (
+              <View className="flex-row flex-wrap gap-2">{actions}</View>
+            ) : null}
+            {children}
+          </ScrollView>
+        ) : (
+          <View className="min-h-0 flex-1">{children}</View>
+        )}
       </View>
     </SafeAreaView>
   );

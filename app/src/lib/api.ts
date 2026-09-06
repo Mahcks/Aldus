@@ -67,6 +67,8 @@ import type {
   TitleRequest,
   TitleRequestEvent,
   TitleSearchResult,
+  TrendingSection,
+  TrendingDetail,
   CreateTitleRequest,
   StartActivityRequest,
   UpdateLibraryRequest,
@@ -283,6 +285,13 @@ export const api = {
     if (libraryID) params.set('library_id', libraryID);
     return request<TitleSearchResult[]>(`/search/titles?${params}`);
   },
+  trending: (libraryID = '') => {
+    const params = new URLSearchParams();
+    if (libraryID) params.set('library_id', libraryID);
+    return request<TrendingSection[]>(`/discover/trending?${params}`);
+  },
+  discoverDetail: (source: string, id: string) =>
+    request<TrendingDetail>(`/discover/detail?${new URLSearchParams({ source, id })}`),
   createTitleRequest: (libraryID: string, body: CreateTitleRequest) =>
     request<TitleRequest>(`/libraries/${libraryID}/title-requests`, {
       method: 'POST',

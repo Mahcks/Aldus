@@ -73,6 +73,7 @@ export interface AcquisitionSettings {
   indexer_kind: 'prowlarr' | 'torznab';
   indexer_url: string;
   has_indexer_api_key: boolean;
+  has_nyt_api_key: boolean;
   qbittorrent_url: string;
   qbittorrent_username: string;
   has_qbittorrent_password: boolean;
@@ -83,6 +84,7 @@ export interface UpdateAcquisitionSettingsRequest {
   indexer_kind: 'prowlarr' | 'torznab';
   indexer_url: string;
   indexer_api_key: string;
+  nyt_api_key: string;
   qbittorrent_url: string;
   qbittorrent_username: string;
   qbittorrent_password: string;
@@ -895,4 +897,20 @@ export interface TitleSearchResult {
   synchronized: boolean;
   ebook_request_state?: string;
   audiobook_request_state?: string;
+}
+/**
+ * TrendingSection groups trending titles from one source (Open Library or a
+ * single NYT Best Sellers list) for Discover's "not searching" browse view.
+ */
+export interface TrendingSection {
+  source: string;
+  title: string;
+  items: TitleSearchResult[];
+}
+/**
+ * TrendingDetail is the on-demand "view more about this book" description
+ * for a not-yet-owned Discover result.
+ */
+export interface TrendingDetail {
+  description: string;
 }

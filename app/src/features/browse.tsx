@@ -14,6 +14,7 @@ import { AppIcon } from './icons';
 import { listItemEnter } from './motion';
 import { ScrollView, Text, View } from './tw';
 import { Button, colors, Notice, Select, StatusBadge } from './ui';
+import { workHref, workQuickActions } from './work-actions';
 
 export const browseSorts = [
   ['recent', 'Recently added'],
@@ -351,6 +352,8 @@ export function WorkGrid({
               availability={work}
               progress={workProgressLabel(work.in_progress, work.completion_percent)}
               narrow={narrow}
+              href={workHref(work)}
+              actions={workQuickActions(work)}
               onPress={() => onOpen(work)}
             />
           </Animated.View>

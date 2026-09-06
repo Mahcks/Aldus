@@ -14,3 +14,17 @@ type TitleSearchResult struct {
 	EbookRequestState     string `json:"ebook_request_state,omitempty"`
 	AudiobookRequestState string `json:"audiobook_request_state,omitempty"`
 }
+
+// TrendingSection groups trending titles from one source (Open Library or a
+// single NYT Best Sellers list) for Discover's "not searching" browse view.
+type TrendingSection struct {
+	Source string              `json:"source"`
+	Title  string              `json:"title"`
+	Items  []TitleSearchResult `json:"items"`
+}
+
+// TrendingDetail is the on-demand "view more about this book" description
+// for a not-yet-owned Discover result.
+type TrendingDetail struct {
+	Description string `json:"description"`
+}
