@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { forgetServerAccounts } from './remembered-accounts';
 import { clearToken } from './auth-token';
 import { rememberUser } from './last-user';
 import { clearServerStorage } from './storage-scope';
@@ -56,6 +57,7 @@ export async function forgetServerProfile(origin: string) {
   await clearToken(origin);
   await rememberUser(null, origin);
   await clearServerStorage(origin);
+  await forgetServerAccounts(origin);
   await AsyncStorage.setItem(profilesKey, JSON.stringify(next));
   return next;
 }

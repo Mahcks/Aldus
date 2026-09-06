@@ -22,12 +22,26 @@ export async function getToken(origin = getAPIBaseURL()) {
   return (await tokens())[origin] ?? null;
 }
 
-export async function setToken(token: string, origin = getAPIBaseURL()) {
-  await SecureStore.setItemAsync(key, JSON.stringify({ ...(await tokens()), [origin]: token }));
+let writes = Promise.resolve();
+
+function updateTokens(update: (values: Record<string, string>) => void) {
+  const result = writes.then(async () => {
+    const values = await tokens();
+    update(values);
+    await SecureStore.setItemAsync(key, JSON.stringify(values));
+  });
+  writes = result.catch(() => {});
+  return result;
 }
 
-export async function clearToken(origin = getAPIBaseURL()) {
-  const next = await tokens();
-  delete next[origin];
-  await SecureStore.setItemAsync(key, JSON.stringify(next));
+export function setToken(token: string, origin = getAPIBaseURL()) {
+  return updateTokens((values) => {
+    values[origin] = token;
+  });
+}
+
+export function clearToken(origin = getAPIBaseURL()) {
+  return updateTokens((values) => {
+    delete values[origin];
+  });
 }

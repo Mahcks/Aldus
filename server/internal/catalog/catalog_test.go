@@ -442,3 +442,28 @@ func TestExclusiveMembershipOverridesAdditiveCatalogAccess(t *testing.T) {
 		t.Fatalf("exclusive admin grant = %#v, %v", adminWorks, err)
 	}
 }
+
+func TestDisabledCoOwnerCannotReplaceEnabledOwner(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	other := createUser(t, accounts, admin, "other-owner")
+	library, err := store.CreateLibrary(ctx, admin, "Family")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, other.ID, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.SetDisabled(ctx, admin, other.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, admin.ID, "reader"); !errors.Is(err, ErrLastOwner) {
+		t.Fatalf("demote: %v", err)
+	}
+	if err := store.RemoveMember(ctx, admin, library.ID, admin.ID); !errors.Is(err, ErrLastOwner) {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := store.RemoveMember(ctx, admin, library.ID, other.ID); err != nil {
+		t.Fatalf("remove disabled co-owner: %v", err)
+	}
+}

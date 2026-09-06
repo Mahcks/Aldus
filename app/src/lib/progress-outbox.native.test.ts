@@ -80,7 +80,7 @@ afterEach(() => {
 test('reconciles queued progress and removes it from the outbox', async () => {
   globalThis.fetch = (async () => {
     throw new Error('offline');
-  }) as unknown as typeof fetch;
+  }) as unknown as unknown as typeof fetch;
   expect(await saveWorkProgress('work', update)).toBeNull();
 
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) =>
@@ -89,7 +89,7 @@ test('reconciles queued progress and removes it from the outbox', async () => {
       work_id: 'work',
       revision: init?.method === 'PUT' ? 1 : 0,
       resolvable: true,
-    })) as unknown as typeof fetch;
+    })) as unknown as unknown as typeof fetch;
 
   expect(await reconcilePendingProgress('work')).toBeNull();
   expect(await pendingProgress('work')).toBeNull();
@@ -98,7 +98,7 @@ test('reconciles queued progress and removes it from the outbox', async () => {
 test('pending progress is not submitted after the active account changes', async () => {
   globalThis.fetch = (async () => {
     throw new Error('offline');
-  }) as unknown as typeof fetch;
+  }) as unknown as unknown as typeof fetch;
   expect(await saveWorkProgress('work', update)).toBeNull();
   const oldScope = activeStorageScope();
 
@@ -110,7 +110,7 @@ test('pending progress is not submitted after the active account changes', async
         releaseRequest = release;
       });
       return Response.json({ ...update, work_id: 'work', revision: 0 });
-    }) as unknown as typeof fetch;
+    }) as unknown as unknown as typeof fetch;
   });
 
   const reconciliation = reconcilePendingProgress('work');
@@ -123,7 +123,7 @@ test('pending progress is not submitted after the active account changes', async
 
   globalThis.fetch = (async () => {
     throw new Error('offline');
-  }) as unknown as typeof fetch;
+  }) as unknown as unknown as typeof fetch;
   expect(await saveWorkProgress('later', update)).toBeNull();
   expect(await pendingProgress('later')).toEqual(update);
 });
@@ -131,7 +131,7 @@ test('pending progress is not submitted after the active account changes', async
 test('overlapping saves retain every indexed work', async () => {
   globalThis.fetch = (async () => {
     throw new Error('offline');
-  }) as unknown as typeof fetch;
+  }) as unknown as unknown as typeof fetch;
   const blocked = deferNextIndexWrite();
   const first = saveWorkProgress('one', update);
   await blocked.started;
@@ -146,7 +146,7 @@ test('overlapping saves retain every indexed work', async () => {
 test('a new save cannot be unindexed by overlapping discard', async () => {
   globalThis.fetch = (async () => {
     throw new Error('offline');
-  }) as unknown as typeof fetch;
+  }) as unknown as unknown as typeof fetch;
   await saveWorkProgress('work', update);
 
   const blocked = deferNextIndexWrite();
@@ -166,4 +166,26 @@ test('foreground progress sync does nothing without an active account', async ()
   setStorageUserID('');
   await expect(reconcileAllPendingProgress()).resolves.toBeUndefined();
   expect(storage.size).toBe(0);
+});
+
+test('a save waiting in the queue keeps its original reader after account switching', async () => {
+  const blocked = deferNextIndexWrite();
+  globalThis.fetch = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
+  const first = saveWorkProgress('first', update);
+  await blocked.started;
+  const oldScope = activeStorageScope();
+  const second = saveWorkProgress('second', update);
+  const rejected = second.catch((error: unknown) => error);
+  setStorageUserID('reader-two');
+  let sent = 0;
+  globalThis.fetch = (async () => {
+    sent++;
+    return Response.json({ ...update, revision: 1 });
+  }) as unknown as typeof fetch;
+  blocked.release();
+  await first;
+  expect(((await rejected) as Error).message).toContain('original reader');
+  expect(sent).toBe(0);
+  expect(await pendingProgress('second', oldScope)).toEqual(update);
+  expect(await pendingProgress('second')).toBeNull();
 });

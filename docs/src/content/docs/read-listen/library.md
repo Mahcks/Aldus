@@ -66,3 +66,15 @@ If another editor changes a selected field after the preview loads, Aldus asks y
 These are details for the library title shared by its ebook and audiobook. Choosing an edition does not replace or rename source files, change alignment, or move reading progress. **First published** describes the original title, not the selected printing. Series and narrator credits remain unchanged.
 
 **Fill missing details** remains available for the existing automatic fill-blanks workflow. On an older server without metadata review, use that action or edit fields manually.
+
+## Share a collection with family
+
+Open your collection and choose **Sharing**. Select a library, then **Save sharing**.
+Every book in the collection must belong to that library. Its members can open the list
+from **Collections → Shared with your libraries**, while only you can edit it. Each reader
+keeps their own reading position. Choose **Only me** to stop sharing.
+
+Private lists remain private by default. Sharing a list never grants access to books or to
+a library. If its creator loses library access or is disabled, the shared list is unavailable.
+Deleting its creator’s account or the library deletes the shared collection. Older servers
+still support personal collections; shared actions require an updated server.

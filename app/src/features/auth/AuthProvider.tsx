@@ -1,3 +1,4 @@
+import { forgetAccount, rememberedAccounts, rememberAccount } from '@/lib/remembered-accounts';
 import type { User } from '@/generated/api';
 import { APIError, api, onUnauthorized } from '@/lib/api';
 import { getAPIBaseURL } from '@/lib/api-base';
@@ -16,6 +17,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react';
@@ -42,6 +44,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const server = useServer();
+  const authAttempt = useRef(0);
   const [state, setState] = useState<AuthState>({
     loading: true,
     setupAvailable: false,
@@ -50,6 +53,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     error: null,
   });
   const refresh = useCallback(async () => {
+    const attempt = ++authAttempt.current;
     const origin = getAPIBaseURL();
     const serverOrigin = server.origin;
     if (server.loading) return;
@@ -69,10 +73,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     try {
       const user = await api.me();
       const setup = await api.setupStatus();
-      if (origin !== getAPIBaseURL()) return;
+      if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
       await prepareStorageScope(user.id);
       await rememberUser(user, origin);
-      if (origin !== getAPIBaseURL()) return;
+      if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
       setState({
         loading: false,
         setupAvailable: false,
@@ -81,10 +85,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         error: null,
       });
     } catch (error) {
-      if (origin !== getAPIBaseURL()) return;
+      if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
       if (error instanceof APIError && error.status === 0) {
         const user = await lastUser(origin);
-        if (origin !== getAPIBaseURL()) return;
+        if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
         if (user) {
           if (user.demo_expires_at && new Date(user.demo_expires_at).getTime() <= Date.now()) {
             await Promise.all([
@@ -125,7 +129,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       try {
         const setup = await api.setupStatus();
-        if (origin !== getAPIBaseURL()) return;
+        if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
         setStorageUserID('');
         setState({
           loading: false,
@@ -135,7 +139,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           error: null,
         });
       } catch (setupError) {
-        if (origin !== getAPIBaseURL()) return;
+        if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
         setState({
           loading: false,
           setupAvailable: false,
@@ -186,10 +190,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       ...state,
       refresh,
       signedIn: async (user: User) => {
+        const attempt = ++authAttempt.current;
         const origin = getAPIBaseURL();
         await prepareStorageScope(user.id);
         await rememberUser(user, origin);
-        if (origin !== getAPIBaseURL()) return;
+        // Keep an opted-in shortcut current after claiming or renaming an account.
+        await rememberedAccounts(origin)
+          .then((accounts) => {
+            if (accounts.some((account) => account.id === user.id)) {
+              return rememberAccount(user, origin);
+            }
+          })
+          .catch(() => {});
+        if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
         setState({
           loading: false,
           setupAvailable: false,
@@ -199,10 +212,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
       },
       signOut: async () => {
+        const attempt = ++authAttempt.current;
         const origin = getAPIBaseURL();
+        setStorageUserID('');
         try {
           await api.logout();
         } finally {
+          if (attempt !== authAttempt.current) return;
           await rememberUser(null, origin);
           if (origin === getAPIBaseURL()) {
             setStorageUserID('');
@@ -217,8 +233,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
       },
       signOutEverywhere: async () => {
+        const attempt = ++authAttempt.current;
         const origin = getAPIBaseURL();
         await api.logoutAll();
+        if (attempt !== authAttempt.current) return;
         await rememberUser(null, origin);
         if (origin === getAPIBaseURL()) {
           setStorageUserID('');
@@ -240,6 +258,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const cleaned = await deleteAccountAndClearState(
           async () => {},
           [
+            () => forgetAccount(user.id, origin),
             () => clearToken(origin),
             () => rememberUser(null, origin),
             () => clearStorageScope(origin, user.id),

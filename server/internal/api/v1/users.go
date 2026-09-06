@@ -67,11 +67,20 @@ func updateUser(store *auth.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		if (body.Disabled == nil) == (body.AdminNote == nil) {
+		fields := 0
+		for _, present := range []bool{body.Disabled != nil, body.AdminNote != nil, body.Admin != nil} {
+			if present {
+				fields++
+			}
+		}
+		if fields != 1 {
 			http.Error(w, "invalid user", http.StatusBadRequest)
 			return
 		}
 		var err error
+		if body.Admin != nil {
+			err = store.SetAdministrator(r.Context(), actor, chi.URLParam(r, "userID"), *body.Admin)
+		}
 		if body.Disabled != nil {
 			err = store.SetDisabled(r.Context(), actor, chi.URLParam(r, "userID"), *body.Disabled)
 		}

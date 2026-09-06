@@ -1,3 +1,4 @@
+import { activeStorageScope } from '@/lib/storage-scope';
 import type {
   Alignment,
   AudioChapter,
@@ -243,6 +244,10 @@ export default function ConsumeWorkScreen() {
   const lastAudioSave = useRef(-1);
   const progressRef = useRef<CanonicalPosition | null>(null);
   const canonicalSaves = useRef<Promise<void>>(Promise.resolve());
+  const readerScope = useRef(activeStorageScope()).current;
+  const readerOrigin = useRef(getAPIBaseURL()).current;
+  const isCurrentReader = () =>
+    readerScope === activeStorageScope() && readerOrigin === getAPIBaseURL();
   const representationSaves = useRef<Promise<void>>(Promise.resolve());
   const audioSaves = useRef<Promise<void>>(Promise.resolve());
   const epubStateRef = useRef<RepresentationState | null>(null);
@@ -984,7 +989,7 @@ export default function ConsumeWorkScreen() {
     playbackSpeed = status.playbackRate || 1,
   ): Promise<'saved' | 'offline' | 'error'> {
     const selected = kind === 'epub' ? selectedEPUB : selectedAudio;
-    if (!selected) return 'error';
+    if (!selected || !isCurrentReader()) return 'error';
     const update = (expectedRevision: number) =>
       api.updateRepresentationState(
         selected.representation.id,
@@ -1007,9 +1012,12 @@ export default function ConsumeWorkScreen() {
         next = await update(state?.revision ?? 0);
       } catch (error) {
         if (!(error instanceof APIError && error.status === 409)) throw error;
+        if (!isCurrentReader()) return 'error';
         const current = await api.representationState(selected.representation.id);
+        if (!isCurrentReader()) return 'error';
         next = await update(current?.revision ?? 0);
       }
+      if (!isCurrentReader()) return 'error';
       if (kind === 'epub') {
         epubStateRef.current = next;
         setEPUBState(next);
@@ -1020,7 +1028,7 @@ export default function ConsumeWorkScreen() {
       if (work) await updateOfflineRepresentationState(work.id, kind, next).catch(() => false);
       return 'saved';
     } catch (error) {
-      if (error instanceof APIError && error.status === 0 && work) {
+      if (error instanceof APIError && error.status === 0 && work && isCurrentReader()) {
         const current = kind === 'epub' ? epubStateRef.current : audioStateRef.current;
         const local: RepresentationState = {
           ...current,
@@ -1050,12 +1058,15 @@ export default function ConsumeWorkScreen() {
   }
 
   async function saveEPUBLocation(location: ReaderLocation) {
+    const saveScope = readerScope;
+    const saveOrigin = readerOrigin;
     const attempt = ++representationSaveAttempt.current;
     setSaveState('saving');
     let result: 'saved' | 'offline' | 'error' = 'error';
     representationSaves.current = representationSaves.current
       .catch(() => {})
       .then(async () => {
+        if (saveScope !== activeStorageScope() || saveOrigin !== getAPIBaseURL()) return;
         result = await saveRepresentation('epub', { href: location.href, cfi: location.cfi });
         if (attempt === representationSaveAttempt.current) setSaveState(result);
       });
@@ -1065,6 +1076,8 @@ export default function ConsumeWorkScreen() {
 
   async function saveCanonical(canonical: CanonicalPosition) {
     if (!work || !alignmentID) return false;
+    const saveScope = readerScope;
+    const saveOrigin = readerOrigin;
     const attempt = ++saveAttempt.current;
     setSaveState('saving');
     let saved = false;
@@ -1091,7 +1104,8 @@ export default function ConsumeWorkScreen() {
           };
           let next: CanonicalPosition;
           try {
-            const result = await saveWorkProgress(work.id, update);
+            const result = await saveWorkProgress(work.id, update, saveScope, saveOrigin);
+            if (saveScope !== activeStorageScope() || saveOrigin !== getAPIBaseURL()) return;
             if (!result) {
               const local = {
                 ...progressRef.current,
@@ -1109,8 +1123,10 @@ export default function ConsumeWorkScreen() {
             next = result;
           } catch (error) {
             if (!(error instanceof APIError && error.status === 409)) throw error;
+            if (!isCurrentReader()) return;
             const latest = await api.workProgress(work.id);
             if (!latest) throw error;
+            if (!isCurrentReader()) return;
             progressRef.current = latest;
             setProgress(latest);
             setProgressConflict({ local: canonical, remote: latest });
@@ -1278,6 +1294,7 @@ export default function ConsumeWorkScreen() {
     const currentAlignment = switching.current ? undefined : alignment;
     const audioResource = currentAlignment?.segments[0]?.audio_resource;
     audioSaves.current = queueTask(audioSaves.current, async () => {
+      if (!isCurrentReader()) return;
       await saveRepresentation('audio', timestampMS, speed);
       if (!currentAlignmentID || !currentAlignment || !audioResource) return;
       const locator: AudioLocator = {

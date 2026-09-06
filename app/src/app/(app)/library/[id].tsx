@@ -140,6 +140,18 @@ export default function LibraryScreen() {
   const [offline, setOffline] = useState(false);
   const [libraryCount, setLibraryCount] = useState(1);
   const browseSequence = useRef(0);
+  const memberLock = useRef(false);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [membersReady, setMembersReady] = useState(false);
+
+  async function allUsers() {
+    const values: User[] = [];
+    for (;;) {
+      const page = await api.users(values.length);
+      values.push(...page);
+      if (page.length < 100) return values;
+    }
+  }
 
   async function load() {
     if (!id) return;
@@ -147,9 +159,11 @@ export default function LibraryScreen() {
       const [nextLibrary, nextMembers, nextUsers, nextLibraries] = await Promise.all([
         api.library(id),
         api.members(id),
-        auth.user?.admin ? api.users() : Promise.resolve([]),
+        auth.user?.admin ? allUsers() : Promise.resolve([]),
         api.libraries(),
       ]);
+      setMembersReady(true);
+      setOffline(false);
       setLibrary(nextLibrary);
       await rememberOfflineLibraries([nextLibrary]).catch(() => {});
       setName(nextLibrary.name);
@@ -158,6 +172,7 @@ export default function LibraryScreen() {
       setLibraryCount(nextLibraries.length);
       if (nextLibraries.length < 2) setExclusive(false);
     } catch (value) {
+      setMembersReady(false);
       if (!(value instanceof APIError && value.status === 0)) {
         setError(errorMessage(value));
         return;
@@ -320,6 +335,10 @@ export default function LibraryScreen() {
   }
 
   async function saveMember() {
+    if (memberLock.current || !membersReady) return;
+    memberLock.current = true;
+    setMemberBusy(true);
+    setError('');
     try {
       await api.setMember(
         id,
@@ -338,10 +357,17 @@ export default function LibraryScreen() {
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      memberLock.current = false;
+      setMemberBusy(false);
     }
   }
 
   async function changeMemberRole(member: Membership, next: Role) {
+    if (memberLock.current || !membersReady) return;
+    memberLock.current = true;
+    setMemberBusy(true);
+    setError('');
     try {
       await api.setMember(
         id,
@@ -355,6 +381,9 @@ export default function LibraryScreen() {
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      memberLock.current = false;
+      setMemberBusy(false);
     }
   }
 
@@ -362,6 +391,10 @@ export default function LibraryScreen() {
     member: Membership,
     permission: 'request' | 'bypass' | 'advanced',
   ) {
+    if (memberLock.current || !membersReady) return;
+    memberLock.current = true;
+    setMemberBusy(true);
+    setError('');
     try {
       await api.setMember(
         id,
@@ -381,10 +414,17 @@ export default function LibraryScreen() {
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      memberLock.current = false;
+      setMemberBusy(false);
     }
   }
 
   async function toggleExclusive(member: Membership) {
+    if (memberLock.current || !membersReady) return;
+    memberLock.current = true;
+    setMemberBusy(true);
+    setError('');
     try {
       await api.setMember(
         id,
@@ -398,6 +438,9 @@ export default function LibraryScreen() {
       await load();
     } catch (value) {
       setError(errorMessage(value));
+    } finally {
+      memberLock.current = false;
+      setMemberBusy(false);
     }
   }
 
@@ -458,7 +501,11 @@ export default function LibraryScreen() {
 
   async function confirmRemoveMember() {
     if (!removeTarget) return;
+    if (memberLock.current || !membersReady) return;
     setRemovingMember(true);
+    memberLock.current = true;
+    setMemberBusy(true);
+    setError('');
     try {
       await api.removeMember(id, removeTarget.user_id);
       setRemoveTarget(null);
@@ -466,6 +513,8 @@ export default function LibraryScreen() {
     } catch (value) {
       setError(errorMessage(value));
     } finally {
+      memberLock.current = false;
+      setMemberBusy(false);
       setRemovingMember(false);
     }
   }
@@ -638,6 +687,18 @@ export default function LibraryScreen() {
         </View>
       </Dialog>
       <Dialog visible={panel === 'members'} title="Manage members" onClose={closePanel} wide>
+        {error ? <Notice danger>{error}</Notice> : null}
+        {!membersReady ? (
+          <View className="gap-2">
+            <Notice>Reload current access before making another change.</Notice>
+            <Button label="Reload access" onPress={load} />
+          </View>
+        ) : null}
+        {memberBusy ? (
+          <Text className="text-sm text-muted">
+            Saving access. Wait before making another change.
+          </Text>
+        ) : null}
         <View className="gap-1">
           <Notice>
             Guided requests always follow the owner’s download rules. Skip approval starts a guided
@@ -659,12 +720,14 @@ export default function LibraryScreen() {
                 <Text className={shared.itemMeta}>@{member.username}</Text>
               </View>
               <RoleControl
+                disabled={memberBusy || !membersReady}
                 value={member.role as Role}
                 onChange={(next) => void changeMemberRole(member, next)}
               />
               {libraryCount > 1 ? (
                 <View className="min-w-[220px]">
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Exclusive access grant"
                     checked={member.exclusive}
                     onPress={() => void toggleExclusive(member)}
@@ -674,16 +737,19 @@ export default function LibraryScreen() {
               {member.role === 'reader' ? (
                 <View className="min-w-[220px] gap-1">
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Can request"
                     checked={member.can_request_acquisitions}
                     onPress={() => void toggleAcquisitionPermission(member, 'request')}
                   />
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Skip approval"
                     checked={member.can_bypass_acquisition_approval}
                     onPress={() => void toggleAcquisitionPermission(member, 'bypass')}
                   />
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Advanced release choice"
                     checked={member.can_advanced_acquisition_request}
                     onPress={() => void toggleAcquisitionPermission(member, 'advanced')}
@@ -692,7 +758,12 @@ export default function LibraryScreen() {
               ) : (
                 <Text className="text-xs text-muted">Request access included with this role</Text>
               )}
-              <Button label="Remove" kind="danger" onPress={() => setRemoveTarget(member)} />
+              <Button
+                label="Remove"
+                disabled={memberBusy || !membersReady}
+                kind="danger"
+                onPress={() => setRemoveTarget(member)}
+              />
             </View>
           ))}
           {auth.user?.admin ? (
@@ -711,6 +782,7 @@ export default function LibraryScreen() {
               <RoleControl value={role} onChange={setRole} />
               {libraryCount > 1 ? (
                 <Checkbox
+                  disabled={memberBusy || !membersReady}
                   label="Exclusive access grant"
                   checked={exclusive}
                   onPress={() => setExclusive((current) => !current)}
@@ -719,23 +791,31 @@ export default function LibraryScreen() {
               {role === 'reader' ? (
                 <View className="gap-1">
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Can request"
                     checked={canRequestAcquisitions}
                     onPress={() => setCanRequestAcquisitions((current) => !current)}
                   />
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Skip approval"
                     checked={canBypassAcquisitionApproval}
                     onPress={() => setCanBypassAcquisitionApproval((current) => !current)}
                   />
                   <Checkbox
+                    disabled={memberBusy || !membersReady}
                     label="Advanced release choice"
                     checked={canAdvancedAcquisitionRequest}
                     onPress={() => setCanAdvancedAcquisitionRequest((current) => !current)}
                   />
                 </View>
               ) : null}
-              <Button label="Add member" kind="primary" disabled={!memberID} onPress={saveMember} />
+              <Button
+                label="Add member"
+                kind="primary"
+                disabled={!memberID || memberBusy || !membersReady}
+                onPress={saveMember}
+              />
             </View>
           ) : (
             <Notice>
@@ -915,9 +995,10 @@ export default function LibraryScreen() {
         onClose={() => setRemoveTarget(null)}
         onConfirm={() => void confirmRemoveMember()}
         title="Remove member?"
-        description={`${
-          removeTarget?.display_name || removeTarget?.username
-        } will lose access to this library. They can be re-added later.`}
+        description={
+          error ||
+          `${removeTarget?.display_name || removeTarget?.username} will lose access to this library. They can be re-added later.`
+        }
         confirmLabel="Remove"
         danger
         busy={removingMember}
@@ -936,12 +1017,21 @@ export default function LibraryScreen() {
   );
 }
 
-function RoleControl({ value, onChange }: { value: Role; onChange: (role: Role) => void }) {
+function RoleControl({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: Role;
+  onChange: (role: Role) => void;
+  disabled?: boolean;
+}) {
   return (
     <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-1.5">
       {roles.map((item) => (
         <RolePill
           key={item}
+          disabled={disabled}
           label={item}
           selected={value === item}
           onPress={() => onChange(item)}
@@ -952,11 +1042,13 @@ function RoleControl({ value, onChange }: { value: Role; onChange: (role: Role) 
 }
 
 function RolePill({
+  disabled = false,
   label,
   selected,
   onPress,
 }: {
   label: string;
+  disabled?: boolean;
   selected: boolean;
   onPress: () => void;
 }) {
@@ -968,6 +1060,7 @@ function RolePill({
 
   return (
     <Pressable
+      disabled={disabled}
       accessibilityRole="radio"
       accessibilityState={{ checked: selected }}
       accessibilityLabel={label}

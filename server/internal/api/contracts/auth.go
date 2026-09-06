@@ -62,6 +62,7 @@ type CreatedUser struct {
 	TemporaryPassword string `json:"temporary_password"`
 }
 type UpdateUserRequest struct {
+	Admin     *bool   `json:"admin"`
 	Disabled  *bool   `json:"disabled"`
 	AdminNote *string `json:"admin_note"`
 }

@@ -17,9 +17,9 @@ import {
   Section,
   TextField,
 } from '@/features/ui';
-import { api, errorMessage } from '@/lib/api';
+import { APIError, api, errorMessage } from '@/lib/api';
 
-function CollectionRow({ item }: { item: Collection }) {
+function CollectionRow({ item, shared = false }: { item: Collection; shared?: boolean }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
@@ -35,7 +35,7 @@ function CollectionRow({ item }: { item: Collection }) {
       onFocus={() => setFocused(true)}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      onPress={() => router.push(`/collection/${item.id}`)}
+      onPress={() => router.push(`/collection/${item.id}${shared ? '?shared=1' : ''}`)}
       className={`min-h-16 flex-row items-center gap-3 border-b border-line py-3 ${stateClass}`}
     >
       <View className="h-11 w-11 items-center justify-center">
@@ -46,6 +46,7 @@ function CollectionRow({ item }: { item: Collection }) {
           {item.title}
         </Text>
         <Text numberOfLines={2} className="text-sm leading-5 text-muted">
+          {shared ? `${item.shared_library_name} · ${item.owner_name} · ` : ''}
           {subtitle}
         </Text>
       </View>
@@ -63,6 +64,31 @@ export default function CollectionsScreen() {
   const [description, setDescription] = useState('');
   const [createError, setCreateError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sharedItems, setSharedItems] = useState<Collection[]>([]);
+  const [sharedOpen, setSharedOpen] = useState(false);
+  const [sharedError, setSharedError] = useState('');
+  const [sharedBusy, setSharedBusy] = useState(false);
+  const [sharedMore, setSharedMore] = useState(false);
+
+  async function loadShared(append = false) {
+    if (sharedBusy) return;
+    setSharedOpen(true);
+    setSharedBusy(true);
+    setSharedError('');
+    try {
+      const values = await api.sharedCollections(append ? sharedItems.length : 0);
+      setSharedItems((previous) => (append ? [...previous, ...values] : values));
+      setSharedMore(values.length === 100);
+    } catch (cause) {
+      setSharedError(
+        cause instanceof APIError && cause.status === 404
+          ? 'Shared collections are not available on this server yet.'
+          : errorMessage(cause),
+      );
+    } finally {
+      setSharedBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -128,6 +154,32 @@ export default function CollectionsScreen() {
   return (
     <Page title="Collections" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
+      <Button
+        label={sharedOpen ? 'Refresh shared collections' : 'Shared with your libraries'}
+        kind="secondary"
+        onPress={() => void loadShared()}
+      />
+      {sharedOpen ? (
+        <Section title="Shared collections">
+          {sharedError ? <Notice danger>{sharedError}</Notice> : null}
+          {sharedItems.map((item) => (
+            <CollectionRow key={item.id} item={item} shared />
+          ))}
+          {sharedBusy ? <LoadingState label="Loading shared collections…" /> : null}
+          {!sharedBusy && !sharedError && !sharedItems.length ? (
+            <EmptyState icon="collections" title="No shared collections yet">
+              Share a collection with a library to let its members read the list.
+            </EmptyState>
+          ) : null}
+          {sharedMore ? (
+            <Button
+              label="More shared collections"
+              disabled={sharedBusy}
+              onPress={() => void loadShared(true)}
+            />
+          ) : null}
+        </Section>
+      ) : null}
       {items.length === 0 ? (
         <View className="w-full flex-1 items-center justify-center">
           <EmptyState

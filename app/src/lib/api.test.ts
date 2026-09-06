@@ -220,3 +220,29 @@ describe('API transport', () => {
     expect(request?.credentials).toBe('include');
   });
 });
+
+describe('session ownership of failures', () => {
+  it('ignores an old session failure after another login succeeds', async () => {
+    const { onUnauthorized } = await import('./api');
+    let failOld!: (response: Response) => void;
+    const oldResponse = new Promise<Response>((resolve) => {
+      failOld = resolve;
+    });
+    let invalidations = 0;
+    onUnauthorized(() => {
+      invalidations++;
+    });
+    globalThis.fetch = (async (input) => {
+      if (String(input).endsWith('/auth/login'))
+        return Response.json({ user: { id: 'new-reader' } });
+      return oldResponse;
+    }) as typeof fetch;
+    const oldRequest = api.me();
+    const failure = oldRequest.catch((error: unknown) => error);
+    await api.login({ username: 'reader', password: 'not-a-real-password' });
+    failOld(new Response('expired', { status: 401 }));
+    expect(await failure).toBeInstanceOf(APIError);
+    expect(invalidations).toBe(0);
+    onUnauthorized();
+  });
+});

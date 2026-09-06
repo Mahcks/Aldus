@@ -1,9 +1,9 @@
-import type { Collection, CollectionWork } from '@/generated/api';
+import type { Collection, CollectionWork, Library } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WorkRow } from '@/features/bookshelf';
 import { moveCollectionWork } from '@/features/collection-presentation';
-import { View } from '@/features/tw';
+import { Text, View } from '@/features/tw';
 import {
   Button,
   ConfirmDialog,
@@ -16,13 +16,15 @@ import {
   Page,
   Row,
   Section,
+  Select,
   TextField,
 } from '@/features/ui';
 import { api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
 
 export default function CollectionDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, shared } = useLocalSearchParams<{ id: string; shared?: string }>();
+  const loadSequence = useRef(0);
   const [collection, setCollection] = useState<Collection>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,25 +36,76 @@ export default function CollectionDetailScreen() {
   const [dialogError, setDialogError] = useState('');
   const [busy, setBusy] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [libraries, setLibraries] = useState<Library[]>([]);
+  const [sharingLibrary, setSharingLibrary] = useState('');
+
+  async function openSharing() {
+    setDialogError('');
+    setSharingLibrary(collection?.shared_library_id ?? '');
+    setSharingOpen(true);
+    setBusy(true);
+    try {
+      const values: Library[] = [];
+      for (;;) {
+        const page = await api.libraries(values.length);
+        values.push(...page);
+        if (page.length < 100) break;
+      }
+      setLibraries(values.filter((library) => library.effective));
+    } catch (cause) {
+      setDialogError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveSharing() {
+    if (!id || busy) return;
+    setBusy(true);
+    setDialogError('');
+    try {
+      await api.shareCollection(id, sharingLibrary);
+      setSharingOpen(false);
+      // Use owner route after unsharing, since the shared route is no longer visible.
+      setCollection(await api.collection(id));
+      router.setParams({ shared: undefined });
+    } catch (cause) {
+      setDialogError(
+        'Could not change sharing. All books must belong to the selected library, and this server must support shared collections. ' +
+          errorMessage(cause),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function load() {
     if (!id) return;
+    const sequence = ++loadSequence.current;
     try {
-      const value = await api.collection(id);
+      const value = await (shared ? api.sharedCollection(id) : api.collection(id));
+      if (sequence !== loadSequence.current) return;
       setCollection(value);
       setError('');
     } catch (value) {
+      if (sequence !== loadSequence.current) return;
+      setCollection(undefined);
       setError(errorMessage(value));
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
+    const sequence = loadSequence;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+    return () => {
+      sequence.current++;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, shared]);
 
   function openEdit() {
     if (!collection) return;
@@ -179,12 +232,27 @@ export default function CollectionDetailScreen() {
         />
       }
       actions={
-        <Row>
-          <Button label="Edit" icon="edit" kind="secondary" onPress={openEdit} />
-          <Button label="Delete" icon="delete" kind="danger" onPress={() => setDeleteOpen(true)} />
-        </Row>
+        !shared || collection.can_edit ? (
+          <Row>
+            <Button label="Sharing" kind="secondary" onPress={() => void openSharing()} />
+            <Button label="Edit" icon="edit" kind="secondary" onPress={openEdit} />
+            <Button
+              label="Delete"
+              icon="delete"
+              kind="danger"
+              onPress={() => setDeleteOpen(true)}
+            />
+          </Row>
+        ) : undefined
       }
     >
+      {collection.shared_library_id ? (
+        <Text className="text-sm text-muted">
+          Shared with {collection.shared_library_name || 'a library'}
+          {collection.owner_name ? ` · By ${collection.owner_name}` : ''}.{' '}
+          {shared && !collection.can_edit ? 'Only the creator can edit this list.' : ''}
+        </Text>
+      ) : null}
       {collection.description ? <Notice>{collection.description}</Notice> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {works.length === 0 ? (
@@ -202,29 +270,31 @@ export default function CollectionDetailScreen() {
                 coverURL={work.cover_url}
                 onPress={() => void openWork(work.id)}
                 action={
-                  <View className="flex-row items-center gap-1">
-                    <IconButton
-                      icon="moveUp"
-                      label={`Move ${work.title} up`}
-                      kind="quiet"
-                      disabled={reordering || index === 0}
-                      onPress={() => void handleMove(index, -1)}
-                    />
-                    <IconButton
-                      icon="moveDown"
-                      label={`Move ${work.title} down`}
-                      kind="quiet"
-                      disabled={reordering || index === works.length - 1}
-                      onPress={() => void handleMove(index, 1)}
-                    />
-                    <IconButton
-                      icon="delete"
-                      label={`Remove ${work.title} from collection`}
-                      kind="quiet"
-                      disabled={reordering}
-                      onPress={() => setRemoveWork(work)}
-                    />
-                  </View>
+                  !shared || collection.can_edit ? (
+                    <View className="flex-row items-center gap-1">
+                      <IconButton
+                        icon="moveUp"
+                        label={`Move ${work.title} up`}
+                        kind="quiet"
+                        disabled={reordering || index === 0}
+                        onPress={() => void handleMove(index, -1)}
+                      />
+                      <IconButton
+                        icon="moveDown"
+                        label={`Move ${work.title} down`}
+                        kind="quiet"
+                        disabled={reordering || index === works.length - 1}
+                        onPress={() => void handleMove(index, 1)}
+                      />
+                      <IconButton
+                        icon="delete"
+                        label={`Remove ${work.title} from collection`}
+                        kind="quiet"
+                        disabled={reordering}
+                        onPress={() => setRemoveWork(work)}
+                      />
+                    </View>
+                  ) : undefined
                 }
               />
             ))}
@@ -232,6 +302,39 @@ export default function CollectionDetailScreen() {
         </Section>
       )}
 
+      <Dialog
+        visible={sharingOpen}
+        title="Share collection"
+        onClose={() => {
+          if (!busy) setSharingOpen(false);
+        }}
+      >
+        <View className="gap-4">
+          <Text className="text-base text-ink">
+            Members of the selected library can read this list. Only you can edit it. Everyone keeps
+            their own reading progress.
+          </Text>
+          {dialogError ? <Notice danger>{dialogError}</Notice> : null}
+          <Select
+            label="Who can see this collection"
+            value={sharingLibrary}
+            onChange={setSharingLibrary}
+            options={[
+              { value: '', label: 'Only me' },
+              ...libraries.map((library) => ({ value: library.id, label: library.name })),
+            ]}
+          />
+          <Text className="text-sm text-muted">
+            All books in a shared collection must belong to that library.
+          </Text>
+          <Button
+            label="Save sharing"
+            kind="primary"
+            loading={busy}
+            onPress={() => void saveSharing()}
+          />
+        </View>
+      </Dialog>
       <Dialog visible={editOpen} title="Edit collection" onClose={() => setEditOpen(false)}>
         <View className="gap-4">
           {dialogError ? <Notice danger>{dialogError}</Notice> : null}

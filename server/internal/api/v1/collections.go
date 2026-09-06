@@ -11,6 +11,27 @@ import (
 )
 
 func registerCollectionRoutes(router chi.Router, store *collection.Store) {
+	router.Get("/collections/shared", func(w http.ResponseWriter, r *http.Request) {
+		limit, offset := pageParams(r)
+		values, err := store.Shared(r.Context(), actor(r), limit, offset)
+		out := make([]contracts.Collection, len(values))
+		for i, value := range values {
+			out[i] = collectionDTO(value)
+		}
+		writeCollectionResult(w, http.StatusOK, out, err)
+	})
+	router.Get("/collections/shared/{collectionID}", func(w http.ResponseWriter, r *http.Request) {
+		value, err := store.SharedDetail(r.Context(), actor(r), chi.URLParam(r, "collectionID"))
+		writeCollectionResult(w, http.StatusOK, collectionDTO(value), err)
+	})
+	router.Put("/me/collections/{collectionID}/sharing", func(w http.ResponseWriter, r *http.Request) {
+		var body contracts.ShareCollectionRequest
+		if !decode(w, r, &body) {
+			return
+		}
+		err := store.Share(r.Context(), actor(r), chi.URLParam(r, "collectionID"), body.LibraryID)
+		writeCollectionResult(w, http.StatusNoContent, nil, err)
+	})
 	router.Get("/me/collections", listCollections(store))
 	router.Post("/me/collections", createCollection(store))
 	router.Get("/me/collections/{collectionID}", getCollection(store))
@@ -102,7 +123,7 @@ func collectionDTO(value collection.Collection) contracts.Collection {
 	for i, work := range value.Works {
 		works[i] = contracts.CollectionWork{ID: work.ID, Title: work.Title, Author: work.Author, CoverURL: work.CoverURL, Position: work.Position}
 	}
-	return contracts.Collection{ID: value.ID, Title: value.Title, Description: value.Description, WorkCount: value.WorkCount, Works: works, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+	return contracts.Collection{SharedLibraryID: value.SharedLibraryID, SharedLibraryName: value.SharedLibraryName, OwnerName: value.OwnerName, CanEdit: value.CanEdit, ID: value.ID, Title: value.Title, Description: value.Description, WorkCount: value.WorkCount, Works: works, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
 }
 
 func writeCollectionResult(w http.ResponseWriter, status int, value any, err error) {

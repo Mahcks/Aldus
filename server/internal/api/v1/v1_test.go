@@ -21,6 +21,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/backup"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/collection"
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/diagnostics"
 	"github.com/mahcks/aldus/server/internal/ingest"
@@ -236,6 +237,13 @@ func TestRouteContract(t *testing.T) {
 	want = append(want, "GET /search/titles", "GET /discover/trending", "GET /discover/detail")
 	want = append(want, "PATCH /auth/me", "POST /auth/claim", "POST /auth/logout-all", "POST /users/{userID}/reset-password", "PUT /auth/me/password")
 	want = append(want, "GET /reader-preferences", "PUT /reader-preferences")
+	want = append(want,
+		"GET /me/collections", "POST /me/collections", "GET /me/collections/{collectionID}",
+		"PUT /me/collections/{collectionID}", "DELETE /me/collections/{collectionID}",
+		"POST /me/collections/{collectionID}/works", "DELETE /me/collections/{collectionID}/works/{workID}",
+		"PUT /me/collections/{collectionID}/works/order", "PUT /me/collections/{collectionID}/sharing",
+		"GET /collections/shared", "GET /collections/shared/{collectionID}",
+	)
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
@@ -704,7 +712,7 @@ func testHandler(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler(Dependencies{ServerVersion: "test", Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Ingest: mediaStore, Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test"), Backups: backup.NewManager(filepath.Dir(path), t.TempDir(), "test")}), session.Token
+	return Handler(Dependencies{ServerVersion: "test", Position: position.New(db), Auth: authStore, Catalog: catalog.New(db), Collections: collection.New(db), Ingest: mediaStore, Acquisitions: acquisition.NewStore(db, client), Diagnostics: diagnostics.New(db, filepath.Dir(path), nil, "test", "test"), Backups: backup.NewManager(filepath.Dir(path), t.TempDir(), "test")}), session.Token
 }
 
 func request(t *testing.T, handler http.Handler, token, method, target, body string) *httptest.ResponseRecorder {

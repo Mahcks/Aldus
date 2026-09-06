@@ -60,10 +60,17 @@ export function discardPendingProgress(workID: string, scope = activeStorageScop
 export function saveWorkProgress(
   workID: string,
   update: WorkProgressUpdate,
+  scope = activeStorageScope(),
+  origin = getAPIBaseURL(),
 ): Promise<CanonicalPosition | null> {
-  const scope = activeStorageScope();
+  if (!scope) return Promise.reject(new Error('No active Aldus account.'));
   return serialize(async () => {
     try {
+      if (scope !== activeStorageScope() || origin !== getAPIBaseURL()) {
+        await AsyncStorage.setItem(key(scope, workID), JSON.stringify(update));
+        await track(scope, workID, true);
+        throw new Error('The active account changed. Progress is saved for the original reader.');
+      }
       const saved = await api.updateWorkProgress(workID, update);
       await discard(workID, scope);
       return saved;

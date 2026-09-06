@@ -139,3 +139,110 @@ func TestExclusiveMembershipHidesAdditiveCollectionWorks(t *testing.T) {
 		t.Fatalf("re-add hidden work = %v", err)
 	}
 }
+
+func TestSharedCollectionsRespectBothReadersAndCreatorAccess(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "family.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, id := range []string{"admin", "parent", "child", "outsider"} {
+		_, err := db.ExecContext(ctx, `INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES(?,?,?,?,?, ?,0,'2026-01-01','2026-01-01')`, id, id, id, id, "test", id == "admin")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	admin, parent, child, outsider := auth.User{ID: "admin", Admin: true}, auth.User{ID: "parent"}, auth.User{ID: "child"}, auth.User{ID: "outsider"}
+	catalogStore := catalog.New(db)
+	library, err := catalogStore.CreateLibrary(ctx, admin, "Family")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := catalogStore.CreateLibrary(ctx, admin, "Other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []auth.User{parent, child} {
+		if err := catalogStore.SetMember(ctx, admin, library.ID, user.ID, "reader"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := catalogStore.CreateWork(ctx, admin, library.ID, "First", "Author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := catalogStore.CreateWork(ctx, admin, library.ID, "Second", "Author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := catalogStore.CreateWork(ctx, admin, other.ID, "Private", "Author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := New(db)
+	list, err := store.Create(ctx, parent, "Bedtime", "Family reading")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		if err := store.AddWork(ctx, parent, list.ID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Share(ctx, child, list.ID, library.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("noncreator publish: %v", err)
+	}
+	if err := store.Share(ctx, parent, list.ID, library.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Get(ctx, child, list.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("old private endpoint broadened: %v", err)
+	}
+	got, err := store.SharedDetail(ctx, child, list.ID)
+	if err != nil || got.CanEdit || got.WorkCount != 2 || got.Works[0].ID != first.ID {
+		t.Fatalf("shared detail: %#v %v", got, err)
+	}
+	if _, err := store.SharedDetail(ctx, outsider, list.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("outsider read: %v", err)
+	}
+	if err := store.RemoveWork(ctx, child, list.ID, first.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("recipient edit: %v", err)
+	}
+	if err := catalogStore.SetMember(ctx, admin, other.ID, parent.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddWork(ctx, parent, list.ID, foreign.ID); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("cross library addition: %v", err)
+	}
+	if err := catalogStore.SetMember(ctx, admin, other.ID, child.ID, "reader", false, false, false, true); err != nil {
+		t.Fatal(err)
+	}
+	if values, err := store.Shared(ctx, child, 100, 0); err != nil || len(values) != 0 {
+		t.Fatalf("exclusive shared list: %#v %v", values, err)
+	}
+	if err := catalogStore.RemoveMember(ctx, admin, other.ID, child.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalogStore.RemoveMember(ctx, admin, library.ID, parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if values, err := store.Shared(ctx, child, 100, 0); err != nil || len(values) != 0 {
+		t.Fatalf("revoked creator list: %#v %v", values, err)
+	}
+	if _, err := store.SharedDetail(ctx, child, list.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoked creator detail: %v", err)
+	}
+	if err := store.AddWork(ctx, parent, list.ID, second.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoked creator edit: %v", err)
+	}
+	if err := store.Share(ctx, parent, list.ID, ""); err != nil {
+		t.Fatalf("owner unshare recovery: %v", err)
+	}
+	if _, err := store.Get(ctx, parent, list.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SharedDetail(ctx, child, list.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unpublished detail: %v", err)
+	}
+}

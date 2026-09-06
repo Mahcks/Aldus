@@ -95,8 +95,16 @@ import type {
 } from '@/generated/api';
 import { clearToken, getToken, setToken } from './auth-token';
 import { getAPIBaseURL } from './api-base';
+import { setStorageUserID } from './storage-scope';
 
 const apiBasePath = '/api/v1';
+const sessionGenerations = new Map<string, number>();
+function sessionGeneration(origin: string) {
+  return sessionGenerations.get(origin) ?? 0;
+}
+function advanceSession(origin: string) {
+  sessionGenerations.set(origin, sessionGeneration(origin) + 1);
+}
 
 let unauthorized: (() => void) | undefined;
 export function onUnauthorized(handler?: () => void) {
@@ -125,7 +133,11 @@ async function responseErrorMessage(response: Response) {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const origin = getAPIBaseURL();
+  const generation = sessionGeneration(origin);
   const token = await getToken(origin);
+  if (generation !== sessionGeneration(origin) || origin !== getAPIBaseURL()) {
+    throw new APIError(409, 'The active account changed. Try again.');
+  }
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -141,9 +153,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!response.ok) {
     const message = await responseErrorMessage(response);
-    if (response.status === 401) {
-      await clearToken(origin);
+    if (
+      response.status === 401 &&
+      path !== '/auth/login' &&
+      path !== '/auth/me/password' &&
+      !(path === '/auth/me' && init.method === 'DELETE') &&
+      generation === sessionGeneration(origin)
+    ) {
+      advanceSession(origin);
       if (origin === getAPIBaseURL()) unauthorized?.();
+      await clearToken(origin);
     }
     throw new APIError(
       response.status,
@@ -174,6 +193,10 @@ async function download(path: string) {
 }
 
 async function acceptSession(session: Session, origin: string) {
+  if (origin !== getAPIBaseURL())
+    throw new APIError(409, 'The active server changed. Sign in again.');
+  setStorageUserID('');
+  advanceSession(origin);
   if (session.token) await setToken(session.token, origin);
   return session.user;
 }
@@ -235,16 +258,20 @@ export const api = {
     request<void>(`/system/backups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   logout: async () => {
     const origin = getAPIBaseURL();
+    advanceSession(origin);
+    const generation = sessionGeneration(origin);
     try {
       await request<void>('/auth/logout', { method: 'POST' });
     } finally {
-      await clearToken(origin);
+      if (generation === sessionGeneration(origin)) await clearToken(origin);
     }
   },
   logoutAll: async () => {
     const origin = getAPIBaseURL();
+    advanceSession(origin);
+    const generation = sessionGeneration(origin);
     await request<void>('/auth/logout-all', { method: 'POST' });
-    await clearToken(origin);
+    if (generation === sessionGeneration(origin)) await clearToken(origin);
   },
   readerCredentials: () => request<ReaderCredential[]>('/me/reader-credentials'),
   createReaderCredential: (body: CreateReaderCredentialRequest) =>
@@ -254,6 +281,14 @@ export const api = {
     }),
   deleteReaderCredential: (id: string) =>
     request<void>(`/me/reader-credentials/${id}`, { method: 'DELETE' }),
+  sharedCollections: (offset = 0) =>
+    request<Collection[]>(`/collections/shared?limit=100&offset=${offset}`),
+  sharedCollection: (id: string) => request<Collection>(`/collections/shared/${id}`),
+  shareCollection: (id: string, libraryID: string) =>
+    request<void>(`/me/collections/${id}/sharing`, {
+      method: 'PUT',
+      body: JSON.stringify({ library_id: libraryID }),
+    }),
   collections: () => request<Collection[]>('/me/collections'),
   collection: (id: string) => request<Collection>(`/me/collections/${id}`),
   createCollection: (body: CollectionInput) =>

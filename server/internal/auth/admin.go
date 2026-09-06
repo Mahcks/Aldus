@@ -276,3 +276,42 @@ func lastEnabledLibraryOwner(ctx context.Context, tx *sql.Tx, userID string) (bo
 	}
 	return blocked, nil
 }
+
+// SetAdministrator preserves the account and its personal data when its server role changes.
+func (s *Store) SetAdministrator(ctx context.Context, actor User, userID string, admin bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var authorized bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND is_admin=1 AND disabled=0 AND must_change_credentials=0)`, actor.ID).Scan(&authorized); err != nil {
+		return err
+	}
+	if !authorized {
+		return ErrForbidden
+	}
+	var current, disabled bool
+	if err := tx.QueryRowContext(ctx, `SELECT is_admin,disabled FROM users WHERE id=? AND demo_expires_at IS NULL`, userID).Scan(&current, &disabled); errors.Is(err, sql.ErrNoRows) {
+		return ErrInvalid
+	} else if err != nil {
+		return err
+	}
+	if current == admin {
+		return nil
+	}
+	if current && !disabled {
+		var others int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE is_admin=1 AND disabled=0 AND id<>?`, userID).Scan(&others); err != nil {
+			return err
+		}
+		if others == 0 {
+			return ErrLastAdmin
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET is_admin=?,updated_at=? WHERE id=?`, admin, formatTime(time.Now().UTC()), userID); err != nil {
+		return err
+	}
+	// Existing sessions read current privileges from users on each authenticated request.
+	return tx.Commit()
+}

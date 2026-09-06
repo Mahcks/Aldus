@@ -466,3 +466,35 @@ func TestDeleteCurrentUser(t *testing.T) {
 		t.Fatalf("delete guest: %v", err)
 	}
 }
+
+func TestAdministratorRoleChangesPreserveAccount(t *testing.T) {
+	ctx := context.Background()
+	store, _ := openTestStore(t, Options{})
+	session, err := store.Setup(ctx, Credentials{Username: "owner", Password: testPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, _, err := store.CreateUser(ctx, session.User, Credentials{Username: "reader", Password: testPassword}, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAdministrator(ctx, reader, reader.ID, true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("self promotion: %v", err)
+	}
+	if err := store.SetAdministrator(ctx, session.User, session.User.ID, false); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("last admin: %v", err)
+	}
+	if err := store.SetAdministrator(ctx, session.User, reader.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAdministrator(ctx, session.User, session.User.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAdministrator(ctx, session.User, session.User.ID, true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("stale actor: %v", err)
+	}
+	fresh, err := store.Login(ctx, Credentials{Username: "reader", Password: testPassword})
+	if err != nil || fresh.User.ID != reader.ID || !fresh.User.Admin {
+		t.Fatalf("retained identity/role: %v", err)
+	}
+}

@@ -233,6 +233,7 @@ export interface CreatedUser {
   temporary_password: string;
 }
 export interface UpdateUserRequest {
+  admin?: boolean;
   disabled?: boolean;
   admin_note?: string;
 }
@@ -487,6 +488,10 @@ export interface CatalogGroupPage {
 // source: collections.go
 
 export interface Collection {
+  shared_library_id?: string;
+  shared_library_name?: string;
+  owner_name?: string;
+  can_edit?: boolean;
   id: string;
   title: string;
   description?: string;
@@ -511,6 +516,9 @@ export interface AddCollectionWorkRequest {
 }
 export interface ReorderCollectionWorksRequest {
   work_ids: string[];
+}
+export interface ShareCollectionRequest {
+  library_id: string;
 }
 
 //////////

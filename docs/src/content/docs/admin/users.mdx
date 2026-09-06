@@ -13,20 +13,28 @@ Every Aldus account belongs to one server. There is no Aldus cloud account, emai
 
 1. Open **More → Users** and select **Add user**.
 2. Enter a provisional username and display name. You can also add a private administrator note so the person remains recognizable if they change their username. Leave global administrator access off for an ordinary reader.
-3. Save the one-time username and password Aldus shows. The password cannot be shown again.
-4. Share the server address and one-time credentials privately. Do not send them through a public issue or support request.
-5. Open the new account's **User details → Library access** and choose **Reader**, **Editor**, or **Owner** for each library it should use.
-6. On first sign-in, the reader chooses their final username, display name, and password before Aldus grants library access.
+3. Choose the libraries this reader can access. Request permission starts off; enabling it still requires approval.
+4. Create the account and save the temporary username and password. The password cannot be shown again. If library assignment failed, retry it before sharing the credentials.
+5. Use **Share sign-in details** on the app or **Copy sign-in details** on the web to hand off the server address and credentials privately.
+6. On first sign-in, the reader chooses their final username, display name, and password before entering their libraries.
 
 </Steps>
+
+Later, open **User details → Library access** to change roles or request permissions.
 
 The final username stays fixed after setup because KOReader and OPDS devices use it when authenticating. A reader can change their display name and password from **Account**.
 
 ## Manage library access
 
-Open **More → Users**, select an account, and use the **Library access** grid. A **Reader** can consume books. An **Editor** can also manage works and requests. An **Owner** can additionally manage that library's members and settings. Global administrators can access and manage every library.
+Open **More → Users**, select an account, and use the **Library access** grid. A **Reader** can consume books. An **Editor** can also manage works and requests. An **Owner** can additionally manage that library's members and settings. Global administrators can access and manage every library unless exclusive grants limit them.
 
 For a reader, the same grid controls whether they can request missing formats, skip approval, or choose releases directly. In a multi-library household, **Include in exclusive access** limits the account to the libraries marked that way. Aldus prevents removing the final owner from a library until another owner has been assigned.
+
+## Change administrator access
+
+Open a user’s details and choose **Make administrator** or **Remove administrator access**.
+This keeps the same account, reading history, and collections. Aldus prevents removing the
+last enabled administrator. Exclusive library grants still limit effective library access.
 
 ## Reset a reader's password
 
@@ -61,3 +69,13 @@ The command prints a one-time password and revokes every existing session for th
 **Sign out** removes only the current app or browser session. **Sign out everywhere** removes all Aldus app and browser sessions for the account while leaving KOReader and OPDS credentials connected.
 
 Backups retain user password hashes and reader-credential verifiers so accounts still exist after recovery, but active sessions are removed from the backup snapshot. Everyone signs in again after a restore. Treat every backup as sensitive account and library data, store it with restricted access, and keep an off-host copy.
+
+## Shared family devices
+
+Use **Account → Switch reader** to remember the current reader’s name and return to sign-in.
+Choose a remembered name and enter that reader’s password. Switching requires a server
+connection. Aldus does not store account passwords or use a local PIN as server authorization.
+On sign-in, **Remember my name on this device** controls whether a name shortcut is saved.
+**Forget** removes only that shortcut; it does not delete an account or downloaded books.
+Downloads and queued progress remain scoped to the original reader. Switching does not share
+reading history, and it does not promise to erase already downloaded files remotely.

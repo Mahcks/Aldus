@@ -1,3 +1,4 @@
+import { rememberAccount } from '@/lib/remembered-accounts';
 import type { Library, ReaderCredential, WorkSummary } from '@/generated/api';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
@@ -91,6 +92,18 @@ export default function AccountScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!serverOrigin && typeof window !== 'undefined') setServerOrigin(window.location.origin);
   }, [serverOrigin]);
+
+  async function switchAccount() {
+    if (!auth.user) return;
+    setError('');
+    try {
+      await rememberAccount(auth.user);
+      await auth.signOut();
+      router.replace('/login');
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
 
   async function signOut() {
     await auth.signOut();
@@ -227,6 +240,15 @@ export default function AccountScreen() {
 
   return (
     <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
+      {!isGuest ? (
+        <View className="gap-2 border-b border-line pb-4">
+          <Button label="Switch reader" kind="secondary" onPress={() => void switchAccount()} />
+          <Text className="text-sm text-muted">
+            Sign in as someone else. Your downloads and queued progress stay with your account. A
+            connection is needed to switch readers.
+          </Text>
+        </View>
+      ) : null}
       {Platform.OS !== 'web' ? <DownloadStatus /> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
@@ -527,6 +549,7 @@ export default function AccountScreen() {
         </Dialog>
       )}
       <Dialog visible={editingProfile} title="Edit profile" onClose={closeProfileDialog}>
+        {error ? <Notice danger>{error}</Notice> : null}
         <View className="gap-4">
           <Field label="Display name" value={displayName} onChangeText={setDisplayName} autoFocus />
           <Text className="text-sm text-muted">
@@ -545,6 +568,7 @@ export default function AccountScreen() {
         </View>
       </Dialog>
       <Dialog visible={changingPassword} title="Change password" onClose={closePasswordDialog}>
+        {error ? <Notice danger>{error}</Notice> : null}
         <View className="gap-4">
           <Notice>Changing your password signs out every other Aldus app session.</Notice>
           <Field

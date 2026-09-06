@@ -267,10 +267,10 @@ func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userI
 	}
 	if currentRole == "owner" && role != "owner" {
 		var owners int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members WHERE library_id=? AND role='owner'`, libraryID).Scan(&owners); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members m JOIN users u ON u.id=m.user_id WHERE m.library_id=? AND m.role='owner' AND u.disabled=0 AND m.user_id<>?`, libraryID, userID).Scan(&owners); err != nil {
 			return err
 		}
-		if owners == 1 {
+		if owners == 0 {
 			return ErrLastOwner
 		}
 	}
@@ -309,10 +309,10 @@ func (s *Store) RemoveMember(ctx context.Context, actor auth.User, libraryID, us
 	}
 	if role == "owner" {
 		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members WHERE library_id=? AND role='owner'`, libraryID).Scan(&n); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_members m JOIN users u ON u.id=m.user_id WHERE m.library_id=? AND m.role='owner' AND u.disabled=0 AND m.user_id<>?`, libraryID, userID).Scan(&n); err != nil {
 			return err
 		}
-		if n == 1 {
+		if n == 0 {
 			return ErrLastOwner
 		}
 	}

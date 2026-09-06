@@ -19,13 +19,17 @@ var (
 )
 
 type Collection struct {
-	ID          string
-	Title       string
-	Description string
-	WorkCount   int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	Works       []Work
+	SharedLibraryID   string
+	SharedLibraryName string
+	OwnerName         string
+	CanEdit           bool
+	ID                string
+	Title             string
+	Description       string
+	WorkCount         int
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Works             []Work
 }
 
 type Work struct {
@@ -46,7 +50,7 @@ func New(db *sql.DB) *Store {
 
 func (s *Store) List(ctx context.Context, actor auth.User) ([]Collection, error) {
 	args := append(auth.LibraryAccessArgs(actor), actor.ID)
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.title,c.description,COUNT(CASE WHEN `+auth.EffectiveLibraryAccessSQL("w.library_id")+` THEN cw.work_id END),c.created_at,c.updated_at FROM collections c LEFT JOIN collection_works cw ON cw.collection_id=c.id LEFT JOIN works w ON w.id=cw.work_id WHERE c.user_id=? GROUP BY c.id ORDER BY c.updated_at DESC,c.id`, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.title,c.description,COUNT(CASE WHEN `+auth.EffectiveLibraryAccessSQL("w.library_id")+` THEN cw.work_id END),c.created_at,c.updated_at,COALESCE(c.shared_library_id,'') FROM collections c LEFT JOIN collection_works cw ON cw.collection_id=c.id LEFT JOIN works w ON w.id=cw.work_id WHERE c.user_id=? GROUP BY c.id ORDER BY c.updated_at DESC,c.id`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list collections: %w", err)
 	}
@@ -55,37 +59,63 @@ func (s *Store) List(ctx context.Context, actor auth.User) ([]Collection, error)
 	for rows.Next() {
 		var value Collection
 		var created, updated string
-		if err := rows.Scan(&value.ID, &value.Title, &value.Description, &value.WorkCount, &created, &updated); err != nil {
+		if err := rows.Scan(&value.ID, &value.Title, &value.Description, &value.WorkCount, &created, &updated, &value.SharedLibraryID); err != nil {
 			return nil, fmt.Errorf("scan collection: %w", err)
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 		value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		value.CanEdit = true
 		values = append(values, value)
 	}
 	return values, rows.Err()
 }
 
 func (s *Store) Get(ctx context.Context, actor auth.User, id string) (Collection, error) {
+	return s.get(ctx, actor, id, false)
+}
+
+func (s *Store) get(ctx context.Context, actor auth.User, id string, shared bool) (Collection, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Collection{}, err
+	}
+	defer tx.Rollback()
 	var value Collection
 	var created, updated string
-	err := s.db.QueryRowContext(ctx, `SELECT id,title,description,created_at,updated_at FROM collections WHERE id=? AND user_id=?`, id, actor.ID).Scan(&value.ID, &value.Title, &value.Description, &created, &updated)
+	predicate := "c.user_id=?"
+	args := []any{id, actor.ID}
+	if shared {
+		predicate = sharedVisibleSQL + " AND " + auth.EffectiveLibraryAccessSQL("c.shared_library_id")
+		args = append([]any{id}, auth.LibraryAccessArgs(actor)...)
+	}
+	query := `SELECT c.id,c.title,c.description,c.created_at,c.updated_at,
+        COALESCE(c.shared_library_id,''),COALESCE(l.name,''),u.display_name,c.user_id
+        FROM collections c JOIN users u ON u.id=c.user_id
+        LEFT JOIN libraries l ON l.id=c.shared_library_id WHERE c.id=? AND ` + predicate
+	var ownerID string
+	err = tx.QueryRowContext(ctx, query, args...).Scan(&value.ID, &value.Title, &value.Description,
+		&created, &updated, &value.SharedLibraryID, &value.SharedLibraryName, &value.OwnerName, &ownerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Collection{}, ErrNotFound
 	}
 	if err != nil {
-		return Collection{}, fmt.Errorf("get collection: %w", err)
+		return Collection{}, err
 	}
+	value.CanEdit = ownerID == actor.ID
 	value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-	rows, err := s.db.QueryContext(ctx, `SELECT w.id,w.title,COALESCE(w.author,''),COALESCE(wc.image_url,''),cw.position FROM collection_works cw JOIN works w ON w.id=cw.work_id LEFT JOIN work_covers wc ON wc.id=w.selected_cover_id WHERE cw.collection_id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+` ORDER BY cw.position`, append([]any{id}, auth.LibraryAccessArgs(actor)...)...)
+	rows, err := tx.QueryContext(ctx, `SELECT w.id,w.title,COALESCE(w.author,''),COALESCE(wc.image_url,''),cw.position
+        FROM collection_works cw JOIN works w ON w.id=cw.work_id
+        LEFT JOIN work_covers wc ON wc.id=w.selected_cover_id WHERE cw.collection_id=? AND `+
+		auth.EffectiveLibraryAccessSQL("w.library_id")+` ORDER BY cw.position`, append([]any{id}, auth.LibraryAccessArgs(actor)...)...)
 	if err != nil {
-		return Collection{}, fmt.Errorf("list collection works: %w", err)
+		return Collection{}, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var work Work
 		if err := rows.Scan(&work.ID, &work.Title, &work.Author, &work.CoverURL, &work.Position); err != nil {
-			return Collection{}, fmt.Errorf("scan collection work: %w", err)
+			return Collection{}, err
 		}
 		value.Works = append(value.Works, work)
 	}
@@ -106,7 +136,7 @@ func (s *Store) Create(ctx context.Context, actor auth.User, title, description 
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO collections(id,user_id,title,description,created_at,updated_at) VALUES(?,?,?,?,?,?)`, id, actor.ID, title, description, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
 		return Collection{}, fmt.Errorf("create collection: %w", err)
 	}
-	return Collection{ID: id, Title: title, Description: description, CreatedAt: now, UpdatedAt: now}, nil
+	return Collection{CanEdit: true, ID: id, Title: title, Description: description, CreatedAt: now, UpdatedAt: now}, nil
 }
 
 func (s *Store) Update(ctx context.Context, actor auth.User, id, title, description string) (Collection, error) {
@@ -115,7 +145,7 @@ func (s *Store) Update(ctx context.Context, actor auth.User, id, title, descript
 		return Collection{}, ErrInvalid
 	}
 	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `UPDATE collections SET title=?,description=?,updated_at=? WHERE id=? AND user_id=?`, title, description, now.Format(time.RFC3339Nano), id, actor.ID)
+	result, err := s.db.ExecContext(ctx, `UPDATE collections SET title=?,description=?,updated_at=? WHERE id=? AND user_id=? AND (shared_library_id IS NULL OR `+auth.EffectiveLibraryAccessSQL("collections.shared_library_id")+`)`, append([]any{title, description, now.Format(time.RFC3339Nano), id, actor.ID}, auth.LibraryAccessArgs(actor)...)...)
 	if err != nil {
 		return Collection{}, fmt.Errorf("update collection: %w", err)
 	}
@@ -142,13 +172,13 @@ func (s *Store) AddWork(ctx context.Context, actor auth.User, collectionID, work
 		return fmt.Errorf("begin collection add: %w", err)
 	}
 	defer tx.Rollback()
-	if ok, err := owns(ctx, tx, actor.ID, collectionID); err != nil {
+	if ok, err := owns(ctx, tx, actor, collectionID); err != nil {
 		return err
 	} else if !ok {
 		return ErrNotFound
 	}
 	var visible bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w WHERE w.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+`)`, append([]any{workID}, auth.LibraryAccessArgs(actor)...)...).Scan(&visible); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM works w WHERE w.id=? AND EXISTS(SELECT 1 FROM collections c WHERE c.id=? AND (c.shared_library_id IS NULL OR c.shared_library_id=w.library_id)) AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+`)`, append([]any{workID, collectionID}, auth.LibraryAccessArgs(actor)...)...).Scan(&visible); err != nil {
 		return fmt.Errorf("authorize collection work: %w", err)
 	}
 	if !visible {
@@ -174,7 +204,7 @@ func (s *Store) RemoveWork(ctx context.Context, actor auth.User, collectionID, w
 		return fmt.Errorf("begin collection removal: %w", err)
 	}
 	defer tx.Rollback()
-	if ok, err := owns(ctx, tx, actor.ID, collectionID); err != nil {
+	if ok, err := owns(ctx, tx, actor, collectionID); err != nil {
 		return err
 	} else if !ok {
 		return ErrNotFound
@@ -198,7 +228,7 @@ func (s *Store) Reorder(ctx context.Context, actor auth.User, collectionID strin
 		return fmt.Errorf("begin collection reorder: %w", err)
 	}
 	defer tx.Rollback()
-	if ok, err := owns(ctx, tx, actor.ID, collectionID); err != nil {
+	if ok, err := owns(ctx, tx, actor, collectionID); err != nil {
 		return err
 	} else if !ok {
 		return ErrNotFound
@@ -281,9 +311,9 @@ func compact(ctx context.Context, tx *sql.Tx, collectionID string) error {
 	return err
 }
 
-func owns(ctx context.Context, tx *sql.Tx, userID, collectionID string) (bool, error) {
+func owns(ctx context.Context, tx *sql.Tx, actor auth.User, collectionID string) (bool, error) {
 	var ok bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM collections WHERE id=? AND user_id=?)`, collectionID, userID).Scan(&ok); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM collections c WHERE c.id=? AND c.user_id=? AND (c.shared_library_id IS NULL OR `+auth.EffectiveLibraryAccessSQL("c.shared_library_id")+`))`, append([]any{collectionID, actor.ID}, auth.LibraryAccessArgs(actor)...)...).Scan(&ok); err != nil {
 		return false, fmt.Errorf("authorize collection: %w", err)
 	}
 	return ok, nil
