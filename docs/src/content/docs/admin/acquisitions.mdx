@@ -41,7 +41,7 @@ Select **Save connections** to persist the settings (it also runs a connection t
 
 ## Per-library download rules
 
-Every library has its own acquisition policy, editable by owners, editors, and admins under **Acquisition policy**. These rules are mandatory for every guided request — including ones a member is allowed to skip approval on. Only a member with **advanced release choice** may bypass them.
+Every library has its own acquisition policy, editable by owners, editors, and admins under **Acquisition policy**. These rules are mandatory for every guided request — including ones a member is allowed to skip approval on. Only a member with **advanced release choice** may bypass them. For readers, downloading a specific release directly also requires **skip approval** and **can request**. Advanced choice alone permits browsing releases, but the reader must use a guided request for approval. Owners, editors, and administrators with access to the library can choose releases directly.
 
 <img
   class="docs-shot"
@@ -84,3 +84,15 @@ Both size limits are internally clamped between 1 KB and 1 TiB regardless of wha
 <Aside type="tip">
   Already run a download manager like Listenarr? You don't need Aldus's search-provider connection at all — point it at an enabled Source folder instead, and Aldus will scan and import completed files the same way it does for anything else you already own.
 </Aside>
+
+
+### Reviewing downloads with several books
+
+Open **Sources & imports** and review the proposals from the download. Select
+**Fulfill request for … with this book** for the book the family requested, then
+import it. Leave that option unchecked when importing other books from the same
+download. The chosen book must contain the requested ebook or audiobook format.
+Dismissing every proposal marks the request as failed so it can be retried.
+
+Canceling a request also stops its linked download. Retrying a failed download
+updates the original family request; its ready notification opens the imported book.

@@ -8,6 +8,7 @@ export const representationKinds = [
 ];
 
 export type ReviewDraft = {
+  fulfillRequest?: boolean;
   title: string;
   author: string;
   workID: string;
@@ -45,6 +46,7 @@ export function mergeReviewDraft(proposal: ImportProposal, current?: ReviewDraft
     title: current.title,
     author: current.author,
     workID: current.workID,
+    fulfillRequest: current.fulfillRequest,
     series: current.series,
     seriesPosition: current.seriesPosition,
     items: Object.fromEntries(

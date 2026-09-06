@@ -10,6 +10,8 @@ import (
 	"github.com/mahcks/aldus/server/internal/auth"
 )
 
+var ErrAcquisitionMismatch = errors.New("Choose files in the requested format and the requested book. If the request was canceled, refresh the import review.")
+
 func (s *Store) processAcquisitionImport(ctx context.Context, libraryID, sourceID, scanID string) (int, error) {
 	var requestID, targetWorkID string
 	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(sc.acquisition_request_id,''),COALESCE((SELECT COALESCE(NULLIF(tr.work_id,''),p.work_id) FROM acquisition_requests ar LEFT JOIN title_request_formats f ON f.legacy_acquisition_request_id=ar.id LEFT JOIN title_requests tr ON tr.id=f.title_request_id LEFT JOIN acquisition_pairs p ON p.id=ar.pair_id WHERE ar.id=sc.acquisition_request_id LIMIT 1),'') FROM source_scans sc WHERE sc.id=? AND sc.source_id=?`, scanID, sourceID).Scan(&requestID, &targetWorkID)
@@ -40,6 +42,21 @@ func (s *Store) processAcquisitionImport(ctx context.Context, libraryID, sourceI
 		return 0, s.saveAcquisitionOutcome(ctx, requestID, scanID, "needs_review", "", "", "Multiple books were found in the completed download; review the import proposals.")
 	}
 	proposal := matched[0]
+	var requestedKind string
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE((SELECT CASE format WHEN 'ebook' THEN 'epub' ELSE 'audiobook' END FROM title_request_formats WHERE legacy_acquisition_request_id=?),'')`, requestID).Scan(&requestedKind); err != nil {
+		return 0, err
+	}
+	if requestedKind != "" {
+		matches := false
+		for _, item := range proposal.Items {
+			if item.Kind == requestedKind || (requestedKind == "audiobook" && item.Kind == "audio") {
+				matches = true
+			}
+		}
+		if !matches {
+			return 0, s.saveAcquisitionOutcome(ctx, requestID, scanID, "needs_review", proposal.ID, "", "The download does not contain the requested format. Review the files or retry with another release.")
+		}
+	}
 	if proposal.Confidence != "high" || proposal.State != "proposed" {
 		return 0, s.saveAcquisitionOutcome(ctx, requestID, scanID, "needs_review", proposal.ID, "", "The downloaded files could not be matched with high confidence.")
 	}
@@ -99,7 +116,51 @@ func (s *Store) failAcquisitionOutcome(ctx context.Context, scanID, reason strin
 	return s.saveAcquisitionOutcome(ctx, requestID, scanID, "failed", "", "", reason)
 }
 
-func updateAcceptedOutcome(ctx context.Context, tx *sql.Tx, proposalID, workID, stamp string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE acquisition_import_outcomes SET state='accepted',accepted_work_id=?,reason='',updated_at=? WHERE proposal_id=?`, workID, stamp, proposalID)
+// Every item must belong to the same acquisition scan; a matching title alone is
+// never sufficient to bind an import to a family request.
+const acquisitionProposalMatchSQL = `EXISTS(SELECT 1 FROM import_items WHERE group_id=?)
+ AND NOT EXISTS(SELECT 1 FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id
+ WHERE i.group_id=? AND (e.source_id!=a.source_id OR e.last_seen_scan_id IS NULL OR e.last_seen_scan_id!=o.scan_id))`
+
+func updateAcceptedOutcome(ctx context.Context, tx *sql.Tx, libraryID, proposalID, workID, requestID, stamp string) error {
+	if requestID != "" {
+		result, err := tx.ExecContext(ctx, `UPDATE acquisition_import_outcomes AS o SET proposal_id=?
+   WHERE acquisition_request_id=? AND state='needs_review' AND proposal_id IS NULL
+   AND EXISTS(SELECT 1 FROM acquisition_requests a WHERE a.id=o.acquisition_request_id AND a.library_id=? AND `+acquisitionProposalMatchSQL+`)`, proposalID, requestID, libraryID, proposalID, proposalID)
+		if err != nil {
+			return err
+		}
+		if n, _ := result.RowsAffected(); n != 1 {
+			return ErrConflict
+		}
+	}
+	// Validate the imported media, not just the book or an existing representation.
+	var invalid bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM acquisition_import_outcomes o
+ JOIN acquisition_requests a ON a.id=o.acquisition_request_id
+ JOIN title_request_formats f ON f.legacy_acquisition_request_id=a.id
+ JOIN title_requests t ON t.id=f.title_request_id
+ WHERE o.proposal_id=? AND o.state='needs_review' AND
+ (f.state IN ('canceled','denied') OR (t.work_id IS NOT NULL AND t.work_id!=?) OR NOT EXISTS(
+ SELECT 1 FROM media m JOIN representations r ON r.id=m.representation_id
+ JOIN media_locations l ON l.media_id=m.id JOIN import_items i ON i.source_entry_id=l.source_entry_id
+ WHERE r.work_id=? AND i.group_id=? AND m.kind=CASE f.format WHEN 'ebook' THEN 'epub' ELSE 'audio' END)))`, proposalID, workID, workID, proposalID).Scan(&invalid)
+	if err != nil {
+		return err
+	}
+	if invalid {
+		return errors.Join(ErrInvalid, ErrAcquisitionMismatch)
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE acquisition_import_outcomes SET state='accepted',accepted_work_id=?,reason='',updated_at=? WHERE proposal_id=? AND state='needs_review'`, workID, stamp, proposalID)
 	return err
+}
+
+func settleUnboundAcquisition(ctx context.Context, tx *sql.Tx, libraryID, proposalID, stamp string) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE acquisition_import_outcomes AS o SET state='failed',reason='All import proposals from this download were dismissed or imported without fulfilling the request.',updated_at=?
+ WHERE state='needs_review' AND proposal_id IS NULL
+ AND EXISTS(SELECT 1 FROM acquisition_requests a WHERE a.id=o.acquisition_request_id AND a.library_id=? AND `+acquisitionProposalMatchSQL+`)
+ AND NOT EXISTS(SELECT 1 FROM import_groups g JOIN import_items i ON i.group_id=g.id JOIN source_entries e ON e.id=i.source_entry_id WHERE g.decision='' AND e.last_seen_scan_id=o.scan_id)`, stamp, libraryID, proposalID, proposalID); err != nil {
+		return err
+	}
+	return nil
 }

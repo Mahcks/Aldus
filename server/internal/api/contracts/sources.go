@@ -72,20 +72,22 @@ type SourceEntry struct {
 	PathHints    map[string]any `json:"path_hints"`
 }
 type ImportProposal struct {
-	ID               string               `json:"id"`
-	LibraryID        string               `json:"library_id"`
-	State            string               `json:"state"`
-	Confidence       string               `json:"confidence"`
-	Title            string               `json:"title"`
-	Author           string               `json:"author"`
-	NormalizedTitle  string               `json:"normalized_title"`
-	NormalizedAuthor string               `json:"normalized_author"`
-	ExistingWorkID   string               `json:"existing_work_id,omitempty"`
-	Reasons          []string             `json:"reasons"`
-	Revision         int                  `json:"revision"`
-	Items            []ImportProposalItem `json:"items"`
-	CreatedAt        time.Time            `json:"created_at"`
-	UpdatedAt        time.Time            `json:"updated_at"`
+	AcquisitionRequestID string               `json:"acquisition_request_id,omitempty"`
+	AcquisitionTitle     string               `json:"acquisition_title,omitempty"`
+	ID                   string               `json:"id"`
+	LibraryID            string               `json:"library_id"`
+	State                string               `json:"state"`
+	Confidence           string               `json:"confidence"`
+	Title                string               `json:"title"`
+	Author               string               `json:"author"`
+	NormalizedTitle      string               `json:"normalized_title"`
+	NormalizedAuthor     string               `json:"normalized_author"`
+	ExistingWorkID       string               `json:"existing_work_id,omitempty"`
+	Reasons              []string             `json:"reasons"`
+	Revision             int                  `json:"revision"`
+	Items                []ImportProposalItem `json:"items"`
+	CreatedAt            time.Time            `json:"created_at"`
+	UpdatedAt            time.Time            `json:"updated_at"`
 }
 type ImportProposalItem struct {
 	SourceEntryID string         `json:"source_entry_id"`
@@ -97,13 +99,14 @@ type ImportProposalItem struct {
 	Evidence      map[string]any `json:"evidence"`
 }
 type AcceptImportProposalRequest struct {
-	Series           *string            `json:"series,omitempty"`
-	SeriesPosition   *string            `json:"series_position,omitempty"`
-	ExpectedRevision int                `json:"expected_revision"`
-	WorkID           string             `json:"work_id,omitempty"`
-	Title            string             `json:"title"`
-	Author           string             `json:"author"`
-	Items            []AcceptImportItem `json:"items"`
+	AcquisitionRequestID string             `json:"acquisition_request_id,omitempty"`
+	Series               *string            `json:"series,omitempty"`
+	SeriesPosition       *string            `json:"series_position,omitempty"`
+	ExpectedRevision     int                `json:"expected_revision"`
+	WorkID               string             `json:"work_id,omitempty"`
+	Title                string             `json:"title"`
+	Author               string             `json:"author"`
+	Items                []AcceptImportItem `json:"items"`
 }
 type AcceptImportItem struct {
 	Narrators        *[]string `json:"narrators,omitempty"`

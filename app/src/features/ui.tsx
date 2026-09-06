@@ -4,6 +4,7 @@ import {
   useId,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PropsWithChildren,
   type ReactNode,
 } from 'react';
@@ -496,13 +497,26 @@ export function Checkbox({
   const handlePressIn = () => setPressed(true);
   const handlePressOut = () => setPressed(false);
 
+  const webKeyboardProps =
+    Platform.OS === 'web'
+      ? {
+          onKeyDown(event: ReactKeyboardEvent) {
+            if (event.key !== ' ') return;
+            event.preventDefault();
+            if (!disabled && !event.repeat) onPress();
+          },
+        }
+      : {};
+
   const boxClass = checked ? 'border-accent bg-accent' : 'border-line bg-paper';
   const stateClass = disabled ? '' : resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
+      {...webKeyboardProps}
       accessibilityRole="checkbox"
       accessibilityLabel={label}
+      aria-checked={checked}
       accessibilityState={{ checked, disabled }}
       disabled={disabled}
       onBlur={handleBlur}
@@ -512,10 +526,14 @@ export function Checkbox({
       onPress={onPress}
       className={`min-h-11 flex-row items-center gap-2 rounded-control ${stateClass} ${disabled ? 'opacity-50' : ''}`}
     >
-      <View className={`h-6 w-6 items-center justify-center rounded-control border ${boxClass}`}>
+      <View
+        className={`h-6 w-6 shrink-0 items-center justify-center rounded-control border ${boxClass}`}
+      >
         {checked ? <AppIcon name="check" size={16} color={colors.onAccent} /> : null}
       </View>
-      <Text className={`text-base ${disabled ? 'text-muted' : 'text-ink'}`}>{label}</Text>
+      <Text className={`min-w-0 flex-1 text-base ${disabled ? 'text-muted' : 'text-ink'}`}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

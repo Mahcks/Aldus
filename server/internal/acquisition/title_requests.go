@@ -142,8 +142,8 @@ func (s *TitleRequestStore) Poll(ctx context.Context) error {
 
 func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 	for range 10 {
-		var requestID, requestedBy, title, format, current, legacyState, diagnosis string
-		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,COALESCE(r.requested_by,''),r.title,f.format,f.state,a.fulfillment_state,a.download_error FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('submitting','downloading','scanning','needs_review') AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis)
+		var requestID, requestedBy, title, format, current, legacyState, diagnosis, legacyID string
+		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,COALESCE(r.requested_by,''),r.title,f.format,f.state,a.fulfillment_state,a.download_error,a.id FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('submitting','downloading','scanning','needs_review','failed') AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis, &legacyID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -166,7 +166,7 @@ func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("sync title request fulfillment: %w", err)
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error=?,next_search_at=NULLIF(?,''),updated_at=? WHERE title_request_id=? AND format=? AND state=?`, legacyState, diagnosis, nextSearch, stamp, requestID, format, current)
+		result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error=?,next_search_at=NULLIF(?,''),updated_at=? WHERE title_request_id=? AND format=? AND state=? AND legacy_acquisition_request_id=?`, legacyState, diagnosis, nextSearch, stamp, requestID, format, current, legacyID)
 		if err == nil {
 			var changed int64
 			changed, err = result.RowsAffected()
@@ -339,11 +339,11 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		_, err := s.db.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, existingState, stamp, value.requestID, value.format)
 		return err
 	}
-	legacy, err := s.acquisitions.Create(ctx, actor, value.libraryID, value.sourceID, query)
+	legacy, err := s.acquisitions.create(ctx, actor, value.libraryID, value.sourceID, query)
 	if err != nil {
 		return s.deferClaim(ctx, value, "search_failed", err.Error())
 	}
-	results, err := s.acquisitions.Search(ctx, actor, value.libraryID, legacy.ID)
+	results, err := s.acquisitions.search(ctx, actor, value.libraryID, legacy.ID)
 	if err != nil {
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return s.deferClaim(ctx, value, "search_failed", err.Error())
@@ -386,7 +386,7 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return nil
 	}
-	selected, selectErr := s.acquisitions.Select(ctx, actor, value.libraryID, legacy.ID, results[0].ID)
+	selected, selectErr := s.acquisitions.selectGuidedRelease(ctx, value, legacy.ID, results[0].ID)
 	if selectErr != nil {
 		current, currentErr := s.acquisitions.request(ctx, legacy.ID)
 		if currentErr != nil || (current.FulfillmentState != "submitting" && current.FulfillmentState != "downloading") {
@@ -404,7 +404,7 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		return fmt.Errorf("finish title request submission: %w", err)
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, nextState, stamp, value.requestID, value.format)
+	result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching' AND legacy_acquisition_request_id=?`, nextState, stamp, value.requestID, value.format, legacy.ID)
 	if err != nil {
 		return fmt.Errorf("finish title request submission: %w", err)
 	}
@@ -722,6 +722,10 @@ func (s *TitleRequestStore) Deny(ctx context.Context, actor auth.User, libraryID
 }
 
 func (s *TitleRequestStore) Cancel(ctx context.Context, actor auth.User, libraryID, id, format string) error {
+	if s.acquisitions != nil {
+		s.acquisitions.selectMu.Lock()
+		defer s.acquisitions.selectMu.Unlock()
+	}
 	if format != "ebook" && format != "audiobook" {
 		return ErrInvalid
 	}
@@ -739,8 +743,8 @@ func (s *TitleRequestStore) Cancel(ctx context.Context, actor auth.User, library
 		if state == "available" || state == "denied" || state == "canceled" || state == "failed" {
 			return ErrInvalid
 		}
-		if legacyID != "" && (legacyState == "submitting" || legacyState == "downloading") {
-			if err := s.acquisitions.Cancel(ctx, actor, libraryID, legacyID); err != nil {
+		if legacyID != "" && (legacyState == "awaiting_selection" || legacyState == "submitting" || legacyState == "downloading") {
+			if err := s.acquisitions.cancel(ctx, actor, libraryID, legacyID); err != nil {
 				return fmt.Errorf("cancel title request download: %w", err)
 			}
 		}

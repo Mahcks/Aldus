@@ -291,6 +291,7 @@ export default function SourcesAdministration() {
     setConflict('');
     try {
       await api.acceptImportProposal(selectedLibraryID, review.id, {
+        acquisition_request_id: draft.fulfillRequest ? review.acquisition_request_id : undefined,
         expected_revision: review.revision,
         work_id: draft.workID,
         title: draft.title,
@@ -324,7 +325,7 @@ export default function SourcesAdministration() {
           await loadAdministration();
         }
       } else {
-        setError(errorMessage(value));
+        setConflict(errorMessage(value));
       }
     } finally {
       setBusy(false);

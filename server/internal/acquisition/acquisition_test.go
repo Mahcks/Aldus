@@ -277,7 +277,7 @@ func TestStoreAuthorizesEditorsAndBindsSelectionsToSearchResults(t *testing.T) {
 	if _, err := store.SelectDiscovery(ctx, editor, "library", discovery.ID, discovery.Results[0].ID); !errors.Is(err, ErrNotFound) || addCount != 1 {
 		t.Fatalf("repeated selection err=%v add count=%d", err, addCount)
 	}
-	if _, err := db.Exec(`UPDATE library_members SET can_request_acquisitions=1 WHERE library_id='library' AND user_id='reader'`); err != nil {
+	if _, err := db.Exec(`UPDATE library_members SET can_request_acquisitions=1,can_advanced_acquisition_request=1,can_bypass_acquisition_approval=1 WHERE library_id='library' AND user_id='reader'`); err != nil {
 		t.Fatal(err)
 	}
 	reader := auth.User{ID: "reader"}
@@ -399,6 +399,10 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 		t.Fatal(err)
 	}
 	client, _ := New(Options{QBitURL: server.URL, Category: "aldus"})
+	// This fixture exercises direct release operations, which require both permissions.
+	if _, err := db.Exec("UPDATE library_members SET can_advanced_acquisition_request=1,can_bypass_acquisition_approval=1"); err != nil {
+		t.Fatal(err)
+	}
 	store := NewStore(db, client)
 	store.SetHandoff(func(context.Context, string, string, string, string) (string, error) { return "", nil })
 	store.markDownloadProblem(ctx, "request", "download client unavailable")

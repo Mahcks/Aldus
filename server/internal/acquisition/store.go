@@ -155,12 +155,13 @@ type discoverySession struct {
 }
 
 type Store struct {
-	db               *sql.DB
-	client           *Client
-	handoff          func(context.Context, string, string, string, string) (string, error)
-	pairHandoff      func(context.Context, ReadyPair) error
-	retryScan        func(context.Context, string, string) error
-	downloadIngress  string
+	db              *sql.DB
+	client          *Client
+	handoff         func(context.Context, string, string, string, string) (string, error)
+	pairHandoff     func(context.Context, ReadyPair) error
+	retryScan       func(context.Context, string, string) error
+	downloadIngress string
+	// ponytail: serialize provider mutations globally; use per-request locks if submission throughput requires it.
 	selectMu         sync.Mutex
 	metadataMu       sync.Mutex
 	metadataCache    map[string]cachedMetadata
@@ -487,10 +488,18 @@ func (s *Store) MarkTrackerSeen(ctx context.Context, actor auth.User) error {
 }
 
 func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID string) error {
+	s.selectMu.Lock()
+	defer s.selectMu.Unlock()
+	var permissionErr error
+	actor, permissionErr = s.authorizeRelease(ctx, actor, libraryID, true)
+	if permissionErr != nil {
+		return permissionErr
+	}
+
 	var selectedURL, scanID, state, torrentHash string
 	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
 	args = append(args, actor.Admin, actor.ID)
-	err := s.db.QueryRowContext(ctx, `SELECT r.selected_url,COALESCE(r.scan_id,''),r.fulfillment_state,r.torrent_hash FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&selectedURL, &scanID, &state, &torrentHash)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(r.selected_url,''),COALESCE(r.scan_id,''),r.fulfillment_state,r.torrent_hash FROM acquisition_requests r LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.id=? AND r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&selectedURL, &scanID, &state, &torrentHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -498,6 +507,13 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 		return err
 	}
 	if state != "failed" {
+		return ErrInvalid
+	}
+	var canceled bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM title_request_formats WHERE legacy_acquisition_request_id=? AND state IN ('canceled','denied','available'))`, requestID).Scan(&canceled); err != nil {
+		return err
+	}
+	if canceled {
 		return ErrInvalid
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -544,6 +560,12 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 }
 
 func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestID string) error {
+	s.selectMu.Lock()
+	defer s.selectMu.Unlock()
+	return s.cancel(ctx, actor, libraryID, requestID)
+}
+
+func (s *Store) cancel(ctx context.Context, actor auth.User, libraryID, requestID string) error {
 	var state, torrentHash string
 	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
 	args = append(args, actor.Admin, actor.ID)
@@ -554,8 +576,21 @@ func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestI
 	if err != nil {
 		return err
 	}
+	if state == "awaiting_selection" {
+		_, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_error='Canceled by user.',updated_at=? WHERE id=? AND fulfillment_state='awaiting_selection'`, time.Now().UTC().Format(time.RFC3339Nano), requestID)
+		return err
+	}
 	if state != "submitting" && state != "downloading" {
 		return ErrInvalid
+	}
+	var shared bool
+	if torrentHash != "" {
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM acquisition_requests WHERE id!=? AND lower(torrent_hash)=lower(?) AND fulfillment_state NOT IN ('failed','available'))`, requestID, torrentHash).Scan(&shared); err != nil {
+			return err
+		}
+		if shared {
+			return errors.New("this download is shared by another active request; it cannot be deleted")
+		}
 	}
 	client, err := s.configuredClient(ctx)
 	if err != nil {
@@ -706,6 +741,8 @@ func (s *Store) Poll(ctx context.Context) error {
 }
 
 func (s *Store) recoverSubmissions(ctx context.Context) error {
+	s.selectMu.Lock()
+	defer s.selectMu.Unlock()
 	rows, err := s.db.QueryContext(ctx, `SELECT id,selected_url,torrent_hash,updated_at FROM acquisition_requests WHERE fulfillment_state='submitting' ORDER BY created_at,id`)
 	if err != nil {
 		return fmt.Errorf("list acquisition submissions: %w", err)
@@ -784,6 +821,15 @@ func (s *Store) completedRelativePath(ctx context.Context, sourceID, completedPa
 
 func (s *Store) reconcileFulfillment(ctx context.Context) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	// An accepted proposal is not ready until it supplies the requested media.
+	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_import_outcomes AS o SET state='failed',reason='The imported book does not contain usable media in the requested format. Review the import and retry.',updated_at=?
+ WHERE o.state='accepted' AND EXISTS(SELECT 1 FROM acquisition_requests a WHERE a.id=o.acquisition_request_id AND a.fulfillment_state IN ('scanning','needs_review')) AND EXISTS(SELECT 1 FROM title_request_formats f WHERE f.legacy_acquisition_request_id=o.acquisition_request_id AND NOT EXISTS(
+ SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id
+ JOIN media_locations l ON l.media_id=m.id JOIN source_entries e ON e.id=l.source_entry_id
+ JOIN library_sources s ON s.id=e.source_id JOIN import_items i ON i.source_entry_id=e.id
+ WHERE r.work_id=o.accepted_work_id AND i.group_id=o.proposal_id AND e.state='registered' AND s.enabled=1 AND s.deleted_at IS NULL AND m.kind=CASE f.format WHEN 'ebook' THEN 'epub' ELSE 'audio' END))`, now); err != nil {
+		return fmt.Errorf("validate acquired format: %w", err)
+	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET fulfillment_state='failed',download_state='ready',download_error=COALESCE(NULLIF((SELECT reason FROM acquisition_import_outcomes WHERE acquisition_request_id=acquisition_requests.id),''),'Source scan failed.'),updated_at=? WHERE fulfillment_state IN ('scanning','needs_review') AND EXISTS(SELECT 1 FROM acquisition_import_outcomes o WHERE o.acquisition_request_id=acquisition_requests.id AND o.state='failed')`, now); err != nil {
 		return fmt.Errorf("reconcile failed acquisition scans: %w", err)
 	}
@@ -886,6 +932,14 @@ func (s *Store) markDownloadProblem(ctx context.Context, id, diagnosis string) {
 }
 
 func (s *Store) Create(ctx context.Context, actor auth.User, libraryID, sourceID, query string) (Request, error) {
+	actor, err := s.authorizeRelease(ctx, actor, libraryID, false)
+	if err != nil {
+		return Request{}, err
+	}
+	return s.create(ctx, actor, libraryID, sourceID, query)
+}
+
+func (s *Store) create(ctx context.Context, actor auth.User, libraryID, sourceID, query string) (Request, error) {
 	query = strings.TrimSpace(query)
 	if query == "" || len(query) > 500 {
 		return Request{}, ErrInvalid
@@ -949,6 +1003,14 @@ func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]
 }
 
 func (s *Store) Search(ctx context.Context, actor auth.User, libraryID, id string) ([]SearchResult, error) {
+	actor, err := s.authorizeRelease(ctx, actor, libraryID, false)
+	if err != nil {
+		return nil, err
+	}
+	return s.search(ctx, actor, libraryID, id)
+}
+
+func (s *Store) search(ctx context.Context, actor auth.User, libraryID, id string) ([]SearchResult, error) {
 	query, err := s.authorizedQuery(ctx, actor, libraryID, id)
 	if err != nil {
 		return nil, err
@@ -1040,6 +1102,12 @@ func (s *Store) Discover(ctx context.Context, actor auth.User, libraryID, source
 }
 
 func (s *Store) SelectDiscovery(ctx context.Context, actor auth.User, libraryID, discoveryID, resultID string) (Request, error) {
+	var permissionErr error
+	actor, permissionErr = s.authorizeRelease(ctx, actor, libraryID, true)
+	if permissionErr != nil {
+		return Request{}, permissionErr
+	}
+
 	s.discoveryMu.Lock()
 	discovery, ok := s.discoveries[discoveryID]
 	result, resultOK := discovery.Results[resultID]
@@ -1072,6 +1140,12 @@ func (s *Store) SelectDiscovery(ctx context.Context, actor auth.User, libraryID,
 }
 
 func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, libraryID, discoveryID string, resultIDs []string) (Pair, error) {
+	var permissionErr error
+	actor, permissionErr = s.authorizeRelease(ctx, actor, libraryID, true)
+	if permissionErr != nil {
+		return Pair{}, permissionErr
+	}
+
 	if len(resultIDs) != 2 || resultIDs[0] == resultIDs[1] {
 		return Pair{}, ErrInvalid
 	}
@@ -1167,13 +1241,21 @@ func (s *Store) persistAdvisory(ctx context.Context, requestID, pairID string, r
 }
 
 func (s *Store) Select(ctx context.Context, actor auth.User, libraryID, requestID, resultID string) (Request, error) {
+	// Recheck authority after waiting for any other submission.
+	s.selectMu.Lock()
+	defer s.selectMu.Unlock()
+
+	actor, err := s.authorizeRelease(ctx, actor, libraryID, true)
+	if err != nil {
+		return Request{}, err
+	}
+	return s.selectRelease(ctx, actor, libraryID, requestID, resultID)
+}
+
+func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, requestID, resultID string) (Request, error) {
 	if strings.TrimSpace(resultID) == "" {
 		return Request{}, ErrInvalid
 	}
-	// Aldus runs one acquisition worker. Serializing this short administrative
-	// path prevents two retries from adding the same release before state is saved.
-	s.selectMu.Lock()
-	defer s.selectMu.Unlock()
 	if _, err := s.authorizedSelectableQuery(ctx, actor, libraryID, requestID); err != nil {
 		return Request{}, err
 	}

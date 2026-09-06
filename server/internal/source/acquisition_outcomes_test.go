@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
+	"github.com/mahcks/aldus/server/internal/auth"
 	"os"
 	"path/filepath"
 	"testing"
@@ -84,6 +86,26 @@ func TestAcquisitionImportOutcomes(t *testing.T) {
 	})
 }
 
+func TestAcquisitionRejectsWrongRequestedFormat(t *testing.T) {
+	for _, kind := range []string{"epub", "audiobook"} {
+		t.Run(kind, func(t *testing.T) {
+			store, db, root := outcomeFixture(t, "")
+			linkOutcomeTarget(t, db, "")
+			if kind == "audiobook" {
+				if _, err := db.Exec(`UPDATE title_request_formats SET format='ebook'`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			addOutcomeProposal(t, db, root, "request", "scan", "proposal", kind, "high")
+			imported, err := store.processAcquisitionImport(context.Background(), "library", "source", "scan")
+			if err != nil || imported != 0 {
+				t.Fatalf("wrong format imported=%d err=%v", imported, err)
+			}
+			assertOutcome(t, db, "request", "needs_review", "proposal", false)
+		})
+	}
+}
+
 func outcomeFixture(t *testing.T, _ string) (*Store, *sql.DB, string) {
 	t.Helper()
 	ctx := context.Background()
@@ -126,7 +148,7 @@ func outcomeFixture(t *testing.T, _ string) (*Store, *sql.DB, string) {
 
 func linkOutcomeTarget(t *testing.T, db *sql.DB, workID string) {
 	t.Helper()
-	if _, err := db.Exec(`INSERT INTO title_requests(id,library_id,requested_by,work_id,title,created_at,updated_at) VALUES('title-request','library','user',?,'Book','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO title_request_formats(title_request_id,format,state,legacy_acquisition_request_id,created_at,updated_at) VALUES('title-request','audiobook','scanning','request','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, workID); err != nil {
+	if _, err := db.Exec(`INSERT INTO title_requests(id,library_id,requested_by,work_id,title,created_at,updated_at) VALUES('title-request','library','user',NULLIF(?,''),'Book','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO title_request_formats(title_request_id,format,state,legacy_acquisition_request_id,created_at,updated_at) VALUES('title-request','audiobook','scanning','request','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, workID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -138,7 +160,9 @@ func addOutcomeProposal(t *testing.T, db *sql.DB, root, _, scanID, proposalID, k
 	if kind == "audiobook" {
 		name, detected = "book.mp3", "audio"
 	}
-	content := []byte("valid immutable test media")
+	name = proposalID + "-" + name
+	entryID := proposalID + "-entry"
+	content := []byte("valid immutable test media " + proposalID)
 	path := filepath.Join(root, name)
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
@@ -149,13 +173,13 @@ func addOutcomeProposal(t *testing.T, db *sql.DB, root, _, scanID, proposalID, k
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256(content))
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := db.Exec(`INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,detected_kind,metadata_json,last_seen_scan_id) VALUES('entry','source',?,?,?,?,'registered',?,?,?,'{}',?)`, name, len(content), info.ModTime().UTC().Format(time.RFC3339Nano), hash, now, now, detected, scanID); err != nil {
+	if _, err := db.Exec(`INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,detected_kind,metadata_json,last_seen_scan_id) VALUES(?,'source',?,?,?,?,'registered',?,?,?,'{}',?)`, entryID, name, len(content), info.ModTime().UTC().Format(time.RFC3339Nano), hash, now, now, detected, scanID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO import_groups(id,library_id,logical_key,content_key,state,confidence,proposed_title,proposed_author,normalized_title,normalized_author,reasons_json,revision,created_at,updated_at) VALUES(?,'library','logical','content','proposed',?,'Book','Author','book','author','[]',1,?,?)`, proposalID, confidence, now, now); err != nil {
+	if _, err := db.Exec(`INSERT INTO import_groups(id,library_id,logical_key,content_key,state,confidence,proposed_title,proposed_author,normalized_title,normalized_author,reasons_json,revision,created_at,updated_at) VALUES(?,'library',?,?,'proposed',?,'Book','Author','book','author','[]',1,?,?)`, proposalID, proposalID, proposalID, confidence, now, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json) VALUES(?,'entry',?,'Imported','{}')`, proposalID, kind); err != nil {
+	if _, err := db.Exec(`INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json) VALUES(?,?,?,'Imported','{}')`, proposalID, entryID, kind); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -168,5 +192,90 @@ func assertOutcome(t *testing.T, db *sql.DB, requestID, state, proposalID string
 	}
 	if gotState != state || gotProposal != proposalID || (wantWork && workID == "") || (!wantWork && workID != "") || (state == "failed" && reason == "") {
 		t.Fatalf("outcome state=%q proposal=%q work=%q reason=%q", gotState, gotProposal, workID, reason)
+	}
+}
+
+func TestMultiBookReviewExplicitlyFulfillsRequest(t *testing.T) {
+	for _, action := range []string{"fulfill", "ignore all", "wrong scan", "wrong format", "wrong library", "unauthorized", "unrelated import", "import all independently"} {
+		t.Run(action, func(t *testing.T) {
+			ctx := context.Background()
+			store, db, root := outcomeFixture(t, "")
+			linkOutcomeTarget(t, db, "")
+			addOutcomeProposal(t, db, root, "request", "scan", "one", "audiobook", "high")
+			addOutcomeProposal(t, db, root, "request", "scan", "two", "epub", "high")
+			if _, err := store.processAcquisitionImport(ctx, "library", "source", "scan"); err != nil {
+				t.Fatal(err)
+			}
+			assertOutcome(t, db, "request", "needs_review", "", false)
+			actor := auth.User{Admin: true}
+			if action == "unauthorized" {
+				actor = auth.User{ID: "user"}
+			}
+			if action == "ignore all" {
+				for _, id := range []string{"one", "two"} {
+					if err := store.IgnoreProposal(ctx, actor, "library", id, 1); err != nil {
+						t.Fatal(err)
+					}
+				}
+				assertOutcome(t, db, "request", "failed", "", false)
+				return
+			}
+			if action == "wrong library" {
+				if _, err := db.Exec(`INSERT INTO libraries(id,name,created_at,updated_at) VALUES('other','Other','2026-01-01','2026-01-01'); UPDATE acquisition_requests SET library_id='other'`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id, kind := "one", "audiobook"
+			if action == "wrong format" {
+				id, kind = "two", "epub"
+			}
+			if action == "wrong scan" {
+				if _, err := db.Exec(`UPDATE source_entries SET last_seen_scan_id=NULL WHERE id='one-entry'`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			requestID := "request"
+			if action == "unrelated import" || action == "import all independently" {
+				requestID = ""
+			}
+			request := AcceptRequest{ExpectedRevision: 1, AcquisitionRequestID: requestID, Title: "Book", Items: []AcceptItem{{SourceEntryID: id + "-entry", Kind: kind, Label: "Imported"}}}
+			_, err := store.AcceptProposal(ctx, actor, "library", id, request)
+			if action == "unauthorized" {
+				if !errors.Is(err, ErrNotFound) {
+					t.Fatalf("unauthorized acceptance: %v", err)
+				}
+				return
+			}
+			if action == "wrong scan" || action == "wrong format" || action == "wrong library" {
+				if !errors.Is(err, ErrInvalid) && !errors.Is(err, ErrConflict) {
+					t.Fatalf("invalid fulfillment: %v", err)
+				}
+				assertOutcome(t, db, "request", "needs_review", "", false)
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if action == "unrelated import" {
+				assertOutcome(t, db, "request", "needs_review", "", false)
+				return
+			}
+			if action == "import all independently" {
+				_, err := store.AcceptProposal(ctx, actor, "library", "two", AcceptRequest{ExpectedRevision: 1, Title: "Other", Items: []AcceptItem{{SourceEntryID: "two-entry", Kind: "epub", Label: "EPUB"}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertOutcome(t, db, "request", "failed", "", false)
+				return
+			}
+			assertOutcome(t, db, "request", "accepted", "one", true)
+			if _, err := store.AcceptProposal(ctx, actor, "library", id, request); !errors.Is(err, ErrConflict) {
+				t.Fatalf("repeat acceptance: %v", err)
+			}
+			if err := store.IgnoreProposal(ctx, actor, "library", "two", 1); err != nil {
+				t.Fatal(err)
+			}
+			assertOutcome(t, db, "request", "accepted", "one", true)
+		})
 	}
 }

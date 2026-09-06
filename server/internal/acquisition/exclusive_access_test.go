@@ -24,6 +24,10 @@ func TestExclusiveMembershipRestrictsAcquisitionDestinations(t *testing.T) {
 		INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('family-source','family','local','Family downloads','/family',1,'2026-01-01','2026-01-01'),('kids-source','kids','local','Kids downloads','/kids',1,'2026-01-01','2026-01-01');`); err != nil {
 		t.Fatal(err)
 	}
+	// This fixture exercises direct release operations, which require both permissions.
+	if _, err := db.Exec("UPDATE library_members SET can_advanced_acquisition_request=1,can_bypass_acquisition_approval=1"); err != nil {
+		t.Fatal(err)
+	}
 	store := NewStore(db, nil)
 	reader := auth.User{ID: "reader"}
 	destinations, err := store.Destinations(ctx, reader)

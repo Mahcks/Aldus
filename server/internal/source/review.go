@@ -21,13 +21,14 @@ import (
 var ErrConflict = errors.New("proposal changed")
 
 type AcceptRequest struct {
-	Series           *string
-	SeriesPosition   *string
-	ExpectedRevision int
-	WorkID           string
-	Title            string
-	Author           string
-	Items            []AcceptItem
+	AcquisitionRequestID string
+	Series               *string
+	SeriesPosition       *string
+	ExpectedRevision     int
+	WorkID               string
+	Title                string
+	Author               string
+	Items                []AcceptItem
 }
 
 type AcceptItem struct {
@@ -307,7 +308,10 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 	if n != 1 {
 		return "", ErrConflict
 	}
-	if err := updateAcceptedOutcome(ctx, tx, proposalID, workID, stamp); err != nil {
+	if err := updateAcceptedOutcome(ctx, tx, libraryID, proposalID, workID, request.AcquisitionRequestID, stamp); err != nil {
+		return "", err
+	}
+	if err := settleUnboundAcquisition(ctx, tx, libraryID, proposalID, stamp); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {
@@ -339,6 +343,10 @@ func (s *Store) IgnoreProposal(ctx context.Context, actor auth.User, libraryID, 
 	if _, err := tx.ExecContext(ctx, `UPDATE acquisition_import_outcomes SET state='failed',reason='The import proposal was dismissed during review.',updated_at=? WHERE proposal_id=?`, time.Now().UTC().Format(time.RFC3339Nano), id); err != nil {
 		return err
 	}
+	if err := settleUnboundAcquisition(ctx, tx, libraryID, id, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+
 	return tx.Commit()
 }
 

@@ -1,6 +1,6 @@
 import type { ImportProposal, Representation, Work } from '@/generated/api';
 import { representationKinds, type ReviewDraft } from '@/features/source-administration';
-import { Button, Dialog, Field, Notice, Row, Select } from '@/features/ui';
+import { Button, Checkbox, Dialog, Field, Notice, Row, Select } from '@/features/ui';
 import { Pressable, Text, View } from '@/features/tw';
 import { humanState } from './helpers';
 import { TechnicalDetails } from './TechnicalDetails';
@@ -41,7 +41,6 @@ export function ReviewDialog({
   return (
     <Dialog visible title="Review import proposal" onClose={onClose} wide>
       <View className="gap-6 pb-1.5">
-        {conflict ? <Notice danger>{conflict}</Notice> : null}
         <View>
           <Text className="text-2xl font-sans-bold text-ink">
             {proposal.title || 'Untitled discovery'}
@@ -131,6 +130,22 @@ export function ReviewDialog({
             />
           ))}
         </View>
+
+        {proposal.acquisition_request_id ? (
+          <View className="gap-2">
+            <Checkbox
+              label={`Fulfill request for “${proposal.acquisition_title}” with this book`}
+              checked={draft.fulfillRequest ?? false}
+              onPress={() => onDraftChange({ ...draft, fulfillRequest: !draft.fulfillRequest })}
+            />
+            <Text className="text-sm text-muted">
+              Choose this only if these files are the requested book. Other books can be imported
+              separately.
+            </Text>
+          </View>
+        ) : null}
+
+        {conflict ? <Notice danger>{conflict}</Notice> : null}
 
         <Row>
           <Button

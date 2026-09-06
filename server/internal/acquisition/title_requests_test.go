@@ -231,6 +231,11 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 	if err := store.Cancel(ctx, owner, "library", canceled.ID, "ebook"); err != nil {
 		t.Fatal(err)
 	}
+	// These requests are already approved. Their requester now has only ordinary
+	// reader permission; the worker must not depend on public release authority.
+	if _, err := db.Exec("UPDATE library_members SET role='reader',can_bypass_acquisition_approval=0 WHERE user_id='owner'"); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}

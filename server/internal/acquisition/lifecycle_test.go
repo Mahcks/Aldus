@@ -62,6 +62,10 @@ func TestRequestLifecycleFromSearchToAvailableWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This fixture exercises direct release operations, which require both permissions.
+	if _, err := db.Exec("UPDATE library_members SET can_advanced_acquisition_request=1,can_bypass_acquisition_approval=1"); err != nil {
+		t.Fatal(err)
+	}
 	store := NewStore(db, client)
 	store.SetHandoff(func(_ context.Context, libraryID, sourceID, requestID, completedPath string) (string, error) {
 		if libraryID != "library" || sourceID != "source" || completedPath != filepath.Join(root, "Alice") {

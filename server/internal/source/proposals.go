@@ -17,20 +17,22 @@ import (
 )
 
 type Proposal struct {
-	ID               string
-	LibraryID        string
-	State            string
-	Confidence       string
-	Title            string
-	Author           string
-	NormalizedTitle  string
-	NormalizedAuthor string
-	ExistingWorkID   string
-	Reasons          []string
-	Revision         int
-	Items            []ProposalItem
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	AcquisitionRequestID string
+	AcquisitionTitle     string
+	ID                   string
+	LibraryID            string
+	State                string
+	Confidence           string
+	Title                string
+	Author               string
+	NormalizedTitle      string
+	NormalizedAuthor     string
+	ExistingWorkID       string
+	Reasons              []string
+	Revision             int
+	Items                []ProposalItem
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type ProposalItem struct {
@@ -248,6 +250,10 @@ func (s *Store) Proposals(ctx context.Context, actor auth.User, libraryID string
 		return nil, err
 	}
 	for i := range out {
+		err = s.db.QueryRowContext(ctx, `SELECT a.id,COALESCE(t.title,a.query) FROM acquisition_import_outcomes o JOIN acquisition_requests a ON a.id=o.acquisition_request_id LEFT JOIN title_request_formats f ON f.legacy_acquisition_request_id=a.id LEFT JOIN title_requests t ON t.id=f.title_request_id WHERE a.library_id=? AND o.state='needs_review' AND o.proposal_id IS NULL AND `+acquisitionProposalMatchSQL+` LIMIT 1`, libraryID, out[i].ID, out[i].ID).Scan(&out[i].AcquisitionRequestID, &out[i].AcquisitionTitle)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
 		out[i].Items, err = s.proposalItems(ctx, out[i].ID)
 		if err != nil {
 			return nil, err

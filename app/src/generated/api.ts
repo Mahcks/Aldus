@@ -697,6 +697,8 @@ export interface SourceEntry {
   path_hints: { [key: string]: any};
 }
 export interface ImportProposal {
+  acquisition_request_id?: string;
+  acquisition_title?: string;
   id: string;
   library_id: string;
   state: string;
@@ -722,6 +724,7 @@ export interface ImportProposalItem {
   evidence: { [key: string]: any};
 }
 export interface AcceptImportProposalRequest {
+  acquisition_request_id?: string;
   series?: string;
   series_position?: string;
   expected_revision: number /* int */;

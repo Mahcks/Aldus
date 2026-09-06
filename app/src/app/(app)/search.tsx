@@ -368,6 +368,20 @@ export default function SearchScreen() {
     );
   }
 
+  function canSubmitReleaseFor(result: TitleSearchResult) {
+    const destination = destinationFor(result, destinations, libraryID);
+    const library = libraries.find((item) => item.id === destination?.library_id);
+    if (!destination || !library) return false;
+    return Boolean(
+      auth.user?.admin ||
+      library.role === 'owner' ||
+      library.role === 'editor' ||
+      (library.can_request_acquisitions &&
+        library.can_advanced_acquisition_request &&
+        library.can_bypass_acquisition_approval),
+    );
+  }
+
   function openResult(result: TitleSearchResult) {
     if (result.work_id) {
       router.push(`/work/${result.work_id}`);
@@ -477,7 +491,7 @@ export default function SearchScreen() {
   }
 
   async function chooseRelease(result: AcquisitionResult) {
-    if (!advancedTarget || !discoveryID) return;
+    if (!advancedTarget || !discoveryID || !canSubmitReleaseFor(advancedTarget)) return;
     const generation = advancedGeneration.current;
     const destination = destinationFor(advancedTarget, destinations, libraryID);
     if (!destination) return;
@@ -497,7 +511,7 @@ export default function SearchScreen() {
   }
 
   async function choosePair(first: AcquisitionResult, second: AcquisitionResult) {
-    if (!advancedTarget || !discoveryID) return;
+    if (!advancedTarget || !discoveryID || !canSubmitReleaseFor(advancedTarget)) return;
     const generation = advancedGeneration.current;
     const destination = destinationFor(advancedTarget, destinations, libraryID);
     if (!destination) return;
@@ -649,6 +663,12 @@ export default function SearchScreen() {
             Advanced choices may ignore the owner’s guided download rules. Review the release before
             adding it.
           </Notice>
+          {advancedTarget && !canSubmitReleaseFor(advancedTarget) ? (
+            <Notice>
+              Your requests need approval. Use Request ebook or Request audiobook on the book to
+              send it for approval; you can browse these releases but cannot download one directly.
+            </Notice>
+          ) : null}
           {advancedError ? <Notice tone="danger">{advancedError}</Notice> : null}
           {advancedSearching ? (
             <LoadingState label="Finding releases…" />
@@ -661,7 +681,11 @@ export default function SearchScreen() {
                   statuses={releaseStatuses}
                   errors={releaseErrors}
                   allResults={advancedResults}
-                  disabled={Object.values(releaseStatuses).some((state) => state === 'sending')}
+                  disabled={
+                    !advancedTarget ||
+                    !canSubmitReleaseFor(advancedTarget) ||
+                    Object.values(releaseStatuses).some((state) => state === 'sending')
+                  }
                   onAdd={(result) => void chooseRelease(result)}
                   onAddPair={(first, second) => void choosePair(first, second)}
                 />
