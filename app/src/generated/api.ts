@@ -552,6 +552,37 @@ export interface AudioChapter {
 }
 
 //////////
+// source: metadata.go
+
+export interface MetadataValues {
+  title: string;
+  author: string;
+  description: string;
+  isbn: string;
+  publisher: string;
+  language: string;
+  first_publish_year: number /* int */;
+  subjects: string[];
+  cover_url: string;
+}
+export interface MetadataCandidate {
+  work_id: string;
+  edition_id: string;
+  values: MetadataValues;
+}
+export interface MetadataPreview {
+  current: MetadataValues;
+  candidates: MetadataCandidate[];
+}
+export interface ApplyMetadataRequest {
+  work_id: string;
+  edition_id: string;
+  fields: string[];
+  expected: MetadataValues;
+  values: MetadataValues;
+}
+
+//////////
 // source: notifications.go
 
 export interface Notification {

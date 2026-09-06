@@ -1,4 +1,6 @@
 import type {
+  MetadataPreview,
+  ApplyMetadataRequest,
   CatalogGroupPage,
   AcquisitionRequest,
   AcquisitionResult,
@@ -446,6 +448,16 @@ export const api = {
     return request<WorkBrowsePage>(`/works?${query}`);
   },
   work: (id: string) => request<WorkDetail>(`/works/${id}`),
+  metadataCandidates: (id: string, query: string) =>
+    request<MetadataPreview>(
+      `/works/${id}/metadata/candidates?${new URLSearchParams({ q: query })}`,
+    ),
+  metadataEditions: (id: string, providerWorkID: string, language = '', isbn = '') =>
+    request<MetadataPreview>(
+      `/works/${id}/metadata/editions?${new URLSearchParams({ provider_work_id: providerWorkID, language, isbn })}`,
+    ),
+  applyMetadata: (id: string, body: ApplyMetadataRequest) =>
+    request<void>(`/works/${id}/metadata/apply`, { method: 'POST', body: JSON.stringify(body) }),
   refreshWorkMetadata: (id: string) =>
     request<WorkDetail>(`/works/${id}/metadata/refresh`, { method: 'POST' }),
   setWorkStatus: (id: string, body: SetWorkStatusRequest) =>

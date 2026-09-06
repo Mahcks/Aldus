@@ -1,3 +1,4 @@
+import { MetadataReviewDialog } from '@/features/MetadataReviewDialog';
 import { seriesPositionError } from '@/features/catalog-metadata';
 import type {
   AlignmentJob,
@@ -150,12 +151,28 @@ export default function ManageWorkScreen() {
   const [searchingCovers, setSearchingCovers] = useState(false);
   const [refreshingMetadata, setRefreshingMetadata] = useState(false);
   const [metadataMessage, setMetadataMessage] = useState('');
+  const [metadataReviewOpen, setMetadataReviewOpen] = useState(false);
+
   const [savingCover, setSavingCover] = useState('');
   const [coverFit, setCoverFit] = useState<'cover' | 'contain'>('cover');
   const [coverFocalPoint, setCoverFocalPoint] = useState('50:50');
   const [generatedStyle, setGeneratedStyle] = useState<'classic' | 'minimal' | 'framed'>('classic');
   const [generatedTone, setGeneratedTone] = useState('-1');
   const [generatedLayout, setGeneratedLayout] = useState<'top' | 'center' | 'bottom'>('center');
+
+  const detailsDirty = Boolean(
+    work &&
+    (title !== work.title ||
+      author !== (work.author || '') ||
+      description !== (work.description || '') ||
+      isbn !== (work.isbn || '') ||
+      publisher !== (work.publisher || '') ||
+      language !== (work.language || '') ||
+      publishYear !== (work.first_publish_year ? String(work.first_publish_year) : '') ||
+      subjects !== (work.subject_values ?? []).join('\n') ||
+      series !== (work.series || '') ||
+      seriesPosition !== (work.series_position || '')),
+  );
 
   async function load() {
     if (!id) return;
@@ -428,6 +445,11 @@ export default function ManageWorkScreen() {
     } finally {
       setSearchingCovers(false);
     }
+  }
+
+  async function metadataApplied() {
+    await load();
+    setMetadataMessage('Selected book details updated.');
   }
 
   async function refreshMetadata() {
@@ -1003,23 +1025,49 @@ export default function ManageWorkScreen() {
 
         {activeTab === 'details' ? (
           <View className="gap-8">
-            <Section
-              title="Book details"
-              action={
-                <Button
-                  label="Fill missing details"
-                  icon="scan"
-                  kind="secondary"
-                  loading={refreshingMetadata}
-                  disabled={refreshingMetadata || savingDetails}
-                  onPress={() => void refreshMetadata()}
+            <Section title="Find book details">
+              <View className="max-w-[760px] gap-3">
+                <Text className={shared.itemMeta}>
+                  Search Open Library, compare editions, and choose which details to update. Nothing
+                  changes until you approve it.
+                </Text>
+                <View className="gap-2 min-[600px]:flex-row min-[600px]:flex-wrap">
+                  <Button
+                    label="Find book details"
+                    icon="search"
+                    kind="primary"
+                    disabled={detailsDirty || savingDetails || refreshingMetadata}
+                    onPress={() => setMetadataReviewOpen(true)}
+                  />
+                  <Button
+                    label="Fill missing details only"
+                    kind="quiet"
+                    loading={refreshingMetadata}
+                    disabled={detailsDirty || refreshingMetadata || savingDetails}
+                    onPress={() => void refreshMetadata()}
+                  />
+                </View>
+                {detailsDirty ? (
+                  <Text className="text-sm text-muted">
+                    Save your manual edits below before finding details online.
+                  </Text>
+                ) : (
+                  <Text className="text-sm text-muted">
+                    Fill missing details only keeps existing values and saves new details
+                    immediately.
+                  </Text>
+                )}
+              </View>
+              {metadataReviewOpen ? (
+                <MetadataReviewDialog
+                  workID={id}
+                  initialQuery={`${work.title} ${work.author || ''}`.trim()}
+                  onClose={() => setMetadataReviewOpen(false)}
+                  onApplied={metadataApplied}
                 />
-              }
-            >
-              <Text className={shared.itemMeta}>
-                Edit what readers see. Open Library only fills blank fields and never replaces your
-                changes.
-              </Text>
+              ) : null}
+            </Section>
+            <Section title="Edit details manually">
               <View className="max-w-[760px] gap-4">
                 <Field label="Title" value={title} onChangeText={setTitle} />
                 <Field label="Author" value={author} onChangeText={setAuthor} />

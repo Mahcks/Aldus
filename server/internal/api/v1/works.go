@@ -12,6 +12,7 @@ import (
 )
 
 func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.Store, tags *genretag.Store) {
+	registerMetadataRoutes(router, store)
 	router.Get("/works", browseWorks(store))
 	router.Get("/catalog/{kind}", catalogGroups(store))
 	router.Get("/libraries/{libraryID}/works", listWorks(store))

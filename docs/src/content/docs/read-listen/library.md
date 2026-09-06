@@ -11,7 +11,7 @@ Opening a title brings its ebook and audiobook editions together. From there you
 
 ## Find a title
 
-Use **Discover** to browse everything you can access. Sort by when titles were added or updated, or by title, then filter to readable, listenable, or synchronized books. Searching accepts a title, author, or ISBN.
+Use **Library** to browse everything you can access. Sort by when titles were added or updated, or by title, then filter to readable, listenable, or synchronized books. Use **Discover** to search external catalogs by title, author, or ISBN.
 
 If a search result is not in your library, Aldus may offer a request action. What you can request, whether it needs approval, and whether you can choose a specific release all come from your library permissions. If requests are unavailable, the screen explains what the server owner still needs to configure.
 
@@ -51,4 +51,18 @@ Edit an audiobook file entry to set **Narrators**, one name per line in credit o
 
 Import review shows embedded series and narrator evidence. Agreeing series tags are carried into new books; conflicts require an explicit series override or are left empty. Existing books and editions keep their curated series and narrator values. No source file is rewritten.
 
-If this navigation reports that a server update is required, existing library browsing remains available in Discover.
+If this navigation reports that a server update is required, existing library browsing remains available in Library.
+
+## Review metadata corrections
+
+Library owners and editors can open **Manage → Details → Find book details** to correct book information from Open Library. Save any manual edits first.
+
+1. Search by title, author, or ISBN and select **View editions** for the right book.
+2. Choose the matching edition by its language, publisher, and ISBN, or review the general title record. Aldus shows up to 50 editions and puts a match for the book's current ISBN or language first when found. It does not automatically choose an English edition.
+3. Compare the current and suggested values. Select only the fields you want to replace, then choose **Apply selected changes**. Nothing is selected by default, and canceling makes no changes. Selecting a missing suggested value explicitly clears that field; the title cannot be cleared.
+
+If another editor changes a selected field after the preview loads, Aldus asks you to reload the preview. Changes to unselected fields are preserved. Each corrected field retains its last selected Open Library record and edition reference on the server.
+
+These are details for the library title shared by its ebook and audiobook. Choosing an edition does not replace or rename source files, change alignment, or move reading progress. **First published** describes the original title, not the selected printing. Series and narrator credits remain unchanged.
+
+**Fill missing details** remains available for the existing automatic fill-blanks workflow. On an older server without metadata review, use that action or edit fields manually.

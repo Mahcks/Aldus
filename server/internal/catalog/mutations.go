@@ -72,6 +72,18 @@ type WorkUpdate struct {
 }
 
 func (s *Store) UpdateWork(ctx context.Context, actor auth.User, id string, update WorkUpdate) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := updateWorkTx(ctx, tx, actor, id, update); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func updateWorkTx(ctx context.Context, tx *sql.Tx, actor auth.User, id string, update WorkUpdate) error {
 	update.Title = strings.TrimSpace(update.Title)
 	update.Author = strings.TrimSpace(update.Author)
 	update.Description = strings.TrimSpace(update.Description)
@@ -96,11 +108,6 @@ func (s *Store) UpdateWork(ctx context.Context, actor auth.User, id string, upda
 		subjects = append(subjects, subject)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 	args := append([]any{update.Title, nullString(update.Author), now, id, actor.ID}, auth.LibraryEditArgs(actor)...)
 	result, err := tx.ExecContext(ctx, `UPDATE works SET title=?,author=?,updated_at=? WHERE id=? AND EXISTS(SELECT 1 FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=works.library_id AND `+auth.EffectiveLibraryEditSQL("l.id", "m")+`)`, args...)
 	if err != nil {
@@ -146,7 +153,7 @@ func (s *Store) UpdateWork(ctx context.Context, actor auth.User, id string, upda
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) DeleteWork(ctx context.Context, actor auth.User, id string) error {

@@ -108,6 +108,8 @@ func writeCatalogResult(w http.ResponseWriter, value any, err error) {
 		http.Error(w, "invalid catalog input", http.StatusBadRequest)
 	case errors.Is(err, catalog.ErrLastOwner):
 		http.Error(w, "last owner", http.StatusConflict)
+	case errors.Is(err, catalog.ErrMetadataConflict):
+		http.Error(w, "Selected details changed. Reload the preview before applying.", http.StatusConflict)
 	case errors.Is(err, catalog.ErrReferenced):
 		http.Error(w, "resource is referenced", http.StatusConflict)
 	case errors.Is(err, catalog.ErrMetadataUnavailable):

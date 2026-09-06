@@ -232,6 +232,7 @@ func TestRouteContract(t *testing.T) {
 	want = append(want, "DELETE /auth/me")
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
 	want = append(want, "GET /acquisition-settings", "PUT /acquisition-settings", "POST /acquisition-settings/test", "GET /acquisition-capabilities", "GET /me/acquisition-tracker", "POST /me/acquisition-tracker/seen", "GET /libraries/{libraryID}/acquisition-requests", "POST /libraries/{libraryID}/acquisition-requests", "GET /libraries/{libraryID}/acquisition-requests/{requestID}/search", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/select", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/retry", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/cancel", "POST /libraries/{libraryID}/acquisition-requests/{requestID}/dismiss", "POST /libraries/{libraryID}/acquisition-discoveries", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select", "POST /libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair")
+	want = append(want, "GET /works/{workID}/metadata/candidates", "GET /works/{workID}/metadata/editions", "POST /works/{workID}/metadata/apply")
 	want = append(want, "GET /search/titles", "GET /discover/trending", "GET /discover/detail")
 	want = append(want, "PATCH /auth/me", "POST /auth/claim", "POST /auth/logout-all", "POST /users/{userID}/reset-password", "PUT /auth/me/password")
 	want = append(want, "GET /reader-preferences", "PUT /reader-preferences")
