@@ -936,3 +936,56 @@ func TestIndexerRefusesCrossOriginRedirect(t *testing.T) {
 		t.Fatalf("err=%v reached=%v", err, reached)
 	}
 }
+
+func TestConflictingSubmissionRequiresExactExistingDownload(t *testing.T) {
+	const hash = "0123456789012345678901234567890123456789"
+	for _, tc := range []struct {
+		name, url, tag, downloads string
+		unavailable, success      bool
+	}{
+		{name: "same hash", url: "magnet:?xt=urn:btih:" + hash, downloads: `[{"hash":"` + hash + `"}]`, success: true},
+		{name: "same request tag", url: "https://download.test/book", tag: "request", downloads: `[{"hash":"` + hash + `","tags":"other, request"}]`, success: true},
+		{name: "unrelated torrent", url: "magnet:?xt=urn:btih:" + hash, tag: "request", downloads: `[{"hash":"other","tags":"other-request"}]`},
+		{name: "untagged torrent", url: "https://download.test/book", downloads: `[{"hash":"other","tags":""}]`},
+		{name: "no torrent", url: "https://download.test/book", downloads: `[]`},
+		{name: "lookup unavailable", url: "https://download.test/book", unavailable: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v2/auth/login":
+					http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
+					_, _ = w.Write([]byte("Ok."))
+				case "/api/v2/torrents/add":
+					http.Error(w, "Conflict", http.StatusConflict)
+				case "/api/v2/torrents/categories":
+					_, _ = w.Write([]byte(`{"aldus":{}}`))
+				case "/api/v2/torrents/info":
+					if r.URL.Query().Get("category") != "aldus" {
+						t.Error("lookup escaped configured category")
+					}
+					if tc.unavailable {
+						http.Error(w, "offline", 503)
+						return
+					}
+					_, _ = w.Write([]byte(tc.downloads))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			client, _ := New(Options{QBitURL: server.URL, Category: "aldus"})
+			got, err := client.addTracked(context.Background(), tc.url, tc.tag)
+			if tc.success {
+				if err != nil || got != hash {
+					t.Fatalf("hash=%q error=%v", got, err)
+				}
+			} else if err == nil {
+				t.Fatal("accepted an unverified conflict")
+			}
+			if errors.Is(err, ErrSubmissionUnknown) != tc.unavailable {
+				t.Fatalf("wrong recovery classification: %v", err)
+			}
+		})
+	}
+}

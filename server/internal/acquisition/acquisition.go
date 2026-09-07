@@ -400,6 +400,19 @@ func (c *Client) addTracked(ctx context.Context, downloadURL, tag string) (strin
 		return infoHash, fmt.Errorf("%w: qBittorrent response is too large", ErrSubmissionUnknown)
 	}
 	responseText := strings.TrimSpace(string(responseBody))
+	if response.StatusCode == http.StatusConflict {
+		// A conflict can mean the torrent already exists. Reuse only a verified
+		// match in the configured category, never a title or an arbitrary torrent.
+		downloads, err := c.Downloads(ctx)
+		if err != nil {
+			return infoHash, fmt.Errorf("%w: verify conflicting qBittorrent submission: %v", ErrSubmissionUnknown, err)
+		}
+		for _, download := range downloads {
+			if download.Hash != "" && ((infoHash != "" && strings.EqualFold(download.Hash, infoHash)) || (tag != "" && download.HasTag(tag))) {
+				return download.Hash, nil
+			}
+		}
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return infoHash, fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
 	}
