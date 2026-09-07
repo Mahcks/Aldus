@@ -23,6 +23,7 @@ server/aldus
 server/app
 AGENTS.md
 PRODUCT.md
+DESIGN.md
 plans/
 __pycache__/
 *.py[cod]
