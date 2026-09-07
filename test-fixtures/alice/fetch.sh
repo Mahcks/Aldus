@@ -34,15 +34,12 @@ fetch() {
   fi
   part="$media/$file.part"
   trap 'rm -f "$part"' EXIT HUP INT TERM
-  case "$source" in
-    https://*) curl --fail --location --retry 3 --output "$part" "$source" ;;
-    *) cp "$source" "$part" ;;
-  esac
+  cp "$source" "$part"
   verify "$part" "$sha" "$bytes"
   mv "$part" "$media/$file"
   trap - EXIT HUP INT TERM
 }
 
 fetch alice.epub "$root/pinned/alice.epub" 6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c 189231
-fetch alice-chapter-01.mp3 https://archive.org/download/alicesadventuresinwonderland_2005_librivox/alicesadventuresinwonderland_01_carroll_64kb.mp3 6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a 6922917
+fetch alice-chapter-01.mp3 "$root/pinned/alice-chapter-01.mp3" 6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a 6922917
 echo "Alice fixture verified in $media"

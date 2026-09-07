@@ -8,7 +8,7 @@ The real-media fixture is frozen in `test-fixtures/alice/fixture.json`. Run:
 make fixture
 ```
 
-The exact EPUB is committed in `test-fixtures/alice/pinned/alice.epub` because Gutenberg regenerates the download at its original URL. The fetch script copies that pinned EPUB and downloads the MP3, verifying both byte sizes and SHA-256 before placing them in the ignored `test-fixtures/alice/media/` directory. A fresh checkout uses the same EPUB as a cached development environment; the fixture identity and alignments remain unchanged. Failed downloads are removed and report the expected and received sizes and hashes.
+Both original media files are committed in `test-fixtures/alice/pinned/`. Gutenberg regenerates the EPUB at its original URL, and Archive.org availability must not determine whether CI can run. The fetch script installs the pinned files into the ignored `test-fixtures/alice/media/` directory without network access, verifying byte sizes and SHA-256 before publishing each file. The fixture identity and alignments remain unchanged. Failed copies are removed and report the expected and received sizes and hashes.
 
 | File | Source | Bytes | SHA-256 |
 | --- | --- | ---: | --- |
