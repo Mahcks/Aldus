@@ -42,6 +42,9 @@ cleanup() {
   trap - EXIT
   if [[ $status -ne 0 ]]; then
     compose logs --no-color 2>/dev/null || true
+    if [[ -n ${UPGRADE_TAG:-} ]]; then
+      upgrade_compose logs --no-color 2>/dev/null || true
+    fi
   fi
   compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   if [[ -n ${UPGRADE_TAG:-} ]]; then
@@ -134,14 +137,29 @@ upgrade_from_previous() {
   upgrade_compose rm --force aldus
   if [[ $EXPECT_SCHEMA_UPGRADE == 1 ]]; then
     UPGRADE_TAG=$previous_tag
-    upgrade_compose up --detach
-    for _ in {1..30}; do
-      if [[ $(upgrade_compose ps --status running --quiet aldus) == "" ]]; then
-        break
-      fi
-      sleep 1
-    done
-    [[ $(upgrade_compose ps --status running --quiet aldus) == "" ]]
+    upgrade_compose create aldus
+    local refusal_container refusal_exit
+    refusal_container=$(upgrade_compose ps --all --quiet aldus)
+    [[ -n $refusal_container ]]
+    # The production restart policy would turn the expected failure into a
+    # restart loop. Wait for one actual exit instead of sampling that loop.
+    docker update --restart=no "$refusal_container" >/dev/null
+    upgrade_compose start aldus
+    refusal_exit=$(timeout 60 docker wait "$refusal_container") || {
+      echo "Previous image did not exit after the schema upgrade" >&2
+      return 1
+    }
+    [[ $refusal_exit != 0 ]] || {
+      echo "Previous image exited successfully instead of refusing the newer schema" >&2
+      return 1
+    }
+    docker logs "$refusal_container" > "$WORKSPACE/downgrade-refusal.log" 2>&1
+    grep -Eq 'database schema version [0-9]+ is newer than supported version [0-9]+' "$WORKSPACE/downgrade-refusal.log" || {
+      cat "$WORKSPACE/downgrade-refusal.log" >&2
+      echo "Previous image failed without the expected schema refusal" >&2
+      return 1
+    }
+    echo "Previous image correctly refused the newer schema"
   else
     echo "Schema version is unchanged; previous-image refusal is not applicable"
   fi
