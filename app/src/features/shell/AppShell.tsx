@@ -116,9 +116,9 @@ function AppShellChrome() {
     setSheetOpen(false);
   }
 
-  if (desktop) {
-    return (
-      <View className="min-h-full flex-1 flex-row bg-canvas">
+  return (
+    <View className="min-h-full flex-1 flex-row bg-canvas">
+      {desktop ? (
         <DesktopNav
           path={navigationPath}
           consumerLinks={consumerLinks}
@@ -127,38 +127,37 @@ function AppShellChrome() {
           onBrandPress={handleBrandPress}
           onSignOut={handleSignOut}
         />
-        <View className="min-w-0 flex-1">
+      ) : null}
+      <View className="min-h-0 min-w-0 flex-1">
+        {/* Keep Slot in the same tree position when the navigation layout changes. */}
+        <View className="min-h-0 flex-1">
           <Slot />
         </View>
+        {!desktop ? (
+          <>
+            <MobileTabBar
+              path={navigationPath}
+              consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
+              bottomInset={insets.bottom}
+              sheetOpen={sheetOpen}
+              moreSelected={
+                navigationPath.startsWith('/account') ||
+                adminLinks.some((link) => isActive(navigationPath, link.href))
+              }
+              onOpenSheet={openSheet}
+            />
+            <MoreSheet
+              visible={sheetOpen}
+              onClose={closeSheet}
+              path={path}
+              adminLinks={adminLinks}
+              userLabel={userLabel}
+              onSignOut={handleSignOut}
+              bottomInset={insets.bottom}
+            />
+          </>
+        ) : null}
       </View>
-    );
-  }
-
-  return (
-    <View className="min-h-full flex-1 bg-canvas">
-      <View className="min-h-0 flex-1">
-        <Slot />
-      </View>
-      <MobileTabBar
-        path={navigationPath}
-        consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
-        bottomInset={insets.bottom}
-        sheetOpen={sheetOpen}
-        moreSelected={
-          navigationPath.startsWith('/account') ||
-          adminLinks.some((link) => isActive(navigationPath, link.href))
-        }
-        onOpenSheet={openSheet}
-      />
-      <MoreSheet
-        visible={sheetOpen}
-        onClose={closeSheet}
-        path={path}
-        adminLinks={adminLinks}
-        userLabel={userLabel}
-        onSignOut={handleSignOut}
-        bottomInset={insets.bottom}
-      />
     </View>
   );
 }
@@ -180,13 +179,13 @@ function DesktopNav({
   onSignOut: () => void;
 }) {
   return (
-    <View role="navigation" className="w-56 border-r border-line bg-panel px-[18px] py-[22px]">
+    <View role="navigation" className="w-56 bg-rail px-[18px] py-[22px]">
       <Pressable
         accessibilityRole="link"
         onPress={onBrandPress}
         className="min-h-11 justify-center"
       >
-        <Text className="font-editorial-bold text-2xl text-accent">Aldus</Text>
+        <Text className="font-editorial text-3xl text-on-rail">Aldus</Text>
       </Pressable>
       <View className="mt-7 gap-1">
         {consumerLinks
@@ -196,8 +195,8 @@ function DesktopNav({
           ))}
       </View>
       {adminLinks.length > 0 ? (
-        <View className="mt-7 gap-1 border-t border-line pt-5">
-          <Text className="px-[11px] text-[11px] font-sans-bold uppercase tracking-widest text-muted">
+        <View className="mt-7 gap-1 border-t border-on-rail/15 pt-5">
+          <Text className="px-[11px] text-[11px] font-sans-bold text-rail-muted">
             Administration
           </Text>
           {adminLinks.map((link) => (
@@ -205,7 +204,7 @@ function DesktopNav({
           ))}
         </View>
       ) : null}
-      <View className="mt-auto gap-2 border-t border-line pt-[18px]">
+      <View className="mt-auto gap-2 border-t border-on-rail/15 pt-[18px]">
         <NavLink
           label={userLabel}
           href="/account"
@@ -217,7 +216,7 @@ function DesktopNav({
           onPress={onSignOut}
           className="min-h-11 flex-row items-center"
         >
-          <Text className="text-sm font-sans-bold text-accent">Sign out</Text>
+          <Text className="text-sm font-sans-medium text-rail-muted">Sign out</Text>
         </Pressable>
       </View>
     </View>
@@ -238,9 +237,9 @@ function NavLink({
   selected,
   tone = 'primary',
 }: NavItem & { selected: boolean; tone?: 'primary' | 'quiet' }) {
-  const inactiveTextClass = 'text-muted';
-  const iconColor = selected ? colors.accent : colors.muted;
-  const backgroundClass = selected ? 'bg-accent-soft' : '';
+  const inactiveTextClass = 'text-rail-muted';
+  const iconColor = selected ? colors.onRail : colors.railMuted;
+  const backgroundClass = selected ? 'bg-rail-selected' : '';
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
@@ -265,9 +264,7 @@ function NavLink({
           </View>
         ) : null}
       </View>
-      <Text
-        className={`text-[15px] font-sans-bold ${selected ? 'text-accent' : inactiveTextClass}`}
-      >
+      <Text className={`text-sm font-sans-medium ${selected ? 'text-on-rail' : inactiveTextClass}`}>
         {label}
       </Text>
     </Pressable>
@@ -293,7 +290,7 @@ function MobileTabBar({
   return (
     <View
       accessibilityRole="tablist"
-      className="w-full flex-row justify-around border-t border-line bg-paper px-2 pt-1.5"
+      className="w-full flex-row justify-around border-t border-line-subtle bg-canvas px-2 pt-1.5"
       style={{ paddingBottom: bottomInset + 6 }}
     >
       {consumerLinks.map((link) => (
@@ -420,7 +417,7 @@ function MoreSheet({
             </View>
             {adminLinks.length > 0 ? (
               <View className="gap-1 pb-2">
-                <Text className="px-[11px] pb-1 text-[11px] font-sans-bold uppercase tracking-widest text-muted">
+                <Text className="px-[11px] pb-1 text-[11px] font-sans-bold text-muted">
                   Administration
                 </Text>
                 {adminLinks.map((link) => (

@@ -16,7 +16,7 @@ import {
   Page,
   Row,
   Section,
-  Select,
+  Radio,
   TextField,
 } from '@/features/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -36,6 +36,7 @@ export default function CollectionDetailScreen() {
   const [dialogError, setDialogError] = useState('');
   const [busy, setBusy] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [arranging, setArranging] = useState(false);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [sharingLibrary, setSharingLibrary] = useState('');
@@ -236,12 +237,6 @@ export default function CollectionDetailScreen() {
           <Row>
             <Button label="Sharing" kind="secondary" onPress={() => void openSharing()} />
             <Button label="Edit" icon="edit" kind="secondary" onPress={openEdit} />
-            <Button
-              label="Delete"
-              icon="delete"
-              kind="danger"
-              onPress={() => setDeleteOpen(true)}
-            />
           </Row>
         ) : undefined
       }
@@ -253,50 +248,65 @@ export default function CollectionDetailScreen() {
           {shared && !collection.can_edit ? 'Only the creator can edit this list.' : ''}
         </Text>
       ) : null}
-      {collection.description ? <Notice>{collection.description}</Notice> : null}
+      {collection.description ? (
+        <Text className="max-w-[680px] text-base leading-6 text-muted">
+          {collection.description}
+        </Text>
+      ) : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {works.length === 0 ? (
         <EmptyState icon="collections" title="This collection is empty">
-          Add books from Search or a book page.
+          Add books from your Library or a book page.
         </EmptyState>
       ) : (
-        <Section title={`${works.length} ${works.length === 1 ? 'book' : 'books'}`}>
+        <Section
+          title={`${works.length} ${works.length === 1 ? 'book' : 'books'}`}
+          action={
+            !shared || collection.can_edit ? (
+              <Button
+                label={arranging ? 'Done arranging' : 'Arrange books'}
+                kind="quiet"
+                disabled={reordering}
+                onPress={() => setArranging((value) => !value)}
+              />
+            ) : undefined
+          }
+        >
           <View>
             {works.map((work, index) => (
-              <WorkRow
-                key={work.id}
-                title={work.title}
-                author={work.author}
-                coverURL={work.cover_url}
-                onPress={() => void openWork(work.id)}
-                action={
-                  !shared || collection.can_edit ? (
-                    <View className="flex-row items-center gap-1">
-                      <IconButton
-                        icon="moveUp"
-                        label={`Move ${work.title} up`}
-                        kind="quiet"
-                        disabled={reordering || index === 0}
-                        onPress={() => void handleMove(index, -1)}
-                      />
-                      <IconButton
-                        icon="moveDown"
-                        label={`Move ${work.title} down`}
-                        kind="quiet"
-                        disabled={reordering || index === works.length - 1}
-                        onPress={() => void handleMove(index, 1)}
-                      />
-                      <IconButton
-                        icon="delete"
-                        label={`Remove ${work.title} from collection`}
-                        kind="quiet"
-                        disabled={reordering}
-                        onPress={() => setRemoveWork(work)}
-                      />
-                    </View>
-                  ) : undefined
-                }
-              />
+              <View key={work.id}>
+                <WorkRow
+                  title={work.title}
+                  author={work.author}
+                  coverURL={work.cover_url}
+                  onPress={() => void openWork(work.id)}
+                />
+                {arranging && (!shared || collection.can_edit) ? (
+                  <View className="flex-row items-center justify-end gap-1 border-b border-line pb-2">
+                    <IconButton
+                      icon="moveUp"
+                      label={`Move ${work.title} up`}
+                      kind="quiet"
+                      disabled={reordering || index === 0}
+                      onPress={() => void handleMove(index, -1)}
+                    />
+                    <IconButton
+                      icon="moveDown"
+                      label={`Move ${work.title} down`}
+                      kind="quiet"
+                      disabled={reordering || index === works.length - 1}
+                      onPress={() => void handleMove(index, 1)}
+                    />
+                    <IconButton
+                      icon="delete"
+                      label={`Remove ${work.title} from collection`}
+                      kind="quiet"
+                      disabled={reordering}
+                      onPress={() => setRemoveWork(work)}
+                    />
+                  </View>
+                ) : null}
+              </View>
             ))}
           </View>
         </Section>
@@ -305,6 +315,15 @@ export default function CollectionDetailScreen() {
       <Dialog
         visible={sharingOpen}
         title="Share collection"
+        sheet
+        footer={
+          <Button
+            label="Save sharing"
+            kind="primary"
+            loading={busy}
+            onPress={() => void saveSharing()}
+          />
+        }
         onClose={() => {
           if (!busy) setSharingOpen(false);
         }}
@@ -315,27 +334,52 @@ export default function CollectionDetailScreen() {
             their own reading progress.
           </Text>
           {dialogError ? <Notice danger>{dialogError}</Notice> : null}
-          <Select
-            label="Who can see this collection"
-            value={sharingLibrary}
-            onChange={setSharingLibrary}
-            options={[
-              { value: '', label: 'Only me' },
-              ...libraries.map((library) => ({ value: library.id, label: library.name })),
-            ]}
-          />
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Who can see this collection"
+            className="gap-2"
+          >
+            <View className="border-b border-line-subtle pb-3">
+              <Radio
+                label="Only me"
+                selected={!sharingLibrary}
+                disabled={busy}
+                onPress={() => setSharingLibrary('')}
+              />
+              <Text className="pl-8 text-sm text-muted">Keep this collection private.</Text>
+            </View>
+            {libraries.map((library) => (
+              <Radio
+                key={library.id}
+                label={library.name}
+                selected={sharingLibrary === library.id}
+                disabled={busy}
+                onPress={() => setSharingLibrary(library.id)}
+              />
+            ))}
+          </View>
           <Text className="text-sm text-muted">
             All books in a shared collection must belong to that library.
           </Text>
-          <Button
-            label="Save sharing"
-            kind="primary"
-            loading={busy}
-            onPress={() => void saveSharing()}
-          />
         </View>
       </Dialog>
-      <Dialog visible={editOpen} title="Edit collection" onClose={() => setEditOpen(false)}>
+      <Dialog
+        visible={editOpen}
+        title="Edit collection"
+        sheet
+        onClose={() => {
+          if (!busy) setEditOpen(false);
+        }}
+        footer={
+          <Button
+            label="Save changes"
+            kind="primary"
+            loading={busy}
+            disabled={!title.trim()}
+            onPress={() => void handleEdit()}
+          />
+        }
+      >
         <View className="gap-4">
           {dialogError ? <Notice danger>{dialogError}</Notice> : null}
           <TextField
@@ -353,13 +397,18 @@ export default function CollectionDetailScreen() {
             numberOfLines={3}
             onChangeText={setDescription}
           />
-          <Button
-            label="Save changes"
-            kind="primary"
-            loading={busy}
-            disabled={!title.trim()}
-            onPress={() => void handleEdit()}
-          />
+          <View className="items-start border-t border-line pt-4">
+            <Button
+              label="Delete collection"
+              kind="quiet"
+              icon="delete"
+              disabled={busy}
+              onPress={() => {
+                setEditOpen(false);
+                setDeleteOpen(true);
+              }}
+            />
+          </View>
         </View>
       </Dialog>
       <ConfirmDialog

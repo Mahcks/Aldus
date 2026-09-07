@@ -45,11 +45,11 @@ export default function Setup() {
   return (
     <AuthLayout>
       <Text accessibilityRole="header" className="text-2xl font-sans-bold text-ink">
-        Create the first administrator
+        Welcome to your library
       </Text>
       <Text className="mb-1 leading-[21px] text-muted">
-        This one-time setup closes permanently after the account is created. The first account has
-        administrator access.
+        Create your account to start adding books and invite your family. You’ll be the
+        administrator of this Aldus server.
       </Text>
       {error ? <Notice danger>{error}</Notice> : null}
       <Field

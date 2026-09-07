@@ -42,6 +42,7 @@ export default function AccountScreen() {
   const [activity, setActivity] = useState<WorkSummary[]>([]);
   const [credentials, setCredentials] = useState<ReaderCredential[]>([]);
   const [credentialLabel, setCredentialLabel] = useState('My KOReader');
+  const [readerConnectionsOpen, setReaderConnectionsOpen] = useState(false);
   const [createdCredential, setCreatedCredential] = useState<ReaderCredential>();
   const [deletingCredential, setDeletingCredential] = useState<ReaderCredential>();
   const [savingCredential, setSavingCredential] = useState(false);
@@ -239,16 +240,7 @@ export default function AccountScreen() {
     passwordsMatch;
 
   return (
-    <Page title="Account" actions={<Button label="Sign out" kind="secondary" onPress={signOut} />}>
-      {!isGuest ? (
-        <View className="gap-2 border-b border-line pb-4">
-          <Button label="Switch reader" kind="secondary" onPress={() => void switchAccount()} />
-          <Text className="text-sm text-muted">
-            Sign in as someone else. Your downloads and queued progress stay with your account. A
-            connection is needed to switch readers.
-          </Text>
-        </View>
-      ) : null}
+    <Page title="Account">
       {Platform.OS !== 'web' ? <DownloadStatus /> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
@@ -308,6 +300,16 @@ export default function AccountScreen() {
           </View>
         </Section>
         {!isGuest ? (
+          <View className="gap-2 border-b border-line pb-4">
+            <Button label="Switch reader" kind="secondary" onPress={() => void switchAccount()} />
+            <Text className="text-sm text-muted">
+              Sign in as someone else. Your downloads and queued progress stay with your account. A
+              connection is needed to switch readers.
+            </Text>
+          </View>
+        ) : null}
+
+        {!isGuest ? (
           <Section title="Security">
             <View className="items-start gap-3 border-y border-line py-5">
               <Text className="text-sm leading-5 text-muted">
@@ -362,7 +364,7 @@ export default function AccountScreen() {
           {loading ? (
             <Loading label="Loading libraries…" />
           ) : libraries.length ? (
-            <View className="flex-row flex-wrap gap-3">
+            <View>
               {libraries.map((library, index) => (
                 <Animated.View key={library.id} entering={listItemEnter(index)}>
                   <LibraryCard
@@ -379,94 +381,110 @@ export default function AccountScreen() {
             </EmptyState>
           )}
         </Section>
-        <Section title="KOReader and OPDS">
-          <View className="gap-5">
-            <Notice>
-              Create a reader credential for each device. It gives that device access only to your
-              libraries and reading progress.
-            </Notice>
-            {readerAddressIsLocal ? (
-              <Notice tone="warning">
-                This server address points back to this device. KOReader needs your server&apos;s
-                LAN or HTTPS address instead of localhost.
+        <Section title="Connected e-readers">
+          <Text className="text-sm text-muted">
+            Read with KOReader or browse your books from an OPDS-compatible app.
+          </Text>
+          {!createdCredential?.secret ? (
+            <Button
+              label={
+                readerConnectionsOpen ? 'Hide reader connections' : 'Manage reader connections'
+              }
+              kind="secondary"
+              onPress={() => setReaderConnectionsOpen((open) => !open)}
+            />
+          ) : null}
+          {readerConnectionsOpen || createdCredential?.secret ? (
+            <View className="gap-5">
+              <Notice>
+                Create a reader credential for each device. It gives that device access only to your
+                libraries and reading progress.
               </Notice>
-            ) : null}
-            <View className="gap-3 border-b border-line pb-5">
-              <Field
-                label="Device name"
-                value={credentialLabel}
-                onChangeText={setCredentialLabel}
-                placeholder="My Kobo"
-                help="Use a name you will recognize when revoking access later."
-              />
-              <View className="flex-row">
-                <Button
-                  label="Create reader credential"
-                  icon="add"
-                  loading={savingCredential}
-                  disabled={!credentialLabel.trim() || credentials.length >= 10}
-                  onPress={() => void createCredential()}
-                />
-              </View>
-              {credentials.length >= 10 ? (
-                <Notice tone="warning">Revoke an old credential before creating another.</Notice>
-              ) : null}
-            </View>
-            {createdCredential?.secret ? (
-              <View className="gap-3 border-b border-line pb-5">
-                <Notice tone="success">
-                  Credential created. Save this password now; Aldus will not show it again.
+              {readerAddressIsLocal ? (
+                <Notice tone="warning">
+                  This server address points back to this device. KOReader needs your server&apos;s
+                  LAN or HTTPS address instead of localhost.
                 </Notice>
-                <CredentialValue label="Username" value={auth.user?.username || ''} />
-                <CredentialValue label="Password" value={createdCredential.secret} />
-                <CredentialValue label="OPDS catalog" value={opdsURL} />
-                <CredentialValue label="KOReader sync server" value={serverOrigin} />
-                <View className="flex-row flex-wrap gap-2">
+              ) : null}
+              <View className="gap-3 border-b border-line pb-5">
+                <Field
+                  label="Device name"
+                  value={credentialLabel}
+                  onChangeText={setCredentialLabel}
+                  placeholder="My Kobo"
+                  help="Use a name you will recognize when revoking access later."
+                />
+                <View className="flex-row">
                   <Button
-                    label="I saved it"
-                    kind="secondary"
-                    onPress={() => setCreatedCredential(undefined)}
-                  />
-                  <Button
-                    label="KOReader setup guide"
-                    kind="quiet"
-                    icon="read"
-                    onPress={() => void openExternalURL(koreaderURL)}
+                    label="Create reader credential"
+                    icon="add"
+                    loading={savingCredential}
+                    disabled={!credentialLabel.trim() || credentials.length >= 10}
+                    onPress={() => void createCredential()}
                   />
                 </View>
+                {credentials.length >= 10 ? (
+                  <Notice tone="warning">Revoke an old credential before creating another.</Notice>
+                ) : null}
               </View>
-            ) : null}
-            {credentials.length ? (
-              <View className="gap-3">
-                {credentials.map((credential) => (
-                  <View
-                    key={credential.id}
-                    className="min-h-14 flex-row items-center gap-4 border-b border-line py-3"
-                  >
-                    <View className="min-w-0 flex-1">
-                      <Text className="text-base font-sans-bold text-ink">{credential.label}</Text>
-                      <Text className="text-sm text-muted">
-                        {credential.last_used_at
-                          ? `Last used ${new Date(credential.last_used_at).toLocaleDateString()}`
-                          : 'Not used yet'}
-                      </Text>
-                    </View>
+              {createdCredential?.secret ? (
+                <View className="gap-3 border-b border-line pb-5">
+                  <Notice tone="success">
+                    Credential created. Save this password now; Aldus will not show it again.
+                  </Notice>
+                  <CredentialValue label="Username" value={auth.user?.username || ''} />
+                  <CredentialValue label="Password" value={createdCredential.secret} />
+                  <CredentialValue label="OPDS catalog" value={opdsURL} />
+                  <CredentialValue label="KOReader sync server" value={serverOrigin} />
+                  <View className="flex-row flex-wrap gap-2">
                     <Button
-                      label="Revoke"
+                      label="I saved it"
+                      kind="secondary"
+                      onPress={() => setCreatedCredential(undefined)}
+                    />
+                    <Button
+                      label="KOReader setup guide"
                       kind="quiet"
-                      onPress={() => setDeletingCredential(credential)}
+                      icon="read"
+                      onPress={() => void openExternalURL(koreaderURL)}
                     />
                   </View>
-                ))}
-              </View>
-            ) : loading ? (
-              <Loading label="Loading reader credentials…" />
-            ) : (
-              <EmptyState icon="devices" title="No reader devices connected">
-                Create a credential to connect KOReader or an OPDS reader.
-              </EmptyState>
-            )}
-          </View>
+                </View>
+              ) : null}
+              {credentials.length ? (
+                <View className="gap-3">
+                  {credentials.map((credential) => (
+                    <View
+                      key={credential.id}
+                      className="min-h-14 flex-row items-center gap-4 border-b border-line py-3"
+                    >
+                      <View className="min-w-0 flex-1">
+                        <Text className="text-base font-sans-bold text-ink">
+                          {credential.label}
+                        </Text>
+                        <Text className="text-sm text-muted">
+                          {credential.last_used_at
+                            ? `Last used ${new Date(credential.last_used_at).toLocaleDateString()}`
+                            : 'Not used yet'}
+                        </Text>
+                      </View>
+                      <Button
+                        label="Revoke"
+                        kind="quiet"
+                        onPress={() => setDeletingCredential(credential)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : loading ? (
+                <Loading label="Loading reader credentials…" />
+              ) : (
+                <EmptyState icon="devices" title="No reader devices connected">
+                  Create a credential to connect KOReader or an OPDS reader.
+                </EmptyState>
+              )}
+            </View>
+          ) : null}
         </Section>
         <Section title="Help and legal">
           <View className="gap-3">
@@ -491,6 +509,9 @@ export default function AccountScreen() {
             </View>
           </View>
         </Section>
+        <View className="self-start">
+          <Button label="Sign out" onPress={signOut} />
+        </View>
         <Section title="Delete account">
           <View className="items-start gap-4 border-y border-line py-5">
             <Notice danger>
@@ -548,26 +569,44 @@ export default function AccountScreen() {
           </View>
         </Dialog>
       )}
-      <Dialog visible={editingProfile} title="Edit profile" onClose={closeProfileDialog}>
+      <Dialog
+        visible={editingProfile}
+        title="Edit profile"
+        sheet
+        onClose={closeProfileDialog}
+        footer={
+          <Button
+            label="Save name"
+            kind="primary"
+            loading={savingAccount}
+            disabled={!displayName.trim()}
+            onPress={() => void saveProfile()}
+          />
+        }
+      >
         {error ? <Notice danger>{error}</Notice> : null}
         <View className="gap-4">
           <Field label="Display name" value={displayName} onChangeText={setDisplayName} autoFocus />
           <Text className="text-sm text-muted">
             Your username stays fixed after setup so connected e-readers keep working.
           </Text>
-          <Row>
-            <Button label="Cancel" onPress={closeProfileDialog} />
-            <Button
-              label="Save name"
-              kind="primary"
-              loading={savingAccount}
-              disabled={!displayName.trim()}
-              onPress={() => void saveProfile()}
-            />
-          </Row>
         </View>
       </Dialog>
-      <Dialog visible={changingPassword} title="Change password" onClose={closePasswordDialog}>
+      <Dialog
+        visible={changingPassword}
+        title="Change password"
+        sheet
+        onClose={closePasswordDialog}
+        footer={
+          <Button
+            label="Change password"
+            kind="primary"
+            loading={savingAccount}
+            disabled={!canChangePassword}
+            onPress={() => void changePassword()}
+          />
+        }
+      >
         {error ? <Notice danger>{error}</Notice> : null}
         <View className="gap-4">
           <Notice>Changing your password signs out every other Aldus app session.</Notice>
@@ -602,16 +641,6 @@ export default function AccountScreen() {
                 : undefined
             }
           />
-          <Row>
-            <Button label="Cancel" onPress={closePasswordDialog} />
-            <Button
-              label="Change password"
-              kind="primary"
-              loading={savingAccount}
-              disabled={!canChangePassword}
-              onPress={() => void changePassword()}
-            />
-          </Row>
         </View>
       </Dialog>
       <ConfirmDialog

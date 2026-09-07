@@ -1,7 +1,7 @@
 import type { ImportProposal, Representation, Work } from '@/generated/api';
 import { representationKinds, type ReviewDraft } from '@/features/source-administration';
-import { Button, Checkbox, Dialog, Field, Notice, Row, Select } from '@/features/ui';
-import { Pressable, Text, View } from '@/features/tw';
+import { Button, Checkbox, Dialog, Field, Notice, Radio, Row, Select } from '@/features/ui';
+import { Text, View } from '@/features/tw';
 import { humanState } from './helpers';
 import { TechnicalDetails } from './TechnicalDetails';
 
@@ -39,7 +39,28 @@ export function ReviewDialog({
   if (!proposal || !draft) return null;
 
   return (
-    <Dialog visible title="Review import proposal" onClose={onClose} wide>
+    <Dialog
+      visible
+      title="Review import proposal"
+      onClose={onClose}
+      wide
+      sheet
+      footer={
+        <View className="gap-3">
+          {conflict ? <Notice danger>{conflict}</Notice> : null}
+
+          <Row>
+            <Button
+              label={busy ? 'Importing…' : 'Import book'}
+              kind="primary"
+              disabled={busy || (!draft.workID && !draft.title.trim())}
+              onPress={onAccept}
+            />
+            <Button label="Ignore proposal" kind="quiet" disabled={busy} onPress={onIgnore} />
+          </Row>
+        </View>
+      }
+    >
       <View className="gap-6 pb-1.5">
         <View>
           <Text className="text-2xl font-sans-bold text-ink">
@@ -60,9 +81,9 @@ export function ReviewDialog({
         </View>
 
         <View className="gap-2.5">
-          <Text className="text-sm font-sans-bold text-ink">Destination Work</Text>
+          <Text className="text-sm font-sans-bold text-ink">Add these files to</Text>
           <WorkChoice
-            title="Create a new Work"
+            title="Create a new book"
             description="Use the reviewed title and author below."
             selected={!draft.workID}
             onPress={() => onChooseWork('')}
@@ -84,7 +105,7 @@ export function ReviewDialog({
         <View className="flex-row flex-wrap gap-3">
           <View className="grow basis-[240px]">
             <Field
-              label="Work title"
+              label="Book title"
               value={draft.title}
               onChangeText={(title) => onDraftChange({ ...draft, title })}
             />
@@ -119,7 +140,7 @@ export function ReviewDialog({
           </Text>
         )}
         <View className="gap-2.5">
-          <Text className="text-sm font-sans-bold text-ink">Representations</Text>
+          <Text className="text-sm font-sans-bold text-ink">Files to import</Text>
           {proposal.items.map((item) => (
             <ReviewItemRow
               draft={draft}
@@ -144,21 +165,6 @@ export function ReviewDialog({
             </Text>
           </View>
         ) : null}
-
-        {conflict ? <Notice danger>{conflict}</Notice> : null}
-
-        <Row>
-          <Button
-            label={
-              busy ? 'Importing…' : draft.workID ? 'Import into Work' : 'Create Work and import'
-            }
-            kind="primary"
-            disabled={busy || (!draft.workID && !draft.title.trim())}
-            onPress={onAccept}
-          />
-          <Button label="Ignore proposal" kind="danger" disabled={busy} onPress={onIgnore} />
-          <Button label="Cancel" kind="quiet" onPress={onClose} />
-        </Row>
       </View>
     </Dialog>
   );
@@ -176,17 +182,10 @@ function WorkChoice({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-      onPress={onPress}
-      className={`min-h-[54px] justify-center gap-0.5 rounded-control border p-2.5 ${
-        selected ? 'border-accent bg-accent-soft' : 'border-line'
-      }`}
-    >
-      <Text className="text-sm font-sans-bold text-ink">{title}</Text>
-      <Text className="text-sm text-muted">{description}</Text>
-    </Pressable>
+    <View className="gap-0.5 border-b border-line-subtle pb-3">
+      <Radio label={title} selected={selected} onPress={onPress} />
+      <Text className="pl-8 text-sm text-muted">{description}</Text>
+    </View>
   );
 }
 
@@ -211,7 +210,7 @@ function ReviewItemRow({
   if (!edit) return null;
 
   return (
-    <View className="gap-2.5 rounded-control border border-line p-3.5">
+    <View className="gap-3 border-t border-line-subtle py-4">
       <Text selectable className="text-xs leading-[18px] text-ink">
         {item.relative_path}
       </Text>
@@ -262,7 +261,7 @@ function ReviewItemRow({
       {draft.workID && compatible.length > 0 ? (
         <View className="gap-1.5">
           <Text className="text-sm text-muted">
-            Attach to an existing Representation (optional)
+            Use an existing edition or narration (optional)
           </Text>
           <Row>
             <Button

@@ -29,6 +29,9 @@ for (const width of [390, 1024, 1440]) {
     const applies: ApplyMetadataRequest[] = [];
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.text().includes('Unexpected text node')) errors.push(message.text());
+    });
     await page.route('**/api/**', async (route) => {
       const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
       let json: unknown = [];
@@ -120,6 +123,7 @@ for (const width of [390, 1024, 1440]) {
     expect(applies[1].fields).toEqual(['language']);
     expect(applies[1].expected.publisher).toBe('Another editor’s press');
     await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue('Alice');
+    await page.getByRole('button', { name: 'Series, publication & subjects', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Language', exact: true })).toHaveValue('spa');
     await open.click();
     await page.route('**/metadata/candidates?*', (route) =>
@@ -129,6 +133,27 @@ for (const width of [390, 1024, 1440]) {
     await expect(dialog.getByText(/Metadata review is unavailable on this server/)).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
+
+    for (const tab of ['Artwork', 'Files', 'Sync']) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      await page.screenshot({
+        animations: 'disabled',
+        fullPage: true,
+        path: `../artifacts/metadata-review/${width}-${tab.toLowerCase()}.png`,
+      });
+    }
+    await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await page.getByRole('button', { name: 'Add file', exact: true }).first().click();
+    const addFile = page.getByRole('dialog', { name: 'Add file', exact: true });
+    await expect(addFile.getByRole('button', { name: 'Choose file', exact: true })).toBeDisabled();
+    await addFile
+      .getByRole('textbox', { name: 'Edition label', exact: true })
+      .fill('Family edition');
+    await expect(addFile.getByRole('button', { name: 'Choose file', exact: true })).toBeEnabled();
+    await page.screenshot({
+      animations: 'disabled',
+      path: `../artifacts/metadata-review/${width}-add-file.png`,
+    });
     expect(applies).toHaveLength(2);
     expect(errors).toEqual([]);
   });

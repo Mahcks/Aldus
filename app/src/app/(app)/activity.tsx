@@ -29,6 +29,7 @@ import {
   ErrorState,
   LoadingState,
   Page,
+  Notice,
   Section,
   StatusBadge,
 } from '@/features/ui';
@@ -63,28 +64,35 @@ function ActivityRow({
           />
         ) : null}
       </View>
-      <View className="min-w-0 flex-1 gap-1">
-        <Text className="font-editorial-bold text-base leading-5 text-ink">{group.title}</Text>
-        <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
-          <Text
-            className={`text-sm leading-5 ${unread ? 'font-sans-bold text-ink' : 'text-muted'}`}
-          >
-            {item.title}
+      <View className="min-w-0 flex-1 gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <View className="min-w-0 flex-1 gap-1">
+          <Text className="font-editorial-bold text-base leading-5 text-ink">{group.title}</Text>
+          <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
+            <Text
+              className={`text-sm leading-5 ${unread ? 'font-sans-bold text-ink' : 'text-muted'}`}
+            >
+              {item.title}
+            </Text>
+            {group.format ? (
+              <Text className="text-sm text-muted">· {formatLabel(group.format)}</Text>
+            ) : null}
+          </View>
+          <Text className="text-xs text-muted">
+            {notificationTime(item.created_at)}
+            {group.items.length > 1 ? ` · ${group.items.length} updates` : ''}
           </Text>
-          {group.format ? (
-            <Text className="text-sm text-muted">· {formatLabel(group.format)}</Text>
-          ) : null}
         </View>
-        <Text className="text-xs text-muted">
-          {notificationTime(item.created_at)}
-          {group.items.length > 1 ? ` · ${group.items.length} updates` : ''}
-        </Text>
+        {actionLabel ? (
+          <View className="flex-none self-start sm:self-center">
+            <Button
+              label={actionLabel}
+              kind="quiet"
+              disabled={busy}
+              onPress={() => onRead(group)}
+            />
+          </View>
+        ) : null}
       </View>
-      {actionLabel ? (
-        <View className="flex-none self-center">
-          <Button label={actionLabel} kind="quiet" disabled={busy} onPress={() => onRead(group)} />
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -251,7 +259,7 @@ export default function ActivityScreen() {
 
   return (
     <Page title="Activity">
-      {error ? <Text className="text-sm text-danger">{error}</Text> : null}
+      {error ? <Notice danger>{error}</Notice> : null}
       <View
         accessibilityLabel="Activity sections"
         accessibilityRole="tablist"
@@ -290,7 +298,7 @@ export default function ActivityScreen() {
               title={requestFilter === 'active' ? 'No active requests' : `No ${requestFilter} yet`}
             >
               {requestFilter === 'active'
-                ? 'Request a missing ebook or audiobook from Search.'
+                ? 'Request a missing ebook or audiobook from Discover.'
                 : 'Requests will move here as their status changes.'}
             </EmptyState>
           ) : (

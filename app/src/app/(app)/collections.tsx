@@ -154,32 +154,6 @@ export default function CollectionsScreen() {
   return (
     <Page title="Collections" hideHeader>
       {error ? <Notice danger>{error}</Notice> : null}
-      <Button
-        label={sharedOpen ? 'Refresh shared collections' : 'Shared with your libraries'}
-        kind="secondary"
-        onPress={() => void loadShared()}
-      />
-      {sharedOpen ? (
-        <Section title="Shared collections">
-          {sharedError ? <Notice danger>{sharedError}</Notice> : null}
-          {sharedItems.map((item) => (
-            <CollectionRow key={item.id} item={item} shared />
-          ))}
-          {sharedBusy ? <LoadingState label="Loading shared collections…" /> : null}
-          {!sharedBusy && !sharedError && !sharedItems.length ? (
-            <EmptyState icon="collections" title="No shared collections yet">
-              Share a collection with a library to let its members read the list.
-            </EmptyState>
-          ) : null}
-          {sharedMore ? (
-            <Button
-              label="More shared collections"
-              disabled={sharedBusy}
-              onPress={() => void loadShared(true)}
-            />
-          ) : null}
-        </Section>
-      ) : null}
       {items.length === 0 ? (
         <View className="w-full flex-1 items-center justify-center">
           <EmptyState
@@ -216,7 +190,49 @@ export default function CollectionsScreen() {
           </View>
         </Section>
       )}
-      <Dialog visible={createOpen} title="New collection" onClose={closeCreate}>
+      <View className="items-start">
+        <Button
+          label={sharedOpen ? 'Refresh shared collections' : 'Browse shared collections'}
+          kind="quiet"
+          onPress={() => void loadShared()}
+        />
+      </View>
+      {sharedOpen ? (
+        <Section title="Shared collections">
+          {sharedError ? <Notice danger>{sharedError}</Notice> : null}
+          {sharedItems.map((item) => (
+            <CollectionRow key={item.id} item={item} shared />
+          ))}
+          {sharedBusy ? <LoadingState label="Loading shared collections…" /> : null}
+          {!sharedBusy && !sharedError && !sharedItems.length ? (
+            <EmptyState icon="collections" title="No shared collections yet">
+              Share a collection with a library to let its members read the list.
+            </EmptyState>
+          ) : null}
+          {sharedMore ? (
+            <Button
+              label="More shared collections"
+              disabled={sharedBusy}
+              onPress={() => void loadShared(true)}
+            />
+          ) : null}
+        </Section>
+      ) : null}
+      <Dialog
+        visible={createOpen}
+        title="New collection"
+        sheet
+        onClose={closeCreate}
+        footer={
+          <Button
+            label="Create collection"
+            kind="primary"
+            loading={busy}
+            disabled={!title.trim()}
+            onPress={() => void handleCreate()}
+          />
+        }
+      >
         <View className="gap-4">
           {createError ? <Notice danger>{createError}</Notice> : null}
           <TextField
@@ -233,13 +249,6 @@ export default function CollectionsScreen() {
             multiline
             numberOfLines={3}
             onChangeText={setDescription}
-          />
-          <Button
-            label="Create collection"
-            kind="primary"
-            loading={busy}
-            disabled={!title.trim()}
-            onPress={() => void handleCreate()}
           />
         </View>
       </Dialog>

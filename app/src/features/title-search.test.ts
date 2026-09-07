@@ -51,6 +51,6 @@ describe('title request presentation', () => {
         retry_count: 0,
         updated_at: '2026-08-20T12:00:00Z',
       }),
-    ).toBe('Waiting for torrent metadata and peers.');
+    ).toBe('Waiting for download sources to respond.');
   });
 });

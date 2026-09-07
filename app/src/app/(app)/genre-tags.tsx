@@ -625,6 +625,7 @@ function GenreIconPicker({
   onChange: (value: AppIconName) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleOptions = options.filter((option) =>
     option.label.toLocaleLowerCase().includes(normalizedQuery),
@@ -632,41 +633,60 @@ function GenreIconPicker({
 
   return (
     <View className="gap-3">
-      <SearchField label="Icon" placeholder="Search icons" value={query} onChangeText={setQuery} />
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel="Icon"
-        className="flex-row flex-wrap gap-2"
-      >
-        {visibleOptions.map((option) => {
-          const selected = option.value === value;
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="radio"
-              accessibilityLabel={option.label}
-              accessibilityState={{ checked: selected }}
-              onPress={() => onChange(option.value)}
-              className={`will-change-variable min-h-12 flex-grow basis-[120px] flex-row items-center gap-2 rounded-control border px-3 py-2 ${selected ? 'border-accent bg-accent-soft' : 'border-line bg-control'}`}
-            >
-              <AppIcon
-                name={option.value}
-                size={20}
-                color={selected ? colors.accent : colors.muted}
-              />
-              <Text
-                numberOfLines={2}
-                className={`min-w-0 flex-1 text-sm font-sans-medium ${selected ? 'text-accent' : 'text-ink'}`}
-              >
-                {option.label}
-              </Text>
-              {selected ? <AppIcon name="check" size={16} color={colors.accent} /> : null}
-            </Pressable>
-          );
-        })}
+      <View className="self-start">
+        <Button
+          label={expanded ? 'Done choosing icon' : 'Change icon'}
+          kind="quiet"
+          onPress={() => setExpanded((open) => !open)}
+        />
       </View>
-      {!visibleOptions.length ? (
-        <Text className="text-sm text-muted">No matching icons.</Text>
+      {expanded ? (
+        <View className="gap-3">
+          <SearchField
+            label="Icon"
+            placeholder="Search icons"
+            value={query}
+            onChangeText={setQuery}
+          />
+          <View
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Icon"
+            className="flex-row flex-wrap gap-2"
+          >
+            {visibleOptions.map((option) => {
+              const selected = option.value === value;
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={option.label}
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => {
+                    onChange(option.value);
+                    setExpanded(false);
+                  }}
+                  className={`will-change-variable min-h-12 flex-grow basis-[120px] flex-row items-center gap-2 rounded-control border px-3 py-2 ${selected ? 'border-accent bg-accent-soft' : 'border-line bg-control'}`}
+                >
+                  <AppIcon
+                    name={option.value}
+                    size={20}
+                    color={selected ? colors.accent : colors.muted}
+                  />
+                  <Text
+                    numberOfLines={2}
+                    className={`min-w-0 flex-1 text-sm font-sans-medium ${selected ? 'text-accent' : 'text-ink'}`}
+                  >
+                    {option.label}
+                  </Text>
+                  {selected ? <AppIcon name="check" size={16} color={colors.accent} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+          {!visibleOptions.length ? (
+            <Text className="text-sm text-muted">No matching icons.</Text>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );

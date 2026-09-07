@@ -33,7 +33,7 @@ function CatalogContent() {
     narrator?: string;
     library_id?: string;
   }>();
-  const kind = routeKind === 'narrators' ? 'narrators' : 'series';
+  const kind = narrator || routeKind === 'narrators' ? 'narrators' : 'series';
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
   const [groups, setGroups] = useState<CatalogGroup[]>([]);
@@ -102,17 +102,13 @@ function CatalogContent() {
 
   return (
     <Page
-      title={
-        selected || (kind === 'series' ? 'Series in your library' : 'Narrators in your library')
-      }
+      title={selected || (kind === 'series' ? 'Series' : 'Narrators')}
       editorial={Boolean(series)}
       back={<IconButton icon="back" kind="quiet" label="Back" onPress={() => goBackOr('/books')} />}
     >
       {selected ? (
         <Text className="text-base text-muted">
-          {series
-            ? 'In reading order. Books without a number appear last.'
-            : `Audiobooks narrated by ${narrator}.`}
+          {series ? 'Read the series in order.' : `Audiobooks narrated by ${narrator}.`}
         </Text>
       ) : (
         <View className="gap-4">
@@ -176,8 +172,8 @@ function CatalogContent() {
           {query
             ? 'Try another name. Only series and narrators saved in your libraries appear here.'
             : kind === 'series'
-              ? 'Series appear here once their names are saved on your books. To add one, open a book, tap its settings, then Details → Series.'
-              : 'Narrators appear here once their names are saved on audiobook editions. Existing narration labels are not automatically converted.'}
+              ? 'Books with series details appear here, in reading order.'
+              : 'Audiobooks with narrator credits appear here.'}
         </EmptyState>
       )}
       {!loading && !error && (offset > 0 || more) ? (

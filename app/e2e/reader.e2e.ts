@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { signInAsTestAdmin, testServer } from './auth';
 
 test('an administrator can read, listen, and configure KOReader safely', async ({ page }) => {
   await signInAsTestAdmin(page);
@@ -8,7 +8,7 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   await expect(
     page.getByRole('heading', { name: "Alice's Adventures in Wonderland" }),
   ).toBeVisible();
-  await page.getByRole('button', { name: /Start reading|Continue reading|Read instead/ }).click();
+  await page.getByRole('button', { name: /^(Start reading|Continue reading|Read)$/ }).click();
 
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });
@@ -59,6 +59,7 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   await page.unroute('**/works/alice-gutenberg-11-work/progress');
 
   await page.goto('/account');
+  await page.getByRole('button', { name: 'Manage reader connections', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
   await expect(page.getByText(/KOReader needs your server's LAN or HTTPS address/)).toBeVisible();
   await page.getByRole('button', { name: 'Create reader credential' }).click();
@@ -77,5 +78,75 @@ test('an administrator can read, listen, and configure KOReader safely', async (
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
+  }
+});
+
+test('saved-page loading shields the book and cannot replace progress with the opening page', async ({
+  page,
+}) => {
+  await signInAsTestAdmin(page);
+  const progressURL = `${testServer}/api/v1/works/alice-gutenberg-11-work/progress`;
+  const jobs = await (
+    await page.request.get(`${testServer}/api/v1/works/alice-gutenberg-11-work/alignment-jobs`)
+  ).json();
+  const job = jobs.find((item: { alignment_id?: string }) => item.alignment_id);
+  const alignment = await (
+    await page.request.get(`${testServer}/api/v1/alignments/${job.alignment_id}`)
+  ).json();
+  const segment = alignment.segments.filter(
+    (item: { highlightable: boolean; text: string }) => item.highlightable && item.text.length > 30,
+  )[20];
+  const previous = await (await page.request.get(progressURL)).json();
+  const seeded = await page.request.put(progressURL, {
+    data: {
+      alignment_id: job.alignment_id,
+      segment_id: segment.id,
+      offset: 7,
+      expected_revision: previous?.revision ?? 0,
+      source_device: 'restore-test',
+    },
+  });
+  expect(seeded.ok()).toBe(true);
+  const before = await (await page.request.get(progressURL)).json();
+  expect(before.segment_id).toBeTruthy();
+
+  for (const width of [390, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let requested = () => {};
+    const started = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    await page.route('**/locators/epub', async (route) => {
+      requested();
+      await held;
+      await route.continue();
+    });
+    await page.goto('/consume/alice-gutenberg-11-work?mode=read');
+    await started;
+    await expect(page.getByText('Opening your book…', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open reader settings' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open table of contents' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Switch to listening' })).toHaveCount(0);
+    await page.mouse.click(width / 2, 450);
+    await page.keyboard.press('ArrowRight');
+    const during = await (await page.request.get(progressURL)).json();
+    expect(during.segment_id).toBe(before.segment_id);
+    expect(during.offset).toBe(before.offset);
+    expect(during.revision).toBe(before.revision);
+    await page.screenshot({
+      path: `../artifacts/design-redesign/${width}-reader-opening-cover.png`,
+    });
+    release();
+    await expect(page.getByRole('button', { name: 'Open reader settings' })).toBeVisible();
+    await expect(page.getByText(/Returning to your saved page…|Opening your book…/)).toHaveCount(0);
+    await page.unroute('**/locators/epub');
+    const after = await (await page.request.get(progressURL)).json();
+    expect(after.segment_id).toBe(before.segment_id);
+    expect(after.offset).toBe(before.offset);
+    expect(after.revision).toBe(before.revision);
   }
 });

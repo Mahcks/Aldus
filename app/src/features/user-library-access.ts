@@ -33,7 +33,9 @@ export function libraryAccessCountLabel(
 export function membershipAccessLabel(
   membership: Membership | undefined,
   hasExclusiveAccess: boolean,
+  administrator = false,
 ) {
+  if (administrator && !hasExclusiveAccess) return 'Administrator access';
   if (!membership) return 'Not available';
   if (hasExclusiveAccess && !membership.exclusive) return 'Excluded by access limit';
   return `${membership.role} access`;

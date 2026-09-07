@@ -15,7 +15,13 @@ const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info'
  * rather than a className, so the letterboxed strips around a `contain`-fit
  * cover still pick up the generated tone instead of falling back to white.
  */
-const coverToneHex = [colors.ink, '#4a4038', colors.accentStrong, colors.info, colors.success];
+const coverToneHex = [
+  colors.ink,
+  colors.textSecondary,
+  colors.accentStrong,
+  colors.info,
+  colors.success,
+];
 
 export type CoverPresentation = {
   coverFit?: 'cover' | 'contain';
@@ -107,8 +113,9 @@ export function BookCover({
   const coverToneIndex =
     generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length;
   const coverTone = coverTones[coverToneIndex];
-  const outerPaddingClass = resolvedSize === 'mini' ? 'p-1' : 'p-3';
-  const innerPaddingClass = resolvedSize === 'mini' ? 'px-1 py-2' : 'px-3 py-5';
+  const thumbnail = resolvedSize === 'mini' || resolvedSize === 'continue';
+  const outerPaddingClass = thumbnail ? 'p-1.5' : 'p-2.5';
+  const innerPaddingClass = thumbnail ? 'px-1.5 py-2' : 'px-2 py-4';
   const displayTitle = coverDisplayTitle(title);
   /**
    * Threshold and type scale both track the cover's own width — a "small"
@@ -176,9 +183,9 @@ export function BookCover({
             <View className="absolute bottom-0 left-0 top-0 w-1 bg-paper/20" />
           ) : null}
           <View
-            className={`flex-1 items-center gap-5 ${layoutClass} ${frameClass} ${innerPaddingClass}`}
+            className={`flex-1 items-center ${thumbnail ? 'gap-2' : 'gap-4'} ${layoutClass} ${frameClass} ${innerPaddingClass}`}
           >
-            {resolvedSize !== 'mini' && generatedCoverStyle !== 'minimal' ? (
+            {!thumbnail && generatedCoverStyle !== 'minimal' ? (
               <Text className="text-center text-[9px] font-sans-bold uppercase tracking-[2px] text-paper/70">
                 Aldus edition
               </Text>
@@ -187,7 +194,7 @@ export function BookCover({
             )}
             <Text
               numberOfLines={resolvedSize === 'mini' ? 2 : isLongTitle ? 4 : 3}
-              className={`text-center font-editorial-bold text-paper ${titleSizeClass}`}
+              className={`min-h-0 shrink text-center font-editorial text-paper ${titleSizeClass}`}
             >
               {coverTitle}
             </Text>
@@ -195,8 +202,8 @@ export function BookCover({
               <View className="h-px w-7 bg-paper/70" />
               {resolvedSize !== 'mini' ? (
                 <Text
-                  numberOfLines={1}
-                  className="text-center font-editorial text-[11px] text-paper/80"
+                  numberOfLines={2}
+                  className="text-center font-editorial text-[10px] leading-3 text-paper/80"
                 >
                   {author || 'Aldus Library'}
                 </Text>
@@ -247,16 +254,14 @@ export function LibraryCard({
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className={`w-[228px] max-w-full flex-row items-center gap-3 rounded-card border border-line bg-paper p-4 shadow-card ${stateClass}`}
+      className={`w-full flex-row items-center gap-3 border-b border-line py-4 ${stateClass}`}
     >
       <View className="h-11 w-11 items-center justify-center rounded-full bg-accent-soft">
         <AppIcon name="libraries" size={20} color={colors.accent} />
       </View>
       <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
-          {name}
-        </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-xs font-sans-semibold text-subtle">
+        <Text className="font-sans-semibold text-base text-ink">{name}</Text>
+        <Text className="mt-0.5 text-xs font-sans-semibold text-subtle">
           {role || 'Administrator access'}
         </Text>
       </View>
@@ -573,7 +578,7 @@ function AvailabilityLabel({ value }: { value: WorkAvailability }) {
  */
 const continueSizeClass = {
   continue: { width: 'w-[106px]', title: 'text-sm leading-4 min-h-[32px]', titleLines: 2 },
-  hero: { width: 'w-[204px]', title: 'text-lg leading-6 min-h-[48px]', titleLines: 3 },
+  hero: { width: 'w-full', title: 'text-lg leading-6 min-h-[48px]', titleLines: 3 },
 } as const;
 
 export function ContinueCard({
@@ -583,6 +588,9 @@ export function ContinueCard({
   coverPresentation,
   progress,
   continueMode,
+  onRead,
+  onListen,
+  completionPercent,
   size = 'continue',
   onOpen,
   onContinue,
@@ -597,6 +605,7 @@ export function ContinueCard({
   availability: WorkAvailability;
   progress?: string;
   continueMode: 'read' | 'listen';
+  completionPercent?: number;
   /** `hero` gives the cover and title room to breathe — use it where Continue is the star of the screen (Home). */
   size?: keyof typeof continueSizeClass;
   onOpen: () => void;
@@ -632,31 +641,35 @@ export function ContinueCard({
         title={title}
         author={author}
         coverURL={coverURL}
-        size={size}
+        size={size === 'hero' ? 'small' : size}
         {...coverPresentation}
       />
-      {progress ? (
+      {progress && size !== 'hero' ? (
         <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">
           <Text numberOfLines={1} className="text-[10px] font-sans-bold text-paper">
             {progress}
           </Text>
         </View>
       ) : null}
-      <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-1 rounded-b-control bg-accent/95 py-1.5">
-        <AppIcon
-          name={continueMode === 'read' ? 'read' : 'listen'}
-          size={12}
-          color={colors.onAccent}
-        />
-        <Text className="text-[10px] font-sans-bold uppercase tracking-wide text-on-accent">
-          Continue
-        </Text>
-      </View>
+      {size !== 'hero' ? (
+        <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-1 rounded-b-control bg-accent/95 py-1.5">
+          <AppIcon
+            name={continueMode === 'read' ? 'read' : 'listen'}
+            size={12}
+            color={colors.onAccent}
+          />
+          <Text className="text-[10px] font-sans-bold uppercase tracking-wide text-on-accent">
+            Continue
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 
   return (
-    <View className={`${dimensions.width} gap-1.5`}>
+    <View
+      className={`${dimensions.width} ${size === 'hero' ? 'flex-row items-start gap-4' : 'gap-1.5'}`}
+    >
       {Platform.OS === 'ios' ? (
         <Link href={continueHref} asChild>
           <Link.Trigger>{cover}</Link.Trigger>
@@ -671,7 +684,7 @@ export function ContinueCard({
       ) : (
         cover
       )}
-      <View>
+      <View className={size === 'hero' ? 'min-w-0 flex-1 gap-2' : ''}>
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={`Open ${title}`}
@@ -684,7 +697,7 @@ export function ContinueCard({
         >
           <Text
             numberOfLines={dimensions.titleLines}
-            className={`font-editorial-bold text-ink ${dimensions.title}`}
+            className={`font-editorial text-ink ${dimensions.title}`}
           >
             {title}
           </Text>
@@ -693,13 +706,43 @@ export function ContinueCard({
           <Text numberOfLines={1} className="min-w-0 flex-1 px-0.5 text-[11px] text-muted">
             {author || 'Unknown author'}
           </Text>
-          <IconButton
-            icon="more"
-            kind="quiet"
-            label={`Book actions for ${title}`}
-            onPress={() => setMenuOpen(true)}
-          />
+          {size !== 'hero' ? (
+            <IconButton
+              icon="more"
+              kind="quiet"
+              label={`Book actions for ${title}`}
+              onPress={() => setMenuOpen(true)}
+            />
+          ) : null}
         </View>
+        {size === 'hero' ? (
+          <View className="gap-2 pt-2">
+            {progress ? <Text className="text-xs text-muted">{progress}</Text> : null}
+            {completionPercent != null ? (
+              <View
+                accessibilityRole="progressbar"
+                accessibilityValue={{ min: 0, max: 100, now: completionPercent }}
+                className="mb-2 h-1 overflow-hidden rounded-pill bg-line"
+              >
+                <View
+                  className="h-full rounded-pill bg-accent"
+                  style={{ width: `${Math.max(0, Math.min(100, completionPercent))}%` }}
+                />
+              </View>
+            ) : null}
+            <Button
+              label={continueMode === 'read' ? 'Continue reading' : 'Continue listening'}
+              kind="primary"
+              onPress={onContinue}
+            />
+            {continueMode === 'read' && onListen ? (
+              <Button label="Listen" icon="listen" onPress={onListen} />
+            ) : null}
+            {continueMode === 'listen' && onRead ? (
+              <Button label="Read" icon="read" onPress={onRead} />
+            ) : null}
+          </View>
+        ) : null}
       </View>
       <Dialog visible={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
         <View className="gap-1">

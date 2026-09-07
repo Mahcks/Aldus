@@ -1,3 +1,4 @@
+import { LibraryAccessEditor } from '@/features/LibraryAccessEditor';
 import type {
   AcquisitionPolicy,
   Library,
@@ -76,6 +77,7 @@ function ManagementRow({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onPressIn={() => setPressed(true)}
@@ -109,6 +111,7 @@ export default function LibraryScreen() {
   const [error, setError] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [addingMember, setAddingMember] = useState(false);
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -636,7 +639,12 @@ export default function LibraryScreen() {
           )}
         </View>
       </View>
-      <Dialog visible={manageOpen} title="Library management" onClose={() => setManageOpen(false)}>
+      <Dialog
+        sheet
+        visible={manageOpen}
+        title="Library management"
+        onClose={() => setManageOpen(false)}
+      >
         <View>
           {canEdit ? (
             <ManagementRow
@@ -686,7 +694,7 @@ export default function LibraryScreen() {
           </Row>
         </View>
       </Dialog>
-      <Dialog visible={panel === 'members'} title="Manage members" onClose={closePanel} wide>
+      <Dialog visible={panel === 'members'} title="Manage members" onClose={closePanel} wide sheet>
         {error ? <Notice danger>{error}</Notice> : null}
         {!membersReady ? (
           <View className="gap-2">
@@ -701,72 +709,48 @@ export default function LibraryScreen() {
         ) : null}
         <View className="gap-1">
           <Notice>
-            Guided requests always follow the owner’s download rules. Skip approval starts a guided
-            request automatically. Advanced release choice may bypass those rules.
+            Changes to existing members save automatically. Choose a role to control what each
+            person can do.
           </Notice>
           {libraryCount > 1 ? (
             <Notice>
-              Access is normally additive. An exclusive grant limits that account to the union of
-              libraries where its membership is also exclusive.
+              Mark a library for exclusive access to limit that person to their marked libraries.
             </Notice>
           ) : null}
           {members.map((member) => (
-            <View
+            <LibraryAccessEditor
               key={member.user_id}
-              className="flex-row flex-wrap items-center justify-between gap-3 border-b border-line py-3.5"
-            >
-              <View className="min-w-[160px] flex-1 gap-1">
-                <Text className={shared.itemTitle}>{member.display_name || member.username}</Text>
-                <Text className={shared.itemMeta}>@{member.username}</Text>
-              </View>
-              <RoleControl
-                disabled={memberBusy || !membersReady}
-                value={member.role as Role}
-                onChange={(next) => void changeMemberRole(member, next)}
-              />
-              {libraryCount > 1 ? (
-                <View className="min-w-[220px]">
-                  <Checkbox
-                    disabled={memberBusy || !membersReady}
-                    label="Exclusive access grant"
-                    checked={member.exclusive}
-                    onPress={() => void toggleExclusive(member)}
-                  />
-                </View>
-              ) : null}
-              {member.role === 'reader' ? (
-                <View className="min-w-[220px] gap-1">
-                  <Checkbox
-                    disabled={memberBusy || !membersReady}
-                    label="Can request"
-                    checked={member.can_request_acquisitions}
-                    onPress={() => void toggleAcquisitionPermission(member, 'request')}
-                  />
-                  <Checkbox
-                    disabled={memberBusy || !membersReady}
-                    label="Skip approval"
-                    checked={member.can_bypass_acquisition_approval}
-                    onPress={() => void toggleAcquisitionPermission(member, 'bypass')}
-                  />
-                  <Checkbox
-                    disabled={memberBusy || !membersReady}
-                    label="Advanced release choice"
-                    checked={member.can_advanced_acquisition_request}
-                    onPress={() => void toggleAcquisitionPermission(member, 'advanced')}
-                  />
-                </View>
-              ) : (
-                <Text className="text-xs text-muted">Request access included with this role</Text>
-              )}
-              <Button
-                label="Remove"
-                disabled={memberBusy || !membersReady}
-                kind="danger"
-                onPress={() => setRemoveTarget(member)}
-              />
-            </View>
+              library={library}
+              title={member.display_name || member.username}
+              accessLabel={`@${member.username} · ${member.role} in this library`}
+              membership={member}
+              administrator={false}
+              exclusive={false}
+              lastOwner={
+                member.role === 'owner' &&
+                members.filter((entry) => entry.role === 'owner').length === 1
+              }
+              disabled={memberBusy || !membersReady}
+              saving={false}
+              multipleLibraries={libraryCount > 1}
+              onRoleChange={(next) =>
+                next ? void changeMemberRole(member, next) : setRemoveTarget(member)
+              }
+              onPermissionChange={(permission) =>
+                permission === 'exclusive'
+                  ? void toggleExclusive(member)
+                  : void toggleAcquisitionPermission(member, permission)
+              }
+            />
           ))}
           {auth.user?.admin ? (
+            <Button
+              label={addingMember ? 'Cancel adding member' : 'Add a member'}
+              kind="secondary"
+              onPress={() => setAddingMember((open) => !open)}
+            />
+          ) : null}
+          {auth.user?.admin && addingMember ? (
             <View className="gap-3 pt-6">
               <Text className="text-sm font-sans-bold text-ink">Add member</Text>
               <View className="gap-1">
@@ -792,13 +776,13 @@ export default function LibraryScreen() {
                 <View className="gap-1">
                   <Checkbox
                     disabled={memberBusy || !membersReady}
-                    label="Can request"
+                    label="Request books"
                     checked={canRequestAcquisitions}
                     onPress={() => setCanRequestAcquisitions((current) => !current)}
                   />
                   <Checkbox
                     disabled={memberBusy || !membersReady}
-                    label="Skip approval"
+                    label="Download without approval"
                     checked={canBypassAcquisitionApproval}
                     onPress={() => setCanBypassAcquisitionApproval((current) => !current)}
                   />
@@ -825,15 +809,31 @@ export default function LibraryScreen() {
           )}
         </View>
       </Dialog>
-      <Dialog visible={panel === 'policy'} title="Acquisition policy" onClose={closePanel} wide>
+      <Dialog
+        visible={panel === 'policy'}
+        title="Acquisition policy"
+        onClose={closePanel}
+        wide
+        sheet
+        footer={
+          <Button
+            label="Save acquisition policy"
+            kind="primary"
+            loading={policyBusy}
+            disabled={policyLoading || !policy || sources.length === 0}
+            onPress={() => void savePolicy()}
+          />
+        }
+      >
         {policyLoading ? (
           <Loading label="Loading acquisition policy…" />
         ) : (
           <View className="gap-5">
-            <Notice>
-              These rules are mandatory for guided requests, including requests that skip approval.
-              Members with advanced release choice may bypass them.
-            </Notice>
+            <Text className="text-sm leading-5 text-muted">
+              Choose where requested books go and which editions Aldus can download automatically.
+              Advanced release choices can bypass these rules.
+            </Text>
+            <Text className="text-base font-sans-semibold text-ink">Download destinations</Text>
             {policyError ? <Notice danger>{policyError}</Notice> : null}
             {policySaved ? <Notice tone="success">Acquisition policy saved.</Notice> : null}
             {sources.length === 0 ? (
@@ -856,6 +856,7 @@ export default function LibraryScreen() {
                 />
               </View>
             )}
+            <Text className="text-base font-sans-semibold text-ink">File limits</Text>
             <View className="gap-4 sm:flex-row">
               <View className="min-w-0 flex-1">
                 <Field
@@ -952,34 +953,24 @@ export default function LibraryScreen() {
               checked={allowAbridged}
               onPress={() => setAllowAbridged((current) => !current)}
             />
-            <View className="self-start">
-              <Button
-                label="Save acquisition policy"
-                kind="primary"
-                loading={policyBusy}
-                disabled={!policy || sources.length === 0}
-                onPress={() => void savePolicy()}
-              />
-            </View>
           </View>
         )}
       </Dialog>
-      <Dialog visible={panel === 'settings'} title="Library settings" onClose={closePanel}>
+      <Dialog
+        visible={panel === 'settings'}
+        title="Library settings"
+        onClose={closePanel}
+        sheet
+        footer={
+          <Button label="Save changes" kind="primary" disabled={!name.trim()} onPress={saveName} />
+        }
+      >
+        {error ? <Notice danger>{error}</Notice> : null}
         <View className={shared.form}>
           <Field label="Library name" value={name} onChangeText={setName} />
-          <View className="self-start">
-            <Button
-              label="Save changes"
-              kind="primary"
-              disabled={!name.trim()}
-              onPress={saveName}
-            />
-          </View>
           <View className="mt-4 gap-2 border-t border-line pt-4">
             <Text className="text-sm font-sans-bold text-ink">Delete library</Text>
-            <Text className={shared.itemMeta}>
-              The library must contain no works before it can be deleted.
-            </Text>
+            <Text className={shared.itemMeta}>Remove all books before deleting this library.</Text>
             <View className="self-start">
               <Button
                 label="Delete library"
@@ -1008,7 +999,7 @@ export default function LibraryScreen() {
         onClose={() => setConfirmingDelete(false)}
         onConfirm={() => void confirmDeleteLibrary()}
         title="Delete library?"
-        description="This cannot be undone. The library must contain no works before it can be deleted."
+        description="This cannot be undone. Remove all books before deleting this library."
         confirmLabel="Delete"
         danger
         busy={deletingLibrary}

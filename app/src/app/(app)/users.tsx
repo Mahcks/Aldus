@@ -1,13 +1,12 @@
 import type { Library, Membership, User } from '@/generated/api';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Share } from 'react-native';
+import { Platform, Share, useWindowDimensions } from 'react-native';
 import { getAPIBaseURL } from '@/lib/api-base';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { Text, View } from '@/features/tw';
 import {
   libraryAccessCountLabel,
   libraryAccessSummary,
-  membershipAccessLabel,
   membershipForUser,
 } from '@/features/user-library-access';
 import {
@@ -26,17 +25,12 @@ import {
   StatusBadge,
 } from '@/features/ui';
 import { api, errorMessage } from '@/lib/api';
+import { LibraryAccessEditor } from '@/features/LibraryAccessEditor';
 
 const emptyForm = { username: '', display_name: '', admin_note: '', admin: false };
-const libraryRoles = [
-  { value: '', label: 'No access' },
-  { value: 'reader', label: 'Reader' },
-  { value: 'editor', label: 'Editor' },
-  { value: 'owner', label: 'Owner' },
-] as const;
-
 export default function UsersScreen() {
   const auth = useAuth();
+  const desktop = useWindowDimensions().width >= 1100;
   const [users, setUsers] = useState<User[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [membersByLibrary, setMembersByLibrary] = useState<Record<string, Membership[]>>({});
@@ -351,7 +345,7 @@ Choose your own password when you sign in.`;
 
   return (
     <Page
-      title={selected ? selected.display_name || selected.username : 'Users'}
+      title={selected && !desktop ? selected.display_name || selected.username : 'Family & users'}
       back={
         selected ? (
           <IconButton
@@ -363,7 +357,7 @@ Choose your own password when you sign in.`;
         ) : undefined
       }
       actions={
-        selected ? undefined : (
+        selected && !desktop ? undefined : (
           <Button
             label="Add user"
             icon="add"
@@ -380,148 +374,102 @@ Choose your own password when you sign in.`;
     >
       {error ? <Notice danger>{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
-      {!selected ? (
-        <View className="max-w-[900px] gap-4">
-          <SearchField
-            label="Search users"
-            placeholder="Name or username"
-            value={query}
-            onChangeText={setQuery}
-          />
-          <Text className="text-sm text-muted">
-            {visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}
-          </Text>
-          {loading ? (
-            <Loading label="Loading accounts…" />
-          ) : visibleUsers.length ? (
-            <View className="border-t border-line">
-              {visibleUsers.map((user) => (
-                <View
-                  key={user.id}
-                  className="min-h-16 flex-row flex-wrap items-center justify-between gap-3 border-b border-line py-3"
-                >
-                  <View className="min-w-0 flex-1">
-                    <Text numberOfLines={1} className="font-sans-bold text-ink">
-                      {user.display_name || user.username}
-                    </Text>
-                    <Text numberOfLines={1} className="text-sm text-muted">
-                      @{user.username}
-                    </Text>
-                    {user.admin_note ? (
-                      <Text numberOfLines={1} className="mt-1 text-xs text-subtle">
-                        {user.admin_note}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Row>
-                    {!accessLoading ? (
-                      <StatusBadge
-                        label={
-                          user.admin &&
-                          !libraryAccessSummary(membersByLibrary, user.id).hasExclusiveAccess
-                            ? 'All libraries'
-                            : libraryAccessCountLabel(membersByLibrary, user.id)
-                        }
-                      />
-                    ) : null}
-                    {user.admin ? <StatusBadge tone="info" label="Admin" /> : null}
-                    {user.must_change_credentials ? (
-                      <StatusBadge tone="warning" label="Setup required" />
-                    ) : null}
-                    {user.disabled ? (
-                      <StatusBadge tone="neutral" label="Disabled" icon="disabled" />
-                    ) : null}
-                    <Button
-                      label="View"
-                      kind="quiet"
-                      onPress={() => {
-                        setError('');
-                        setSuccess('');
-                        setTechnicalOpen(false);
-                        setNoteOpen(false);
-                        setAccessError('');
-                        setAdminNote(user.admin_note ?? '');
-                        setNoteError('');
-                        setNoteSaved(false);
-                        setSelected(user);
-                      }}
-                    />
-                  </Row>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <EmptyState icon="users" title={query ? 'No matching users' : 'No accounts'}>
-              {query ? 'Try another name or username.' : 'Add an account to get started.'}
-            </EmptyState>
-          )}
-        </View>
-      ) : null}
-
-      <Dialog visible={createOpen} title="Add user" onClose={() => setCreateOpen(false)}>
-        <View className="gap-3">
-          {error ? <Notice danger>{error}</Notice> : null}
-          <Field
-            label="Username"
-            autoFocus
-            autoCapitalize="none"
-            value={form.username}
-            onChangeText={(username) => setForm((current) => ({ ...current, username }))}
-            help="The reader can change this provisional username during first sign-in."
-          />
-          <Field
-            label="Display name"
-            value={form.display_name}
-            onChangeText={(display_name) => setForm((current) => ({ ...current, display_name }))}
-          />
-          <Field
-            label="Admin note"
-            value={form.admin_note}
-            onChangeText={(admin_note) => setForm((current) => ({ ...current, admin_note }))}
-            help="Private to global administrators. Useful when the reader later changes their username."
-            maxLength={500}
-            multiline
-            numberOfLines={3}
-          />
-          <Notice>
-            Aldus generates a one-time password. The reader chooses their final username and
-            password when they first sign in.
-          </Notice>
-          <Text className="font-sans-bold text-base text-ink">Books they can access</Text>
-          {accessLoading ? <Loading label="Loading libraries…" /> : null}
-          {libraries.map((library) => (
-            <Checkbox
-              key={library.id}
-              label={library.name}
-              checked={createLibraryIDs.includes(library.id)}
-              disabled={busy}
-              onPress={() =>
-                setCreateLibraryIDs((ids) =>
-                  ids.includes(library.id)
-                    ? ids.filter((id) => id !== library.id)
-                    : [...ids, library.id],
-                )
-              }
+      <View className={desktop ? 'flex-row items-start gap-8' : ''}>
+        {!selected || desktop ? (
+          <View
+            className={
+              selected && desktop ? 'w-[300px] shrink-0 gap-4' : 'w-full max-w-[900px] gap-4'
+            }
+          >
+            <SearchField
+              label="Search users"
+              placeholder="Name or username"
+              value={query}
+              onChangeText={setQuery}
             />
-          ))}
-          {accessError ? <Notice danger>{accessError}</Notice> : null}
-          {!createLibraryIDs.length ? (
             <Text className="text-sm text-muted">
-              Choose at least one library for a reader to start with books.
+              {visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}
             </Text>
-          ) : null}
-          <Checkbox
-            label="Allow book requests (approval required)"
-            checked={allowRequests}
-            onPress={() => setAllowRequests((value) => !value)}
-          />
-          <Checkbox
-            label="Grant global administrator access"
-            checked={form.admin}
-            onPress={() => setForm((current) => ({ ...current, admin: !current.admin }))}
-          />
-          <Row>
-            <Button label="Cancel" onPress={() => setCreateOpen(false)} />
+            {loading ? (
+              <Loading label="Loading accounts…" />
+            ) : visibleUsers.length ? (
+              <View className="border-t border-line">
+                {visibleUsers.map((user) => (
+                  <View
+                    key={user.id}
+                    className="min-h-16 flex-row flex-wrap items-center justify-between gap-3 border-b border-line py-3"
+                  >
+                    <View className="h-11 w-11 items-center justify-center rounded-full bg-neutral-soft">
+                      <Text className="text-lg font-sans-medium text-ink">
+                        {(user.display_name || user.username).slice(0, 1).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View className="min-w-[140px] flex-1">
+                      <Text numberOfLines={1} className="font-sans-bold text-ink">
+                        {user.display_name || user.username}
+                      </Text>
+                      <Text numberOfLines={1} className="text-sm text-muted">
+                        @{user.username}
+                      </Text>
+                      {user.admin_note ? (
+                        <Text numberOfLines={1} className="mt-1 text-xs text-subtle">
+                          {user.admin_note}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Row>
+                      {!accessLoading ? (
+                        <StatusBadge
+                          label={
+                            user.admin &&
+                            !libraryAccessSummary(membersByLibrary, user.id).hasExclusiveAccess
+                              ? 'All libraries'
+                              : libraryAccessCountLabel(membersByLibrary, user.id)
+                          }
+                        />
+                      ) : null}
+                      {user.admin ? <StatusBadge tone="info" label="Admin" /> : null}
+                      {user.must_change_credentials ? (
+                        <StatusBadge tone="warning" label="Setup required" />
+                      ) : null}
+                      {user.disabled ? (
+                        <StatusBadge tone="neutral" label="Disabled" icon="disabled" />
+                      ) : null}
+                      <Button
+                        label="View"
+                        kind="quiet"
+                        onPress={() => {
+                          setError('');
+                          setSuccess('');
+                          setTechnicalOpen(false);
+                          setNoteOpen(false);
+                          setAccessError('');
+                          setAdminNote(user.admin_note ?? '');
+                          setNoteError('');
+                          setNoteSaved(false);
+                          setSelected(user);
+                        }}
+                      />
+                    </Row>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <EmptyState icon="users" title={query ? 'No matching users' : 'No accounts'}>
+                {query ? 'Try another name or username.' : 'Add an account to get started.'}
+              </EmptyState>
+            )}
+          </View>
+        ) : null}
+
+        <Dialog
+          visible={createOpen}
+          title="Add user"
+          sheet
+          onClose={() => {
+            if (!busy) setCreateOpen(false);
+          }}
+          footer={
             <Button
               label="Create account"
               kind="primary"
@@ -529,262 +477,268 @@ Choose your own password when you sign in.`;
               disabled={!canSubmit || accessLoading || (!form.admin && !createLibraryIDs.length)}
               onPress={() => void createUser()}
             />
-          </Row>
-        </View>
-      </Dialog>
-
-      {selected ? (
-        <View className="w-full max-w-[900px] gap-6">
-          <View>
-            <Text className="text-sm text-muted">@{selected.username}</Text>
-          </View>
-          <Row>
-            {selected.admin ? (
-              <StatusBadge tone="info" label="Global administrator" />
-            ) : (
-              <StatusBadge label="Member" />
-            )}
-            <StatusBadge
-              tone={selected.disabled ? 'neutral' : 'success'}
-              label={selected.disabled ? 'Disabled' : 'Enabled'}
-              icon={selected.disabled ? 'disabled' : 'enabled'}
+          }
+        >
+          <View className="gap-3">
+            {error ? <Notice danger>{error}</Notice> : null}
+            <Field
+              label="Username"
+              autoFocus
+              autoCapitalize="none"
+              value={form.username}
+              onChangeText={(username) => setForm((current) => ({ ...current, username }))}
+              help="They can change this when they first sign in."
             />
-            {selected.must_change_credentials ? (
-              <StatusBadge tone="warning" label="Waiting for setup" />
-            ) : null}
-          </Row>
-          {selected.admin ? (
-            <Notice tone="info">
-              {selectedAccess.hasExclusiveAccess
-                ? 'This administrator is limited to the libraries marked for exclusive access.'
-                : 'This administrator can access and manage every library.'}
+            <Field
+              label="Display name"
+              value={form.display_name}
+              onChangeText={(display_name) => setForm((current) => ({ ...current, display_name }))}
+            />
+            <Field
+              label="Admin note"
+              value={form.admin_note}
+              onChangeText={(admin_note) => setForm((current) => ({ ...current, admin_note }))}
+              help="Optional. Only administrators can see this note."
+              maxLength={500}
+              multiline
+              numberOfLines={3}
+            />
+            <Notice>
+              Aldus generates a one-time password. The reader chooses their final username and
+              password when they first sign in.
             </Notice>
-          ) : null}
-          {selected.disabled ? (
-            <Notice tone="warning">Enable this account before changing its library access.</Notice>
-          ) : null}
-          <View className="gap-3 border-t border-line pt-5">
-            <View className="gap-1">
-              <Text className="text-base font-sans-bold text-ink">Library access</Text>
-              <Text className="text-sm text-muted">
-                Choose what this person can access. Changes save automatically.
-              </Text>
-            </View>
+            <Text className="font-sans-bold text-base text-ink">Books they can access</Text>
+            {accessLoading ? <Loading label="Loading libraries…" /> : null}
+            {libraries.map((library) => (
+              <Checkbox
+                key={library.id}
+                label={library.name}
+                checked={createLibraryIDs.includes(library.id)}
+                disabled={busy}
+                onPress={() =>
+                  setCreateLibraryIDs((ids) =>
+                    ids.includes(library.id)
+                      ? ids.filter((id) => id !== library.id)
+                      : [...ids, library.id],
+                  )
+                }
+              />
+            ))}
             {accessError ? <Notice danger>{accessError}</Notice> : null}
-            {selectedAccess.hasExclusiveAccess ? (
+            {!createLibraryIDs.length ? (
+              <Text className="text-sm text-muted">
+                Choose at least one library for a reader to start with books.
+              </Text>
+            ) : null}
+            <Checkbox
+              label="Allow book requests (approval required)"
+              checked={allowRequests}
+              onPress={() => setAllowRequests((value) => !value)}
+            />
+            <Checkbox
+              label="Grant global administrator access"
+              checked={form.admin}
+              onPress={() => setForm((current) => ({ ...current, admin: !current.admin }))}
+            />
+          </View>
+        </Dialog>
+
+        {selected ? (
+          <View
+            className={
+              desktop ? 'min-w-0 flex-1 gap-6 border-l border-line-subtle pl-8' : 'w-full gap-6'
+            }
+          >
+            {desktop ? (
+              <Text accessibilityRole="header" className="text-2xl font-sans-semibold text-ink">
+                {selected.display_name || selected.username}
+              </Text>
+            ) : null}
+            <View>
+              <Text className="text-sm text-muted">@{selected.username}</Text>
+            </View>
+            <Row>
+              {selected.admin ? (
+                <StatusBadge tone="info" label="Global administrator" />
+              ) : (
+                <StatusBadge label="Member" />
+              )}
+              <StatusBadge
+                tone={selected.disabled ? 'neutral' : 'success'}
+                label={selected.disabled ? 'Disabled' : 'Enabled'}
+                icon={selected.disabled ? 'disabled' : 'enabled'}
+              />
+              {selected.must_change_credentials ? (
+                <StatusBadge tone="warning" label="Waiting for setup" />
+              ) : null}
+            </Row>
+            {selected.admin ? (
               <Notice tone="info">
-                This account is limited to libraries marked “Include in exclusive access.” Other
-                direct roles are retained but cannot open their libraries.
+                {selectedAccess.hasExclusiveAccess
+                  ? 'This administrator is limited to the libraries marked for exclusive access.'
+                  : 'This administrator can access and manage every library.'}
               </Notice>
             ) : null}
-            {accessLoading ? (
-              <Loading label="Loading library access…" />
-            ) : libraries.length ? (
-              <View className="border-t border-line">
-                {libraries.map((library, index) => {
-                  const membership = selectedMembership(library.id);
-                  const lastOwner =
-                    membership?.role === 'owner' &&
-                    membersByLibrary[library.id]?.filter(
-                      (member) =>
-                        member.role === 'owner' &&
-                        !users.find((user) => user.id === member.user_id)?.disabled,
-                    ).length === 1;
-                  const rowBusy = accessBusy === library.id;
-                  return (
-                    <View
-                      key={library.id}
-                      className={`gap-3 py-5 ${index ? 'border-t border-line' : ''}`}
-                    >
-                      <View className="flex-row flex-wrap items-start justify-between gap-3">
-                        <View className="min-w-[150px] flex-1 gap-0.5">
-                          <Text className="font-sans-bold text-ink">{library.name}</Text>
-                          <Text className="text-xs text-muted">
-                            {membershipAccessLabel(membership, selectedAccess.hasExclusiveAccess)}
-                          </Text>
-                        </View>
-                        <View
-                          accessibilityRole="radiogroup"
-                          accessibilityLabel={`${library.name} access`}
-                          className="flex-row flex-wrap gap-1.5"
-                        >
-                          {libraryRoles.map((option) => (
-                            <Button
-                              key={option.value || 'none'}
-                              label={option.label}
-                              kind="secondary"
-                              selected={(membership?.role ?? '') === option.value}
-                              accessibilityRole="radio"
-                              disabled={
-                                selected.disabled ||
-                                (lastOwner && option.value !== 'owner') ||
-                                Boolean(accessBusy)
-                              }
-                              onPress={() => void changeLibraryRole(library, option.value)}
-                            />
-                          ))}
-                        </View>
-                      </View>
-                      {lastOwner ? (
-                        <Text className="text-xs text-muted">
-                          Assign another owner before changing this role.
-                        </Text>
-                      ) : null}
-                      {rowBusy ? (
-                        <Text accessibilityLiveRegion="polite" className="text-xs text-muted">
-                          Saving access…
-                        </Text>
-                      ) : null}
-                      {membership?.role === 'reader' ? (
-                        <View className="gap-2 border-t border-line-subtle pt-3">
-                          <Text className="text-xs font-sans-semibold text-muted">
-                            Request permissions
-                          </Text>
-                          <View className="flex-row flex-wrap gap-x-5 gap-y-1">
-                            <Checkbox
-                              label="Request books"
-                              checked={membership.can_request_acquisitions}
-                              disabled={selected.disabled || Boolean(accessBusy)}
-                              onPress={() => void toggleLibraryPermission(library, 'request')}
-                            />
-                            <Checkbox
-                              label="Download without approval"
-                              checked={membership.can_bypass_acquisition_approval}
-                              disabled={selected.disabled || Boolean(accessBusy)}
-                              onPress={() => void toggleLibraryPermission(library, 'bypass')}
-                            />
-                            <Checkbox
-                              label="Advanced release choice"
-                              checked={membership.can_advanced_acquisition_request}
-                              disabled={selected.disabled || Boolean(accessBusy)}
-                              onPress={() => void toggleLibraryPermission(library, 'advanced')}
-                            />
-                          </View>
-                        </View>
-                      ) : null}
-                      {membership && libraries.length > 1 ? (
-                        <View className="border-t border-line-subtle pt-3">
-                          <Checkbox
-                            label="Include in exclusive access"
-                            checked={membership.exclusive}
-                            disabled={selected.disabled || Boolean(accessBusy)}
-                            onPress={() => void toggleLibraryPermission(library, 'exclusive')}
-                          />
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
+            {selected.disabled ? (
+              <Notice tone="warning">
+                Enable this account before changing its library access.
+              </Notice>
+            ) : null}
+            <View className="gap-3 border-t border-line pt-5">
+              <View className="gap-1">
+                <Text className="text-base font-sans-bold text-ink">Library access</Text>
+                <Text className="text-sm text-muted">
+                  Choose what this person can access. Changes save automatically.
+                </Text>
               </View>
-            ) : (
-              <EmptyState icon="libraries" title="No libraries">
-                Create a library before assigning access.
-              </EmptyState>
-            )}
-          </View>
-          <View className="gap-3 border-t border-line pt-5">
-            <Text className="text-base font-sans-bold text-ink">Account settings</Text>
-            <Text className="text-sm text-muted">
-              Manage sign-in and who can administer your server.
-            </Text>
-            <Row>
-              <Button
-                label={selected.admin ? 'Remove administrator access' : 'Make administrator'}
-                kind="secondary"
-                onPress={() => {
-                  setError('');
-                  setRoleConfirm(true);
-                }}
-              />
-              <View className="self-start">
-                <Button
-                  label="Reset password"
-                  kind="secondary"
-                  disabled={selected.id === auth.user?.id}
-                  onPress={() => setConfirmingReset(true)}
-                />
-                {selected.id === auth.user?.id ? (
-                  <Text className="mt-2 text-sm text-muted">
-                    Change your own password from Account.
-                  </Text>
-                ) : null}
-              </View>
-              <View className="self-start">
-                <Button
-                  label={selected.disabled ? 'Enable account' : 'Disable account'}
-                  kind={selected.disabled ? 'secondary' : 'danger'}
-                  loading={busy}
-                  onPress={() =>
-                    selected.disabled ? void toggleSelected() : setConfirmingDisable(true)
-                  }
-                />
-              </View>
-            </Row>
-          </View>
-          <View className="gap-3 border-t border-line pt-3">
-            <View className="self-start">
-              <Button
-                label={
-                  noteOpen
-                    ? 'Hide private note'
-                    : selected.admin_note
-                      ? 'Edit private note'
-                      : 'Add private note'
-                }
-                kind="quiet"
-                onPress={() => setNoteOpen((open) => !open)}
-              />
+              {accessError ? <Notice danger>{accessError}</Notice> : null}
+              {selectedAccess.hasExclusiveAccess ? (
+                <Notice tone="info">
+                  This account is limited to libraries marked “Include in exclusive access.” Other
+                  direct roles are retained but cannot open their libraries.
+                </Notice>
+              ) : null}
+              {accessLoading ? (
+                <Loading label="Loading library access…" />
+              ) : libraries.length ? (
+                <View>
+                  {libraries.map((library) => {
+                    const membership = selectedMembership(library.id);
+                    const lastOwner =
+                      membership?.role === 'owner' &&
+                      membersByLibrary[library.id]?.filter(
+                        (member) =>
+                          member.role === 'owner' &&
+                          !users.find((user) => user.id === member.user_id)?.disabled,
+                      ).length === 1;
+                    return (
+                      <LibraryAccessEditor
+                        key={library.id}
+                        library={library}
+                        membership={membership}
+                        administrator={selected.admin}
+                        exclusive={selectedAccess.hasExclusiveAccess}
+                        lastOwner={Boolean(lastOwner)}
+                        disabled={selected.disabled || Boolean(accessBusy)}
+                        saving={accessBusy === library.id}
+                        multipleLibraries={libraries.length > 1}
+                        onRoleChange={(role) => void changeLibraryRole(library, role)}
+                        onPermissionChange={(permission) =>
+                          void toggleLibraryPermission(library, permission)
+                        }
+                      />
+                    );
+                  })}
+                </View>
+              ) : (
+                <EmptyState icon="libraries" title="No libraries">
+                  Create a library before assigning access.
+                </EmptyState>
+              )}
             </View>
-            {noteOpen ? (
-              <View className="gap-3">
-                <Field
-                  label="Admin note"
-                  value={adminNote}
-                  onChangeText={(value) => {
-                    setAdminNote(value);
-                    setNoteSaved(false);
+            <View className="gap-3 border-t border-line pt-5">
+              <Text className="text-base font-sans-bold text-ink">Account settings</Text>
+              <Text className="text-sm text-muted">
+                Manage sign-in and who can administer your server.
+              </Text>
+              <Row>
+                <Button
+                  label={selected.admin ? 'Remove administrator access' : 'Make administrator'}
+                  kind="secondary"
+                  onPress={() => {
+                    setError('');
+                    setRoleConfirm(true);
                   }}
-                  help="Only global administrators can see this note."
-                  maxLength={500}
-                  multiline
-                  numberOfLines={3}
                 />
-                {noteError ? <Notice danger>{noteError}</Notice> : null}
-                {noteSaved ? (
-                  <Text accessibilityLiveRegion="polite" className="text-sm text-success">
-                    Note saved.
-                  </Text>
-                ) : null}
                 <View className="self-start">
                   <Button
-                    label="Save note"
+                    label="Reset password"
                     kind="secondary"
-                    loading={savingNote}
-                    disabled={adminNote.trim() === (selected.admin_note ?? '')}
-                    onPress={() => void saveAdminNote()}
+                    disabled={selected.id === auth.user?.id}
+                    onPress={() => setConfirmingReset(true)}
+                  />
+                  {selected.id === auth.user?.id ? (
+                    <Text className="mt-2 text-sm text-muted">
+                      Change your own password from Account.
+                    </Text>
+                  ) : null}
+                </View>
+                <View className="self-start">
+                  <Button
+                    label={selected.disabled ? 'Enable account' : 'Disable account'}
+                    kind={selected.disabled ? 'secondary' : 'danger'}
+                    loading={busy}
+                    onPress={() =>
+                      selected.disabled ? void toggleSelected() : setConfirmingDisable(true)
+                    }
                   />
                 </View>
+              </Row>
+            </View>
+            <View className="gap-3 border-t border-line pt-3">
+              <View className="self-start">
+                <Button
+                  label={
+                    noteOpen
+                      ? 'Hide private note'
+                      : selected.admin_note
+                        ? 'Edit private note'
+                        : 'Add private note'
+                  }
+                  kind="quiet"
+                  onPress={() => setNoteOpen((open) => !open)}
+                />
+              </View>
+              {noteOpen ? (
+                <View className="gap-3">
+                  <Field
+                    label="Admin note"
+                    value={adminNote}
+                    onChangeText={(value) => {
+                      setAdminNote(value);
+                      setNoteSaved(false);
+                    }}
+                    help="Only global administrators can see this note."
+                    maxLength={500}
+                    multiline
+                    numberOfLines={3}
+                  />
+                  {noteError ? <Notice danger>{noteError}</Notice> : null}
+                  {noteSaved ? (
+                    <Text accessibilityLiveRegion="polite" className="text-sm text-success">
+                      Note saved.
+                    </Text>
+                  ) : null}
+                  <View className="self-start">
+                    <Button
+                      label="Save note"
+                      kind="secondary"
+                      loading={savingNote}
+                      disabled={adminNote.trim() === (selected.admin_note ?? '')}
+                      onPress={() => void saveAdminNote()}
+                    />
+                  </View>
+                </View>
+              ) : null}
+            </View>
+            <View className="self-start">
+              <Button
+                label={technicalOpen ? 'Hide technical details' : 'Technical details'}
+                kind="quiet"
+                onPress={() => setTechnicalOpen((open) => !open)}
+              />
+            </View>
+            {technicalOpen ? (
+              <View className="rounded-control bg-panel p-3">
+                <Text className="text-xs font-sans-semibold text-muted">Account ID</Text>
+                <Text selectable className="font-mono text-xs text-ink">
+                  {selected.id}
+                </Text>
               </View>
             ) : null}
           </View>
-          <View className="self-start">
-            <Button
-              label={technicalOpen ? 'Hide technical details' : 'Technical details'}
-              kind="quiet"
-              onPress={() => setTechnicalOpen((open) => !open)}
-            />
-          </View>
-          {technicalOpen ? (
-            <View className="rounded-control bg-panel p-3">
-              <Text className="text-xs font-sans-semibold text-muted">Account ID</Text>
-              <Text selectable className="font-mono text-xs text-ink">
-                {selected.id}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
+        ) : null}
+      </View>
       <Dialog
         visible={roleConfirm}
         title="Change administrator access"
@@ -835,6 +789,14 @@ Choose your own password when you sign in.`;
       <Dialog
         visible={Boolean(temporaryCredential)}
         title="One-time sign-in"
+        sheet
+        footer={
+          <Button
+            label="I saved it"
+            kind="secondary"
+            onPress={() => setTemporaryCredential(undefined)}
+          />
+        }
         onClose={() => setTemporaryCredential(undefined)}
       >
         {temporaryCredential ? (
@@ -879,13 +841,6 @@ Choose your own password when you sign in.`;
               <Text selectable className="font-mono text-sm text-ink">
                 {temporaryCredential.password}
               </Text>
-            </View>
-            <View className="self-start">
-              <Button
-                label="I saved it"
-                kind="primary"
-                onPress={() => setTemporaryCredential(undefined)}
-              />
             </View>
           </View>
         ) : null}

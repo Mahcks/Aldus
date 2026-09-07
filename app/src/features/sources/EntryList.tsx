@@ -28,8 +28,8 @@ function EntryRow({ entry }: { entry: SourceEntry }) {
 
   return (
     <View className="gap-1.5 border-b border-line py-3">
-      <View className="flex-row items-start justify-between gap-3">
-        <Text selectable className="flex-shrink text-xs leading-[18px] text-ink">
+      <View className="gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <Text selectable className="min-w-0 flex-1 text-sm leading-5 text-ink">
           {entry.relative_path}
         </Text>
         <StatusBadge {...status} />

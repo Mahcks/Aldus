@@ -42,7 +42,7 @@ test('Library retains a failed page across Browse navigation and retries that pa
   await main.evaluate((element) => {
     element.scrollTop = 0;
   });
-  await page.getByRole('button', { name: 'Browse', exact: true }).click();
+  await page.getByRole('button', { name: 'Books', exact: true }).click();
   await page.getByRole('button', { name: /Collections Your saved book lists/ }).click();
   await expect(page).toHaveURL(/\/collections$/);
   await page.goBack();

@@ -7,7 +7,7 @@ import {
 } from '@/features/source-administration';
 import { findRootForPath } from './helpers';
 import { AppIcon } from '@/features/icons';
-import { Button, Checkbox, Dialog, Field, Notice, Row, colors } from '@/features/ui';
+import { Button, Checkbox, Dialog, Field, Notice, colors } from '@/features/ui';
 import { Pressable, ScrollView, Text, View } from '@/features/tw';
 import { api, errorMessage } from '@/lib/api';
 
@@ -132,7 +132,25 @@ export function AddSourceDialog({ visible, mode, source, busy, onClose, onSubmit
   const title = mode === 'create' ? 'Add source' : 'Edit source';
 
   return (
-    <Dialog visible={visible} title={title} onClose={onClose}>
+    <Dialog
+      visible={visible}
+      title={title}
+      onClose={onClose}
+      sheet
+      footer={
+        <View className="gap-2">
+          <Button
+            label={mode === 'create' ? 'Add source' : 'Save changes'}
+            icon="check"
+            kind="primary"
+            loading={busy}
+            disabled={Boolean(missingReason) || busy}
+            onPress={() => void handleSubmit()}
+          />
+          {missingReason ? <Text className="text-xs text-muted">{missingReason}</Text> : null}
+        </View>
+      }
+    >
       <View className="gap-5">
         <Notice>
           Choose a folder Aldus can scan for EPUB and audiobook files. Aldus reads files in place
@@ -183,21 +201,6 @@ export function AddSourceDialog({ visible, mode, source, busy, onClose, onSubmit
         ) : null}
 
         {submitError ? <Notice danger>{submitError}</Notice> : null}
-
-        <View className="gap-2">
-          <Row>
-            <Button label="Cancel" onPress={onClose} disabled={busy} />
-            <Button
-              label={mode === 'create' ? 'Add source' : 'Save changes'}
-              icon="check"
-              kind="primary"
-              loading={busy}
-              disabled={Boolean(missingReason) || busy}
-              onPress={() => void handleSubmit()}
-            />
-          </Row>
-          {missingReason ? <Text className="text-xs text-muted">{missingReason}</Text> : null}
-        </View>
       </View>
     </Dialog>
   );

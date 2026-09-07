@@ -129,7 +129,7 @@ function TitleRow({ result, onPress }: { result: TitleSearchResult; onPress: () 
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className={`min-h-16 flex-row items-center gap-4 rounded-control border-b border-line py-4 ${stateClass}`}
+      className={`min-h-16 flex-row items-center gap-4 border-b border-line-subtle py-4 ${stateClass}`}
     >
       <BookCover
         title={result.title}
@@ -183,7 +183,42 @@ function DiscoverDetailDialog({
   onClose: () => void;
 }) {
   return (
-    <Dialog title={result.title} visible onClose={onClose}>
+    <Dialog
+      title="Book details"
+      visible
+      sheet
+      onClose={onClose}
+      footer={
+        <View className="gap-2">
+          {requestError ? <Notice danger>{requestError}</Notice> : null}
+          <View className="flex-row flex-wrap gap-2">
+            <FormatAction
+              format="ebook"
+              available={false}
+              requestState={result.ebook_request_state}
+              busy={requestBusy === 'ebook'}
+              pending={Boolean(requestBusy)}
+              requestEnabled={requestEnabled}
+              onOpen={() => {}}
+              onRequest={() => onRequest('ebook')}
+            />
+            <FormatAction
+              format="audiobook"
+              available={false}
+              requestState={result.audiobook_request_state}
+              busy={requestBusy === 'audiobook'}
+              pending={Boolean(requestBusy)}
+              requestEnabled={requestEnabled}
+              onOpen={() => {}}
+              onRequest={() => onRequest('audiobook')}
+            />
+          </View>
+          {canChooseRelease ? (
+            <Button label="Choose a specific release" kind="quiet" onPress={onChooseRelease} />
+          ) : null}
+        </View>
+      }
+    >
       <View className="gap-4">
         <View className="flex-row items-start gap-4">
           <BookCover
@@ -202,36 +237,6 @@ function DiscoverDetailDialog({
           <LoadingState label="Loading description…" />
         ) : description ? (
           <Text className="text-sm leading-6 text-muted">{description}</Text>
-        ) : null}
-        {requestError ? (
-          <Text accessibilityRole="alert" className="text-sm text-danger">
-            {requestError}
-          </Text>
-        ) : null}
-        <View className="gap-3 border-t border-line pt-4">
-          <FormatAction
-            format="ebook"
-            available={false}
-            requestState={result.ebook_request_state}
-            busy={requestBusy === 'ebook'}
-            pending={Boolean(requestBusy)}
-            requestEnabled={requestEnabled}
-            onOpen={() => {}}
-            onRequest={() => onRequest('ebook')}
-          />
-          <FormatAction
-            format="audiobook"
-            available={false}
-            requestState={result.audiobook_request_state}
-            busy={requestBusy === 'audiobook'}
-            pending={Boolean(requestBusy)}
-            requestEnabled={requestEnabled}
-            onOpen={() => {}}
-            onRequest={() => onRequest('audiobook')}
-          />
-        </View>
-        {canChooseRelease ? (
-          <Button label="Choose a specific release" kind="quiet" onPress={onChooseRelease} />
         ) : null}
       </View>
     </Dialog>
@@ -651,7 +656,8 @@ export default function SearchScreen() {
       ) : null}
       <Dialog
         visible={Boolean(advancedTarget)}
-        title={advancedTarget ? `Choose release · ${advancedTarget.title}` : 'Choose release'}
+        title="Choose a release"
+        sheet
         wide
         onClose={() => {
           advancedGeneration.current++;
@@ -659,10 +665,10 @@ export default function SearchScreen() {
         }}
       >
         <View className="gap-4">
-          <Notice>
-            Advanced choices may ignore the owner’s guided download rules. Review the release before
-            adding it.
-          </Notice>
+          <Text className="text-sm leading-5 text-muted">
+            Choose the format and edition you want. These choices can bypass your library’s
+            automatic download rules.
+          </Text>
           {advancedTarget && !canSubmitReleaseFor(advancedTarget) ? (
             <Notice>
               Your requests need approval. Use Request ebook or Request audiobook on the book to

@@ -18,6 +18,14 @@ const membership = (libraryRole: string, exclusive = false): Membership => ({
 });
 
 describe('user library access presentation', () => {
+  it('shows inherited administrator access without ignoring exclusive limits', () => {
+    expect(membershipAccessLabel(undefined, false, true)).toBe('Administrator access');
+    expect(membershipAccessLabel(membership('reader'), false, true)).toBe('Administrator access');
+    expect(membershipAccessLabel(undefined, true, true)).toBe('Not available');
+    expect(membershipAccessLabel(membership('reader'), true, true)).toBe(
+      'Excluded by access limit',
+    );
+  });
   it('counts only exclusive grants when an access limit exists', () => {
     const standard = membership('reader');
     const exclusive = membership('reader', true);

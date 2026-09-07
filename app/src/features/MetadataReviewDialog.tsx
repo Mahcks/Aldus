@@ -181,22 +181,36 @@ export function MetadataReviewDialog({
         {conflict ? (
           <Button label="Reload preview" onPress={() => void editions(candidate.work_id)} />
         ) : null}
-        {!changes.length ? (
-          <Text className="text-sm text-muted">Select at least one changed field to apply.</Text>
-        ) : null}
-        <Button
-          label={`Apply ${changes.length} selected ${changes.length === 1 ? 'change' : 'changes'}`}
-          kind="primary"
-          loading={saving}
-          disabled={!changes.length || conflict}
-          onPress={() => void apply()}
-        />
       </View>
     );
   }
 
   return (
-    <Dialog title="Review book details" visible wide onClose={close}>
+    <Dialog
+      title="Review book details"
+      visible
+      wide
+      sheet
+      onClose={close}
+      footer={
+        stage === 'review' ? (
+          <View className="gap-2">
+            {!changes.length ? (
+              <Text className="text-sm text-muted">
+                Select at least one changed field to apply.
+              </Text>
+            ) : null}
+            <Button
+              label={`Apply ${changes.length} selected ${changes.length === 1 ? 'change' : 'changes'}`}
+              kind="primary"
+              loading={saving}
+              disabled={!changes.length || conflict}
+              onPress={() => void apply()}
+            />
+          </View>
+        ) : undefined
+      }
+    >
       <View className="gap-5">
         <View className="gap-1">
           <Text className="font-semibold text-base text-ink">
@@ -267,6 +281,15 @@ function MetadataComparisonRow({
   const proposed = metadataValueText(suggestedValues[field]);
   const unchanged = current === proposed;
   const missingTitle = field === 'title' && !proposed;
+  if (unchanged) {
+    return (
+      <View className="flex-row items-center justify-between gap-4 border-b border-line-subtle py-3">
+        <Text className="text-sm font-sans-medium text-ink">{label}</Text>
+        <Text className="text-sm text-muted">Already matches</Text>
+      </View>
+    );
+  }
+
   return (
     <View className="gap-2 border-b border-line pb-4">
       <Checkbox
@@ -292,11 +315,17 @@ function MetadataComparisonRow({
           </View>
         </Row>
       ) : (
-        <View className="gap-2">
-          <Text className="text-sm text-muted">Current: {current || 'Not set'}</Text>
-          <Text className="text-sm text-ink">
-            Suggested: {proposed || 'Not provided. Selecting this clears the field'}
-          </Text>
+        <View className="gap-4 min-[600px]:flex-row">
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="text-xs font-sans-semibold text-muted">Current</Text>
+            <Text className="text-sm leading-6 text-muted">{current || 'Not set'}</Text>
+          </View>
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="text-xs font-sans-semibold text-accent">Suggested</Text>
+            <Text className="text-sm leading-6 text-ink">
+              {proposed || 'Not provided. Selecting this clears the field'}
+            </Text>
+          </View>
         </View>
       )}
     </View>

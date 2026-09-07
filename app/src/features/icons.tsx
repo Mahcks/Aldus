@@ -30,6 +30,8 @@ const names = {
   moveUp: 'arrow-up',
   moveDown: 'arrow-down',
   chevron: 'chevron-right',
+  chevronDown: 'chevron-down',
+  chevronUp: 'chevron-up',
   add: 'plus',
   decrease: 'minus',
   scroll: 'format-align-justify',

@@ -71,7 +71,6 @@ import {
   Notice,
   resolvePressStateClass,
   SearchField,
-  StatusBadge,
 } from '@/features/ui';
 import { AppIcon } from '@/features/icons';
 import { Pressable, ScrollView, Text, View } from '@/features/tw';
@@ -232,9 +231,12 @@ export default function ConsumeWorkScreen() {
   const [mediaLoading, setMediaLoading] = useState(true);
   const reader = useRef<EPUBReaderHandle>(null);
   const readerReady = useRef(false);
+  // Block callbacks immediately, before React renders the loading cover.
+  const readerInputBlocked = useRef(true);
+  const pendingReaderLocation = useRef<ReaderLocation | undefined>(undefined);
+  const [readerRestoreError, setReaderRestoreError] = useState(false);
   const restoredReaderTarget = useRef<unknown>(undefined);
   const restoringReaderTarget = useRef<unknown>(undefined);
-  const awaitingReaderLocation = useRef<unknown>(undefined);
   const epubSourceID = useRef('');
   const audioSourceID = useRef('');
   const restoredAudio = useRef('');
@@ -301,7 +303,11 @@ export default function ConsumeWorkScreen() {
   }, []);
 
   const queueReaderRestore = useCallback((target: unknown) => {
-    awaitingReaderLocation.current = undefined;
+    readerInputBlocked.current = true;
+    pendingReaderLocation.current = undefined;
+    restoringReaderTarget.current = undefined;
+    setReaderRestoreError(false);
+    setReaderCommit(undefined);
     setReaderLocation(undefined);
     setReaderRestoring(true);
     setReaderTarget(target);
@@ -526,6 +532,9 @@ export default function ConsumeWorkScreen() {
       const loadEPUB = Platform.OS === 'web' || shouldLoadConsumptionMedia(mode, 'epub');
       const loadAudio = shouldLoadConsumptionMedia(mode, 'audio');
       if (loadEPUB) {
+        readerInputBlocked.current = true;
+        pendingReaderLocation.current = undefined;
+        setReaderRestoreError(false);
         setReaderRestoring(true);
         readerReady.current = false;
         setReaderNavigationReady(false);
@@ -718,12 +727,17 @@ export default function ConsumeWorkScreen() {
         setReaderRestoring(false);
         return;
       }
+      readerInputBlocked.current = true;
+      setReaderRestoreError(false);
       restoringReaderTarget.current = target;
-      awaitingReaderLocation.current = target;
       setReaderRestoring(true);
       let restored = false;
       try {
-        for (let attempt = 0; attempt < 3 && readerReady.current; attempt += 1) {
+        for (
+          let attempt = 0;
+          attempt < 3 && readerReady.current && restoringReaderTarget.current === target;
+          attempt += 1
+        ) {
           restored = Boolean(
             await reader.current?.restoreLocation(
               target,
@@ -740,11 +754,16 @@ export default function ConsumeWorkScreen() {
       restoringReaderTarget.current = undefined;
       if (restored) {
         restoredReaderTarget.current = target;
+        readerInputBlocked.current = false;
+        const location = pendingReaderLocation.current;
+        pendingReaderLocation.current = undefined;
+        if (location) {
+          setReaderLocation({ ...location, reason: 'restore' });
+          setSyncAvailable(Boolean(location.sync));
+        }
         setReaderRestoring(false);
       } else {
-        awaitingReaderLocation.current = undefined;
-        setReaderRestoring(false);
-        setNotice('Couldn\u2019t restore your saved page. You can keep reading and retry later.');
+        setReaderRestoreError(true);
       }
     },
     [progress?.resolvable, progress?.alignment_id, alignmentID],
@@ -753,6 +772,12 @@ export default function ConsumeWorkScreen() {
   useEffect(() => {
     if (mode !== 'read' || mediaLoading || !readerNavigationReady || !readerReady.current) return;
     if (!readerTarget || restoredReaderTarget.current === readerTarget) {
+      readerInputBlocked.current = false;
+      if (pendingReaderLocation.current) {
+        setReaderLocation({ ...pendingReaderLocation.current, reason: 'restore' });
+        setSyncAvailable(Boolean(pendingReaderLocation.current.sync));
+        pendingReaderLocation.current = undefined;
+      }
       setReaderRestoring(false);
       return;
     }
@@ -838,7 +863,7 @@ export default function ConsumeWorkScreen() {
   }, [work, alignmentID, mode, queueReaderRestore]);
 
   useEffect(() => {
-    if (mode !== 'listen') return;
+    if (mode !== 'listen' || mediaLoading || !source) return;
     if (!status.isLoaded) return;
     if (initialAudioMS == null) return;
     if (audioDuration <= 0) return;
@@ -864,6 +889,8 @@ export default function ConsumeWorkScreen() {
     })();
   }, [
     mode,
+    mediaLoading,
+    source,
     status.isLoaded,
     audioDuration,
     initialAudioMS,
@@ -873,9 +900,9 @@ export default function ConsumeWorkScreen() {
   ]);
 
   const onReaderLocation = useCallback((location: ReaderLocation) => {
-    if (awaitingReaderLocation.current !== undefined) {
-      awaitingReaderLocation.current = undefined;
-      setReaderRestoring(false);
+    if (readerInputBlocked.current) {
+      pendingReaderLocation.current = location;
+      return;
     }
     setReaderLocation(location);
     if (commitsReadingProgress(location.reason)) setReaderCommit(location);
@@ -958,6 +985,8 @@ export default function ConsumeWorkScreen() {
   useEffect(() => {
     if (
       mode !== 'listen' ||
+      mediaLoading ||
+      !source ||
       switching.current ||
       !status.isLoaded ||
       (initialAudioMS != null && !audioReady) ||
@@ -969,7 +998,16 @@ export default function ConsumeWorkScreen() {
     lastAudioSave.current = timestamp;
     void saveListeningPosition(timestamp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, status.currentTime, status.isLoaded, audioReady, selectedAudio?.id, alignmentID]);
+  }, [
+    mode,
+    mediaLoading,
+    source,
+    status.currentTime,
+    status.isLoaded,
+    audioReady,
+    selectedAudio?.id,
+    alignmentID,
+  ]);
 
   useEffect(() => {
     if (Platform.OS === 'web' || mode !== 'listen' || !status.isLoaded || !selectedAudio) return;
@@ -1058,6 +1096,7 @@ export default function ConsumeWorkScreen() {
   }
 
   async function saveEPUBLocation(location: ReaderLocation) {
+    if (readerInputBlocked.current) return false;
     const saveScope = readerScope;
     const saveOrigin = readerOrigin;
     const attempt = ++representationSaveAttempt.current;
@@ -1272,6 +1311,7 @@ export default function ConsumeWorkScreen() {
 
   async function saveReadingCursor(location: ReaderLocation) {
     if (
+      readerInputBlocked.current ||
       switching.current ||
       !alignmentID ||
       !location.sync ||
@@ -1315,7 +1355,7 @@ export default function ConsumeWorkScreen() {
   }
 
   async function switchToListen(location = readerLocation) {
-    if (switching.current) return;
+    if (readerInputBlocked.current || switching.current) return;
     if (!work || !location?.sync || !alignmentID)
       return setNotice(
         'Listening can\u2019t start here. Your reading position is saved; select narration text and choose Listen from here.',
@@ -1662,9 +1702,9 @@ export default function ConsumeWorkScreen() {
         />
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-base font-sans-bold text-ink">
-            {work.title}
+            {mode === 'listen' ? 'Now playing' : work.title}
           </Text>
-          {!compact ? (
+          {!compact && mode === 'read' ? (
             <Text numberOfLines={1} className="mt-0.5 text-xs text-muted">
               {work.author || 'Unknown author'}
             </Text>
@@ -1673,7 +1713,7 @@ export default function ConsumeWorkScreen() {
         <View className="flex-row gap-2">
           {mode === 'read' && selectedEPUB ? (
             <>
-              {readerNavigationReady ? (
+              {readerInteractionReady ? (
                 <>
                   <IconButton
                     icon="contents"
@@ -1700,7 +1740,7 @@ export default function ConsumeWorkScreen() {
               ) : null}
             </>
           ) : null}
-          {selectedEPUB && selectedAudio ? (
+          {selectedEPUB && selectedAudio && (mode === 'listen' || readerInteractionReady) ? (
             <PassageHandoff
               mode={mode}
               busy={formatSwitchBusy}
@@ -1724,7 +1764,7 @@ export default function ConsumeWorkScreen() {
           />
         </View>
       ) : null}
-      {!compactNative ? (
+      {!compactNative && mode === 'read' && readerInteractionReady ? (
         <View className="min-h-[30px] items-center justify-center border-b border-line bg-panel">
           <Text accessibilityLiveRegion="polite" className="text-xs font-sans-semibold text-muted">
             {progressStatus ||
@@ -1890,6 +1930,11 @@ export default function ConsumeWorkScreen() {
       <View className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}>
         {(Platform.OS === 'web' || mode === 'read') && selectedEPUB && epubSource ? (
           <View
+            pointerEvents={readerInteractionReady ? 'auto' : 'none'}
+            accessibilityElementsHidden={!readerInteractionReady}
+            importantForAccessibility={readerInteractionReady ? 'auto' : 'no-hide-descendants'}
+            aria-hidden={!readerInteractionReady}
+            {...(Platform.OS === 'web' ? { inert: !readerInteractionReady } : {})}
             className={
               compactNative
                 ? 'min-h-0 w-full flex-1'
@@ -1920,7 +1965,10 @@ export default function ConsumeWorkScreen() {
               onLocation={onReaderLocation}
               onListenFromLocation={(location) => void switchToListen(location)}
               onReady={onReaderReady}
-              onError={(error) => setNotice(error.message || 'Unable to open EPUB.')}
+              onError={(error) => {
+                setReaderRestoreError(true);
+                setNotice(error.message || 'Unable to open EPUB.');
+              }}
             />
             {!compactNative ? (
               <SafeAreaView edges={['bottom']}>
@@ -1931,7 +1979,7 @@ export default function ConsumeWorkScreen() {
                   <Button
                     label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
                     icon="listen"
-                    disabled={!canListenFromReader}
+                    disabled={!canListenFromReader || !readerInteractionReady}
                     onPress={() => void switchToListen()}
                   />
                 </View>
@@ -1957,6 +2005,42 @@ export default function ConsumeWorkScreen() {
             )}
           </View>
         )}
+        {!readerInteractionReady && (mediaLoading || Boolean(epubSource)) ? (
+          <View
+            accessibilityLiveRegion="polite"
+            className="absolute inset-0 items-center justify-center gap-5 bg-canvas px-6"
+          >
+            <BookCover
+              title={work.title}
+              author={work.author}
+              coverURL={work.cover_url}
+              size="hero"
+              {...coverPresentation(work)}
+            />
+            {readerRestoreError ? (
+              <View className="w-full max-w-sm items-center gap-3">
+                <Text className="text-center text-sm text-ink">
+                  Couldn’t restore your saved page. Your reading position hasn’t changed.
+                </Text>
+                {readerTarget && readerReady.current ? (
+                  <Button
+                    label="Retry opening book"
+                    onPress={() => void restoreReader(readerTarget)}
+                  />
+                ) : (
+                  <Button label="Back to book" onPress={() => void leaveReader()} />
+                )}
+              </View>
+            ) : (
+              <View className="items-center gap-3">
+                <ActivityIndicator color={colors.accent} />
+                <Text className="text-sm text-muted">
+                  {readerTarget ? 'Returning to your saved page…' : 'Opening your book…'}
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : null}
       </View>
       {mode === 'listen' ? (
         selectedAudio ? (
@@ -1966,28 +2050,25 @@ export default function ConsumeWorkScreen() {
             contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
           >
             <View className="mx-auto w-full max-w-[560px] px-5">
-              <View className="flex-row items-center gap-5 py-2">
+              <View className="items-center gap-5 py-2">
                 <BookCover
                   title={work.title}
                   author={work.author}
                   coverURL={work.cover_url}
-                  size="continue"
+                  size="hero"
                   {...coverPresentation(work)}
                 />
-                <View className="min-w-0 flex-1 items-start gap-1.5">
+                <View className="w-full items-center gap-1.5">
                   <Text
                     numberOfLines={2}
-                    className="font-editorial-bold text-[22px] leading-7 text-ink"
+                    className="text-center font-editorial text-[22px] leading-7 text-ink"
                   >
                     {work.title}
                   </Text>
                   <Text numberOfLines={1} className="text-sm text-text-secondary">
                     {work.author || 'Unknown author'}
                   </Text>
-                  <Text
-                    numberOfLines={2}
-                    className="mt-1 text-[10px] font-sans-semibold uppercase leading-4 tracking-[1.25px] text-subtle"
-                  >
+                  <Text numberOfLines={2} className="mt-1 text-center text-xs text-muted">
                     {selectedAudio.representation.label}
                   </Text>
                   {progressStatus ? (
@@ -2157,62 +2238,27 @@ export default function ConsumeWorkScreen() {
                   Sleep timer · {formatAudioTime(sleepTimerRemaining)} remaining
                 </Text>
               ) : null}
-              <View className="mt-7 w-full gap-4 border-t border-line-subtle pt-5">
-                <View className="flex-row items-center justify-between gap-3">
-                  <View className="gap-0.5">
-                    <Text className="text-[11px] font-sans-bold uppercase tracking-[1.5px] text-subtle">
-                      Read Along
-                    </Text>
-                    <Text className="text-xs text-muted">Follow the narration in the book.</Text>
-                  </View>
-                  <StatusBadge
-                    tone={passage?.active ? 'success' : 'neutral'}
-                    icon={passage?.active ? 'synced' : undefined}
-                    label={passage?.active ? 'Synced' : passage ? 'Up next' : 'Audio only'}
-                  />
-                </View>
-                {passage ? (
-                  <View className="gap-4 border-y border-line-subtle py-5">
-                    <View key={passage.current.id}>
-                      <Text
-                        accessibilityLabel={`${passage.active ? 'Current' : 'Upcoming'} passage: ${passage.current.text}`}
-                        numberOfLines={compact ? 5 : 8}
-                        className={`will-change-variable ${
-                          passage.active
-                            ? 'font-reading text-lg leading-7 text-ink'
-                            : 'font-reading text-base leading-6 text-muted'
-                        }`}
-                      >
-                        {passage.current.text}
-                      </Text>
-                    </View>
-                    {passage.next ? (
-                      <View className="gap-2 border-t border-line-subtle pt-3">
-                        <Text className="text-[11px] font-sans-semibold uppercase tracking-wide text-subtle">
-                          Next passage
-                        </Text>
-                        <Text
-                          numberOfLines={2}
-                          className="font-reading text-sm leading-5 text-muted"
-                        >
-                          {passage.next.text}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <View className="items-start pt-1">
-                      <Button
-                        label={passage.active ? 'Open in book' : 'Text coming up'}
-                        icon="read"
-                        disabled={!passage.active}
-                        onPress={() => void switchToRead()}
-                      />
-                    </View>
-                  </View>
+              <View className="mt-7 w-full gap-3 pb-4">
+                {passage?.active ? (
+                  <Button label="Read along" icon="read" onPress={() => void switchToRead()} />
                 ) : (
-                  <Text className="pt-1 text-sm leading-5 text-muted">
-                    Synchronized text is not available at this moment. Listening continues normally.
+                  <Text className="text-center text-sm leading-5 text-muted">
+                    {passage
+                      ? 'Read along will be available when the narration reaches the text.'
+                      : 'Read along is not available in this section.'}
                   </Text>
                 )}
+                {passage?.active ? (
+                  <Animated.View entering={passageEntrance}>
+                    <Text
+                      accessibilityLabel={`Current passage: ${passage.current.text}`}
+                      numberOfLines={compact ? 3 : 5}
+                      className="text-center font-reading text-base leading-6 text-muted"
+                    >
+                      {passage.current.text}
+                    </Text>
+                  </Animated.View>
+                ) : null}
               </View>
             </View>
           </ScrollView>

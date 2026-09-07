@@ -3,6 +3,7 @@ import type { Href } from 'expo-router';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState, type PropsWithChildren } from 'react';
 import Animated from 'react-native-reanimated';
+import { useWindowDimensions } from 'react-native';
 import { BookCover, ContinueCard, coverPresentation, WorkCard } from '@/features/bookshelf';
 import { requestNotification } from '@/features/activity-presentation';
 import { collectionCount } from '@/features/collection-presentation';
@@ -44,12 +45,13 @@ function Shelf({ children }: PropsWithChildren) {
 }
 
 function ContinueShelf({ works }: { works: WorkSummary[] }) {
+  const width = Math.min(350, useWindowDimensions().width - 48);
   return (
     <Shelf>
       {works.map((work, index) => {
         const mode = work.last_mode || (work.readable ? 'read' : 'listen');
         return (
-          <Animated.View key={work.id} entering={listItemEnter(index)}>
+          <Animated.View key={work.id} entering={listItemEnter(index)} style={{ width }}>
             <ContinueCard
               title={work.title}
               author={work.author}
@@ -59,6 +61,13 @@ function ContinueShelf({ works }: { works: WorkSummary[] }) {
               progress={workProgressLabel(work.in_progress, work.completion_percent)}
               continueMode={mode}
               size="hero"
+              completionPercent={work.completion_percent}
+              onRead={
+                work.readable ? () => router.push(`/consume/${work.id}?mode=read`) : undefined
+              }
+              onListen={
+                work.listenable ? () => router.push(`/consume/${work.id}?mode=listen`) : undefined
+              }
               onOpen={() => router.push(workHref(work))}
               onContinue={() => router.push(`/consume/${work.id}?mode=${mode}`)}
               continueHref={`/consume/${work.id}?mode=${mode}`}
@@ -73,11 +82,13 @@ function ContinueShelf({ works }: { works: WorkSummary[] }) {
 
 /** Same press-and-hold quick-action menu as `ContinueCard`, native menu included — "any book", not just Continue's. */
 function WorkShelf({ works }: { works: WorkSummary[] }) {
+  const tileWidth = Math.min(184, (useWindowDimensions().width - 48) / 2);
   return (
     <Shelf>
       {works.map((work, index) => (
-        <Animated.View key={work.id} entering={listItemEnter(index)}>
+        <Animated.View key={work.id} entering={listItemEnter(index)} style={{ width: tileWidth }}>
           <WorkCard
+            narrow
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}

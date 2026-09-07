@@ -24,24 +24,28 @@
  */
 :root {
   /* Surfaces (elevation scale — each step a whisper lighter than the last) */
-  --color-canvas: #f4efe6;
-  --color-panel: #f4efe6;
-  --color-paper: #fffcf6;
-  --color-raised: #fffefb;
+  --color-canvas: #faf7f2;
+  --color-panel: #faf7f2;
+  --color-paper: #fffdf8;
+  --color-raised: #fffdf8;
   --color-panel-strong: #dfd3c3;
-  --color-control: #efe8db;
-  --color-control-focus: #fffcf6;
+  --color-control: #f3ede4;
+  --color-control-focus: #fffdf8;
 
   /* Text hierarchy (use all four — never just ink/muted) */
   --color-ink: #27211c;
   --color-text-secondary: #4a4038;
   --color-muted: #6c6258;
-  --color-subtle: #9c9184;
+  --color-subtle: #75695e;
 
   /* Border progression */
   --color-line: rgb(39 33 28 / 0.14);
   --color-line-subtle: rgb(39 33 28 / 0.08);
-  --color-line-strong: rgb(39 33 28 / 0.24);
+  --color-line-strong: #908171;
+  --color-rail: #2c241e;
+  --color-on-rail: #f6efe4;
+  --color-rail-muted: #c7b9aa;
+  --color-rail-selected: #49382c;
 
   /* Accent (primary actions, selection) */
   --color-accent: #8a3c24;
@@ -52,7 +56,7 @@
   /* Semantic status */
   --color-danger: #8a3028;
   --color-danger-soft: #f6dfdb;
-  --color-focus: #bd6a4e;
+  --color-focus: #8a3c24;
   --color-success: #3f5c43;
   --color-success-soft: #e1e9df;
   --color-warning: #7a5a17;
@@ -62,14 +66,13 @@
   --color-neutral: #6c6258;
   --color-neutral-soft: #e7e0d4;
 
-  /* Reader-only night palette. App chrome continues to follow the system theme. */
+  /* Reader-only night palette. */
   --color-reader-night-paper: #171410;
   --color-reader-night-ink: #eee6d8;
   --color-reader-night-selection: #5b3024;
 
-  /* Deliberately tighter than Tailwind's stock rounded-md/rounded-2xl (0.375rem/1rem) —
-     a considered, printed-label geometry instead of the generic default. */
-  --radius-control: 0.1875rem;
+  /* Shared control, surface, and dialog geometry. */
+  --radius-control: 0.5rem;
   --radius-card: 0.625rem;
   --radius-dialog: 0.875rem;
   --radius-pill: 999px;
@@ -101,6 +104,10 @@
     --color-line: var(--color-line);
     --color-line-subtle: var(--color-line-subtle);
     --color-line-strong: var(--color-line-strong);
+    --color-rail: var(--color-rail);
+    --color-on-rail: var(--color-on-rail);
+    --color-rail-muted: var(--color-rail-muted);
+    --color-rail-selected: var(--color-rail-selected);
 
     --color-accent: var(--color-accent);
     --color-accent-strong: var(--color-accent-strong);

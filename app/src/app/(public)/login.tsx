@@ -134,8 +134,7 @@ export default function Login() {
         onPress={submit}
       />
       <Text className="text-sm leading-5 text-muted">
-        Forgot your password? Ask the person who runs this library to reset it. Aldus does not send
-        password-reset email.
+        Forgot your password? Ask the person who manages this library to reset it.
       </Text>
     </AuthLayout>
   );

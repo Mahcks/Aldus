@@ -16,7 +16,6 @@ import {
   Loading,
   Notice,
   Page,
-  Row,
   Section,
   Select,
   shared,
@@ -70,14 +69,14 @@ export default function RepresentationScreen() {
 
   if (loading)
     return (
-      <Page title="Representation" editorial={false}>
-        <Loading label="Loading representation…" />
+      <Page title="File details" editorial={false}>
+        <Loading label="Loading file details…" />
       </Page>
     );
   if (!representation)
     return (
-      <Page title="Representation" editorial={false}>
-        <Notice danger>{error || 'Representation unavailable.'}</Notice>
+      <Page title="File details" editorial={false}>
+        <Notice danger>{error || 'File details unavailable.'}</Notice>
       </Page>
     );
 
@@ -145,7 +144,7 @@ export default function RepresentationScreen() {
 
   return (
     <Page
-      title={representation.label}
+      title="File details"
       back={
         <IconButton
           label="Back"
@@ -156,14 +155,65 @@ export default function RepresentationScreen() {
       }
       editorial={false}
     >
+      <View className="gap-1 border-b border-line pb-5">
+        <Text className="text-xl font-sans-semibold text-ink">{representation.label}</Text>
+        <Text className="text-sm text-muted">
+          {representation.kind === 'epub' ? 'Ebook' : 'Audiobook'}
+        </Text>
+      </View>
       {error ? <Notice danger>{error}</Notice> : null}
+      {canEdit ? (
+        <Section title="File settings">
+          <View className={shared.form}>
+            {media.length ? (
+              <View className="gap-1">
+                <Text className="text-sm font-sans-semibold text-ink">Format</Text>
+                <Text className="text-base text-ink">
+                  {kind === 'epub' ? 'Ebook' : 'Audiobook'}
+                </Text>
+                <Text className="text-xs text-muted">
+                  Format cannot change after a file is uploaded.
+                </Text>
+              </View>
+            ) : (
+              <Select
+                label="Format"
+                options={representationKinds}
+                value={kind}
+                onChange={setKind}
+              />
+            )}
+            <Field label="Edition name" value={label} onChangeText={setLabel} />
+            {kind !== 'epub' ? (
+              <Field
+                label="Narrators"
+                error={narratorNamesError(narrators)}
+                value={narrators}
+                onChangeText={setNarrators}
+                multiline
+                help="One narrator per line, in credit order."
+              />
+            ) : null}
+            <View className="items-start gap-4">
+              <Button
+                label="Save changes"
+                kind="primary"
+                loading={saving}
+                disabled={saving || !label.trim() || Boolean(narratorNamesError(narrators))}
+                onPress={() => void saveRepresentation()}
+              />
+            </View>
+          </View>
+        </Section>
+      ) : null}
+
       <Section
-        title="Revisions"
+        title="Uploaded files"
         action={
           canEdit ? (
             <Button
-              label={uploading ? 'Uploading…' : 'Upload revision'}
-              kind="primary"
+              label={uploading ? 'Uploading…' : 'Upload newer file'}
+              kind="secondary"
               disabled={uploading}
               onPress={upload}
             />
@@ -174,13 +224,13 @@ export default function RepresentationScreen() {
           <Notice>Uploading and validating the selected file. Keep this screen open.</Notice>
         ) : null}
         {media.length === 0 ? (
-          <EmptyState icon="folder" title="No media uploaded">
-            Upload a revision above to attach a file to this representation.
+          <EmptyState icon="folder" title="No file uploaded">
+            Upload an ebook or audiobook for this edition.
           </EmptyState>
         ) : (
           media.map((item, index) => (
             <View key={item.id} className={shared.listItem}>
-              <Text className={shared.itemTitle}>
+              <Text className="text-base font-sans-semibold text-ink">
                 {item.original_filename || 'Unnamed upload'}
                 {index === 0 ? ' · newest' : ''}
               </Text>
@@ -197,58 +247,21 @@ export default function RepresentationScreen() {
           ))
         )}
       </Section>
+
       {canEdit ? (
-        <Section title="File settings">
-          <View className={shared.form}>
-            {media.length ? (
-              <View className="gap-1">
-                <Text className="text-sm font-sans-semibold text-ink">Format</Text>
-                <Text className="text-base text-ink">
-                  {kind === 'epub' ? 'Ebook' : 'Audiobook'}
-                </Text>
-                <Text className="text-xs text-muted">
-                  Format cannot change after a revision is uploaded.
-                </Text>
-              </View>
-            ) : (
-              <Select
-                label="Format"
-                options={representationKinds}
-                value={kind}
-                onChange={setKind}
-              />
-            )}
-            <Field label="Label" value={label} onChangeText={setLabel} />
-            {kind !== 'epub' ? (
-              <Field
-                label="Narrators"
-                error={narratorNamesError(narrators)}
-                value={narrators}
-                onChangeText={setNarrators}
-                multiline
-                help="One narrator per line, in credit order."
-              />
-            ) : null}
-            <Row>
-              <Button
-                label="Save changes"
-                kind="primary"
-                loading={saving}
-                disabled={saving || !label.trim()}
-                onPress={() => void saveRepresentation()}
-              />
-              <Button
-                label="Delete file entry"
-                kind="danger"
-                disabled={media.length > 0}
-                onPress={() => setConfirmingDelete(true)}
-              />
-            </Row>
-            {media.length ? (
-              <Text className="text-sm text-muted">
-                Uploaded revisions currently prevent deleting this file entry.
-              </Text>
-            ) : null}
+        <Section title="Remove edition">
+          <Text className="text-sm text-muted">
+            {media.length
+              ? 'This edition has uploaded files and cannot be deleted.'
+              : 'Remove this empty edition from the book.'}
+          </Text>
+          <View className="items-start">
+            <Button
+              label="Delete file entry"
+              kind="danger"
+              disabled={media.length > 0}
+              onPress={() => setConfirmingDelete(true)}
+            />
           </View>
         </Section>
       ) : null}
@@ -258,7 +271,7 @@ export default function RepresentationScreen() {
         onClose={() => setConfirmingDelete(false)}
         onConfirm={() => void deleteRepresentation()}
         title="Delete file entry?"
-        description="This removes the empty file entry from the work."
+        description="This removes the empty file entry from this book."
         confirmLabel="Delete"
         danger
         busy={deleting}

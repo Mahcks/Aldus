@@ -110,6 +110,11 @@ export const EPUBReader = forwardRef<
   const direction = useRef<'forward' | 'backward' | undefined>(undefined);
   const locationRequest = useRef(0);
   const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
+  const restoring = useRef(false);
+  const pendingNavigation = useRef<
+    { href: string; finish: (success: boolean) => void } | undefined
+  >(undefined);
+
   const [fileURL, setFileURL] = useState('');
   const [resumeDecorations, setResumeDecorations] = useState<DecorationGroup[]>([]);
   const readiumPreferences = useMemo<Preferences>(
@@ -150,6 +155,8 @@ export const EPUBReader = forwardRef<
   useEffect(() => {
     let active = true;
     locationRequest.current += 1;
+    pendingNavigation.current?.finish(false);
+    restoring.current = false;
     pendingRestore.current = undefined;
     setResumeDecorations([]);
     direction.current = undefined;
@@ -174,6 +181,8 @@ export const EPUBReader = forwardRef<
     void prepare();
     return () => {
       active = false;
+      locationRequest.current += 1;
+      pendingNavigation.current?.finish(false);
     };
   }, [source]);
 
@@ -184,7 +193,7 @@ export const EPUBReader = forwardRef<
       restoreSelection: async () => '',
       navigate: async (location) => {
         const view = reader.current;
-        if (!view || !location || typeof location !== 'object') return false;
+        if (restoring.current || !view || !location || typeof location !== 'object') return false;
         pendingRestore.current = undefined;
         setResumeDecorations([]);
         direction.current = 'backward';
@@ -229,8 +238,12 @@ export const EPUBReader = forwardRef<
         if (saved) {
           if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
           setResumeDecorations([]);
-          view.goTo(saved);
-          return true;
+          restoring.current = true;
+          try {
+            return await navigateAndWait(view, saved);
+          } finally {
+            restoring.current = false;
+          }
         }
         if (!location || typeof location !== 'object') {
           if (__DEV__) console.debug('Aldus native EPUB restore skipped: invalid target', location);
@@ -262,6 +275,8 @@ export const EPUBReader = forwardRef<
           onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
         }
+        restoring.current = true;
+        locationRequest.current += 1;
         try {
           let matches: SearchResult[] = [];
           let matchedQuery = '';
@@ -314,14 +329,15 @@ export const EPUBReader = forwardRef<
           setResumeDecorations(
             readiumResumeDecorations(matches[0].locator, highlight, colors.accentSoft),
           );
-          view.goTo(matches[0].locator);
-          return true;
+          return await navigateAndWait(view, matches[0].locator);
         } catch (cause) {
           pendingRestore.current = undefined;
           if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
           onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
           return false;
         } finally {
+          restoring.current = false;
+          pendingRestore.current = undefined;
           try {
             view.cancelSearch();
           } catch {
@@ -333,7 +349,30 @@ export const EPUBReader = forwardRef<
     [],
   );
 
+  // The bridge dispatches goTo synchronously; only a destination event confirms navigation.
+  function navigateAndWait(view: ReadiumViewRef, locator: Locator) {
+    locationRequest.current += 1;
+    pendingNavigation.current?.finish(false);
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => finish(false), 10000);
+      function finish(success: boolean) {
+        clearTimeout(timer);
+        if (pendingNavigation.current?.finish === finish) pendingNavigation.current = undefined;
+        resolve(success);
+      }
+      pendingNavigation.current = { href: locator.href, finish };
+      try {
+        view.goTo(locator);
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
   async function handleLocation(locator: Locator) {
+    const navigation = pendingNavigation.current;
+    if (restoring.current && !navigation) return;
+    if (navigation && locator.href.split('#')[0] !== navigation.href.split('#')[0]) return;
     const request = ++locationRequest.current;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
     const restored = pendingRestore.current;
@@ -345,9 +384,20 @@ export const EPUBReader = forwardRef<
     } catch {
       // The installed native client predates the visible-location bridge.
     }
-    if (request !== locationRequest.current) return;
+    if (
+      request !== locationRequest.current ||
+      (navigation && pendingNavigation.current !== navigation)
+    )
+      return;
     const readingLocator = preferredReadiumLocator(locator, visible);
     const sync = mapReadiumLocator(readingLocator, currentSegments);
+    if (navigation) {
+      direction.current = undefined;
+      lastProgression.current =
+        locator.locations?.totalProgression ??
+        locator.locations?.position ??
+        locator.locations?.progression;
+    }
     if (restoreDisposition === 'restore' && restored) {
       pendingRestore.current = undefined;
       onLocation?.({
@@ -357,6 +407,7 @@ export const EPUBReader = forwardRef<
         syncState: 'full',
         reason: 'restore',
       });
+      navigation?.finish(true);
       return;
     }
     if (__DEV__)
@@ -382,11 +433,13 @@ export const EPUBReader = forwardRef<
       cfi: JSON.stringify(readingLocator),
       sync,
       syncState: sync ? 'full' : 'none',
-      reason: disposition.reason,
+      reason: navigation ? 'restore' : disposition.reason,
     });
+    navigation?.finish(true);
   }
 
   function handleSelection(event: SelectionActionEvent) {
+    if (restoring.current) return;
     locationRequest.current += 1;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
     const sync = mapReadiumSelection(event.locator, event.selectedText, currentSegments);
@@ -451,6 +504,7 @@ export const EPUBReader = forwardRef<
               label="Previous page"
               kind="quiet"
               onPress={() => {
+                if (restoring.current) return;
                 pendingRestore.current = undefined;
                 setResumeDecorations([]);
                 direction.current = 'backward';
@@ -476,6 +530,7 @@ export const EPUBReader = forwardRef<
               label="Next page"
               kind="quiet"
               onPress={() => {
+                if (restoring.current) return;
                 pendingRestore.current = undefined;
                 setResumeDecorations([]);
                 direction.current = 'forward';

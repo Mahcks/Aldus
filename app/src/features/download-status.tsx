@@ -143,8 +143,19 @@ export function DownloadList({
                 </Text>
               ) : null}
               <StatusBadge
-                label={item.status === 'complete' ? 'Saved' : item.status}
-                tone={item.status === 'failed' ? 'danger' : 'neutral'}
+                label={
+                  item.status === 'complete'
+                    ? 'Saved'
+                    : item.status.charAt(0).toUpperCase() + item.status.slice(1)
+                }
+                tone={
+                  item.status === 'failed'
+                    ? 'danger'
+                    : item.status === 'complete'
+                      ? 'success'
+                      : 'neutral'
+                }
+                icon={item.status === 'complete' ? 'check' : undefined}
               />
               <Text
                 className="text-sm text-muted"
@@ -155,6 +166,20 @@ export function DownloadList({
                 {megabytes(bytes)} of {megabytes(item.expectedSize)}
               </Text>
             </View>
+            {item.status !== 'complete' && item.expectedSize > 0 ? (
+              <View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                className="my-1 h-1 overflow-hidden rounded-pill bg-line"
+              >
+                <View
+                  className="h-full rounded-pill bg-accent"
+                  style={{
+                    width: `${Math.min(100, Math.max(0, (bytes / item.expectedSize) * 100))}%`,
+                  }}
+                />
+              </View>
+            ) : null}
             {item.status === 'failed' && item.error ? (
               <Text className="text-sm text-muted">{item.error}</Text>
             ) : null}

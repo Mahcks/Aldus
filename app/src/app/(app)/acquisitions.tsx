@@ -336,7 +336,7 @@ export default function AcquisitionsAdministration() {
                         className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <View className="min-w-0 flex-1 gap-1">
-                          <View className="flex-row items-center gap-3">
+                          <View className="flex-row flex-wrap items-center gap-3">
                             <Text className="w-24 text-sm font-sans-bold text-ink">
                               {formatLabel(format.format)}
                             </Text>
@@ -374,9 +374,10 @@ export default function AcquisitionsAdministration() {
       ) : null}
 
       {tab === 'settings' ? (
-        <View className="max-w-[720px]">
+        <View className="w-full max-w-[720px] gap-10">
           <Section title="Connections">
             <View className="max-w-[720px] gap-4">
+              <Text className="text-base font-sans-semibold text-ink">Find releases</Text>
               <Select
                 label="Search provider"
                 value={indexerKind}
@@ -413,6 +414,12 @@ export default function AcquisitionsAdministration() {
                 secureTextEntry
                 placeholder={settings?.has_indexer_api_key ? 'Saved, leave blank to keep it' : ''}
               />
+              <View className="gap-1 border-t border-line-subtle pt-6">
+                <Text className="text-base font-sans-semibold text-ink">Download files</Text>
+                <Text className="text-sm text-muted">
+                  Connect qBittorrent to receive the releases you approve.
+                </Text>
+              </View>
               <Field
                 label="qBittorrent URL"
                 value={qBitTorrentURL}
@@ -573,12 +580,9 @@ export default function AcquisitionsAdministration() {
               ) : null}
 
               {shownDownloads.length === 0 ? (
-                <View className="border-b border-line py-6">
-                  <Text className="text-base font-sans-bold text-ink">No active downloads</Text>
-                  <Text className="mt-1 text-sm leading-5 text-muted">
-                    New downloads will appear here. Open history to review earlier attempts.
-                  </Text>
-                </View>
+                <EmptyState icon="acquire" title="No active downloads">
+                  New downloads will appear here. Open history to review earlier attempts.
+                </EmptyState>
               ) : (
                 <View>
                   {shownDownloads.map((request) => {

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { testServer } from './auth';
 
 for (const width of [390, 1024, 1440]) {
   test(`family account handoff and shared list at ${width}px`, async ({ page }) => {
@@ -115,15 +116,15 @@ for (const width of [390, 1024, 1440]) {
 for (const width of [390, 1024, 1440]) {
   test(`remembered reader still requires a password at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.addInitScript(() => {
+    await page.addInitScript((origin) => {
       localStorage.setItem(
-        'aldus:remembered-accounts:',
+        `aldus:remembered-accounts:${encodeURIComponent(origin)}`,
         JSON.stringify([
           { id: 'sam', username: 'sam', display_name: 'Sam' },
           { id: 'parent', username: 'parent', display_name: 'Parent' },
         ]),
       );
-    });
+    }, testServer);
     let loginAttempts = 0;
     await page.route('**/api/**', async (route) => {
       const path = new URL(route.request().url()).pathname.replace('/api/v1', '');

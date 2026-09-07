@@ -76,7 +76,7 @@ function resolveButtonBorderClass({
   focused: boolean;
   inactive: boolean;
 }) {
-  if (focused) return 'border-2 border-focus';
+  if (focused) return 'border border-focus outline outline-2 outline-focus';
   if (inactive && kind !== 'quiet') return 'border border-line-strong';
   if (selected) return 'border border-accent';
   if (kind === 'primary') return 'border border-accent';
@@ -141,7 +141,7 @@ function resolveButtonShadowClass({
 }) {
   if (inactive || pressed || grouped) return '';
   if (kind === 'primary') return 'shadow-sm';
-  if (kind === 'secondary') return 'shadow-xs';
+  if (kind === 'secondary') return '';
   return '';
 }
 
@@ -228,14 +228,18 @@ export function Button({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`will-change-variable min-h-11 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass} ${inactiveClass}`}
+      className={`min-h-11 max-w-full transition-[transform,background-color] duration-150 motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100 flex-row items-center justify-center gap-2 rounded-control py-2.5 ${paddingClass} ${backgroundClass} ${borderClass} ${shadowClass} ${inactiveClass}`}
     >
       {loading ? (
         <ActivityIndicator color={kind === 'primary' ? colors.onAccent : colors.accent} />
       ) : (
         <>
           {icon ? <AppIcon name={icon} size={18} color={iconColor} /> : null}
-          {iconOnly ? null : <Text className={`text-sm font-sans-bold ${textClass}`}>{label}</Text>}
+          {iconOnly ? null : (
+            <Text className={`min-w-0 shrink text-sm font-sans-semibold ${textClass}`}>
+              {label}
+            </Text>
+          )}
         </>
       )}
     </Pressable>
@@ -309,7 +313,7 @@ export function IconButton({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`will-change-variable ${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${shadowClass} ${opacityClass}`}
+      className={`transition-[transform,background-color] duration-150 motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100 ${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${shadowClass} ${opacityClass}`}
     >
       <AppIcon name={icon} size={size === 'large' ? 30 : 20} color={iconColor} />
     </Pressable>
@@ -361,9 +365,9 @@ export function GenreTagChip({ icon, label }: { icon: string; label: string }) {
 }
 
 function resolveFieldBorderClass({ focused, error }: { focused: boolean; error: boolean }) {
-  if (focused) return 'border-2 border-focus';
-  if (error) return 'border-2 border-danger';
-  return 'border-2 border-line';
+  if (focused) return 'border border-focus outline outline-2 outline-focus';
+  if (error) return 'border border-danger';
+  return 'border border-line-strong';
 }
 
 /** Inputs are inset — darker than their surroundings until focused, when they lift to paper. */
@@ -508,7 +512,7 @@ export function Checkbox({
         }
       : {};
 
-  const boxClass = checked ? 'border-accent bg-accent' : 'border-line bg-paper';
+  const boxClass = checked ? 'border-accent bg-accent' : 'border-line-strong bg-paper';
   const stateClass = disabled ? '' : resolvePressStateClass({ focused, pressed });
 
   return (
@@ -543,10 +547,12 @@ export function Radio({
   label,
   selected,
   onPress,
+  disabled = false,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -555,27 +561,39 @@ export function Radio({
   const handlePressIn = () => setPressed(true);
   const handlePressOut = () => setPressed(false);
 
-  const ringClass = selected ? 'border-accent' : 'border-line';
+  const ringClass = selected ? 'border-accent' : 'border-line-strong';
   const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
+      aria-checked={selected}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-2 rounded-control ${stateClass}`}
+      {...(Platform.OS === 'web'
+        ? {
+            onKeyDown: (event: ReactKeyboardEvent) => {
+              if (event.key === ' ') {
+                event.preventDefault();
+                if (!disabled && !event.repeat) onPress();
+              }
+            },
+          }
+        : {})}
+      className={`min-h-11 flex-row items-center gap-2 rounded-control ${disabled ? 'opacity-50' : stateClass}`}
     >
       <View
         className={`h-6 w-6 items-center justify-center rounded-full border bg-paper ${ringClass}`}
       >
         {selected ? <View className="h-3 w-3 rounded-full bg-accent" /> : null}
       </View>
-      <Text className="text-base text-ink">{label}</Text>
+      <Text className="min-w-0 flex-1 text-base text-ink">{label}</Text>
     </Pressable>
   );
 }
@@ -593,6 +611,8 @@ export function Dialog({
   children,
   wide,
   fullScreen,
+  sheet = false,
+  footer,
   scrollHint,
 }: PropsWithChildren<{
   visible: boolean;
@@ -600,6 +620,8 @@ export function Dialog({
   title: string;
   wide?: boolean;
   fullScreen?: boolean;
+  sheet?: boolean;
+  footer?: ReactNode;
   scrollHint?: string;
 }>) {
   const closeButtonId = useId();
@@ -608,7 +630,8 @@ export function Dialog({
   const previouslyFocusedRef = useRef<{ focus: () => void } | null>(null);
   const scrollMetricsRef = useRef({ content: 0, viewport: 0, offset: 0 });
   const [showScrollHint, setShowScrollHint] = useState(false);
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const bottomSheet = sheet && windowWidth < 600;
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -653,7 +676,7 @@ export function Dialog({
   if (!visible) return null;
 
   const maxWidthClass = wide ? 'max-w-[720px]' : 'max-w-[480px]';
-  const dialogMaxHeight = Math.max(0, windowHeight - 32);
+  const dialogMaxHeight = Math.max(0, windowHeight - (bottomSheet ? insets.top + 32 : 32));
   const dialog = (
     <View
       accessibilityViewIsModal
@@ -663,7 +686,7 @@ export function Dialog({
       className={
         fullScreen
           ? 'w-full bg-raised'
-          : `w-full overflow-hidden rounded-dialog border border-line bg-raised shadow-popover ${maxWidthClass}`
+          : `w-full overflow-hidden bg-raised ${bottomSheet ? 'rounded-t-dialog' : `rounded-dialog border border-line shadow-popover ${maxWidthClass}`} `
       }
     >
       <View
@@ -699,6 +722,14 @@ export function Dialog({
       >
         {children}
       </ScrollView>
+      {footer ? (
+        <View
+          className="border-t border-line-subtle bg-raised px-6 pt-3"
+          style={{ paddingBottom: bottomSheet ? Math.max(insets.bottom, 16) : 16 }}
+        >
+          {footer}
+        </View>
+      ) : null}
       {fullScreen && showScrollHint ? (
         <View
           pointerEvents="none"
@@ -731,7 +762,13 @@ export function Dialog({
         style={{ flex: 1 }}
       >
         <View
-          className={fullScreen ? 'flex-1 bg-raised' : 'flex-1 items-center justify-center p-4'}
+          className={
+            fullScreen
+              ? 'flex-1 bg-raised'
+              : bottomSheet
+                ? 'flex-1 items-center justify-end'
+                : 'flex-1 items-center justify-center p-4'
+          }
         >
           {/*
            * The backdrop is a plain (non-button) Pressable positioned behind the
@@ -861,7 +898,7 @@ function StateBlock({
       </View>
       <Text
         accessibilityRole={titleIsHeader ? 'header' : undefined}
-        className="text-center text-lg font-sans-bold text-ink"
+        className="text-center text-base font-sans-semibold text-ink"
       >
         {title}
       </Text>
@@ -918,27 +955,14 @@ export function ErrorState({
 }
 
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
-  const compact = useWindowDimensions().width < 600;
-  const placeholders = compact ? [0, 1] : [0, 1, 2, 3];
-
   return (
     <View
+      accessibilityLiveRegion="polite"
       accessibilityLabel={label}
-      className="min-h-[240px] w-full overflow-hidden px-4 py-4 opacity-60"
+      className="min-h-24 flex-row items-center justify-center gap-3 py-6"
     >
-      <View className="gap-3">
-        <View className="h-5 w-36 rounded-control bg-panel-strong" />
-        <View className="flex-row gap-5">
-          {placeholders.map((item) => (
-            <View key={item} className="w-[148px] gap-2">
-              <View className="h-[218px] rounded-control bg-panel-strong" />
-              <View className="h-3 rounded-control bg-panel-strong" />
-              <View className="h-3 w-2/3 rounded-control bg-panel-strong" />
-            </View>
-          ))}
-        </View>
-      </View>
-      <Text className="mt-8 text-sm text-muted">{label}</Text>
+      <ActivityIndicator color={colors.accent} />
+      <Text className="text-sm text-muted">{label}</Text>
     </View>
   );
 }
@@ -964,15 +988,12 @@ export function AppBootState() {
 /** `Loading` is kept as an alias of `LoadingState` for existing imports. */
 export const Loading = LoadingState;
 
-const STATUS_BADGE_TONE_CLASS: Record<
-  StatusTone,
-  { background: string; text: string; spine: string }
-> = {
-  neutral: { background: 'bg-neutral-soft', text: 'text-neutral', spine: 'bg-neutral' },
-  info: { background: 'bg-info-soft', text: 'text-info', spine: 'bg-info' },
-  success: { background: 'bg-success-soft', text: 'text-success', spine: 'bg-success' },
-  warning: { background: 'bg-warning-soft', text: 'text-warning', spine: 'bg-warning' },
-  danger: { background: 'bg-danger-soft', text: 'text-danger', spine: 'bg-danger' },
+const STATUS_BADGE_TONE_CLASS: Record<StatusTone, { background: string; text: string }> = {
+  neutral: { background: 'bg-neutral-soft', text: 'text-neutral' },
+  info: { background: 'bg-info-soft', text: 'text-info' },
+  success: { background: 'bg-success-soft', text: 'text-success' },
+  warning: { background: 'bg-warning-soft', text: 'text-warning' },
+  danger: { background: 'bg-danger-soft', text: 'text-danger' },
 };
 
 const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
@@ -983,14 +1004,7 @@ const STATUS_BADGE_TONE_COLOR: Record<StatusTone, string> = {
   danger: colors.danger,
 };
 
-/**
- * Aldus's signature status treatment — a "spine label," styled after the
- * color-coded spine tag on a library book, not a generic rounded pill. A
- * solid 3px tone spine sits flush against the left edge; the tag only
- * rounds on the right, where it lifts off the page. Used for Read/Listen/
- * Synced, source health, scan state, import proposals, and role/status —
- * never for decorative metadata.
- */
+/** Quiet status labels share tone and geometry across consumer and admin screens. */
 export function StatusBadge({
   tone = 'neutral',
   label,
@@ -1003,17 +1017,10 @@ export function StatusBadge({
   const toneClass = STATUS_BADGE_TONE_CLASS[tone];
 
   return (
-    <View
-      className={`will-change-variable flex-row items-stretch self-start overflow-hidden rounded-r-control ${toneClass.background}`}
-    >
-      <View className={`will-change-variable w-[3px] ${toneClass.spine}`} />
-      <View className="flex-row items-center gap-1.5 py-1 pl-1.5 pr-2">
+    <View className={`flex-row items-center self-start rounded-control ${toneClass.background}`}>
+      <View className="flex-row items-center gap-1.5 px-2 py-1">
         {icon ? <AppIcon name={icon} size={12} color={STATUS_BADGE_TONE_COLOR[tone]} /> : null}
-        <Text
-          className={`will-change-variable text-[11px] font-sans-bold uppercase tracking-wide ${toneClass.text}`}
-        >
-          {label}
-        </Text>
+        <Text className={`text-xs font-sans-medium ${toneClass.text}`}>{label}</Text>
       </View>
     </View>
   );
@@ -1055,10 +1062,10 @@ export function IconRow({
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-4 rounded-card border border-line bg-paper px-4 py-3.5 shadow-xs ${stateClass}`}
+      className={`min-h-11 flex-row items-center gap-4 border-b border-line-subtle py-3.5 ${stateClass}`}
     >
       <View className="min-w-0 flex-1 flex-row items-center gap-3">
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
+        <View className="h-10 w-10 items-center justify-center">
           <AppIcon name={icon} size={18} color={colors.accent} />
         </View>
         <View className="min-w-0 flex-1 gap-0.5">
@@ -1087,13 +1094,13 @@ export function PageHeader({
   actions,
   back,
   compact,
-  editorial = true,
+  editorial = false,
 }: {
   title: string;
   actions?: ReactNode;
   back?: ReactNode;
   compact: boolean;
-  /** Consumer screens show the Work/Library title in editorial serif; administration titles ("Sources & imports", "Users", "Manage · …") are operational text and use system sans instead. */
+  /** Screen titles use sans by default; editorial is reserved for a book title. */
   editorial?: boolean;
 }) {
   const paddingClass = compact ? 'px-4' : 'px-6';
@@ -1132,7 +1139,7 @@ export function Page({
   back,
   hideHeader = false,
   scrollable = true,
-  editorial = true,
+  editorial = false,
 }: PropsWithChildren<{
   title: string;
   /** Virtualized screens provide their own scrolling surface. */
@@ -1156,7 +1163,7 @@ export function Page({
     (fallback ? (
       <IconButton icon="back" label="Back" kind="quiet" onPress={() => goBackOr(fallback)} />
     ) : undefined);
-  const contentPaddingClass = compact ? 'gap-5 px-4 pb-6 pt-3' : 'gap-8 px-6 py-8';
+  const contentPaddingClass = compact ? 'gap-6 px-4 pb-8 pt-5' : 'gap-8 px-8 py-8';
 
   return (
     <SafeAreaView edges={mobile ? ['top', 'left', 'right'] : ['left', 'right']} style={{ flex: 1 }}>
@@ -1167,7 +1174,7 @@ export function Page({
       ) : null}
       <View className="flex-1 bg-canvas">
         {mobile ? (
-          <View className="min-h-14 flex-row items-center border-b border-line bg-panel px-3 py-1">
+          <View className="min-h-14 flex-row items-center border-b border-line-subtle bg-canvas px-3 py-1">
             <View className="w-[72px] items-start">
               {mobileBack || (
                 <Pressable
@@ -1176,14 +1183,14 @@ export function Page({
                   onPress={() => router.navigate('/home')}
                   className="min-h-11 min-w-11 items-center justify-center rounded-control focus-visible:bg-accent-soft active:bg-accent-soft"
                 >
-                  <Text className="font-editorial-bold text-lg text-accent">Aldus</Text>
+                  <Text className="font-editorial text-xl text-ink">Aldus</Text>
                 </Pressable>
               )}
             </View>
             <Text
               accessibilityRole="header"
               numberOfLines={1}
-              className="min-w-0 flex-1 text-center text-lg font-sans-bold text-ink"
+              className="min-w-0 flex-1 text-center text-base font-sans-semibold text-ink"
             >
               {title}
             </Text>
@@ -1228,7 +1235,7 @@ export function Page({
 
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <View className="min-h-[42px] flex-row items-center justify-between gap-3 border-b border-line">
+    <View className="min-h-11 flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <Text accessibilityRole="header" className="text-lg font-sans-bold text-ink">
         {title}
       </Text>

@@ -262,7 +262,6 @@ export function ReaderSettings({
                 <View className="min-w-[132px] flex-grow basis-[45%]">
                   <Button
                     label="Turn pages"
-                    icon="read"
                     accessibilityRole="radio"
                     selected={value.layout === 'paginated'}
                     disabled={disabled}
@@ -271,8 +270,7 @@ export function ReaderSettings({
                 </View>
                 <View className="min-w-[132px] flex-grow basis-[45%]">
                   <Button
-                    label="Continuous scroll"
-                    icon="scroll"
+                    label="Scroll"
                     accessibilityRole="radio"
                     selected={value.layout === 'scrolled'}
                     disabled={disabled}

@@ -441,25 +441,47 @@ export default function WorkScreen() {
       title={work.title}
       author={work.author}
       coverURL={work.cover_url}
-      size={narrow ? 'continue' : 'hero'}
+      size={narrow ? 'small' : 'hero'}
       {...coverPresentation(work)}
     />
   );
   const identity = (
     <View className={narrow ? 'min-w-0 flex-1 gap-2' : 'gap-3'}>
-      <Text className="text-xs font-sans-bold uppercase tracking-wide text-accent">
-        {formatLabel}
-      </Text>
+      <Text className="text-xs font-sans-medium text-muted">{formatLabel}</Text>
       <Text
         accessibilityRole="header"
         numberOfLines={3}
-        className={`${narrow ? 'text-2xl leading-8' : 'text-4xl leading-[44px]'} font-editorial-bold text-ink`}
+        className={`${narrow ? 'text-xl leading-7' : 'text-4xl leading-[44px]'} font-editorial text-ink`}
       >
         {work.title}
       </Text>
       <Text numberOfLines={2} className="text-base text-muted sm:text-lg">
         {work.author || 'Unknown author'}
       </Text>
+    </View>
+  );
+  const primaryActions = (
+    <View className="w-full gap-2">
+      {primaryAvailable ? (
+        <View className="gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <Button
+            label={`${hasProgress || work.in_progress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
+            icon={primaryMode === 'read' ? 'read' : 'listen'}
+            kind="primary"
+            onPress={() => consume(primaryMode)}
+          />
+          {secondaryAvailable ? (
+            <Button
+              icon={secondaryMode === 'read' ? 'read' : 'listen'}
+              label={secondaryMode === 'read' ? 'Read' : 'Listen'}
+              kind="secondary"
+              onPress={() => consume(secondaryMode)}
+            />
+          ) : null}
+        </View>
+      ) : (
+        <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
+      )}
     </View>
   );
   const controls = (
@@ -484,27 +506,6 @@ export default function WorkScreen() {
           </Text>
         </View>
       ) : null}
-
-      {primaryAvailable ? (
-        <View className="flex-row flex-wrap items-center gap-2">
-          <Button
-            label={`${hasProgress || work.in_progress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
-            icon={primaryMode === 'read' ? 'read' : 'listen'}
-            kind="primary"
-            onPress={() => consume(primaryMode)}
-          />
-          {secondaryAvailable ? (
-            <Button
-              icon={secondaryMode === 'read' ? 'read' : 'listen'}
-              label={secondaryMode === 'read' ? 'Read instead' : 'Listen instead'}
-              kind="secondary"
-              onPress={() => consume(secondaryMode)}
-            />
-          ) : null}
-        </View>
-      ) : (
-        <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
-      )}
 
       {note ? <Text className="max-w-md text-sm text-muted">{note}</Text> : null}
 
@@ -587,7 +588,10 @@ export default function WorkScreen() {
             <>
               <View className="w-full flex-row items-start gap-5">
                 {cover}
-                {identity}
+                <View className="min-w-0 flex-1 gap-4">
+                  {identity}
+                  {primaryActions}
+                </View>
               </View>
               {controls}
             </>
@@ -596,6 +600,7 @@ export default function WorkScreen() {
               {cover}
               <View className="min-w-0 flex-1 items-start gap-5 pt-2">
                 {identity}
+                {primaryActions}
                 {controls}
               </View>
             </>
@@ -638,7 +643,7 @@ export default function WorkScreen() {
         <View
           className={`mx-auto w-full max-w-[1000px] gap-3 ${narrow ? 'pb-6' : 'border-t border-line py-8'}`}
         >
-          <Text className="font-editorial-bold text-2xl text-ink">About this book</Text>
+          <Text className="text-lg font-sans-semibold text-ink">About this book</Text>
           {description ? (
             <>
               <Text
@@ -658,8 +663,8 @@ export default function WorkScreen() {
           ) : canEdit ? (
             <View className="gap-2">
               <Text className="max-w-[70ch] text-base text-muted">
-                No description yet — Aldus can pull a description, publisher, language, and subjects
-                from Open Library, or you can write your own from Manage this work.
+                Add a description and book details from Open Library, or edit them in Manage this
+                work.
               </Text>
               <View className="self-start">
                 <Button
@@ -850,7 +855,7 @@ function EditionOption({
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
-  const ringClass = selected ? 'border-accent' : 'border-line';
+  const ringClass = selected ? 'border-accent' : 'border-line-strong';
 
   return (
     <Pressable

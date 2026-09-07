@@ -10,7 +10,7 @@ import { libraryDensity, libraryDensityKey, type LibraryDensity } from '@/featur
 import { BrowseControls, BrowseFacet } from '@/features/browse';
 import { offlineBrowseWorks } from '@/features/offline-browse';
 import { workQuickActions } from '@/features/work-actions';
-import { View } from '@/features/tw';
+import { Text, View } from '@/features/tw';
 import {
   Button,
   Dialog,
@@ -21,9 +21,7 @@ import {
   LoadingState,
   Notice,
   Page,
-  Row,
   SearchField,
-  SectionHeader,
 } from '@/features/ui';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineWorkSummaries } from '@/lib/offline-library';
@@ -277,7 +275,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       <SearchField
         label="Search your library"
         hideLabel
-        placeholder="Your books, authors, series, or narrators"
+        placeholder="Search your library"
         value={query}
         onChangeText={search}
       />
@@ -292,27 +290,37 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
           <CatalogGroupSection kind="narrators" groups={narrators} searching />
         </>
       ) : null}
-      <SectionHeader
-        title={q ? 'Books' : 'Your books'}
-        action={
-          <Row>
-            {!q && !status ? (
-              <Button
-                label="Browse"
-                icon="libraries"
-                kind="quiet"
-                onPress={() => setBrowseOpen(true)}
-              />
-            ) : null}
+      <View className="flex-row flex-wrap items-center justify-between gap-2">
+        <View className="flex-row items-center gap-2">
+          {!q && !status ? (
             <Button
-              label="Filter & sort"
-              icon="filter"
+              label="Books"
+              icon="chevronDown"
               kind="quiet"
-              onPress={() => setFiltersOpen(true)}
+              onPress={() => setBrowseOpen(true)}
             />
-          </Row>
-        }
-      />
+          ) : (
+            <Text className="text-lg font-sans-semibold text-ink">Books</Text>
+          )}
+          {!q && !status ? (
+            <Button
+              label="Collections"
+              icon="collections"
+              kind="quiet"
+              onPress={() => {
+                stashVisit();
+                router.push('/collections');
+              }}
+            />
+          ) : null}
+        </View>
+        <IconButton
+          label="Filter & sort"
+          icon="filter"
+          kind="quiet"
+          onPress={() => setFiltersOpen(true)}
+        />
+      </View>
     </View>
   );
   const footer = error ? (
@@ -369,12 +377,30 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       )}
       <Dialog
         title="Filter & sort books"
+        sheet
         visible={filtersOpen}
         onClose={() => setFiltersOpen(false)}
+        footer={
+          <View className="flex-row items-center justify-between gap-4">
+            <Button
+              label="Reset filters"
+              kind="quiet"
+              onPress={() => {
+                setSort('recent');
+                setAvailability('all');
+                setLibraryID('');
+                resetPage();
+              }}
+            />
+            <View className="min-w-28">
+              <Button label="Done" kind="primary" onPress={() => setFiltersOpen(false)} />
+            </View>
+          </View>
+        }
       >
-        <View className="gap-5">
+        <View>
           <BrowseFacet
-            label="Book size"
+            label="Cover size"
             options={[
               { value: 'comfortable', label: 'Comfortable' },
               { value: 'compact', label: 'Compact' },
@@ -405,17 +431,6 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
             }}
             onAvailabilityChange={(value) => {
               setAvailability(value);
-              resetPage();
-            }}
-          />
-          <Button label="Show books" kind="primary" onPress={() => setFiltersOpen(false)} />
-          <Button
-            label="Reset filters"
-            kind="quiet"
-            onPress={() => {
-              setSort('recent');
-              setAvailability('all');
-              setLibraryID('');
               resetPage();
             }}
           />

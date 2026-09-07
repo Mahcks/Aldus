@@ -392,8 +392,8 @@ export default function SourcesAdministration() {
               <Text className="font-sans-bold text-ink">{selectedLibrary.name}</Text>
             </Text>
             <Text className="text-sm text-muted">
-              Sources supply externally owned files. Imported Works remain part of the Library, even
-              when their files come from more than one Source.
+              Scan your folders for books. Imported books stay in this library even if you remove a
+              source.
             </Text>
           </View>
 
@@ -410,7 +410,7 @@ export default function SourcesAdministration() {
                 Add a Source to let Aldus discover books and audiobooks in a folder you own.
               </EmptyState>
             ) : (
-              <View className="flex-row flex-wrap items-start gap-4">
+              <View className="w-full">
                 {sources.map((source) => (
                   <SourceCard
                     admin={Boolean(auth.user?.admin)}

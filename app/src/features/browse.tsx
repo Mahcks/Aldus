@@ -12,8 +12,8 @@ import { BookCover, coverPresentation, WorkCard } from './bookshelf';
 import { workProgressLabel } from './consumption';
 import { AppIcon } from './icons';
 import { listItemEnter } from './motion';
-import { ScrollView, Text, View } from './tw';
-import { Button, colors, Notice, Select, StatusBadge } from './ui';
+import { Pressable, Text, View } from './tw';
+import { Button, colors, Notice, Radio, resolvePressStateClass, Select, StatusBadge } from './ui';
 import { workHref, workQuickActions } from './work-actions';
 
 export const browseSorts = [
@@ -24,17 +24,13 @@ export const browseSorts = [
 ] as const;
 
 export const browseFilters = [
-  ['all', 'All'],
-  ['readable', 'Readable'],
-  ['listenable', 'Listenable'],
+  ['all', 'All books'],
+  ['readable', 'Ebooks'],
+  ['listenable', 'Audiobooks'],
   ['synchronized', 'Synchronized'],
 ] as const;
 
-/**
- * Single-row, horizontally scrollable stand-in for `Select` on narrow
- * screens, where `Select`'s wrapping button grid consumes too much vertical
- * space. Same radiogroup semantics and `Button` primitive underneath.
- */
+/** A compact current value that expands to fully visible choices. */
 export function BrowseFacet({
   label,
   options,
@@ -46,39 +42,49 @@ export function BrowseFacet({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const selectedLabel = options.find((option) => option.value === value)?.label || 'Choose';
+
+  function choose(next: string) {
+    onChange(next);
+    setExpanded(false);
+  }
+
   return (
-    <View className="gap-1">
-      <Text className="text-xs font-sans-semibold uppercase tracking-wide text-subtle">
-        {label}
-      </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        accessibilityRole="radiogroup"
-        accessibilityLabel={label}
-        contentContainerClassName="flex-row items-center gap-2 pr-4"
+    <View className="w-full border-b border-line-subtle">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${selectedLabel}`}
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((current) => !current)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        className={`min-h-16 flex-row items-center justify-between gap-4 py-3 ${resolvePressStateClass({ focused, pressed })}`}
       >
-        {options.map((option) => (
-          <Button
-            key={option.value}
-            label={option.label}
-            kind="secondary"
-            selected={option.value === value}
-            accessibilityRole="radio"
-            onPress={() => onChange(option.value)}
-          />
-        ))}
-      </ScrollView>
+        <Text className="min-w-0 flex-1 text-base font-sans-medium text-ink">{label}</Text>
+        <Text className="max-w-[50%] shrink text-right text-sm text-muted">{selectedLabel}</Text>
+        <AppIcon name={expanded ? 'chevronUp' : 'chevronDown'} size={18} color={colors.muted} />
+      </Pressable>
+      {expanded ? (
+        <View accessibilityRole="radiogroup" accessibilityLabel={label} className="gap-1 pb-3">
+          {options.map((option) => (
+            <Radio
+              key={option.value}
+              label={option.label}
+              selected={option.value === value}
+              onPress={() => choose(option.value)}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-/**
- * Sort and availability, kept deliberately secondary to the search field:
- * a single-row, horizontally scrollable chip strip rather than a full
- * multi-row `Select` grid, at every width — filters refine results, they
- * don't compete with the query for attention.
- */
 export function BrowseControls({
   sort,
   availability,
@@ -90,15 +96,17 @@ export function BrowseControls({
   onSortChange: (value: string) => void;
   onAvailabilityChange: (value: string) => void;
 }) {
-  const sortOptions = browseSorts.map(([value, label]) => ({ value, label }));
-  const availabilityOptions = browseFilters.map(([value, label]) => ({ value, label }));
-
   return (
-    <View className="flex-row flex-wrap gap-x-6 gap-y-2.5">
-      <BrowseFacet label="Sort by" options={sortOptions} value={sort} onChange={onSortChange} />
+    <View className="w-full">
       <BrowseFacet
-        label="Availability"
-        options={availabilityOptions}
+        label="Sort by"
+        options={browseSorts.map(([value, label]) => ({ value, label }))}
+        value={sort}
+        onChange={onSortChange}
+      />
+      <BrowseFacet
+        label="Format"
+        options={browseFilters.map(([value, label]) => ({ value, label }))}
         value={availability}
         onChange={onAvailabilityChange}
       />
@@ -235,7 +243,7 @@ export function AcquisitionGroupRow({
           {editionKinds.map((kind) => (
             <View key={kind}>
               {hasBothKinds ? (
-                <Text className="pt-3 text-[11px] font-sans-bold uppercase tracking-wide text-subtle">
+                <Text className="pt-3 text-sm font-sans-semibold text-muted">
                   {kind === 'ebook' ? 'Ebooks' : 'Audiobooks'}
                 </Text>
               ) : null}
@@ -257,12 +265,12 @@ export function AcquisitionGroupRow({
                       className="gap-1 border-b border-line py-2.5 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <View className="min-w-0 flex-1">
-                        <Text numberOfLines={1} className="text-sm text-ink">
-                          <Text className="font-sans-semibold">{releaseLabel(release)}</Text>
-                          {metadata ? (
-                            <Text className="text-xs text-subtle"> · {metadata}</Text>
-                          ) : null}
+                        <Text className="text-sm font-sans-semibold text-ink">
+                          {releaseLabel(release)}
                         </Text>
+                        {metadata ? (
+                          <Text className="text-xs leading-5 text-muted">{metadata}</Text>
+                        ) : null}
                         {state === 'error' && errors[release.id] ? (
                           <Text className="text-xs text-danger">{errors[release.id]}</Text>
                         ) : null}

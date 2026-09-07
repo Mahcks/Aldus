@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { LibrarySource, SourceScan } from '@/generated/api';
 import { Button, Notice, Row, StatusBadge } from '@/features/ui';
 import { Text, View } from '@/features/tw';
@@ -30,12 +31,13 @@ export function SourceCard({
   onRemove: () => void;
   onToggleEntries: () => void;
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const latest = details?.scans[0];
   const active = latest ? ['pending', 'scanning'].includes(latest.state) : false;
   const status = sourceStatus(source, latest);
 
   return (
-    <View className="w-[580px] max-w-full gap-3.5 rounded-card border border-line bg-paper p-[18px]">
+    <View className="w-full gap-4 border-t border-line-subtle py-6">
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-lg font-sans-bold leading-[23px] text-ink">{source.name}</Text>
@@ -44,18 +46,10 @@ export function SourceCard({
         <StatusBadge {...status} />
       </View>
 
-      {latest ? (
-        <ScanSummary scan={latest} />
-      ) : (
-        <Text className="text-sm text-muted">Not yet scanned</Text>
-      )}
+      {latest ? <ScanSummary scan={latest} /> : null}
 
       {source.auto_import ? (
         <Text className="text-sm text-muted">Clear matches import automatically.</Text>
-      ) : null}
-
-      {admin && source.root_path ? (
-        <TechnicalDetails rows={[{ label: 'Server path', value: source.root_path }]} />
       ) : null}
 
       <Row>
@@ -70,12 +64,27 @@ export function SourceCard({
           label={`${expanded ? 'Hide' : 'Inspect'} files (${details?.entries.length ?? 0})`}
           onPress={onToggleEntries}
         />
-        {admin ? <Button label="Edit" icon="edit" kind="quiet" onPress={onEdit} /> : null}
+        {admin ? (
+          <Button
+            label={settingsOpen ? 'Hide source settings' : 'Source settings'}
+            kind="quiet"
+            onPress={() => setSettingsOpen((open) => !open)}
+          />
+        ) : null}
       </Row>
 
-      {admin ? (
-        <View className="border-t border-line pt-3.5">
+      {!source.enabled ? (
+        <Text className="text-sm text-muted">
+          Enable this source in Source settings before scanning.
+        </Text>
+      ) : null}
+      {admin && settingsOpen ? (
+        <View className="gap-3 border-t border-line-subtle pt-3">
+          {source.root_path ? (
+            <TechnicalDetails rows={[{ label: 'Server path', value: source.root_path }]} />
+          ) : null}
           <Row>
+            <Button label="Edit source" icon="edit" kind="secondary" onPress={onEdit} />
             <Button
               label={source.enabled ? 'Disable' : 'Enable'}
               kind="quiet"

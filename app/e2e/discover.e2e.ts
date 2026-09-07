@@ -65,3 +65,110 @@ test('Discover keeps equivalent searches and ignores descriptions from closed bo
   await expect(page.getByText('Finding books…', { exact: true })).toHaveCount(0);
   expect(searches).toBe(1);
 });
+
+for (const width of [390, 1024, 1440]) {
+  test(`Discover keeps request actions visible with a long description at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    let selections = 0;
+    const book = {
+      title: 'Alice’s Adventures in Wonderland',
+      author: 'Lewis Carroll',
+      external_source: 'open_library',
+      external_id: 'OL1W',
+    };
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
+      let json: unknown = [];
+      if (path === '/auth/me') json = { id: 'admin', username: 'alex', admin: true };
+      if (path === '/setup/status') json = { available: false };
+      if (path === '/libraries')
+        json = [{ id: 'family', name: 'Family', role: 'owner', effective: true }];
+      if (path === '/acquisition-capabilities')
+        json = { enabled: true, destinations: [{ library_id: 'family', library_name: 'Family' }] };
+      if (path === '/discover/trending')
+        json = [{ source: 'open_library', title: 'Explore something new', items: [book] }];
+      if (path === '/discover/detail')
+        json = {
+          description:
+            'Follow Alice through a curious world of impossible creatures and unexpected adventures. '.repeat(
+              40,
+            ),
+        };
+      if (path === '/libraries/family/acquisition-discoveries')
+        json = {
+          id: 'discovery',
+          results: ['EPUB', 'PDF'].map((format, index) => ({
+            id: `release-${index}`,
+            group_key: 'alice',
+            canonical_title: book.title,
+            title: book.title,
+            author: book.author,
+            kind: 'ebook',
+            format,
+            source: 'Family book catalog with a long provider name',
+            size: 204800,
+            match: 'exact',
+            relevance: 1,
+          })),
+        };
+      if (path.endsWith('/discovery/select')) {
+        selections++;
+        if (selections === 1) {
+          await route.fulfill({
+            status: 503,
+            body: 'Download service unavailable. Retry.',
+          });
+          return;
+        }
+        json = { id: 'request', state: 'queued' };
+      }
+      await route.fulfill({ json });
+    });
+    await page.goto('/search');
+    await page
+      .getByRole('button', { name: `${book.title} by ${book.author}`, exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Book details' });
+    await expect(dialog.getByRole('button', { name: 'Request ebook', exact: true })).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Request audiobook', exact: true }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        dialog.evaluate((element) => {
+          let opacity = 1;
+          for (let node: Element | null = element; node; node = node.parentElement)
+            opacity *= Number(getComputedStyle(node).opacity);
+          return opacity;
+        }),
+      )
+      .toBe(1);
+    const bounds = await dialog
+      .getByRole('button', { name: 'Request audiobook', exact: true })
+      .boundingBox();
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(844);
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-discover-detail.png` });
+    await dialog.getByRole('button', { name: 'Choose a specific release' }).click();
+    const releases = page.getByRole('dialog', { name: 'Choose a release', exact: true });
+    await releases.getByRole('button', { name: 'Choose edition (2)' }).click();
+    await releases.getByRole('button', { name: 'Add', exact: true }).first().click();
+    await expect(releases.getByText('Download service unavailable. Retry.')).toBeVisible();
+    await expect
+      .poll(() =>
+        releases.evaluate((element) => {
+          let opacity = 1;
+          for (let node: Element | null = element; node; node = node.parentElement)
+            opacity *= Number(getComputedStyle(node).opacity);
+          return opacity;
+        }),
+      )
+      .toBe(1);
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-discover-releases.png` });
+    await releases.getByRole('button', { name: 'Add', exact: true }).first().click();
+    await expect(releases.getByText('Added', { exact: true })).toBeVisible();
+    expect(selections).toBe(2);
+  });
+}

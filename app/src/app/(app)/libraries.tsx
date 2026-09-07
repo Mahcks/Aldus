@@ -51,7 +51,7 @@ function CreateLibraryForm({ name, onNameChange, onSubmit, busy, error }: Create
 /** Single centered "let's get started" moment — used only when there are no libraries yet. */
 function FirstLibraryHero(props: CreateLibraryFormProps) {
   return (
-    <View className="mx-auto w-full max-w-[440px] items-center gap-5 rounded-card border border-line bg-paper p-8 text-center shadow-card">
+    <View className="mx-auto w-full max-w-[440px] items-center gap-5 py-8">
       <View className="h-14 w-14 items-center justify-center rounded-full bg-accent-soft">
         <AppIcon name="libraries" size={28} color={colors.accent} />
       </View>
@@ -60,8 +60,8 @@ function FirstLibraryHero(props: CreateLibraryFormProps) {
           Create your first library
         </Text>
         <Text className="text-center text-base leading-6 text-muted">
-          A Library groups your books and audiobooks under one set of sources and members. Give it a
-          name to get started.
+          Keep books and audiobooks together, then choose who can read them. Start with a name, like
+          Family or Kids.
         </Text>
       </View>
       <View className="w-full">
@@ -113,6 +113,7 @@ export default function Libraries() {
   }
 
   async function handleCreate() {
+    if (busy || !name.trim()) return;
     setBusy(true);
     setCreateError('');
     try {
@@ -156,7 +157,7 @@ export default function Libraries() {
       ) : (
         <View className="gap-3">
           <SectionHeader title="Your libraries" />
-          <View className="flex-row flex-wrap gap-3">
+          <View>
             {items.map((item, index) => (
               <Animated.View key={item.id} entering={listItemEnter(index)}>
                 <LibraryCard name={item.name} role={item.role} onPress={() => openLibrary(item)} />
@@ -165,14 +166,32 @@ export default function Libraries() {
           </View>
         </View>
       )}
-      <Dialog visible={createOpen} title="Add library" onClose={() => setCreateOpen(false)}>
-        <CreateLibraryForm
-          name={name}
-          onNameChange={setName}
-          onSubmit={handleCreate}
-          busy={busy}
-          error={createError}
-        />
+      <Dialog
+        visible={createOpen}
+        title="Add library"
+        sheet
+        onClose={() => {
+          if (!busy) setCreateOpen(false);
+        }}
+        footer={
+          <Button
+            label="Create library"
+            kind="primary"
+            disabled={busy || !name.trim()}
+            loading={busy}
+            onPress={() => void handleCreate()}
+          />
+        }
+      >
+        <View className="gap-4">
+          {createError ? <Notice danger>{createError}</Notice> : null}
+          <TextField
+            label="Library name"
+            value={name}
+            onChangeText={setName}
+            onSubmitEditing={() => void handleCreate()}
+          />
+        </View>
       </Dialog>
     </Page>
   );

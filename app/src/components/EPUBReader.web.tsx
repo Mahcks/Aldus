@@ -119,6 +119,9 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   }>(undefined);
   const direction = useRef<'initial' | 'forward' | 'backward'>('initial');
   const relocated = useRef(false);
+  // Foliate can emit layout/scroll events after goTo resolves. Preserve the saved cursor
+  // until a user gesture or explicit navigation begins.
+  const restoredCursor = useRef(false);
   const onLocationRef = useRef(onLocation);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
@@ -172,6 +175,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         const view = reader.current;
         const disposal = disposalRef.current;
         if (!view || !disposal || (!location && location !== 0)) return false;
+        restoredCursor.current = false;
         direction.current = 'forward';
         return (
           (await disposal.track(async () => {
@@ -212,6 +216,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         const view = reader.current;
         const disposal = disposalRef.current;
         if (!view || !disposal || !value || typeof value !== 'object') return false;
+        restoredCursor.current = true;
         const location = value as {
           href?: string;
           cfi?: string;
@@ -302,6 +307,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     page.current = undefined;
     direction.current = 'initial';
     relocated.current = false;
+    restoredCursor.current = false;
     setReady(false);
     void import('foliate-js/view.js')
       .then(async () => {
@@ -314,6 +320,15 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           if (disposed) return;
           if (product) {
             applyReaderStyles(doc, preferencesRef.current);
+          }
+          for (const event of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
+            doc.addEventListener(
+              event,
+              () => {
+                restoredCursor.current = false;
+              },
+              { passive: true },
+            );
           }
           doc.addEventListener('selectionchange', () => {
             if (disposed) return;
@@ -361,6 +376,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             containingSegment(range, href, segmentsRef.current) ??
             leadingSegment(range, href, segmentsRef.current);
           const commit =
+            !restoredCursor.current &&
             Boolean(visible) &&
             commitsFoliateRelocation(detail.reason, relocated.current, navigationDirection);
           if (visible) relocated.current = true;
@@ -450,6 +466,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
               if (!view || !disposal) return;
               const operation = disposal.track(() => Promise.resolve(view.goLeft()));
               if (operation) {
+                restoredCursor.current = false;
                 direction.current = 'backward';
                 void operation.catch((error: unknown) => {
                   if (!disposal.requested())
@@ -483,6 +500,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
               if (!view || !disposal) return;
               const operation = disposal.track(() => Promise.resolve(view.goRight()));
               if (operation) {
+                restoredCursor.current = false;
                 direction.current = 'forward';
                 void operation.catch((error: unknown) => {
                   if (!disposal.requested())

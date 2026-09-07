@@ -34,6 +34,7 @@ import {
   Page,
   resolvePressStateClass,
   Row,
+  Radio,
   Section,
   SearchField,
   Select,
@@ -152,6 +153,8 @@ export default function ManageWorkScreen() {
   const [refreshingMetadata, setRefreshingMetadata] = useState(false);
   const [metadataMessage, setMetadataMessage] = useState('');
   const [metadataReviewOpen, setMetadataReviewOpen] = useState(false);
+  const [publicationOpen, setPublicationOpen] = useState(false);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
 
   const [savingCover, setSavingCover] = useState('');
   const [coverFit, setCoverFit] = useState<'cover' | 'contain'>('cover');
@@ -591,13 +594,21 @@ export default function ManageWorkScreen() {
       editorial={false}
     >
       <View className="w-full max-w-[1000px] self-center gap-6">
-        <View className="gap-1 border-b border-line pb-4">
-          <Text numberOfLines={2} className="font-editorial-bold text-2xl text-ink">
-            {work.title}
-          </Text>
-          <Text className="text-sm text-muted">
-            {[work.author, library?.name].filter(Boolean).join(' · ')}
-          </Text>
+        <View className="flex-row items-center gap-4 border-b border-line pb-4">
+          <BookCover
+            title={work.title}
+            author={work.author}
+            coverURL={work.cover_url}
+            size="mini"
+          />
+          <View className="min-w-0 flex-1 gap-1">
+            <Text numberOfLines={2} className="font-editorial-bold text-2xl text-ink">
+              {work.title}
+            </Text>
+            <Text className="text-sm text-muted">
+              {[work.author, library?.name].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
         </View>
         {error ? <Notice danger>{error}</Notice> : null}
         {metadataMessage ? <Notice tone="success">{metadataMessage}</Notice> : null}
@@ -677,63 +688,74 @@ export default function ManageWorkScreen() {
                       <FocalPointPicker value={coverFocalPoint} onChange={setCoverFocalPoint} />
                     </View>
                   ) : null}
-                  <View className="gap-5 border-t border-line pt-5">
-                    <View className="gap-1">
-                      <Text className="text-base font-sans-bold text-ink">
-                        {work.cover_url ? 'Fallback cover' : 'Generated cover'}
-                      </Text>
-                      <Text className={shared.itemMeta}>
-                        {work.cover_url
-                          ? 'Used if the selected artwork is removed.'
-                          : 'Used now because no custom artwork is selected.'}
-                      </Text>
-                    </View>
-                    {work.cover_url ? (
-                      <BookCover
-                        title={work.title}
-                        author={work.author}
-                        size="small"
-                        generatedCoverStyle={generatedStyle}
-                        generatedCoverTone={Number(generatedTone)}
-                        generatedCoverLayout={generatedLayout}
+                  {work.cover_url ? (
+                    <Button
+                      label={fallbackOpen ? 'Hide fallback design' : 'Edit fallback design'}
+                      kind="quiet"
+                      onPress={() => setFallbackOpen((value) => !value)}
+                    />
+                  ) : null}
+                  {!work.cover_url || fallbackOpen ? (
+                    <View className="gap-5 border-t border-line pt-5">
+                      <View className="gap-1">
+                        <Text className="text-base font-sans-bold text-ink">
+                          {work.cover_url ? 'Fallback cover' : 'Generated cover'}
+                        </Text>
+                        <Text className={shared.itemMeta}>
+                          {work.cover_url
+                            ? 'Used if the selected artwork is removed.'
+                            : 'Used now because no custom artwork is selected.'}
+                        </Text>
+                      </View>
+                      {work.cover_url ? (
+                        <BookCover
+                          title={work.title}
+                          author={work.author}
+                          size="small"
+                          generatedCoverStyle={generatedStyle}
+                          generatedCoverTone={Number(generatedTone)}
+                          generatedCoverLayout={generatedLayout}
+                        />
+                      ) : null}
+                      <Select
+                        label="Design"
+                        value={generatedStyle}
+                        options={[
+                          { value: 'classic', label: 'Classic' },
+                          { value: 'minimal', label: 'Minimal' },
+                          { value: 'framed', label: 'Framed' },
+                        ]}
+                        onChange={(value) =>
+                          setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')
+                        }
                       />
-                    ) : null}
-                    <Select
-                      label="Design"
-                      value={generatedStyle}
-                      options={[
-                        { value: 'classic', label: 'Classic' },
-                        { value: 'minimal', label: 'Minimal' },
-                        { value: 'framed', label: 'Framed' },
-                      ]}
-                      onChange={(value) =>
-                        setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')
-                      }
-                    />
-                    <Select
-                      label="Title position"
-                      value={generatedLayout}
-                      options={[
-                        { value: 'top', label: 'Top' },
-                        { value: 'center', label: 'Center' },
-                        { value: 'bottom', label: 'Bottom' },
-                      ]}
-                      onChange={(value) => setGeneratedLayout(value as 'top' | 'center' | 'bottom')}
-                    />
-                    <Select
-                      label="Cloth color"
-                      value={generatedTone}
-                      options={[
-                        { value: '-1', label: 'Automatic' },
-                        { value: '0', label: 'Ink' },
-                        { value: '1', label: 'Umber' },
-                        { value: '2', label: 'Terracotta' },
-                        { value: '3', label: 'Slate' },
-                        { value: '4', label: 'Sage' },
-                      ]}
-                      onChange={setGeneratedTone}
-                    />
-                  </View>
+                      <Select
+                        label="Title position"
+                        value={generatedLayout}
+                        options={[
+                          { value: 'top', label: 'Top' },
+                          { value: 'center', label: 'Center' },
+                          { value: 'bottom', label: 'Bottom' },
+                        ]}
+                        onChange={(value) =>
+                          setGeneratedLayout(value as 'top' | 'center' | 'bottom')
+                        }
+                      />
+                      <Select
+                        label="Cloth color"
+                        value={generatedTone}
+                        options={[
+                          { value: '-1', label: 'Automatic' },
+                          { value: '0', label: 'Ink' },
+                          { value: '1', label: 'Umber' },
+                          { value: '2', label: 'Terracotta' },
+                          { value: '3', label: 'Slate' },
+                          { value: '4', label: 'Sage' },
+                        ]}
+                        onChange={setGeneratedTone}
+                      />
+                    </View>
+                  ) : null}
                   <View className="gap-3 border-t border-line pt-5">
                     <Text className={shared.itemMeta}>
                       This cover is shared by reading and listening. Aldus never modifies the source
@@ -792,7 +814,7 @@ export default function ManageWorkScreen() {
                   ))}
                 </View>
               ) : (
-                <Text className={shared.itemMeta}>No source artwork was found for this Work.</Text>
+                <Text className={shared.itemMeta}>No other artwork is saved for this book.</Text>
               )}
             </Section>
 
@@ -851,8 +873,8 @@ export default function ManageWorkScreen() {
             }
           >
             <Text className={shared.itemMeta}>
-              Keep reading editions and audiobook narrations together. Opening one lets you review
-              its immutable revisions or upload a newer file.
+              Keep reading editions and audiobook narrations together. Open an edition to review its
+              uploads or add a newer file.
             </Text>
             {representations.length === 0 ? (
               <EmptyState
@@ -1025,22 +1047,18 @@ export default function ManageWorkScreen() {
 
         {activeTab === 'details' ? (
           <View className="gap-8">
-            <Section title="Find book details">
+            <View className="gap-4 border-b border-line-subtle pb-5">
               <View className="max-w-[760px] gap-3">
-                <Text className={shared.itemMeta}>
-                  Search Open Library, compare editions, and choose which details to update. Nothing
-                  changes until you approve it.
-                </Text>
-                <View className="gap-2 min-[600px]:flex-row min-[600px]:flex-wrap">
+                <View className="flex-row flex-wrap gap-2">
                   <Button
                     label="Find book details"
                     icon="search"
-                    kind="primary"
+                    kind="secondary"
                     disabled={detailsDirty || savingDetails || refreshingMetadata}
                     onPress={() => setMetadataReviewOpen(true)}
                   />
                   <Button
-                    label="Fill missing details only"
+                    label="Fill missing"
                     kind="quiet"
                     loading={refreshingMetadata}
                     disabled={detailsDirty || refreshingMetadata || savingDetails}
@@ -1053,8 +1071,8 @@ export default function ManageWorkScreen() {
                   </Text>
                 ) : (
                   <Text className="text-sm text-muted">
-                    Fill missing details only keeps existing values and saves new details
-                    immediately.
+                    Find an edition to compare, or fill missing details without replacing your
+                    edits.
                   </Text>
                 )}
               </View>
@@ -1066,8 +1084,8 @@ export default function ManageWorkScreen() {
                   onApplied={metadataApplied}
                 />
               ) : null}
-            </Section>
-            <Section title="Edit details manually">
+            </View>
+            <Section title="Book details">
               <View className="max-w-[760px] gap-4">
                 <Field label="Title" value={title} onChangeText={setTitle} />
                 <Field label="Author" value={author} onChangeText={setAuthor} />
@@ -1079,58 +1097,74 @@ export default function ManageWorkScreen() {
                   className="min-h-32"
                   onChangeText={setDescription}
                 />
-                <View className="flex-row flex-wrap gap-4">
-                  <View className="min-w-[220px] flex-grow basis-[280px]">
+                <View className="border-y border-line-subtle py-2">
+                  <Button
+                    label={
+                      publicationOpen
+                        ? 'Hide publication details'
+                        : 'Series, publication & subjects'
+                    }
+                    kind="quiet"
+                    icon={publicationOpen ? 'chevronUp' : 'chevronDown'}
+                    onPress={() => setPublicationOpen((open) => !open)}
+                  />
+                </View>
+                {publicationOpen ? (
+                  <View className="gap-4">
+                    <View className="flex-row flex-wrap gap-4">
+                      <View className="min-w-[220px] flex-grow basis-[280px]">
+                        <Field
+                          label="Series"
+                          maxLength={200}
+                          value={series}
+                          onChangeText={(value) => {
+                            setSeries(value);
+                            if (!value.trim()) setSeriesPosition('');
+                          }}
+                        />
+                      </View>
+                      <View className="min-w-[160px] flex-grow basis-[180px]">
+                        <Field
+                          label="Position in series"
+                          error={seriesPositionError(seriesPosition)}
+                          value={seriesPosition}
+                          onChangeText={setSeriesPosition}
+                          help="Optional. Use 0, 1, or 1.5; up to three decimal places."
+                        />
+                      </View>
+                    </View>
+                    <View className="flex-row flex-wrap gap-4">
+                      <View className="min-w-[220px] flex-grow basis-[280px]">
+                        <Field label="Publisher" value={publisher} onChangeText={setPublisher} />
+                      </View>
+                      <View className="min-w-[160px] flex-grow basis-[180px]">
+                        <Field
+                          label="Publication year"
+                          value={publishYear}
+                          keyboardType="number-pad"
+                          onChangeText={setPublishYear}
+                        />
+                      </View>
+                    </View>
+                    <View className="flex-row flex-wrap gap-4">
+                      <View className="min-w-[220px] flex-grow basis-[280px]">
+                        <Field label="ISBN" value={isbn} onChangeText={setISBN} />
+                      </View>
+                      <View className="min-w-[160px] flex-grow basis-[180px]">
+                        <Field label="Language" value={language} onChangeText={setLanguage} />
+                      </View>
+                    </View>
                     <Field
-                      label="Series"
-                      maxLength={200}
-                      value={series}
-                      onChangeText={(value) => {
-                        setSeries(value);
-                        if (!value.trim()) setSeriesPosition('');
-                      }}
+                      label="Subjects"
+                      help="One subject per line. Genres are assigned from these values."
+                      value={subjects}
+                      multiline
+                      numberOfLines={5}
+                      className="min-h-28"
+                      onChangeText={setSubjects}
                     />
                   </View>
-                  <View className="min-w-[160px] flex-grow basis-[180px]">
-                    <Field
-                      label="Position in series"
-                      error={seriesPositionError(seriesPosition)}
-                      value={seriesPosition}
-                      onChangeText={setSeriesPosition}
-                      help="Optional. Use 0, 1, or 1.5; up to three decimal places."
-                    />
-                  </View>
-                </View>
-                <View className="flex-row flex-wrap gap-4">
-                  <View className="min-w-[220px] flex-grow basis-[280px]">
-                    <Field label="Publisher" value={publisher} onChangeText={setPublisher} />
-                  </View>
-                  <View className="min-w-[160px] flex-grow basis-[180px]">
-                    <Field
-                      label="Publication year"
-                      value={publishYear}
-                      keyboardType="number-pad"
-                      onChangeText={setPublishYear}
-                    />
-                  </View>
-                </View>
-                <View className="flex-row flex-wrap gap-4">
-                  <View className="min-w-[220px] flex-grow basis-[280px]">
-                    <Field label="ISBN" value={isbn} onChangeText={setISBN} />
-                  </View>
-                  <View className="min-w-[160px] flex-grow basis-[180px]">
-                    <Field label="Language" value={language} onChangeText={setLanguage} />
-                  </View>
-                </View>
-                <Field
-                  label="Subjects"
-                  help="One subject per line. Genres are assigned from these values."
-                  value={subjects}
-                  multiline
-                  numberOfLines={5}
-                  className="min-h-28"
-                  onChangeText={setSubjects}
-                />
+                ) : null}
                 <View className="self-start">
                   <Button
                     label="Save details"
@@ -1234,7 +1268,16 @@ export default function ManageWorkScreen() {
       <Dialog
         visible={addFileOpen}
         title="Add file"
-        fullScreen={narrow}
+        sheet
+        footer={
+          <Button
+            label="Choose file"
+            kind="primary"
+            loading={addingFile}
+            disabled={addingFile || !label.trim()}
+            onPress={() => void addFile()}
+          />
+        }
         onClose={() => !addingFile && setAddFileOpen(false)}
       >
         <View className="gap-5">
@@ -1256,21 +1299,6 @@ export default function ManageWorkScreen() {
           <Text className={shared.itemMeta}>
             You will choose the file next. Aldus validates it before adding anything to this work.
           </Text>
-          <Row>
-            <Button
-              label="Cancel"
-              kind="secondary"
-              disabled={addingFile}
-              onPress={() => setAddFileOpen(false)}
-            />
-            <Button
-              label="Choose file"
-              kind="primary"
-              loading={addingFile}
-              disabled={addingFile || !label.trim()}
-              onPress={() => void addFile()}
-            />
-          </Row>
         </View>
       </Dialog>
 
@@ -1558,32 +1586,18 @@ function RevisionChoiceList({
       {items.length === 0 ? (
         <Empty>None available.</Empty>
       ) : (
-        items.map((item) => {
-          const checked = selected === item.id;
-          return (
-            <Pressable
-              accessibilityRole="radio"
-              accessibilityState={{ checked }}
-              key={item.id}
-              className="min-h-11 flex-row items-start gap-3 border-b border-line py-3.5"
+        items.map((item) => (
+          <View key={item.id} className="gap-1 border-b border-line py-3">
+            <Radio
+              label={item.original_filename || item.representation.label}
+              selected={selected === item.id}
               onPress={() => onSelect(item.id)}
-            >
-              <View
-                className={`mt-0.5 h-5 w-5 items-center justify-center rounded-full border bg-paper ${checked ? 'border-accent' : 'border-line'}`}
-              >
-                {checked ? <View className="h-2.5 w-2.5 rounded-full bg-accent" /> : null}
-              </View>
-              <View className="min-w-0 flex-1 gap-1">
-                <Text className={shared.itemTitle}>
-                  {item.original_filename || item.representation.label}
-                </Text>
-                <Text className={shared.itemMeta}>
-                  {formatBytes(item.size_bytes)} · {item.representation.label}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })
+            />
+            <Text className="pl-8 text-sm text-muted">
+              {formatBytes(item.size_bytes)} · {item.representation.label}
+            </Text>
+          </View>
+        ))
       )}
     </View>
   );
@@ -1592,7 +1606,7 @@ function RevisionChoiceList({
 function SyncSourceSummary({ title, item }: { title: string; item: MediaChoice }) {
   return (
     <View className="min-w-[240px] flex-1 gap-1">
-      <Text className="text-xs font-sans-bold uppercase tracking-wide text-muted">{title}</Text>
+      <Text className="text-sm font-sans-semibold text-muted">{title}</Text>
       <Text numberOfLines={2} className={shared.itemTitle}>
         {item.original_filename || item.representation.label}
       </Text>

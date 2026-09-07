@@ -52,18 +52,18 @@ export function titleRequestDetail(format: TitleRequestFormat) {
     case 'wanted':
       return 'Queued for Aldus to search.';
     case 'searching':
-      return 'Searching connected indexers now.';
+      return 'Looking for an available edition.';
     case 'awaiting_release':
       return format.next_search_at
         ? `No matching release yet. Next search: ${notificationTime(format.next_search_at)}.`
         : 'No matching release yet. Aldus will keep looking.';
     case 'submitting':
-      return 'Waiting for qBittorrent to accept the download.';
+      return 'Preparing to start the download.';
     case 'downloading':
       if (['metadl', 'forcedmetadl'].includes(format.download_state?.toLowerCase() ?? '')) {
-        return 'Waiting for torrent metadata and peers.';
+        return 'Waiting for download sources to respond.';
       }
-      return 'Sent to qBittorrent and downloading.';
+      return 'Downloading to your library.';
     case 'verifying':
     case 'scanning':
     case 'importing':
