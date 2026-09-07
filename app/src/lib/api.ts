@@ -7,6 +7,8 @@ import type {
   AcquisitionSettings,
   AcquisitionConnectionStatus,
   AcquisitionCapabilities,
+  RequestLibrary,
+  TitleRequestPage,
   AcquisitionPolicy,
   AcquisitionDiscovery,
   AcquisitionPair,
@@ -336,6 +338,19 @@ export const api = {
     }),
   titleRequests: (libraryID: string) =>
     request<TitleRequest[]>(`/libraries/${libraryID}/title-requests`),
+  requestLibraries: () => request<RequestLibrary[]>('/request-libraries'),
+  titleRequestPage: (
+    libraryID: string,
+    options: { filter?: string; cursor?: string; own?: boolean; work_id?: string } = {},
+  ) => {
+    const params = new URLSearchParams({ limit: '50' });
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined) params.set(key, String(value));
+    }
+    return request<TitleRequestPage>(`/libraries/${libraryID}/title-requests/page?${params}`);
+  },
+  titleRequest: (libraryID: string, requestID: string) =>
+    request<TitleRequest>(`/libraries/${libraryID}/title-requests/${requestID}`),
   titleRequestEvents: (libraryID: string, requestID: string) =>
     request<TitleRequestEvent[]>(`/libraries/${libraryID}/title-requests/${requestID}/events`),
   approveTitleRequest: (libraryID: string, requestID: string, format: string) =>

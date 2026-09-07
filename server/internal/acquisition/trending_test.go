@@ -176,3 +176,17 @@ func TestNYTTransportErrorsDoNotExposeCredentials(t *testing.T) {
 		t.Fatalf("unsafe transport error: %v", err)
 	}
 }
+
+func TestTrendingCacheRetainsBooksOnProviderFailure(t *testing.T) {
+	store := NewStore(nil, nil)
+	books := []trendingItem{{Title: "A book"}}
+	store.writeTrendingCache("open_library", books, nil)
+	got := store.writeTrendingCache("open_library", nil, errors.New("connection reset"))
+	if len(got) != 1 || got[0].Title != "A book" {
+		t.Fatalf("lost cached books: %v", got)
+	}
+	cached, ok := store.readTrendingCache("open_library")
+	if !ok || len(cached) != 1 {
+		t.Fatalf("failed refresh erased cache: %v", cached)
+	}
+}

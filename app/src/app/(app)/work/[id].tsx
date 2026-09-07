@@ -1,3 +1,4 @@
+import { RequestActions } from '@/features/request-actions';
 import type {
   AlignmentJob,
   Collection,
@@ -607,6 +608,22 @@ export default function WorkScreen() {
           )}
         </View>
       </Animated.View>
+
+      {!offline && (!selectedEPUB || !selectedAudio) ? (
+        <View className="mx-auto w-full max-w-[1000px] gap-3 border-t border-line py-4">
+          <Text className="text-base font-sans-semibold text-ink">Get another format</Text>
+          <RequestActions
+            key={work.id}
+            book={{
+              ...work,
+              work_id: work.id,
+              readable: Boolean(selectedEPUB),
+              listenable: Boolean(selectedAudio),
+              synchronized: false,
+            }}
+          />
+        </View>
+      ) : null}
 
       {work.series || selectedAudio?.representation.narrators?.length ? (
         <View className="mx-auto w-full max-w-[1000px] gap-2 border-t border-line py-4">

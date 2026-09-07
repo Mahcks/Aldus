@@ -922,6 +922,16 @@ export interface CreateTitleRequest {
   cover_url: string;
   formats: string[];
 }
+export interface TitleRequestPage {
+  items: TitleRequest[];
+  next_cursor?: string;
+}
+export interface RequestLibrary {
+  library_id: string;
+  library_name: string;
+  ebook_reason: string;
+  audiobook_reason: string;
+}
 
 //////////
 // source: title_search.go

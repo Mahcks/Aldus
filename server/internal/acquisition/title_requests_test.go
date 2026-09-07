@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -87,6 +89,20 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	if err != nil || len(request.Formats) != 2 || request.Formats[0].State != "pending_approval" || request.Formats[1].State != "pending_approval" {
 		t.Fatalf("created request=%#v err=%v", request, err)
 	}
+
+	// Lost responses and concurrent taps must reuse the intent even at quota.
+	var retries sync.WaitGroup
+	for range 8 {
+		retries.Add(1)
+		go func() {
+			defer retries.Done()
+			repeated, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", ExternalSource: "open_library", ExternalID: "OL1W", Title: "Alice", Author: "Lewis Carroll", Formats: []string{"ebook"}})
+			if err != nil || repeated.ID != request.ID {
+				t.Errorf("duplicate=%#v error=%v", repeated, err)
+			}
+		}()
+	}
+	retries.Wait()
 	var ebookSource, audioSource string
 	if err := db.QueryRow(`SELECT (SELECT source_id FROM title_request_formats WHERE title_request_id=? AND format='ebook'),(SELECT source_id FROM title_request_formats WHERE title_request_id=? AND format='audiobook')`, request.ID, request.ID).Scan(&ebookSource, &audioSource); err != nil || ebookSource != "ebooks" || audioSource != "audio" {
 		t.Fatalf("resolved sources=%q %q, %v", ebookSource, audioSource, err)
@@ -149,6 +165,126 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	if err != nil || len(automatic.Formats) != 1 || automatic.Formats[0].State != "wanted" {
 		t.Fatalf("bypass request=%#v err=%v", automatic, err)
 	}
+	paired, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "  EARTHSEA ", Formats: []string{"audiobook"}})
+	if err != nil || paired.ID != automatic.ID || len(paired.Formats) != 2 {
+		t.Fatalf("add missing format at quota=%#v, %v", paired, err)
+	}
+	if _, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", ExternalSource: "open_library", ExternalID: "different", Title: "Earthsea", Formats: []string{"ebook"}}); !errors.Is(err, ErrQuota) {
+		t.Fatalf("distinct external identity must not merge: %v", err)
+	}
+	otherReader, err := store.Create(ctx, owner, CreateTitleRequest{LibraryID: "library", Title: "Earthsea", Formats: []string{"ebook"}})
+	if err != nil || otherReader.ID == automatic.ID {
+		t.Fatalf("cross-reader reuse: %#v, %v", otherReader, err)
+	}
+	if err := store.Cancel(ctx, reader, "library", automatic.ID, "audiobook"); err != nil {
+		t.Fatal(err)
+	}
+	retried, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Earthsea", Formats: []string{"audiobook"}})
+	if err != nil || retried.ID != automatic.ID {
+		t.Fatalf("explicit terminal retry: %#v, %v", retried, err)
+	}
+
+	// Pre-upgrade clients could create one title record per format.
+	for i, format := range []string{"ebook", "audiobook"} {
+		id := fmt.Sprintf("old-split-%d", i)
+
+		if _, err := db.Exec(`INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES(?,'library','reader','Old split','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO title_request_formats(title_request_id,format,state,created_at,updated_at) VALUES(?,?,'wanted','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, id, format); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Old split", Formats: []string{"audiobook"}})
+	if err != nil || legacy.ID != "old-split-1" {
+		t.Fatalf("legacy format reuse: %#v, %v", legacy, err)
+	}
+	if _, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Old split", Formats: []string{"ebook", "audiobook"}}); !errors.Is(err, ErrSplitIntent) {
+		t.Fatalf("split intent must not create duplicates: %v", err)
+	}
+	if _, err := db.Exec("DELETE FROM title_requests WHERE id IN ('old-split-0','old-split-1')"); err != nil {
+		t.Fatal(err)
+	}
+	// Newer completed titles cannot hide an old approval, and formats belong to the exact page.
+	for i := range 110 {
+		id := fmt.Sprintf("finished-%03d", i)
+		if _, err := db.Exec(`INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES(?,'library','reader','Finished','2099-01-01T00:00:00Z','2099-01-01T00:00:00Z');
+			INSERT INTO title_request_formats(title_request_id,format,state,created_at,updated_at) VALUES(?,'ebook','available','2099-01-01T00:00:00Z','2099-01-01T00:00:00Z')`, id, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE title_request_formats SET state='pending_approval' WHERE title_request_id=?`, automatic.ID); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := store.ListPage(ctx, owner, "library", TitleRequestListOptions{Filter: "pending_approval", Limit: 10})
+	if err != nil || len(pending.Items) != 1 || pending.Items[0].ID != automatic.ID || len(pending.Items[0].Formats) != 2 {
+		t.Fatalf("pending page=%#v, %v", pending, err)
+	}
+	seen := map[string]bool{}
+	cursor := ""
+	for {
+		page, err := store.ListPage(ctx, reader, "library", TitleRequestListOptions{Filter: "ready", Limit: 17, Cursor: cursor, Own: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if seen[item.ID] || len(item.Formats) != 1 || item.RequestedBy != reader.ID {
+				t.Fatalf("invalid page item: %#v", item)
+			}
+			seen[item.ID] = true
+		}
+		cursor = page.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	if len(seen) != 110 {
+		t.Fatalf("paged %d ready requests", len(seen))
+	}
+	hidden, err := store.ListPage(ctx, auth.User{ID: "other"}, "library", TitleRequestListOptions{})
+	if err != nil || len(hidden.Items) != 0 {
+		t.Fatalf("private page: %#v, %v", hidden, err)
+	}
+
+	client, err := New(Options{IndexerURL: "http://127.0.0.1/indexer", QBitURL: "http://127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readiness := NewStore(db, client)
+	for _, check := range []struct{ name, sql, ebook, audio string }{
+		{"quota", "", "quota", "quota"},
+		{"ebook only", "UPDATE acquisition_policies SET max_active_requests=5,default_audiobook_source_id=NULL", "", "setup"},
+		{"audio only", "UPDATE acquisition_policies SET default_ebook_source_id=NULL,default_audiobook_source_id='audio'", "setup", ""},
+		{"disabled source", "UPDATE library_sources SET enabled=0 WHERE id='audio'", "setup", "setup"},
+		{"deleted source", "UPDATE library_sources SET enabled=1,deleted_at='2026-09-07' WHERE id='audio'", "setup", "setup"},
+		{"permission removed", "UPDATE library_members SET can_request_acquisitions=0 WHERE user_id='reader'", "permission", "permission"},
+	} {
+		if check.sql != "" {
+			if _, err := db.Exec(check.sql); err != nil {
+				t.Fatal(err)
+			}
+		}
+		values, err := readiness.RequestLibraries(ctx, reader)
+		if err != nil || len(values) != 1 || values[0].EbookReason != check.ebook || values[0].AudiobookReason != check.audio {
+			t.Fatalf("%s readiness=%#v, %v", check.name, values, err)
+		}
+	}
+	values, err := readiness.RequestLibraries(ctx, auth.User{ID: "restricted-admin", Admin: true})
+	if err != nil || len(values) != 1 || values[0].LibraryID != "restricted" {
+		t.Fatalf("exclusive readiness=%#v, %v", values, err)
+	}
+	if _, err := db.Exec("UPDATE library_members SET can_request_acquisitions=1 WHERE user_id='reader'"); err != nil {
+		t.Fatal(err)
+	}
+	disabledClient, err := New(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err = NewStore(db, disabledClient).RequestLibraries(ctx, reader)
+	if err != nil || len(values) != 1 || values[0].EbookReason != "disabled" {
+		t.Fatalf("disabled service=%#v, %v", values, err)
+	}
+
 }
 
 func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {

@@ -135,6 +135,10 @@ This part is optional. Aldus currently works with [Prowlarr](https://prowlarr.co
 
 Open **More → Acquisitions**, connect both services, and test each connection. Then, per library, set default destinations, maximum size, allowed formats, preferred language, and whether abridged audiobooks are acceptable. Finally choose what each member may do: request a missing format, skip approval for compliant requests, or use advanced release choice instead of Aldus's guided pick.
 
+Readers request new titles from **Discover**, or use **Get another format** on a book they already own. Aldus names the destination when only one library is eligible and asks for a choice when several are available. Requesting the same active format again reuses the request without consuming another quota slot. Format setup and request-limit messages explain what needs attention.
+
+**Activity → Requests** separates active, ready, and past requests before pagination, so older pending requests remain accessible. Active requests refresh while the screen is in the foreground; **View request** follows a specific request through approval, import, and opening the available format. Administrators review requests under **Acquisitions**.
+
 For acquisitions, qBittorrent and Aldus must see the same completed-download folder. Set `ALDUS_DOWNLOAD_PATH` to the host folder qBittorrent uses, then set **qBittorrent download root** in Aldus to qBittorrent's container path (commonly `/downloads`).
 
 <br>

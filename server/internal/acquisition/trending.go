@@ -107,6 +107,9 @@ func (s *Store) Trending(ctx context.Context, actor auth.User, libraryID ...stri
 			})
 		}
 	}
+	if len(sections) == 0 {
+		return nil, ErrUnavailable
+	}
 	return sections, nil
 }
 
@@ -201,8 +204,7 @@ func (s *Store) openLibraryTrending(ctx context.Context) []trendingItem {
 	if err != nil {
 		slog.WarnContext(ctx, "open library trending unavailable", "error", err)
 	}
-	s.writeTrendingCache(cacheKey, value, err)
-	return value
+	return s.writeTrendingCache(cacheKey, value, err)
 }
 
 func (s *Store) nytBestsellers(ctx context.Context, apiKey, list string) []trendingItem {
@@ -223,8 +225,7 @@ func (s *Store) nytBestsellers(ctx context.Context, apiKey, list string) []trend
 	} else if len(value) == 0 {
 		slog.WarnContext(ctx, "nyt best sellers returned no books; response shape may not match this integration", "list", list)
 	}
-	s.writeTrendingCache(cacheKey, value, err)
-	return value
+	return s.writeTrendingCache(cacheKey, value, err)
 }
 
 func (s *Store) readTrendingCache(key string) ([]trendingItem, bool) {
@@ -237,17 +238,21 @@ func (s *Store) readTrendingCache(key string) ([]trendingItem, bool) {
 	return cached.value, true
 }
 
-func (s *Store) writeTrendingCache(key string, value []trendingItem, err error) {
+func (s *Store) writeTrendingCache(key string, value []trendingItem, err error) []trendingItem {
 	ttl := 12 * time.Hour
 	if err != nil {
-		ttl = 5 * time.Minute
+		ttl = 30 * time.Second
 	}
 	s.trendingMu.Lock()
 	defer s.trendingMu.Unlock()
+	if err != nil {
+		value = s.trendingCache[key].value
+	}
 	if len(s.trendingCache) >= 16 {
 		clear(s.trendingCache)
 	}
 	s.trendingCache[key] = cachedTrending{value: value, expires: time.Now().Add(ttl)}
+	return value
 }
 
 func openLibraryTrendingFrom(ctx context.Context, client *http.Client, endpoint string) ([]trendingItem, error) {

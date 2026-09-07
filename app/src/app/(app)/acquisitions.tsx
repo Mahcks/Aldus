@@ -1,3 +1,4 @@
+import { useTitleRequests } from '@/features/use-title-requests';
 import type {
   AcquisitionRequest,
   AcquisitionSettings,
@@ -6,7 +7,7 @@ import type {
   TitleRequest,
   User,
 } from '@/generated/api';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/features/auth/AuthProvider';
 import {
   acquisitionFailureMessage,
@@ -40,9 +41,10 @@ export default function AcquisitionsAdministration() {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryID, setLibraryID] = useState('');
   const [requests, setRequests] = useState<AcquisitionRequest[]>([]);
-  const [titleRequests, setTitleRequests] = useState<TitleRequest[]>([]);
+  const requestPages = useTitleRequests(showRequestHistory ? 'all' : 'active', false);
+  const titleRequests = requestPages.items;
   const [users, setUsers] = useState<User[]>([]);
-  const [approvalLoading, setApprovalLoading] = useState(true);
+  const approvalLoading = requestPages.loading;
   const [approvalError, setApprovalError] = useState('');
   const [approvalSuccess, setApprovalSuccess] = useState('');
   const [approvalBusy, setApprovalBusy] = useState('');
@@ -69,22 +71,15 @@ export default function AcquisitionsAdministration() {
   const [indexerKind, setIndexerKind] = useState<'prowlarr' | 'torznab'>('prowlarr');
   const hasActiveDownloads = requests.some((request) => request.download_state === 'downloading');
   const visibleRequests = requests.filter((request) => acquisitionFulfillment(request));
-  const reloadApprovals = useCallback(async () => {
-    const values = await Promise.all(libraries.map((library) => api.titleRequests(library.id)));
-    setTitleRequests(values.flat());
-  }, [libraries]);
+  const reloadApprovals = requestPages.refresh;
 
   useEffect(() => {
     let active = true;
     void Promise.all([api.libraries(), api.acquisitionSettings(), api.users()])
       .then(async ([available, configured, availableUsers]) => {
-        const pending = await Promise.all(
-          available.map((library) => api.titleRequests(library.id)),
-        );
         if (!active) return;
         setLibraries(available);
         setUsers(availableUsers);
-        setTitleRequests(pending.flat());
         setLibraryID(available[0]?.id ?? '');
         setSettings(configured);
         setIndexerKind(configured.indexer_kind || 'prowlarr');
@@ -98,7 +93,6 @@ export default function AcquisitionsAdministration() {
       .finally(() => {
         if (active) {
           setLoading(false);
-          setApprovalLoading(false);
         }
       });
     return () => {
@@ -290,16 +284,23 @@ export default function AcquisitionsAdministration() {
         <Section
           title="Requests"
           action={
-            finishedRequests.length ? (
-              <Button
-                label={showRequestHistory ? 'Hide history' : `History (${finishedRequests.length})`}
-                kind="quiet"
-                onPress={() => setShowRequestHistory((value) => !value)}
-              />
-            ) : undefined
+            <Button
+              label={showRequestHistory ? 'Hide history' : 'Show history'}
+              kind="quiet"
+              onPress={() => setShowRequestHistory((value) => !value)}
+            />
           }
         >
-          {approvalError ? <Notice tone="danger">{approvalError}</Notice> : null}
+          {approvalError || requestPages.error ? (
+            <Notice tone="danger">{approvalError || requestPages.error}</Notice>
+          ) : null}
+          {requestPages.error ? (
+            <Button
+              label="Retry requests"
+              kind="secondary"
+              onPress={() => void reloadApprovals()}
+            />
+          ) : null}
           {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
           {approvalLoading ? (
             <LoadingState label="Loading requests…" />
@@ -370,6 +371,14 @@ export default function AcquisitionsAdministration() {
               ))}
             </View>
           )}
+          {requestPages.hasMore ? (
+            <Button
+              label="Show more requests"
+              kind="secondary"
+              loading={requestPages.loading}
+              onPress={() => void requestPages.loadMore()}
+            />
+          ) : null}
         </Section>
       ) : null}
 

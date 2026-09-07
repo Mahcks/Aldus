@@ -5,14 +5,14 @@ import type {
   TitleSearchResult,
   TrendingSection,
 } from '@/generated/api';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { groupAcquisitionResults } from '@/features/acquisition';
 import { AppIcon } from '@/features/icons';
 import { BookCover } from '@/features/bookshelf';
 import { AcquisitionGroupRow } from '@/features/browse';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { titleRequestPresentation } from '@/features/title-search';
+import { RequestActions } from '@/features/request-actions';
 import { Pressable, Text, View } from '@/features/tw';
 import {
   Button,
@@ -30,7 +30,6 @@ import {
 } from '@/features/ui';
 import { APIError, api, errorMessage } from '@/lib/api';
 
-type BookFormat = 'ebook' | 'audiobook';
 type ReleaseStatus = 'idle' | 'sending' | 'queued' | 'error';
 
 function resultKey(result: TitleSearchResult) {
@@ -51,61 +50,8 @@ function destinationFor(
   if (result.library_id) {
     return destinations.find((destination) => destination.library_id === result.library_id);
   }
-  return destinations[0];
-}
-
-function FormatAction({
-  format,
-  available,
-  requestState,
-  busy,
-  pending,
-  requestEnabled,
-  onOpen,
-  onRequest,
-}: {
-  format: BookFormat;
-  available: boolean;
-  requestState?: string;
-  busy: boolean;
-  pending: boolean;
-  requestEnabled: boolean;
-  onOpen: () => void;
-  onRequest: () => void;
-}) {
-  const label = format === 'ebook' ? 'Ebook' : 'Audiobook';
-  const state = titleRequestPresentation(requestState);
-
-  return (
-    <View className="flex-row items-center gap-2">
-      {available ? (
-        <Button
-          label={format === 'ebook' ? 'Read ebook' : 'Listen'}
-          kind="primary"
-          onPress={onOpen}
-        />
-      ) : (!state || state.requestable) && !requestEnabled ? (
-        <Text className="py-2 text-sm text-muted">{label} unavailable</Text>
-      ) : !state || state.requestable ? (
-        <Button
-          label={
-            state?.requestable
-              ? `Request ${label.toLowerCase()} again`
-              : `Request ${label.toLowerCase()}`
-          }
-          kind="secondary"
-          loading={busy}
-          disabled={!requestEnabled || pending}
-          onPress={onRequest}
-        />
-      ) : (
-        <View className="min-h-11 flex-row items-center gap-2 px-2">
-          <Text className="text-sm font-sans-bold text-ink">{label}</Text>
-          <StatusBadge tone={state.tone} label={state.label} />
-        </View>
-      )}
-    </View>
-  );
+  const libraryIDs = new Set(destinations.map((item) => item.library_id));
+  return libraryIDs.size === 1 ? destinations[0] : undefined;
 }
 
 /**
@@ -163,22 +109,16 @@ function DiscoverDetailDialog({
   result,
   description,
   descriptionLoading,
-  requestBusy,
-  requestError,
-  requestEnabled,
+  onLibraryChange,
   canChooseRelease,
-  onRequest,
   onChooseRelease,
   onClose,
 }: {
   result: TitleSearchResult;
   description: string;
   descriptionLoading: boolean;
-  requestBusy: string;
-  requestError: string;
-  requestEnabled: boolean;
+  onLibraryChange: (libraryID: string) => void;
   canChooseRelease: boolean;
-  onRequest: (format: BookFormat) => void;
   onChooseRelease: () => void;
   onClose: () => void;
 }) {
@@ -190,29 +130,7 @@ function DiscoverDetailDialog({
       onClose={onClose}
       footer={
         <View className="gap-2">
-          {requestError ? <Notice danger>{requestError}</Notice> : null}
-          <View className="flex-row flex-wrap gap-2">
-            <FormatAction
-              format="ebook"
-              available={false}
-              requestState={result.ebook_request_state}
-              busy={requestBusy === 'ebook'}
-              pending={Boolean(requestBusy)}
-              requestEnabled={requestEnabled}
-              onOpen={() => {}}
-              onRequest={() => onRequest('ebook')}
-            />
-            <FormatAction
-              format="audiobook"
-              available={false}
-              requestState={result.audiobook_request_state}
-              busy={requestBusy === 'audiobook'}
-              pending={Boolean(requestBusy)}
-              requestEnabled={requestEnabled}
-              onOpen={() => {}}
-              onRequest={() => onRequest('audiobook')}
-            />
-          </View>
+          <RequestActions key={resultKey(result)} book={result} onLibraryChange={onLibraryChange} />
           {canChooseRelease ? (
             <Button label="Choose a specific release" kind="quiet" onPress={onChooseRelease} />
           ) : null}
@@ -254,15 +172,14 @@ export default function SearchScreen() {
   const [error, setError] = useState('');
   const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
-  const libraryID = '';
+  const [libraryID, setLibraryID] = useState('');
 
   const [trending, setTrending] = useState<TrendingSection[]>([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [trendingError, setTrendingError] = useState('');
+  const [trendingRetry, setTrendingRetry] = useState(0);
 
   const [acquisitionEnabled, setAcquisitionEnabled] = useState(false);
-  const [requestBusy, setRequestBusy] = useState<Record<string, string>>({});
-  const [requestErrors, setRequestErrors] = useState<Record<string, string>>({});
   const [detailTarget, setDetailTarget] = useState<TitleSearchResult>();
   const [detailDescription, setDetailDescription] = useState('');
   const [detailDescriptionLoading, setDetailDescriptionLoading] = useState(false);
@@ -287,69 +204,82 @@ export default function SearchScreen() {
     libraries.some((library) => library.can_advanced_acquisition_request);
   const advancedGroups = groupAcquisitionResults(advancedResults);
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([api.acquisitionCapabilities(), api.libraries()])
-      .then(([capabilities, nextLibraries]) => {
-        if (!active) return;
-        setAcquisitionEnabled(capabilities.enabled);
-        setDestinations(capabilities.destinations);
-        setLibraries(nextLibraries);
-      })
-      .catch(() => {
-        if (active) setAcquisitionEnabled(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!auth.user?.id) return;
+      let active = true;
+      Promise.all([api.acquisitionCapabilities(), api.libraries()])
+        .then(([capabilities, nextLibraries]) => {
+          if (!active) return;
+          setAcquisitionEnabled(capabilities.enabled);
+          setDestinations(capabilities.destinations);
+          setLibraries(nextLibraries);
+        })
+        .catch(() => {
+          if (active) setAcquisitionEnabled(false);
+        });
+      return () => {
+        active = false;
+      };
+    }, [auth.user?.id]),
+  );
 
-  useEffect(() => {
-    let active = true;
-    api
-      .trending()
-      .then((sections) => {
-        if (!active) return;
-        setTrending(sections);
-        setTrendingError('');
-      })
-      .catch((value) => {
-        if (!active) return;
-        setTrending([]);
-        setTrendingError(errorMessage(value));
-      })
-      .finally(() => active && setTrendingLoading(false));
-    return () => {
-      active = false;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!auth.user?.id) return;
+      let active = true;
+      setTrendingLoading(true);
+      api
+        .trending()
+        .then((sections) => {
+          if (!active) return;
+          setTrending(sections);
+          setTrendingError('');
+        })
+        .catch((value) => {
+          if (!active) return;
+          setTrending([]);
+          setTrendingError(errorMessage(value));
+        })
+        .finally(() => active && setTrendingLoading(false));
+      return () => {
+        active = false;
+      };
+      // Retrying intentionally reruns the same request and cancels its previous result.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [auth.user?.id, trendingRetry]),
+  );
 
-  useEffect(() => {
-    let active = true;
-    if (!trimmedQuery) return;
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const values = await api.searchTitles(trimmedQuery);
-        if (active) {
-          setResults(values);
-          setOffline(false);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      if (!trimmedQuery || !auth.user?.id) return;
+      const timer = setTimeout(async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const values = await api.searchTitles(trimmedQuery);
+          if (active) {
+            setResults(values);
+            setOffline(false);
+          }
+        } catch (value) {
+          if (active) {
+            setOffline(value instanceof APIError && value.status === 0);
+            setError(errorMessage(value));
+          }
+        } finally {
+          if (active) setLoading(false);
         }
-      } catch (value) {
-        if (active) {
-          setOffline(value instanceof APIError && value.status === 0);
-          setError(errorMessage(value));
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }, 300);
-    return () => {
-      clearTimeout(timer);
-      active = false;
-    };
-  }, [trimmedQuery, retry]);
+      }, 300);
+      return () => {
+        clearTimeout(timer);
+        active = false;
+      };
+      // Retry deliberately repeats an unchanged query after a network failure.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [trimmedQuery, retry, auth.user?.id]),
+  );
 
   function search(value: string) {
     setQuery(value);
@@ -392,6 +322,7 @@ export default function SearchScreen() {
       router.push(`/work/${result.work_id}`);
       return;
     }
+    setLibraryID('');
     setDetailTarget(result);
   }
 
@@ -416,53 +347,6 @@ export default function SearchScreen() {
       active = false;
     };
   }, [detailTarget?.external_source, detailTarget?.external_id]);
-
-  async function requestFormat(result: TitleSearchResult, format: BookFormat) {
-    const destination = destinationFor(result, destinations, libraryID);
-    const key = resultKey(result);
-    if (requestBusy[key]) return;
-    if (!destination) {
-      setRequestErrors((current) => ({
-        ...current,
-        [key]: 'An owner needs to finish ebook and audiobook download setup first.',
-      }));
-      return;
-    }
-    setRequestBusy((current) => ({ ...current, [key]: format }));
-    setRequestErrors((current) => ({ ...current, [key]: '' }));
-    try {
-      const request = await api.createTitleRequest(destination.library_id, {
-        work_id: result.work_id ?? '',
-        external_source: result.external_source ?? '',
-        external_id: result.external_id ?? '',
-        title: result.title,
-        author: result.author ?? '',
-        cover_url: result.cover_url ?? '',
-        formats: [format],
-      });
-      const state = request.formats.find((item) => item.format === format)?.state ?? 'wanted';
-      const applyState = (item: TitleSearchResult) =>
-        resultKey(item) === key
-          ? {
-              ...item,
-              [format === 'ebook' ? 'ebook_request_state' : 'audiobook_request_state']: state,
-            }
-          : item;
-      setResults((current) => current.map(applyState));
-      setTrending((current) =>
-        current.map((section) => ({ ...section, items: section.items.map(applyState) })),
-      );
-      setDetailTarget((current) => (current ? applyState(current) : current));
-    } catch (value) {
-      const message =
-        value instanceof APIError && value.status === 400
-          ? 'An owner needs to finish the download rules and default destinations for this format.'
-          : errorMessage(value);
-      setRequestErrors((current) => ({ ...current, [key]: message }));
-    } finally {
-      setRequestBusy((current) => ({ ...current, [key]: '' }));
-    }
-  }
 
   async function openAdvanced(result: TitleSearchResult) {
     const generation = ++advancedGeneration.current;
@@ -586,6 +470,11 @@ export default function SearchScreen() {
                 ? `Trending books couldn't load: ${trendingError}`
                 : "Trending books couldn't load right now — this usually means the server can't reach the internet. You can still search."}
             </Notice>
+            <Button
+              label="Retry trending"
+              kind="secondary"
+              onPress={() => setTrendingRetry((value) => value + 1)}
+            />
             <EmptyState
               icon="discover"
               title="Find your next read"
@@ -641,15 +530,8 @@ export default function SearchScreen() {
           result={detailTarget}
           description={detailDescription}
           descriptionLoading={detailDescriptionLoading}
-          requestBusy={requestBusy[resultKey(detailTarget)] ?? ''}
-          requestError={requestErrors[resultKey(detailTarget)] ?? ''}
-          requestEnabled={
-            acquisitionEnabled &&
-            Boolean(destinationFor(detailTarget, destinations, libraryID)) &&
-            !offline
-          }
-          canChooseRelease={canChooseReleaseFor(detailTarget) && !offline}
-          onRequest={(format) => void requestFormat(detailTarget, format)}
+          onLibraryChange={setLibraryID}
+          canChooseRelease={acquisitionEnabled && canChooseReleaseFor(detailTarget) && !offline}
           onChooseRelease={() => void openAdvanced(detailTarget)}
           onClose={() => setDetailTarget(undefined)}
         />

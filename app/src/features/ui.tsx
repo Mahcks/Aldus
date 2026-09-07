@@ -326,8 +326,10 @@ export function Select({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string;
+  disabled?: boolean;
   options: { value: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
@@ -345,6 +347,7 @@ export function Select({
             key={option.value}
             label={option.label}
             kind="secondary"
+            disabled={disabled}
             selected={option.value === value}
             accessibilityRole="radio"
             onPress={() => onChange(option.value)}
@@ -724,7 +727,7 @@ export function Dialog({
       </ScrollView>
       {footer ? (
         <View
-          className="border-t border-line-subtle bg-raised px-6 pt-3"
+          className="flex-none border-t border-line-subtle bg-raised px-6 pt-3"
           style={{ paddingBottom: bottomSheet ? Math.max(insets.bottom, 16) : 16 }}
         >
           {footer}

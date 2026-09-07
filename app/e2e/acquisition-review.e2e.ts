@@ -21,7 +21,7 @@ for (const width of [390, 1024, 1440]) {
           qbittorrent_category: 'aldus',
           qbittorrent_download_root: '/downloads',
         };
-      if (path === '/libraries/family/title-requests')
+      if (path === '/libraries/family/title-requests/page')
         json = [
           {
             id: 'title-request',
@@ -137,6 +137,8 @@ for (const width of [390, 1024, 1440]) {
         submitted = route.request().postDataJSON();
         json = { work_id: 'work' };
       }
+      if (path === '/libraries/family/title-requests/page' && Array.isArray(json))
+        json = { items: json };
       await route.fulfill({ json });
     });
     await page.goto('/sources?libraryId=family&proposalId=one');

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/acquisition"
@@ -9,6 +10,7 @@ import (
 )
 
 func registerTitleRequestRoutes(router chi.Router, store *acquisition.TitleRequestStore) {
+	router.Get("/libraries/{libraryID}/title-requests/page", listTitleRequestPage(store))
 	router.Get("/libraries/{libraryID}/title-requests", listTitleRequests(store))
 	router.Post("/libraries/{libraryID}/title-requests", createTitleRequest(store))
 	router.Get("/libraries/{libraryID}/title-requests/{requestID}", getTitleRequest(store))
@@ -88,4 +90,27 @@ func titleRequestDTO(value acquisition.TitleRequest) contracts.TitleRequest {
 		formats[i] = contracts.TitleRequestFormat{Format: format.Format, State: format.State, Error: format.Error, DownloadState: format.DownloadState, RetryCount: format.RetryCount, LastSearchedAt: format.LastSearchedAt, NextSearchAt: format.NextSearchAt, UpdatedAt: format.UpdatedAt}
 	}
 	return contracts.TitleRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, WorkID: value.WorkID, ExternalSource: value.ExternalSource, ExternalID: value.ExternalID, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, Formats: formats, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+}
+
+func listTitleRequestPage(store *acquisition.TitleRequestStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		limit := 50
+		if query.Has("limit") {
+			value, err := strconv.Atoi(query.Get("limit"))
+			if err != nil || value < 1 || value > 100 {
+				writeAcquisitionResult(w, nil, acquisition.ErrInvalid)
+				return
+			}
+			limit = value
+		}
+		page, err := store.ListPage(r.Context(), actor(r), chi.URLParam(r, "libraryID"), acquisition.TitleRequestListOptions{
+			WorkID: query.Get("work_id"), Filter: query.Get("filter"), Cursor: query.Get("cursor"), Limit: limit, Own: query.Get("own") == "true",
+		})
+		items := make([]contracts.TitleRequest, len(page.Items))
+		for i, value := range page.Items {
+			items[i] = titleRequestDTO(value)
+		}
+		writeAcquisitionResult(w, contracts.TitleRequestPage{Items: items, NextCursor: page.NextCursor}, err)
+	}
 }

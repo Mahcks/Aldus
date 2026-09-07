@@ -1,4 +1,33 @@
-export function requestEventDetail(state?: string) {
+import type { TitleRequestEvent } from '@/generated/api';
+
+// Collapse repeated outcomes, including their automatic search-start entries.
+// A different outcome or a download/approval transition starts a new group.
+export function groupRequestEvents(events: TitleRequestEvent[]) {
+  const groups: { event: TitleRequestEvent; checks: number }[] = [];
+  const outcomes = ['no_match', 'search_failed', 'submission_failed'];
+  for (const event of events) {
+    const previous = groups.at(-1);
+    if (previous && previous.event.format === event.format) {
+      if (event.event_type === 'search_started' && outcomes.includes(previous.event.event_type)) {
+        continue;
+      }
+      if (outcomes.includes(event.event_type) && previous.event.event_type === event.event_type) {
+        previous.checks += 1;
+        continue;
+      }
+    }
+    groups.push({ event, checks: outcomes.includes(event.event_type) ? 1 : 0 });
+  }
+  return groups;
+}
+
+export function requestEventDetail(state?: string, eventType?: string) {
+  if (eventType === 'submission_failed') {
+    return 'The download could not be sent to the download client. Aldus will retry.';
+  }
+  if (eventType === 'search_failed') {
+    return 'The search could not complete. Aldus will retry.';
+  }
   switch (state) {
     case 'pending_approval':
       return 'Submitted for approval.';

@@ -16,6 +16,7 @@ test('Discover keeps equivalent searches and ignores descriptions from closed bo
   });
   let firstRequested = false;
   let searches = 0;
+  let trendingCalls = 0;
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace('/api/v1', '');
@@ -24,6 +25,13 @@ test('Discover keeps equivalent searches and ignores descriptions from closed bo
       json = { id: 'reader', username: 'reader', display_name: 'Reader', admin: false };
     if (path === '/setup/status') json = { available: false, demo_available: false };
     if (path === '/acquisition-capabilities') json = { enabled: false, destinations: [] };
+    if (path === '/discover/trending' && trendingCalls++ === 0) {
+      await route.fulfill({
+        status: 503,
+        body: 'Trending providers are temporarily unavailable. Try again shortly.',
+      });
+      return;
+    }
     if (path === '/discover/trending')
       json = [{ source: 'open_library', title: 'Trending', items: [first, second] }];
     if (path === '/search/titles') {
@@ -40,6 +48,7 @@ test('Discover keeps equivalent searches and ignores descriptions from closed bo
     await route.fulfill({ json });
   });
   await page.goto('/search');
+  await page.getByRole('button', { name: 'Retry trending', exact: true }).click();
   await page.getByRole('button', { name: 'First book by Author', exact: true }).click();
   await expect.poll(() => firstRequested).toBe(true);
   await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
@@ -88,6 +97,10 @@ for (const width of [390, 1024, 1440]) {
         json = [{ id: 'family', name: 'Family', role: 'owner', effective: true }];
       if (path === '/acquisition-capabilities')
         json = { enabled: true, destinations: [{ library_id: 'family', library_name: 'Family' }] };
+      if (path === '/request-libraries')
+        json = [
+          { library_id: 'family', library_name: 'Family', ebook_reason: '', audiobook_reason: '' },
+        ];
       if (path === '/discover/trending')
         json = [{ source: 'open_library', title: 'Explore something new', items: [book] }];
       if (path === '/discover/detail')

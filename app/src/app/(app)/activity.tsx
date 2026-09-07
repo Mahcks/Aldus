@@ -1,6 +1,7 @@
+import { useTitleRequests } from '@/features/use-title-requests';
 import type { Href } from 'expo-router';
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Notification, TitleRequest, TitleRequestEvent } from '@/generated/api';
 import {
   groupNotifications,
@@ -65,7 +66,7 @@ function ActivityRow({
         ) : null}
       </View>
       <View className="min-w-0 flex-1 gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <View className="min-w-0 flex-1 gap-1">
+        <View className="min-w-0 gap-1 sm:flex-1">
           <Text className="font-editorial-bold text-base leading-5 text-ink">{group.title}</Text>
           <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
             <Text
@@ -100,12 +101,17 @@ function ActivityRow({
 export default function ActivityScreen() {
   const auth = useAuth();
   const [items, setItems] = useState<Notification[]>([]);
-  const [requests, setRequests] = useState<TitleRequest[]>([]);
+
   const [requestEvents, setRequestEvents] = useState<Record<string, TitleRequestEvent[]>>({});
   const [expandedFormat, setExpandedFormat] = useState('');
   const [historyLoadingID, setHistoryLoadingID] = useState('');
   const [tab, setTab] = useState<'requests' | 'updates'>('requests');
   const [requestFilter, setRequestFilter] = useState<RequestFilter>('active');
+  const params = useLocalSearchParams<{ request?: string; library?: string; format?: string }>();
+  const requestPages = useTitleRequests(requestFilter, true, params.request, params.library);
+  const requests = requestPages.items;
+  const loadGeneration = useRef(0);
+
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -118,32 +124,72 @@ export default function ActivityScreen() {
   const [canceling, setCanceling] = useState(false);
 
   const load = useCallback(async () => {
-    const [notificationsResult, requestsResult] = await Promise.allSettled([
-      api.notifications(),
-      loadOwnRequests(auth.user?.id),
-    ]);
-    const errors: string[] = [];
-    if (notificationsResult.status === 'fulfilled') {
-      setItems(notificationsResult.value.items);
-      setUnreadCount(notificationsResult.value.unread_count);
-    } else {
-      errors.push(errorMessage(notificationsResult.reason));
+    const generation = ++loadGeneration.current;
+    try {
+      const result = await api.notifications();
+      if (generation !== loadGeneration.current) return;
+      setItems(result.items);
+      setUnreadCount(result.unread_count);
+      setError('');
+    } catch (value) {
+      if (generation === loadGeneration.current) setError(errorMessage(value));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
     }
-    if (requestsResult.status === 'fulfilled') {
-      setRequests(requestsResult.value.items);
-      if (requestsResult.value.partial) errors.push('Some library requests could not be loaded.');
-    } else {
-      errors.push(errorMessage(requestsResult.reason));
-    }
-    setError(errors.join(' '));
-    setLoading(false);
-  }, [auth.user?.id]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
-    }, [load]),
+      if (auth.user?.id) void load();
+      return () => {
+        loadGeneration.current++;
+      };
+    }, [load, auth.user?.id]),
   );
+
+  useEffect(() => {
+    let current = true;
+    if (!params.request || !params.library) return;
+    void api
+      .titleRequest(params.library, params.request)
+      .then((request) => {
+        if (!current) return;
+        setTab('requests');
+        setRequestFilter(requestGroup(request));
+        setExpandedFormat(
+          `${request.id}:${params.format || request.formats[0]?.format || 'ebook'}`,
+        );
+      })
+      .catch((value) => {
+        if (current) setError(errorMessage(value));
+      });
+    return () => {
+      current = false;
+    };
+  }, [params.request, params.library, params.format]);
+
+  const expandedRequest = requests.find((request) => expandedFormat.startsWith(`${request.id}:`));
+  const expandedID = expandedRequest?.id;
+  const expandedLibrary = expandedRequest?.library_id;
+  const expandedUpdated = expandedRequest?.updated_at;
+  useEffect(() => {
+    let current = true;
+    if (!expandedID || !expandedLibrary) return;
+    void api
+      .titleRequestEvents(expandedLibrary, expandedID)
+      .then((events) => {
+        if (current) setRequestEvents((value) => ({ ...value, [expandedID]: events }));
+      })
+      .catch((value) => {
+        if (current) setError(errorMessage(value));
+      })
+      .finally(() => {
+        if (current) setHistoryLoadingID('');
+      });
+    return () => {
+      current = false;
+    };
+  }, [expandedID, expandedLibrary, expandedUpdated]);
 
   async function handleCancel() {
     if (!cancelTarget) return;
@@ -156,7 +202,7 @@ export default function ActivityScreen() {
         cancelTarget.format,
       );
       setCancelTarget(null);
-      await load();
+      await Promise.all([load(), requestPages.refresh()]);
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -166,24 +212,7 @@ export default function ActivityScreen() {
 
   async function toggleRequestHistory(request: TitleRequest, format: string, open = false) {
     const key = `${request.id}:${format}`;
-    if (expandedFormat === key && !open) {
-      setExpandedFormat('');
-      return;
-    }
-    if (requestEvents[request.id]) {
-      setExpandedFormat(key);
-      return;
-    }
-    setHistoryLoadingID(request.id);
-    try {
-      const events = await api.titleRequestEvents(request.library_id, request.id);
-      setRequestEvents((current) => ({ ...current, [request.id]: events }));
-      setExpandedFormat(key);
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setHistoryLoadingID('');
-    }
+    setExpandedFormat(expandedFormat === key && !open ? '' : key);
   }
 
   async function handleNotification(group: NotificationGroup) {
@@ -253,13 +282,22 @@ export default function ActivityScreen() {
     );
   }
 
-  const visibleRequests = requests.filter((request) => requestGroup(request) === requestFilter);
+  const visibleRequests = requests.filter(
+    (request) => requestGroup(request) === requestFilter || request.id === params.request,
+  );
   const notificationGroups = groupNotifications(items);
   const unreadGroups = notificationGroups.filter((group) => group.unreadCount > 0).length;
 
   return (
     <Page title="Activity">
-      {error ? <Notice danger>{error}</Notice> : null}
+      {error || requestPages.error ? <Notice danger>{error || requestPages.error}</Notice> : null}
+      {requestPages.error ? (
+        <Button
+          label="Retry requests"
+          kind="secondary"
+          onPress={() => void requestPages.refresh()}
+        />
+      ) : null}
       <View
         accessibilityLabel="Activity sections"
         accessibilityRole="tablist"
@@ -292,7 +330,9 @@ export default function ActivityScreen() {
               />
             ))}
           </View>
-          {visibleRequests.length === 0 ? (
+          {requestPages.loading && requests.length === 0 ? (
+            <LoadingState label="Loading requests…" />
+          ) : visibleRequests.length === 0 ? (
             <EmptyState
               icon={requestFilter === 'ready' ? 'check' : 'acquire'}
               title={requestFilter === 'active' ? 'No active requests' : `No ${requestFilter} yet`}
@@ -338,7 +378,7 @@ export default function ActivityScreen() {
                           className="gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0"
                         >
                           <View className="gap-2 sm:flex-row sm:items-start sm:justify-between">
-                            <View className="min-w-0 flex-1 gap-1">
+                            <View className="min-w-0 gap-1 sm:flex-1">
                               <View className="flex-row flex-wrap items-center gap-2">
                                 <Text className="text-sm font-sans-bold text-ink">
                                   {formatLabel(format.format)}
@@ -422,6 +462,14 @@ export default function ActivityScreen() {
               ))}
             </View>
           )}
+          {requestPages.hasMore ? (
+            <Button
+              label="Show more requests"
+              kind="secondary"
+              loading={requestPages.loading}
+              onPress={() => void requestPages.loadMore()}
+            />
+          ) : null}
         </Section>
       ) : items.length > 0 ? (
         <Section
@@ -469,21 +517,6 @@ export default function ActivityScreen() {
 
 function formatLabel(format: string) {
   return format === 'audiobook' ? 'Audiobook' : 'Ebook';
-}
-
-async function loadOwnRequests(userID?: string) {
-  const libraries = await api.libraries();
-  const results = await Promise.allSettled(
-    libraries.map((library) => api.titleRequests(library.id)),
-  );
-  const failures = results.filter((result) => result.status === 'rejected');
-  if (failures.length === results.length && failures.length > 0) throw failures[0].reason;
-  const items = results
-    .flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
-    .filter((request) => request.requested_by === userID)
-    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
-    .slice(0, 50);
-  return { items, partial: failures.length > 0 };
 }
 
 function ActivityTab({

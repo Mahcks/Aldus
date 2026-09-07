@@ -44,3 +44,15 @@ type CreateTitleRequest struct {
 	CoverURL       string   `json:"cover_url"`
 	Formats        []string `json:"formats"`
 }
+
+type TitleRequestPage struct {
+	Items      []TitleRequest `json:"items"`
+	NextCursor string         `json:"next_cursor,omitempty"`
+}
+
+type RequestLibrary struct {
+	LibraryID       string `json:"library_id"`
+	LibraryName     string `json:"library_name"`
+	EbookReason     string `json:"ebook_reason"`
+	AudiobookReason string `json:"audiobook_reason"`
+}

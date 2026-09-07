@@ -17,6 +17,7 @@ func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Get("/acquisition-settings", getAcquisitionSettings(store))
 	router.Put("/acquisition-settings", updateAcquisitionSettings(store))
 	router.Post("/acquisition-settings/test", testAcquisitionSettings(store))
+	router.Get("/request-libraries", requestLibraries(store))
 	router.Get("/acquisition-capabilities", acquisitionCapabilities(store))
 	router.Get("/me/acquisition-tracker", acquisitionTracker(store))
 	router.Post("/me/acquisition-tracker/seen", markAcquisitionTrackerSeen(store))
@@ -137,6 +138,10 @@ func testAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 func discoverTrending(store *acquisition.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		values, err := store.Trending(r.Context(), actor(r), r.URL.Query().Get("library_id"))
+		if errors.Is(err, acquisition.ErrUnavailable) {
+			http.Error(w, "Trending providers are temporarily unavailable. Try again shortly.", http.StatusServiceUnavailable)
+			return
+		}
 		sections := make([]contracts.TrendingSection, len(values))
 		for i, value := range values {
 			items := make([]contracts.TitleSearchResult, len(value.Items))
@@ -242,6 +247,12 @@ func writeAcquisitionResult(w http.ResponseWriter, value any, err error) {
 	switch {
 	case errors.Is(err, acquisition.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
+	case errors.Is(err, acquisition.ErrSplitIntent):
+		http.Error(w, "These formats already have separate requests. View each request in Activity.", http.StatusConflict)
+	case errors.Is(err, acquisition.ErrQuota):
+		http.Error(w, "You have reached this library's active request limit. Wait for a request to finish or cancel one in Activity.", http.StatusTooManyRequests)
+	case errors.Is(err, acquisition.ErrSetup):
+		http.Error(w, "An owner needs to finish request setup for this format in this library.", http.StatusConflict)
 	case errors.Is(err, acquisition.ErrInvalid):
 		http.Error(w, "invalid acquisition input", http.StatusBadRequest)
 	case errors.Is(err, acquisition.ErrForbidden):
@@ -253,5 +264,16 @@ func writeAcquisitionResult(w http.ResponseWriter, value any, err error) {
 		http.Error(w, "acquisition request failed", http.StatusBadGateway)
 	default:
 		writeJSON(w, http.StatusOK, value)
+	}
+}
+
+func requestLibraries(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		values, err := store.RequestLibraries(r.Context(), actor(r))
+		result := make([]contracts.RequestLibrary, len(values))
+		for i, value := range values {
+			result[i] = contracts.RequestLibrary{LibraryID: value.LibraryID, LibraryName: value.LibraryName, EbookReason: value.EbookReason, AudiobookReason: value.AudiobookReason}
+		}
+		writeAcquisitionResult(w, result, err)
 	}
 }

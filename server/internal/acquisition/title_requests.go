@@ -558,6 +558,13 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 	if err != nil {
 		return TitleRequest{}, err
 	}
+	enabled := true
+	if s.acquisitions != nil {
+		enabled, err = s.acquisitions.Available(ctx)
+		if err != nil {
+			return TitleRequest{}, err
+		}
+	}
 	id, err := randomID()
 	if err != nil {
 		return TitleRequest{}, err
@@ -587,6 +594,31 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 	}
 	bypass = bypass || privileged
 
+	// The shared SQLite connection serializes this transaction, including concurrent retries.
+	existingID, existingFormats, err := activeTitleIntent(ctx, tx, actor.ID, input)
+	if err != nil {
+		return TitleRequest{}, err
+	}
+	newFormats := make([]string, 0, len(formats))
+	for _, format := range formats {
+		if !existingFormats[format] {
+			newFormats = append(newFormats, format)
+		}
+	}
+	if len(newFormats) == 0 {
+		if err := tx.Commit(); err != nil {
+			return TitleRequest{}, err
+		}
+		return s.Get(ctx, actor, input.LibraryID, existingID)
+	}
+	if !enabled {
+		return TitleRequest{}, ErrUnavailable
+	}
+	formats = newFormats
+	if existingID != "" {
+		id = existingID
+	}
+
 	maxActive := 5
 	var ebookSource, audiobookSource string
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(default_ebook_source_id,''),COALESCE(default_audiobook_source_id,''),max_active_requests FROM acquisition_policies WHERE library_id=?`, input.LibraryID).Scan(&ebookSource, &audiobookSource, &maxActive)
@@ -597,20 +629,20 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT r.id) FROM title_requests r JOIN title_request_formats f ON f.title_request_id=r.id WHERE r.library_id=? AND r.requested_by=? AND f.state NOT IN ('available','denied','canceled','failed')`, input.LibraryID, actor.ID).Scan(&active); err != nil {
 		return TitleRequest{}, fmt.Errorf("count active title requests: %w", err)
 	}
-	if active >= maxActive {
-		return TitleRequest{}, ErrInvalid
+	if existingID == "" && active >= maxActive {
+		return TitleRequest{}, ErrQuota
 	}
 	sources := map[string]string{"ebook": ebookSource, "audiobook": audiobookSource}
 	for _, format := range formats {
 		if sources[format] == "" {
-			return TitleRequest{}, ErrInvalid
+			return TitleRequest{}, ErrSetup
 		}
 		var valid bool
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM library_sources WHERE id=? AND library_id=? AND enabled=1 AND deleted_at IS NULL)`, sources[format], input.LibraryID).Scan(&valid); err != nil {
 			return TitleRequest{}, fmt.Errorf("validate title request source: %w", err)
 		}
 		if !valid {
-			return TitleRequest{}, ErrInvalid
+			return TitleRequest{}, ErrSetup
 		}
 	}
 	if input.WorkID != "" {
@@ -619,15 +651,20 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 			return TitleRequest{}, ErrInvalid
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO title_requests(id,library_id,requested_by,work_id,external_source,external_id,title,author,cover_url,created_at,updated_at) VALUES(?,?,?,NULLIF(?,''),?,?,?,?,?,?,?)`, id, input.LibraryID, actor.ID, input.WorkID, input.ExternalSource, input.ExternalID, input.Title, input.Author, strings.TrimSpace(input.CoverURL), stamp, stamp); err != nil {
-		return TitleRequest{}, fmt.Errorf("create title request: %w", err)
+	if existingID == "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO title_requests(id,library_id,requested_by,work_id,external_source,external_id,title,author,cover_url,created_at,updated_at) VALUES(?,?,?,NULLIF(?,''),?,?,?,?,?,?,?)`, id, input.LibraryID, actor.ID, input.WorkID, input.ExternalSource, input.ExternalID, input.Title, input.Author, strings.TrimSpace(input.CoverURL), stamp, stamp); err != nil {
+			return TitleRequest{}, fmt.Errorf("create title request: %w", err)
+		}
+	} else if _, err := tx.ExecContext(ctx, `UPDATE title_requests SET updated_at=? WHERE id=?`, stamp, id); err != nil {
+		return TitleRequest{}, fmt.Errorf("update title request: %w", err)
 	}
 	state := "pending_approval"
 	if bypass {
 		state = "wanted"
 	}
 	for _, format := range formats {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO title_request_formats(title_request_id,format,state,source_id,created_at,updated_at) VALUES(?,?,?,?,?,?)`, id, format, state, sources[format], stamp, stamp); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO title_request_formats(title_request_id,format,state,source_id,created_at,updated_at) VALUES(?,?,?,?,?,?)
+			ON CONFLICT(title_request_id,format) DO UPDATE SET state=excluded.state,source_id=excluded.source_id,error='',legacy_acquisition_request_id=NULL,retry_count=0,last_searched_at=NULL,next_search_at=NULL,updated_at=excluded.updated_at`, id, format, state, sources[format], stamp, stamp); err != nil {
 			return TitleRequest{}, fmt.Errorf("create title request format: %w", err)
 		}
 		if err := appendTitleRequestEvent(ctx, tx, id, format, "requested", state, actor.ID, "", stamp); err != nil {
@@ -649,53 +686,8 @@ func (s *TitleRequestStore) Create(ctx context.Context, actor auth.User, input C
 }
 
 func (s *TitleRequestStore) List(ctx context.Context, actor auth.User, libraryID string) ([]TitleRequest, error) {
-	args := append([]any{actor.ID, libraryID}, auth.LibraryAccessArgs(actor)...)
-	args = append(args, actor.ID, actor.Admin)
-	rows, err := s.db.QueryContext(ctx, titleRequestSelect+` WHERE r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id LIMIT 100`, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list title requests: %w", err)
-	}
-	defer rows.Close()
-	values := make([]TitleRequest, 0)
-	for rows.Next() {
-		value, err := scanTitleRequest(rows)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read title requests: %w", err)
-	}
-	byID := make(map[string]int, len(values))
-	for i := range values {
-		byID[values[i].ID] = i
-	}
-	args = append([]any{actor.ID, libraryID}, auth.LibraryAccessArgs(actor)...)
-	args = append(args, actor.ID, actor.Admin)
-	formatRows, err := s.db.QueryContext(ctx, `SELECT f.title_request_id,f.format,f.state,COALESCE(f.source_id,''),f.error,COALESCE(a.qbit_state,''),f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=? WHERE r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (r.requested_by=? OR ? OR m.role IN ('owner','editor')) ORDER BY r.updated_at DESC,r.id,f.format LIMIT 200`, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list title request formats: %w", err)
-	}
-	defer formatRows.Close()
-	for formatRows.Next() {
-		var id, searched, next, created, updated string
-		var value TitleRequestFormat
-		if err := formatRows.Scan(&id, &value.Format, &value.State, &value.SourceID, &value.Error, &value.DownloadState, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
-			return nil, err
-		}
-		value.LastSearchedAt, _ = time.Parse(time.RFC3339Nano, searched)
-		value.NextSearchAt, _ = time.Parse(time.RFC3339Nano, next)
-		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
-		value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		if i, ok := byID[id]; ok {
-			values[i].Formats = append(values[i].Formats, value)
-		}
-	}
-	if err := formatRows.Err(); err != nil {
-		return nil, fmt.Errorf("read title request formats: %w", err)
-	}
-	return values, nil
+	page, err := s.ListPage(ctx, actor, libraryID, TitleRequestListOptions{Limit: 100})
+	return page.Items, err
 }
 
 func (s *TitleRequestStore) Get(ctx context.Context, actor auth.User, libraryID, id string) (TitleRequest, error) {
