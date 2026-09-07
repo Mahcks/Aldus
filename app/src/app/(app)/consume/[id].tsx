@@ -536,9 +536,13 @@ export default function ConsumeWorkScreen() {
         pendingReaderLocation.current = undefined;
         setReaderRestoreError(false);
         setReaderRestoring(true);
-        readerReady.current = false;
-        setReaderNavigationReady(false);
-        setReaderContents([]);
+        // The web reader stays mounted across mode switches when its source is reused.
+        // It will not emit onReady again, so preserve readiness for that instance.
+        if (Platform.OS !== 'web' || epubSourceID.current !== selectedEPUB?.id || !epubSource) {
+          readerReady.current = false;
+          setReaderNavigationReady(false);
+          setReaderContents([]);
+        }
         setContentsOpen(false);
         setReaderSearchOpen(false);
         setReaderSearchQuery('');

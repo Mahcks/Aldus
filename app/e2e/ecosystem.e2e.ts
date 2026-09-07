@@ -18,7 +18,7 @@ test('web participates in the KOReader progress handoff', async ({ page }) => {
   await expect(page).toHaveURL(/\/home$/);
 
   await page.goto('/work/alice-gutenberg-11-work');
-  const openReader = phase === 'seed' ? 'Start reading' : /Continue reading|Read instead/;
+  const openReader = phase === 'seed' ? 'Start reading' : /^(Continue reading|Read instead|Read)$/;
   await page.getByRole('button', { name: openReader }).click();
   await expect(page.getByRole('button', { name: 'Next page' })).toBeVisible({ timeout: 30_000 });
 
@@ -28,10 +28,24 @@ test('web participates in the KOReader progress handoff', async ({ page }) => {
     expect(phase).toBe('seed');
   }
 
-  await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByText('Saved here')).toBeVisible({ timeout: 10_000 });
+  // Cover and front matter have no narration. Reach an aligned passage before
+  // asserting a Read → Listen → Read handoff.
+  await expect
+    .poll(
+      async () => {
+        const listen = page.getByRole('button', { name: 'Listen from here', exact: true });
+        if ((await listen.isVisible()) && (await listen.isEnabled())) return true;
+        await page.getByRole('button', { name: 'Next page' }).click();
+        return false;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
   await page.getByRole('button', { name: 'Switch to listening' }).click();
-  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await page.getByRole('button', { name: 'Switch to reading' }).click();
   await expect(page.getByRole('button', { name: 'Next page' })).toBeVisible({ timeout: 30_000 });
   await expect
