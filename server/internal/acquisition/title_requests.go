@@ -141,8 +141,18 @@ func (s *TitleRequestStore) Poll(ctx context.Context) error {
 
 func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 	for range 10 {
-		var requestID, requestedBy, title, format, current, legacyState, diagnosis, legacyID string
-		err := s.db.QueryRowContext(ctx, `SELECT f.title_request_id,COALESCE(r.requested_by,''),r.title,f.format,f.state,a.fulfillment_state,a.download_error,a.id FROM title_request_formats f JOIN title_requests r ON r.id=f.title_request_id JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.state IN ('submitting','downloading','scanning','needs_review','failed') AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed') AND f.state!=a.fulfillment_state ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis, &legacyID)
+		var requestID, requestedBy, title, format, current, legacyState, diagnosis, legacyID, failureKind string
+		err := s.db.QueryRowContext(ctx, `
+			SELECT f.title_request_id,COALESCE(r.requested_by,''),r.title,f.format,
+			       f.state,a.fulfillment_state,a.download_error,a.id,a.failure_kind
+			FROM title_request_formats f
+			JOIN title_requests r ON r.id=f.title_request_id
+			JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id
+			WHERE f.state IN ('submitting','downloading','scanning','needs_review','failed')
+			  AND a.fulfillment_state IN ('downloading','scanning','needs_review','available','failed')
+			  AND f.state!=a.fulfillment_state
+			ORDER BY f.updated_at,f.title_request_id,f.format LIMIT 1
+		`).Scan(&requestID, &requestedBy, &title, &format, &current, &legacyState, &diagnosis, &legacyID, &failureKind)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -150,22 +160,27 @@ func (s *TitleRequestStore) syncLegacyFulfillment(ctx context.Context) error {
 			return fmt.Errorf("sync title request fulfillment: %w", err)
 		}
 		stamp := time.Now().UTC().Format(time.RFC3339Nano)
+		observedState := legacyState
 		eventType, nextSearch := "fulfillment_"+legacyState, ""
-		if legacyState == "failed" {
-			var tryAnother bool
-			if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM acquisition_release_failures WHERE title_request_id=? AND format=?)`, requestID, format).Scan(&tryAnother); err != nil {
-				return fmt.Errorf("check failed release: %w", err)
-			}
-			if tryAnother {
-				legacyState, eventType, nextSearch = "awaiting_release", "release_failed", stamp
-				diagnosis = "That release could not start. Aldus will try a different match."
-			}
+		if legacyState == "failed" && failureKind == "release" {
+			legacyState, eventType, nextSearch = "awaiting_release", "release_failed", stamp
+			diagnosis = "That release could not start. Aldus will try a different match."
 		}
+
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("sync title request fulfillment: %w", err)
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error=?,next_search_at=NULLIF(?,''),updated_at=? WHERE title_request_id=? AND format=? AND state=? AND legacy_acquisition_request_id=?`, legacyState, diagnosis, nextSearch, stamp, requestID, format, current, legacyID)
+		result, err := tx.ExecContext(ctx, `
+			UPDATE title_request_formats
+			SET state=?, error=?, next_search_at=NULLIF(?,''), updated_at=?
+			WHERE title_request_id=? AND format=? AND state=? AND legacy_acquisition_request_id=?
+			  AND EXISTS (
+			      SELECT 1 FROM acquisition_requests a
+			      WHERE a.id=legacy_acquisition_request_id
+			        AND a.fulfillment_state=? AND a.failure_kind=?
+			  )
+		`, legacyState, diagnosis, nextSearch, stamp, requestID, format, current, legacyID, observedState, failureKind)
 		if err == nil {
 			var changed int64
 			changed, err = result.RowsAffected()

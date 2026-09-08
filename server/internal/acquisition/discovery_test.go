@@ -95,3 +95,35 @@ func TestParseDiscoveryResultToleratesMalformedTitles(t *testing.T) {
 		_ = parseDiscoveryResult("book", Result{Title: title})
 	}
 }
+
+func TestNormalizeSearchResultsPreservesNumericTitles(t *testing.T) {
+	for _, tc := range []struct {
+		release string
+		title   string
+		author  string
+		format  string
+	}{
+		{"1984 [EPUB]", "1984", "", "EPUB"},
+		{"1984 by George Orwell [EPUB]", "1984", "George Orwell", "EPUB"},
+		{"George Orwell - 1984 (1949) [EPUB]", "1984", "George Orwell", "EPUB"},
+		{"2001: A Space Odyssey [M4B]", "2001 A Space Odyssey", "", "M4B"},
+		{"2001: A Space Odyssey (1968) [M4B]", "2001 A Space Odyssey", "", "M4B"},
+		{"The Lord of the Rings (2001) [EPUB]", "The Lord of the Rings", "", "EPUB"},
+		{"The Year 2000 [EPUB]", "The Year 2000", "", "EPUB"},
+	} {
+		t.Run(tc.release, func(t *testing.T) {
+			got := normalizeSearchResults(tc.title, []Result{{Title: tc.release, Size: 500}})
+			if len(got) != 1 {
+				t.Fatalf("valid numeric title was discarded: %#v", got)
+			}
+
+			result := got[0]
+			if result.CanonicalTitle != tc.title || result.Author != tc.author || result.Format != tc.format {
+				t.Fatalf("unexpected parsed release: %#v", result)
+			}
+			if result.Match != "exact" || result.Relevance <= 0 {
+				t.Fatalf("numeric title lost exact relevance: %#v", result)
+			}
+		})
+	}
+}

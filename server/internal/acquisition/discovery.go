@@ -14,7 +14,6 @@ const maxSearchResults = 80
 
 var (
 	bracketedMetadata = regexp.MustCompile(`\[[^]]*\]|\([^)]*\)|\{[^}]*\}`)
-	yearToken         = regexp.MustCompile(`\b(?:19|20)\d{2}\b`)
 	byAuthor          = regexp.MustCompile(`(?i)\s+by\s+([\pL][\pL.'-]*(?:\s+[\pL][\pL.'-]*){0,4})`)
 	narratedBy        = regexp.MustCompile(`(?i)\b(?:narrated|read)\s+by\s+([\pL][\pL.'-]*(?:\s+[\pL][\pL.'-]*){0,4})`)
 )
@@ -266,7 +265,6 @@ func releaseWords(value string) []string {
 }
 
 func cleanReleaseTitle(value string) string {
-	value = yearToken.ReplaceAllString(value, " ")
 	kept := make([]string, 0)
 	for _, word := range releaseWords(value) {
 		if !metadataWords[strings.ToLower(word)] {

@@ -67,9 +67,7 @@ func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequ
 		startedAt, err := time.Parse(time.RFC3339Nano, request.progressUpdated)
 		if err == nil && download.Seeds == 0 && download.Peers == 0 && now.Sub(startedAt) >= metadataStallLimit {
 			diagnosis := "No peers supplied torrent metadata for 30 minutes. Aldus will try a different release."
-			s.blacklistRelease(ctx, request.id, download.Hash, diagnosis)
-			s.markDownloadProblem(ctx, request.id, diagnosis)
-			return true, nil
+			return true, s.markReleaseProblem(ctx, request.id, download.Hash, diagnosis)
 		}
 	}
 
