@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -328,7 +327,6 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 	if value.sourceID == "" {
 		return s.deferClaim(ctx, value, "search_failed", "No default source is configured for this format.")
 	}
-	query := strings.TrimSpace(value.title + " " + value.author)
 	actor := auth.User{ID: value.requestedBy, Admin: true}
 	var existingID, existingState string
 	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? AND f.format=?`, value.requestID, value.format).Scan(&existingID, &existingState); err != nil {
@@ -339,16 +337,6 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 		_, err := s.db.ExecContext(ctx, `UPDATE title_request_formats SET state=?,error='',next_search_at=NULL,updated_at=? WHERE title_request_id=? AND format=? AND state='searching'`, existingState, stamp, value.requestID, value.format)
 		return err
 	}
-	legacy, err := s.acquisitions.create(ctx, actor, value.libraryID, value.sourceID, query)
-	if err != nil {
-		return s.deferClaim(ctx, value, "search_failed", err.Error())
-	}
-	results, err := s.acquisitions.search(ctx, actor, value.libraryID, legacy.ID)
-	if err != nil {
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
-		return s.deferClaim(ctx, value, "search_failed", err.Error())
-	}
-	results = matchingGuidedResults(results, value.title, value.format, policy)
 	blocked := make(map[string]bool)
 	rows, err := s.db.QueryContext(ctx, `SELECT download_url,info_hash FROM acquisition_release_failures WHERE title_request_id=? AND format=? AND failed_at>=?`, value.requestID, value.format, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339Nano))
 	if err != nil {
@@ -371,11 +359,11 @@ func (s *TitleRequestStore) fulfillClaim(ctx context.Context, value claimedTitle
 	if closeErr != nil {
 		return s.deferClaim(ctx, value, "search_failed", closeErr.Error())
 	}
-	results = slices.DeleteFunc(results, func(result SearchResult) bool {
-		return blocked[result.downloadURL] || blocked[magnetInfoHash(result.downloadURL)]
-	})
+	legacy, results, err := s.searchGuidedClaim(ctx, actor, value, policy, blocked)
+	if err != nil {
+		return s.deferClaim(ctx, value, "search_failed", err.Error())
+	}
 	if len(results) == 0 {
-		_, _ = s.db.ExecContext(ctx, `DELETE FROM acquisition_requests WHERE id=?`, legacy.ID)
 		return s.deferClaim(ctx, value, "no_match", "No release currently matches the owner's rules.")
 	}
 	linked, err := s.db.ExecContext(ctx, `UPDATE title_request_formats SET legacy_acquisition_request_id=? WHERE title_request_id=? AND format=? AND state='searching'`, legacy.ID, value.requestID, value.format)
