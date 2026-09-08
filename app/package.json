@@ -17,7 +17,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:variants": "node ../scripts/check-app-variants.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

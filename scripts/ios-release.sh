@@ -123,7 +123,7 @@ NODE
     cd "$ROOT/app"
     bun install --frozen-lockfile
     EAS_LOCAL_BUILD_ARTIFACTS_DIR="$artifact_dir" \
-      npx eas-cli@22.4.0 build --platform ios --profile production --local
+      APP_VARIANT=production npx eas-cli@22.4.0 build --platform ios --profile production --local
   )
 
   while IFS= read -r ipa; do
