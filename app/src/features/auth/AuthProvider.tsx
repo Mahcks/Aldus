@@ -70,9 +70,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
     setStorageUserID('');
     setState((value) => ({ ...value, loading: true, user: null, error: null }));
+    const signal = AbortSignal.timeout(15_000);
     try {
-      const user = await api.me();
-      const setup = await api.setupStatus();
+      const user = await api.me(signal);
+      const setup = await api.setupStatus(signal);
       if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
       await prepareStorageScope(user.id);
       await rememberUser(user, origin);
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return;
       }
       try {
-        const setup = await api.setupStatus();
+        const setup = await api.setupStatus(signal);
         if (attempt !== authAttempt.current || origin !== getAPIBaseURL()) return;
         setStorageUserID('');
         setState({

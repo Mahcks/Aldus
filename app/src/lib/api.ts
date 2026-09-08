@@ -143,15 +143,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  // Bound ordinary reads, including offline-library fallback. Uploads and other
+  // writes keep their existing lifetime rather than timing out mid-operation.
+  const signal =
+    init.signal ??
+    (!init.method || init.method === 'GET' ? AbortSignal.timeout(15_000) : undefined);
   let response: Response;
   try {
     response = await fetch(`${origin}${apiBasePath}${path}`, {
       ...init,
+      signal,
       headers,
       credentials: 'include',
     });
   } catch {
-    throw new APIError(0, 'Unable to reach Aldus.');
+    throw new APIError(
+      0,
+      'Unable to reach your server. Check your connection and that the server is running.',
+    );
   }
   if (!response.ok) {
     const message = await responseErrorMessage(response);
@@ -173,7 +182,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   }
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    if (signal?.aborted) {
+      throw new APIError(
+        0,
+        'Unable to reach your server. Check your connection and that the server is running.',
+      );
+    }
+    throw error;
+  }
 }
 
 async function download(path: string) {
@@ -204,7 +223,7 @@ async function acceptSession(session: Session, origin: string) {
 }
 
 export const api = {
-  setupStatus: () => request<SetupStatus>('/setup/status'),
+  setupStatus: (signal?: AbortSignal) => request<SetupStatus>('/setup/status', { signal }),
   setup: (body: SetupRequest) => {
     const origin = getAPIBaseURL();
     return request<Session>('/setup', { method: 'POST', body: JSON.stringify(body) }).then(
@@ -234,7 +253,7 @@ export const api = {
       body: JSON.stringify({ code }),
     }).then((session) => acceptSession(session, origin));
   },
-  me: () => request<User>('/auth/me'),
+  me: (signal?: AbortSignal) => request<User>('/auth/me', { signal }),
   claimAccount: (body: ClaimAccountRequest) => {
     const origin = getAPIBaseURL();
     return request<Session>('/auth/claim', { method: 'POST', body: JSON.stringify(body) }).then(

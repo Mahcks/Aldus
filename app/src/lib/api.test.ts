@@ -1,13 +1,15 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
 mock.module('react-native', () => ({ Platform: { OS: 'web' } }));
-const { api, APIError, errorMessage } = await import('./api');
+const { api, APIError, errorMessage, onUnauthorized } = await import('./api');
 const { isLoopbackURL, resolveAPIBaseURL } = await import('./api-base');
 const { productMediaURL } = await import('./media');
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  mock.restore();
+  onUnauthorized();
 });
 
 describe('API transport', () => {
@@ -34,6 +36,66 @@ describe('API transport', () => {
     expect(isLoopbackURL('http://192.168.1.25:8080')).toBe(false);
     expect(isLoopbackURL('https://books.example.com')).toBe(false);
   });
+  it('bounds account checks to 15 seconds without treating timeout as logout', async () => {
+    const controller = new AbortController();
+    const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    let started!: () => void;
+    const fetching = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    globalThis.fetch = (async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init!.signal!.addEventListener('abort', () => reject(controller.signal.reason), {
+          once: true,
+        });
+        started();
+      })) as typeof fetch;
+    const expired = mock(() => {});
+    onUnauthorized(expired);
+    const pending = api.me();
+    await fetching;
+    expect(timeout).toHaveBeenCalledWith(15_000);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ status: 0 });
+    expect(expired).not.toHaveBeenCalled();
+  });
+
+  it('does not impose the read deadline on writes', async () => {
+    const timeout = spyOn(AbortSignal, 'timeout');
+    globalThis.fetch = (async (_input, init) => {
+      expect(init?.signal).toBeUndefined();
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+    await api.updateUser('u', { disabled: true });
+    expect(timeout).not.toHaveBeenCalled();
+  });
+
+  it('uses the startup deadline while reading a stalled setup response body', async () => {
+    const controller = new AbortController();
+    let reading!: () => void;
+    const bodyStarted = new Promise<void>((resolve) => {
+      reading = resolve;
+    });
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: () =>
+        new Promise((_resolve, reject) => {
+          controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
+            once: true,
+          });
+          reading();
+        }),
+    })) as unknown as typeof fetch;
+    const pending = api.setupStatus(controller.signal);
+    await bodyStarted;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ status: 0 });
+    globalThis.fetch = (async () =>
+      Response.json({ available: false, demo_available: false })) as unknown as typeof fetch;
+    await expect(api.setupStatus()).resolves.toEqual({ available: false, demo_available: false });
+  });
+
   it('uses credentialed requests and generated setup fields', async () => {
     let request: RequestInit | undefined;
     globalThis.fetch = (async (_input, init) => {
