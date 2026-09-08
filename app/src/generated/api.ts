@@ -195,6 +195,7 @@ export interface CreateAlignmentJobRequest {
   audio_sha256: string;
 }
 export interface AlignmentJob {
+  stage?: string;
   id: string;
   alignment_id?: string;
   epub_media_id: string;

@@ -1,7 +1,27 @@
+import json
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
 import math
 import unittest
 
-from whisperx_worker import canonical_words
+from whisperx_worker import canonical_words, report_stage
+
+
+class ProgressTest(unittest.TestCase):
+    def test_atomic_stage_and_unavailable_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "progress.json"
+            with patch.dict(os.environ, {"ALDUS_PROGRESS_PATH": str(path)}):
+                report_stage("transcribing")
+                self.assertEqual(json.loads(path.read_text()), {"stage": "transcribing"})
+                self.assertFalse(Path(str(path) + ".tmp").exists())
+                report_stage("matching_text")
+                self.assertEqual(json.loads(path.read_text()), {"stage": "matching_text"})
+            with patch.dict(os.environ, {"ALDUS_PROGRESS_PATH": str(path / "missing")}):
+                report_stage("transcribing")  # Telemetry must not stop alignment.
 
 
 class WordTimingTest(unittest.TestCase):

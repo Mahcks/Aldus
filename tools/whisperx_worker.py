@@ -6,6 +6,7 @@ import difflib
 import importlib.metadata
 import json
 import math
+import os
 import re
 import sys
 import time
@@ -18,6 +19,19 @@ CUDA_UNAVAILABLE_EXIT = 78
 
 def write(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
+def report_stage(stage):
+    """Best-effort telemetry; never affect alignment output or publication."""
+    path = os.environ.get("ALDUS_PROGRESS_PATH")
+    if not path:
+        return
+    try:
+        temporary = Path(path + ".tmp")
+        write(temporary, {"stage": stage})
+        temporary.replace(path)
+    except OSError:
+        pass
 
 
 def tokens(text):
@@ -64,6 +78,7 @@ def canonical_words(words):
 
 
 def main():
+    report_stage("loading_model")
     import whisperx
 
     parser = argparse.ArgumentParser()
@@ -87,10 +102,13 @@ def main():
 
     device, compute_type, batch_size = load_worker_config()
     require_accelerator(device)
+    report_stage("loading_audio")
     audio = whisperx.load_audio(args.audio)
     started = time.monotonic()
     if args.job_input:
+        report_stage("loading_model")
         model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+        report_stage("transcribing")
         transcription = model.transcribe(audio, batch_size=batch_size, language="en")
         segments = transcription["segments"]
         asr_seconds = time.monotonic() - started
@@ -106,7 +124,9 @@ def main():
         ]
         asr_seconds = 0
     else:
+        report_stage("loading_model")
         model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+        report_stage("transcribing")
         result = model.transcribe(audio, batch_size=batch_size, language="en")
         segments = result["segments"]
         asr_seconds = time.monotonic() - started
@@ -114,9 +134,12 @@ def main():
             write(args.raw_asr, result)
 
     align_started = time.monotonic()
+    report_stage("loading_alignment_model")
     align_model, metadata = whisperx.load_align_model(language_code="en", device=device)
+    report_stage("aligning_words")
     result = whisperx.align(segments, align_model, metadata, audio, device, return_char_alignments=True)
     if args.job_input:
+        report_stage("matching_text")
         spoken = canonical_words(
             word for word in result["word_segments"] if "start" in word and "end" in word
         )

@@ -15,6 +15,20 @@ When a work has both a readable edition and a listenable edition, and Aldus has 
 
 Selecting the secondary button doesn't restart you at the beginning of the other format and doesn't estimate a percentage — it opens straight into the position the alignment resolves to.
 
+## While alignment is running
+
+The book page shows the current alignment stage and elapsed time for the selected
+reading edition and narration. Administrators can choose **View sync details** to
+open **Manage work → Sync**, cancel a queued or running job, or expand its history.
+You can leave the page while the server works. If progress cannot be refreshed,
+Aldus shows a connection message and retries automatically.
+
+The bundled worker reports loading, transcription, word timing, text matching,
+and validation stages. These stages are not equal portions of the work, so Aldus
+does not display an estimated completion percentage. Long audiobooks can take
+considerably longer on CPU. Older servers or custom workers without stage reporting
+show a general preparation message instead.
+
 ## What Aldus saves
 
 Aldus keeps two complementary positions:

@@ -97,16 +97,64 @@ for (const width of [390, 1024, 1440]) {
     await page.keyboard.press('Space');
     await expect(second).toBeChecked();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-populated-sync.png` });
-    await page.getByText('Sync history', { exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Show sync history', exact: true }).click();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-sync-history.png` });
+    const runningJob = {
+      id: 'job',
+      state: 'processing',
+      stage: 'transcribing',
+      epub_media_id: 'epub-0',
+      audio_media_id: 'audio-0',
+      created_at: new Date(Date.now() - 120000).toISOString(),
+      started_at: new Date(Date.now() - 120000).toISOString(),
+    };
+    let unavailable = false;
+    await page.route('**/works/book/alignment-jobs', (route) =>
+      unavailable
+        ? route.fulfill({ status: 503, body: 'unavailable' })
+        : route.fulfill({ json: [runningJob] }),
+    );
+    await page.reload();
+    await expect(page.getByText('Transcribing the narration', { exact: true })).toBeVisible();
+    await expect(page.getByText('2 min elapsed', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cancel sync', exact: true })).toBeEnabled();
+    await expect(
+      page.getByRole('button', { name: 'Show sync history', exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-sync-progress.png` });
+    unavailable = true;
+    await expect(page.getByText(/Cannot refresh progress/)).toBeVisible({ timeout: 15000 });
+    unavailable = false;
+    runningJob.stage = 'validating';
+    await expect(page.getByText('Checking and saving the alignment', { exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    runningJob.state = 'ready';
+    await expect(
+      page.getByText('Readers can switch between reading and listening in sync.', { exact: true }),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Cancel sync', exact: true })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Artwork', exact: true }).click();
     await expect(
       page.getByRole('button', { name: 'Edit fallback design', exact: true }),
     ).toBeVisible();
-    await page.screenshot({ path: `../artifacts/design-redesign/${width}-custom-artwork-preview.png` });
+    await page.screenshot({
+      path: `../artifacts/design-redesign/${width}-custom-artwork-preview.png`,
+    });
     await page.getByRole('button', { name: 'Save artwork', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-custom-artwork.png` });
     await page.getByRole('button', { name: 'Edit fallback design', exact: true }).click();
     await expect(page.getByText('Fallback cover', { exact: true })).toBeVisible();
+    runningJob.state = 'processing';
+    runningJob.stage = 'matching_text';
+    await page.goto('/work/book');
+    await expect(page.getByText('Matching narration to the ebook', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'View sync details', exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-book-sync-progress.png` });
+    await page.getByRole('button', { name: 'View sync details', exact: true }).click();
+    await expect(page).toHaveURL(/\/work\/book\/manage\?tab=sync$/);
+    await expect(page.getByText('Read + Listen sync', { exact: true })).toBeVisible();
   });
 }

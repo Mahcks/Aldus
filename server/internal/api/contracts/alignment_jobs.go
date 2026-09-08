@@ -8,7 +8,9 @@ type CreateAlignmentJobRequest struct {
 	AudioMediaID string `json:"audio_media_id"`
 	AudioSHA256  string `json:"audio_sha256"`
 }
+
 type AlignmentJob struct {
+	Stage         string     `json:"stage,omitempty"`
 	ID            string     `json:"id"`
 	AlignmentID   string     `json:"alignment_id,omitempty"`
 	EPUBMediaID   string     `json:"epub_media_id"`

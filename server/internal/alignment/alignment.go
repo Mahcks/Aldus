@@ -66,6 +66,7 @@ type Request struct {
 }
 
 type Job struct {
+	Stage         string     `json:"stage,omitempty"`
 	ID            string     `json:"id"`
 	AlignmentID   string     `json:"alignment_id,omitempty"`
 	EPUBMediaID   string     `json:"epub_media_id"`
@@ -164,6 +165,7 @@ func New(db *sql.DB, o Options) (*Manager, error) {
 	}
 	return &Manager{db: db, queries: dbsql.New(db), options: o, wake: make(chan struct{}, 1), cancel: map[string]context.CancelFunc{}, done: make(chan struct{}), media: media}, nil
 }
+
 func (m *Manager) Start(ctx context.Context) error {
 	if err := m.recover(ctx); err != nil {
 		return err
@@ -172,6 +174,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.signal()
 	return nil
 }
+
 func (m *Manager) Wait() {
 	<-m.done
 }
@@ -279,6 +282,7 @@ func (m *Manager) recover(ctx context.Context) error {
 	_, err := m.db.ExecContext(ctx, `UPDATE alignment_jobs SET state=CASE WHEN attempts<2 THEN 'pending' ELSE 'failed' END,error_summary=CASE WHEN attempts<2 THEN '' ELSE 'worker interrupted twice' END,finished_at=CASE WHEN attempts<2 THEN NULL ELSE ? END WHERE state='processing'`, now)
 	return err
 }
+
 func (m *Manager) loop(ctx context.Context) {
 	defer close(m.done)
 	for {
@@ -309,12 +313,14 @@ func (m *Manager) loop(ctx context.Context) {
 		}
 	}
 }
+
 func (m *Manager) signal() {
 	select {
 	case m.wake <- struct{}{}:
 	default:
 	}
 }
+
 func (m *Manager) stopAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -384,6 +390,7 @@ func (m *Manager) enqueue(ctx context.Context, actor auth.User, r Request, retry
 	m.signal()
 	return m.Job(ctx, actor, id)
 }
+
 func (m *Manager) findDuplicate(ctx context.Context, r Request) (Job, bool, error) {
 	job, err := m.scanJob(m.db.QueryRowContext(ctx, `SELECT id,COALESCE(alignment_id,''),epub_media_id,audio_media_id,state,attempts,worker_version,model,COALESCE(artifact_id,''),error_summary,created_at,started_at,finished_at FROM alignment_jobs WHERE epub_media_id=? AND audio_media_id=? AND worker_version=? AND model=?`, r.EPUBMediaID, r.AudioMediaID, m.options.WorkerVersion, m.options.Model))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -391,13 +398,14 @@ func (m *Manager) findDuplicate(ctx context.Context, r Request) (Job, bool, erro
 	}
 	return job, err == nil, err
 }
+
 func (m *Manager) Job(ctx context.Context, actor auth.User, id string) (Job, error) {
 	row := m.db.QueryRowContext(ctx, `SELECT j.id,COALESCE(j.alignment_id,''),j.epub_media_id,j.audio_media_id,j.state,j.attempts,j.worker_version,j.model,COALESCE(j.artifact_id,''),j.error_summary,j.created_at,j.started_at,j.finished_at FROM alignment_jobs j JOIN media md ON md.id=j.epub_media_id JOIN representations rp ON rp.id=md.representation_id JOIN works w ON w.id=rp.work_id WHERE j.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id"), append([]any{id}, auth.LibraryAccessArgs(actor)...)...)
 	job, err := m.scanJob(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
-	return job, err
+	return m.withStage(job), err
 }
 
 func (m *Manager) Jobs(ctx context.Context, workID string, limit, offset int) ([]Job, error) {
@@ -426,7 +434,7 @@ func (m *Manager) Jobs(ctx context.Context, workID string, limit, offset int) ([
 			value, _ := time.Parse(time.RFC3339Nano, row.FinishedAt.String)
 			job.FinishedAt = &value
 		}
-		jobs[i] = job
+		jobs[i] = m.withStage(job)
 	}
 	return jobs, nil
 }
@@ -499,15 +507,23 @@ func (m *Manager) claim(ctx context.Context) (Job, bool, error) {
 	job.Attempts++
 	return job, true, nil
 }
+
 func (m *Manager) run(parent context.Context, job Job) {
 	ctx, cancel := context.WithTimeout(parent, m.options.Timeout)
 	m.mu.Lock()
 	m.cancel[job.ID] = cancel
 	m.mu.Unlock()
-	defer func() { cancel(); m.mu.Lock(); delete(m.cancel, job.ID); m.mu.Unlock() }()
+	defer func() {
+		cancel()
+		m.mu.Lock()
+		delete(m.cancel, job.ID)
+		m.mu.Unlock()
+	}()
+	m.writeStage(job.ID, "preparing")
 	artifactPath, artifactID, err := m.execute(ctx, job)
 	summary := workerFailureSummary(err)
 	if err == nil {
+		m.writeStage(job.ID, "validating")
 		err = m.publish(ctx, job, artifactPath, artifactID)
 		summary = "artifact validation failed"
 	}
@@ -532,6 +548,7 @@ func workerFailureSummary(err error) string {
 	}
 	return "worker execution failed"
 }
+
 func (m *Manager) execute(ctx context.Context, job Job) (string, string, error) {
 	dir := filepath.Join(m.options.ArtifactRoot, job.ID)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -550,6 +567,7 @@ func (m *Manager) execute(ctx context.Context, job Job) (string, string, error) 
 	command := exec.CommandContext(ctx, m.options.Command[0], args...)
 	command.Env = append(
 		os.Environ(),
+		"ALDUS_PROGRESS_PATH="+filepath.Join(dir, "progress.json"),
 		"HF_HOME="+m.options.ModelRoot,
 		"TORCH_HOME="+filepath.Join(m.options.ModelRoot, "torch"),
 		"NLTK_DATA="+filepath.Join(m.options.ModelRoot, "nltk"),
@@ -869,6 +887,7 @@ func (m *Manager) scanJob(row scanner) (Job, error) {
 	}
 	return j, nil
 }
+
 func randomID() (string, error) {
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {

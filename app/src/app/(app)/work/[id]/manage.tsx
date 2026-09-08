@@ -1,3 +1,8 @@
+import {
+  AlignmentProgress,
+  alignmentRunning,
+  useAlignmentPolling,
+} from '@/features/alignment-progress';
 import { MetadataReviewDialog } from '@/features/MetadataReviewDialog';
 import { seriesPositionError } from '@/features/catalog-metadata';
 import type {
@@ -85,7 +90,7 @@ function alignmentJobHint(state: string) {
   if (state === 'failed') return 'Alignment failed. See technical details, then try again.';
   if (state === 'stale')
     return 'One of the source files changed since this finished. Start a new alignment to keep sync accurate.';
-  if (state === 'processing') return 'Aligning now. This can take a few minutes.';
+  if (state === 'processing') return 'Preparing synchronized reading and listening on the server.';
   return 'Queued to begin shortly.';
 }
 
@@ -118,6 +123,7 @@ export default function ManageWorkScreen() {
   const [representations, setRepresentations] = useState<Representation[]>([]);
   const [media, setMedia] = useState<MediaChoice[]>([]);
   const [jobs, setJobs] = useState<AlignmentJob[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -238,26 +244,7 @@ export default function ManageWorkScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  useEffect(() => {
-    const active = jobs.filter((job) => !terminal.has(job.state));
-    if (active.length === 0) return;
-    let canceled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const updates = await Promise.all(active.map((job) => api.alignmentJob(job.id)));
-        if (!canceled)
-          setJobs((current) =>
-            current.map((job) => updates.find((update) => update.id === job.id) || job),
-          );
-      } catch (value) {
-        if (!canceled) setError(errorMessage(value));
-      }
-    }, 2000);
-    return () => {
-      canceled = true;
-      clearTimeout(timer);
-    };
-  }, [jobs]);
+  const progressUnreachable = useAlignmentPolling(id || '', jobs.some(alignmentRunning), setJobs);
 
   if (loading)
     return (
@@ -942,7 +929,9 @@ export default function ManageWorkScreen() {
                       <SyncSourceSummary title="Reading edition" item={selectedEPUB} />
                       <SyncSourceSummary title="Narration" item={selectedAudio} />
                     </View>
-                    {selectedPairJob ? (
+                    {selectedPairJob && alignmentRunning(selectedPairJob) ? (
+                      <AlignmentProgress job={selectedPairJob} unreachable={progressUnreachable} />
+                    ) : selectedPairJob ? (
                       <Notice tone={alignmentNoticeTone(selectedPairJob.state)}>
                         {alignmentJobHint(selectedPairJob.state)}
                       </Notice>
@@ -974,13 +963,23 @@ export default function ManageWorkScreen() {
                   ) : null}
 
                   <View className="items-start gap-2">
-                    <Button
-                      label={syncActionLabel}
-                      kind="primary"
-                      loading={alignmentBusy}
-                      disabled={alignmentBusy || syncRunning || syncReady}
-                      onPress={() => void enqueue()}
-                    />
+                    {syncRunning && selectedPairJob ? (
+                      <Button
+                        label="Cancel sync"
+                        kind="danger"
+                        loading={cancelingJobID === selectedPairJob.id}
+                        disabled={Boolean(cancelingJobID)}
+                        onPress={() => void cancelJob(selectedPairJob.id)}
+                      />
+                    ) : (
+                      <Button
+                        label={syncActionLabel}
+                        kind="primary"
+                        loading={alignmentBusy}
+                        disabled={alignmentBusy || syncRunning || syncReady}
+                        onPress={() => void enqueue()}
+                      />
+                    )}
                     <Text className={shared.itemMeta}>
                       Alignment runs on the server. You can safely leave this page.
                     </Text>
@@ -991,55 +990,74 @@ export default function ManageWorkScreen() {
 
             {jobs.length ? (
               <Section title="Sync history">
-                {jobs.map((job) => {
-                  const epubMedia = media.find((item) => item.id === job.epub_media_id);
-                  const audioMedia = media.find((item) => item.id === job.audio_media_id);
-                  return (
-                    <View key={job.id} className={shared.listItem}>
-                      <View className="flex-row flex-wrap items-center gap-2">
-                        <StatusBadge
-                          tone={alignmentJobTone(job.state)}
-                          label={alignmentJobLabel(job.state)}
-                        />
-                        <Text className={shared.itemMeta}>
-                          {new Date(job.created_at).toLocaleString()}
-                        </Text>
-                      </View>
-                      <Text className={shared.itemTitle}>
-                        {epubMedia?.original_filename || epubMedia?.representation.label || 'EPUB'}
-                        {' + '}
-                        {audioMedia?.original_filename ||
-                          audioMedia?.representation.label ||
-                          'Audiobook'}
-                      </Text>
-                      <Text className={shared.itemMeta}>{alignmentJobHint(job.state)}</Text>
-                      <TechnicalDetails
-                        rows={[
-                          { label: 'Job ID', value: job.id, copyable: true },
-                          { label: 'EPUB media ID', value: job.epub_media_id, copyable: true },
-                          { label: 'Audio media ID', value: job.audio_media_id, copyable: true },
-                          ...(job.alignment_id
-                            ? [{ label: 'Alignment ID', value: job.alignment_id, copyable: true }]
-                            : []),
-                          ...(job.error
-                            ? [{ label: 'Error', value: job.error, copyable: true }]
-                            : []),
-                        ]}
-                      />
-                      {!terminal.has(job.state) ? (
-                        <View className="self-start">
-                          <Button
-                            label="Cancel"
-                            kind="danger"
-                            loading={cancelingJobID === job.id}
-                            disabled={Boolean(cancelingJobID)}
-                            onPress={() => void cancelJob(job.id)}
+                <Button
+                  label={historyOpen ? 'Hide sync history' : 'Show sync history'}
+                  kind="quiet"
+                  onPress={() => setHistoryOpen(!historyOpen)}
+                />
+                {historyOpen
+                  ? jobs.map((job) => {
+                      const epubMedia = media.find((item) => item.id === job.epub_media_id);
+                      const audioMedia = media.find((item) => item.id === job.audio_media_id);
+                      return (
+                        <View key={job.id} className={shared.listItem}>
+                          <View className="flex-row flex-wrap items-center gap-2">
+                            <StatusBadge
+                              tone={alignmentJobTone(job.state)}
+                              label={alignmentJobLabel(job.state)}
+                            />
+                            <Text className={shared.itemMeta}>
+                              {new Date(job.created_at).toLocaleString()}
+                            </Text>
+                          </View>
+                          <Text className={shared.itemTitle}>
+                            {epubMedia?.original_filename ||
+                              epubMedia?.representation.label ||
+                              'EPUB'}
+                            {' + '}
+                            {audioMedia?.original_filename ||
+                              audioMedia?.representation.label ||
+                              'Audiobook'}
+                          </Text>
+                          <Text className={shared.itemMeta}>{alignmentJobHint(job.state)}</Text>
+                          <TechnicalDetails
+                            rows={[
+                              { label: 'Job ID', value: job.id, copyable: true },
+                              { label: 'EPUB media ID', value: job.epub_media_id, copyable: true },
+                              {
+                                label: 'Audio media ID',
+                                value: job.audio_media_id,
+                                copyable: true,
+                              },
+                              ...(job.alignment_id
+                                ? [
+                                    {
+                                      label: 'Alignment ID',
+                                      value: job.alignment_id,
+                                      copyable: true,
+                                    },
+                                  ]
+                                : []),
+                              ...(job.error
+                                ? [{ label: 'Error', value: job.error, copyable: true }]
+                                : []),
+                            ]}
                           />
+                          {!terminal.has(job.state) ? (
+                            <View className="self-start">
+                              <Button
+                                label="Cancel"
+                                kind="danger"
+                                loading={cancelingJobID === job.id}
+                                disabled={Boolean(cancelingJobID)}
+                                onPress={() => void cancelJob(job.id)}
+                              />
+                            </View>
+                          ) : null}
                         </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
+                      );
+                    })
+                  : null}
               </Section>
             ) : null}
           </View>
@@ -1608,10 +1626,11 @@ function SyncSourceSummary({ title, item }: { title: string; item: MediaChoice }
     <View className="min-w-[240px] flex-1 gap-1">
       <Text className="text-sm font-sans-semibold text-muted">{title}</Text>
       <Text numberOfLines={2} className={shared.itemTitle}>
-        {item.original_filename || item.representation.label}
+        {item.representation.label || item.original_filename}
       </Text>
       <Text className={shared.itemMeta}>
-        {item.representation.label} · {formatBytes(item.size_bytes)}
+        {item.representation.narrators?.join(', ') || item.original_filename} ·{' '}
+        {formatBytes(item.size_bytes)}
       </Text>
     </View>
   );

@@ -1,3 +1,8 @@
+import {
+  AlignmentProgress,
+  alignmentRunning,
+  useAlignmentPolling,
+} from '@/features/alignment-progress';
 import { RequestActions } from '@/features/request-actions';
 import type {
   AlignmentJob,
@@ -127,6 +132,12 @@ export default function WorkScreen() {
   const [collectionError, setCollectionError] = useState('');
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
 
+  const progressUnreachable = useAlignmentPolling(
+    id || '',
+    !offline && jobs.some(alignmentRunning),
+    setJobs,
+  );
+
   async function load() {
     if (!id) return;
     try {
@@ -246,6 +257,10 @@ export default function WorkScreen() {
   const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
   const selectedEPUB = epubs.find((item) => item.id === epubID);
   const selectedAudio = audio.find((item) => item.id === audioID);
+  const activeAlignment = jobs.find(
+    (job) =>
+      job.epub_media_id === epubID && job.audio_media_id === audioID && alignmentRunning(job),
+  );
   const note = syncNote(synchronizationLabel(jobs, epubID, audioID));
 
   const primaryMode: 'read' | 'listen' =
@@ -508,7 +523,20 @@ export default function WorkScreen() {
         </View>
       ) : null}
 
-      {note ? <Text className="max-w-md text-sm text-muted">{note}</Text> : null}
+      {activeAlignment ? (
+        <View className="gap-3 border-y border-line py-4">
+          <AlignmentProgress job={activeAlignment} unreachable={progressUnreachable} />
+          {canEdit ? (
+            <Button
+              label="View sync details"
+              kind="quiet"
+              onPress={() => router.push(`/work/${id}/manage?tab=sync`)}
+            />
+          ) : null}
+        </View>
+      ) : note ? (
+        <Text className="max-w-md text-sm text-muted">{note}</Text>
+      ) : null}
 
       <View className="w-full flex-row flex-wrap items-center gap-1 border-t border-line pt-3">
         <Button
