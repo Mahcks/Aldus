@@ -11,7 +11,14 @@ for (const width of [390, 1024, 1440]) {
       if (path === '/libraries') json = [{ id: 'family', name: 'Family', role: 'owner' }];
       if (path.endsWith('/title-requests/page')) json = { items: [] };
       if (path === '/acquisition-settings')
-        json = { indexer_kind: 'prowlarr', indexer_url: '', qbittorrent_url: '' };
+        json = {
+          indexer_kind: 'prowlarr',
+          indexer_url: '',
+          qbittorrent_url: '',
+          qbittorrent_username: '',
+          qbittorrent_category: 'aldus',
+          qbittorrent_download_root: '',
+        };
       if (path.endsWith('/acquisition-requests'))
         json = ['created', 'adopted', 'unknown'].map((ownership) => ({
           id: ownership,

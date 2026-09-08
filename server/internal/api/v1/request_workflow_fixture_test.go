@@ -129,7 +129,7 @@ func TestRequestWorkflowFixture(t *testing.T) {
 		defer mu.Unlock()
 		switch r.URL.Path {
 		case "/indexer":
-			fmt.Fprint(w, `<rss><channel><item><title>Alice's Adventures in Wonderland Lewis Carroll English EPUB</title><enclosure url="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567" length="204800"/></item></channel></rss>`)
+			fmt.Fprintf(w, `<rss><channel><item><title>Alice's Adventures in Wonderland Lewis Carroll English EPUB</title><enclosure url="magnet:?xt=urn:btih:%040d" length="204800"/></item></channel></rss>`, adds+1)
 		case "/api/v2/auth/login":
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "fixture"})
 			fmt.Fprint(w, "Ok.")

@@ -90,7 +90,9 @@ for (const width of [390, 1024, 1440]) {
     expect((await heading.boundingBox())?.y).toBe(before?.y);
     await filter.selectOption('pending_approval');
     await expect(page.getByText('Catching Fire', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Approve audiobook request for The Hobbit', exact: true })
+      .click();
     await expect(page.getByText('No approvals waiting', { exact: true })).toBeVisible();
   });
 }

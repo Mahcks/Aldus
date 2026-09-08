@@ -10,6 +10,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.ALDUS_ECOSYSTEM_WEB_URL || 'http://127.0.0.1:18081',
     trace: 'retain-on-failure',
+    // Missing controls should fail promptly; import/progress assertions keep their own budgets.
+    actionTimeout: 10_000,
+    navigationTimeout: 30_000,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: externalServer

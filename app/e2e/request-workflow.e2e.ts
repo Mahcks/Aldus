@@ -148,7 +148,9 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
     const owner = await ownerContext.newPage();
     await connect(owner, fixture.owner);
     await owner.goto('/acquisitions');
-    await owner.getByRole('button', { name: 'Approve', exact: true }).click();
+    await owner
+      .getByRole('button', { name: `Approve ebook request for ${book.title}`, exact: true })
+      .click();
     await expect(owner.getByText('Requested', { exact: true })).toBeVisible();
     if (library === 'review')
       expect((await request.post(`${fixture.url}/payload?review=true`)).ok()).toBe(true);
@@ -189,13 +191,11 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
           acquisition_request_id: proposal.acquisition_request_id,
           title: proposal.title,
           author: proposal.author,
-          items: proposal.items
-            .slice(0, 1)
-            .map((item) => ({
-              source_entry_id: item.source_entry_id,
-              kind: item.kind,
-              label: item.label,
-            })),
+          items: proposal.items.slice(0, 1).map((item) => ({
+            source_entry_id: item.source_entry_id,
+            kind: item.kind,
+            label: item.label,
+          })),
         },
       );
     }
