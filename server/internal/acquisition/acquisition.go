@@ -443,25 +443,45 @@ func (c *Client) shouldFetchTorrent(raw string) bool {
 func (c *Client) fetchTorrent(ctx context.Context, raw string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build torrent download request: %w", err)
+		return nil, errors.New("build torrent download request: invalid request")
 	}
+
 	req.Header.Set("X-Api-Key", c.options.IndexerAPIKey)
 	response, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("download torrent from indexer: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("download torrent from indexer: %w", ctx.Err())
+		}
+
+		// Preserve the supported magnet handoff without retaining net/http's
+		// URL-bearing error wrapper, which may contain tracker credentials.
+		var redirect magnetRedirectError
+		if errors.As(err, &redirect) {
+			return nil, redirect
+		}
+
+		return nil, errors.New("download torrent from indexer: request failed")
 	}
 	defer response.Body.Close()
+
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download torrent from indexer: status %d", response.StatusCode)
 	}
+
 	const maxTorrentSize = 16 << 20
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxTorrentSize+1))
 	if err != nil {
-		return nil, fmt.Errorf("download torrent from indexer: %w", err)
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("download torrent from indexer: %w", ctx.Err())
+		}
+
+		return nil, errors.New("download torrent from indexer: could not read response")
 	}
+
 	if len(body) == 0 || len(body) > maxTorrentSize {
 		return nil, errors.New("download torrent from indexer: invalid file size")
 	}
+
 	return body, nil
 }
 
