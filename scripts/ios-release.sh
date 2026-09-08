@@ -20,6 +20,14 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
 }
 
+testflight_notes() {
+  local notes
+
+  notes=${BETA_WHATS_NEW:-$(cat "$ROOT/scripts/testflight-notes.txt")}
+  [[ -n ${notes//[[:space:]]/} ]] || fail "TestFlight notes must describe what testers should try"
+  printf '%s\n' "$notes"
+}
+
 require_asc() {
   require_command asc
   asc auth status >/dev/null
@@ -102,9 +110,10 @@ testflight() (
   short_sha=${sha:0:12}
   server_version=$(sed -n 's/^ALDUS_VERSION=//p' "$ROOT/.env.example")
   [[ -n $server_version ]] || fail ".env.example must pin ALDUS_VERSION"
-  test_notes="${BETA_WHATS_NEW:-Aldus beta} | server $server_version | commit $short_sha"
+  test_notes=$(testflight_notes)
   artifact_dir="$ROOT/artifacts/ios/$short_sha-$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$artifact_dir"
+  printf '%s\n' "$test_notes" >"$artifact_dir/testflight-notes.txt"
 
   node - "$ROOT/app/app.json" "$ROOT/app/package.json" <<'NODE'
 const fs = require('fs');
@@ -213,6 +222,9 @@ remote() {
 }
 
 case ${1:-} in
+  notes)
+    testflight_notes
+    ;;
   testflight)
     if [[ $(uname -s) == Darwin ]]; then
       testflight
@@ -235,9 +247,14 @@ case ${1:-} in
   self-test)
     [[ 0.1.0 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
     [[ ! 0.1.0-beta.1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+    [[ $(BETA_WHATS_NEW=$'Try signing in.\nThen reopen a book.' testflight_notes) == $'Try signing in.\nThen reopen a book.' ]]
+    if (BETA_WHATS_NEW=' ' testflight_notes) >/dev/null 2>&1; then
+      fail "Blank TestFlight notes should be rejected"
+    fi
+    (unset BETA_WHATS_NEW; testflight_notes >/dev/null)
     echo "iOS release checks passed"
     ;;
   *)
-    fail "Usage: $0 <testflight|external|release|remote>"
+    fail "Usage: $0 <notes|testflight|external|release|remote|self-test>"
     ;;
 esac

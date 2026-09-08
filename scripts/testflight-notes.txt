@@ -1,0 +1,20 @@
+Aldus: requests, downloads, and connection recovery
+
+For these checks, use an Aldus server updated to 0.1.0-beta.20. Acquisition checks need a configured provider and download client; skip those if your household does not use them. Only request content you have permission to download.
+
+1. Connection recovery
+With Wi-Fi on, try opening Aldus while your server is unavailable. You should get a useful connection message instead of an endless loading screen. Bring the server back and retry; your account and library should still be accessible.
+
+2. Find and request a book
+In Discover, search for a title you know your configured sources offer. Request an ebook or audiobook. Activity should clearly show the format and what happens next. Repeated searches should stay grouped when you open the updates.
+
+3. Approve and follow requests (administrators)
+In Acquisitions, switch between all requests, awaiting approval, active requests, and history. Approve a request from a member who needs approval. Follow it through download and import, then open the book from Library. If no release is found, it should show that Aldus is still watching.
+
+4. Check connections and download clients (administrators)
+Review Connections on your iPhone, save your settings, and test them. Search-source results, download-client connectivity, and completed-file access should be explained separately. If you use SABnzbd, try a permitted download and check that it finishes repair/unpacking before appearing in Library. With qBittorrent, check that importing a book leaves seeding intact.
+
+5. Check everyday reading
+Open an ebook, turn a few pages, close it, and reopen it. Try an audiobook too. Download a book and reopen it with the server unavailable. Your saved place should be preserved.
+
+Please send TestFlight feedback with the screen, steps, expected result, and what happened. Include a screenshot when useful, but hide passwords and API keys. Tell us your server version and download client if relevant.

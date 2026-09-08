@@ -76,6 +76,14 @@ Common release order:
 
 ## Prepare and verify
 
+Before each TestFlight build, update `scripts/testflight-notes.txt` with concrete tasks
+and expected results for the changes in that build. Include any server-version or
+administrator requirements and what feedback to send. Preview the exact default notes
+with `bash scripts/ios-release.sh notes`. The build uploads these notes to TestFlight
+and retains a copy beside the IPA; commit and server details stay in `build-context.txt`.
+`BETA_WHATS_NEW` remains an explicit override on the Mac performing the build; remove
+an old override from `scripts/ios-release.env` to use the checked-in notes.
+
 If status reports mismatched public pins:
 
 ```sh
