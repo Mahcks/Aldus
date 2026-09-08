@@ -15,7 +15,8 @@ import {
   acquisitionFulfillment,
   acquisitionSize,
 } from '@/features/acquisition';
-import { titleRequestDetail, titleRequestPresentation } from '@/features/title-search';
+import { BrowseFacet } from '@/features/browse';
+import { RequestRow } from '@/features/acquisitions/RequestRow';
 import {
   Button,
   ConfirmDialog,
@@ -35,13 +36,15 @@ import { api, errorMessage } from '@/lib/api';
 export default function AcquisitionsAdministration() {
   const auth = useAuth();
   const [tab, setTab] = useState<'requests' | 'downloads' | 'settings'>('requests');
-  const [showRequestHistory, setShowRequestHistory] = useState(false);
+  const [requestFilter, setRequestFilter] = useState<
+    'all' | 'pending_approval' | 'active' | 'ready' | 'history'
+  >('all');
   const [showDownloadHistory, setShowDownloadHistory] = useState(false);
   const [technicalRequestID, setTechnicalRequestID] = useState('');
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryID, setLibraryID] = useState('');
   const [requests, setRequests] = useState<AcquisitionRequest[]>([]);
-  const requestPages = useTitleRequests(showRequestHistory ? 'all' : 'active', false);
+  const requestPages = useTitleRequests(requestFilter, false);
   const titleRequests = requestPages.items;
   const [users, setUsers] = useState<User[]>([]);
   const approvalLoading = requestPages.loading;
@@ -218,16 +221,33 @@ export default function AcquisitionsAdministration() {
     }
   }
 
-  const requestHistory = [...titleRequests].sort((left, right) =>
-    right.updated_at.localeCompare(left.updated_at),
+  const shownRequests = [...titleRequests].sort(
+    (left, right) =>
+      right.created_at.localeCompare(left.created_at) || left.id.localeCompare(right.id),
   );
-  const currentRequests = requestHistory.filter((request) =>
-    request.formats.some((format) => !['available', 'denied', 'canceled'].includes(format.state)),
-  );
-  const finishedRequests = requestHistory.filter((request) => !currentRequests.includes(request));
-  const shownRequests = showRequestHistory
-    ? [...currentRequests, ...finishedRequests]
-    : currentRequests;
+  const requestEmptyState = {
+    all: {
+      title: 'No requests yet',
+      detail: 'Books requested in Discover will appear here for you to follow and approve.',
+    },
+    active: {
+      title: 'No active requests',
+      detail:
+        'Nothing is waiting for approval, searching, or downloading. Choose All requests to see earlier requests.',
+    },
+    pending_approval: {
+      title: 'No approvals waiting',
+      detail: 'You’re caught up. Requests that need your permission will appear here.',
+    },
+    ready: {
+      title: 'No ready requests yet',
+      detail: 'Fulfilled requests appear here once the books are available in the library.',
+    },
+    history: {
+      title: 'No past attempts',
+      detail: 'Canceled, declined, and unsuccessful requests appear here.',
+    },
+  }[requestFilter];
   const currentDownloads = visibleRequests.filter((request) => {
     const status = acquisitionFulfillment(request);
     return status?.pending || status?.tone === 'danger' || status?.action === 'review';
@@ -282,15 +302,27 @@ export default function AcquisitionsAdministration() {
 
       {tab === 'requests' ? (
         <Section
-          title="Requests"
+          title="Book requests"
           action={
-            <Button
-              label={showRequestHistory ? 'Hide history' : 'Show history'}
-              kind="quiet"
-              onPress={() => setShowRequestHistory((value) => !value)}
-            />
+            <View className="w-full sm:w-80">
+              <BrowseFacet
+                label="Request status"
+                value={requestFilter}
+                onChange={(value) => setRequestFilter(value as typeof requestFilter)}
+                options={[
+                  { value: 'all', label: 'All requests' },
+                  { value: 'pending_approval', label: 'Awaiting approval' },
+                  { value: 'active', label: 'Active requests' },
+                  { value: 'ready', label: 'Ready in library' },
+                  { value: 'history', label: 'Past attempts' },
+                ]}
+              />
+            </View>
           }
         >
+          <Text className="text-sm leading-5 text-muted">
+            Across your libraries, newest requests first.
+          </Text>
           {approvalError || requestPages.error ? (
             <Notice tone="danger">{approvalError || requestPages.error}</Notice>
           ) : null}
@@ -302,72 +334,26 @@ export default function AcquisitionsAdministration() {
             />
           ) : null}
           {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
-          {approvalLoading ? (
+          {approvalLoading && shownRequests.length === 0 ? (
             <LoadingState label="Loading requests…" />
           ) : shownRequests.length === 0 ? (
-            <EmptyState icon="acquire" title="No active requests">
-              New requests and anything needing attention will appear here. Open history for
-              completed and canceled requests.
-            </EmptyState>
+            !requestPages.error ? (
+              <EmptyState icon="acquire" title={requestEmptyState?.title}>
+                {requestEmptyState?.detail}
+              </EmptyState>
+            ) : null
           ) : (
             <View accessibilityRole="list">
               {shownRequests.map((request) => (
-                <View key={request.id} className="gap-3 border-b border-line py-4">
-                  <View className="gap-1">
-                    <Text className="font-editorial-bold text-lg text-ink">{request.title}</Text>
-                    <Text className="text-sm text-muted">
-                      {[
-                        request.author,
-                        `Requested by ${requesterName(request.requested_by)}`,
-                        acquisitionDate(request.created_at),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </Text>
-                  </View>
-                  {request.formats.map((format) => {
-                    const key = `${request.id}:${format.format}`;
-                    const status = titleRequestPresentation(format.state) ?? {
-                      label: 'Requested',
-                      tone: 'info' as const,
-                    };
-                    return (
-                      <View
-                        key={format.format}
-                        className="min-h-11 gap-2 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <View className="min-w-0 flex-1 gap-1">
-                          <View className="flex-row flex-wrap items-center gap-3">
-                            <Text className="w-24 text-sm font-sans-bold text-ink">
-                              {formatLabel(format.format)}
-                            </Text>
-                            <StatusBadge tone={status.tone} label={status.label} />
-                          </View>
-                          <Text className="text-sm leading-5 text-muted">
-                            {titleRequestDetail(format)}
-                          </Text>
-                        </View>
-                        {format.state === 'pending_approval' ? (
-                          <View className="flex-row gap-2">
-                            <Button
-                              label="Approve"
-                              kind="primary"
-                              loading={approvalBusy === key}
-                              disabled={Boolean(approvalBusy)}
-                              onPress={() => void approve(request, format.format)}
-                            />
-                            <Button
-                              label="Deny"
-                              kind="quiet"
-                              disabled={Boolean(approvalBusy)}
-                              onPress={() => setDenyTarget({ request, format: format.format })}
-                            />
-                          </View>
-                        ) : null}
-                      </View>
-                    );
-                  })}
-                </View>
+                <RequestRow
+                  key={request.id}
+                  request={request}
+                  requester={requesterName(request.requested_by)}
+                  library={libraries.find((library) => library.id === request.library_id)?.name}
+                  busy={approvalBusy}
+                  onApprove={(format) => void approve(request, format)}
+                  onDeny={(format) => setDenyTarget({ request, format })}
+                />
               ))}
             </View>
           )}
