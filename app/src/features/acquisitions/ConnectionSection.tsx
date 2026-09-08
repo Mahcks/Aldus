@@ -19,7 +19,7 @@ export function ConnectionSection({
         </Text>
         <Text className="text-sm leading-6 text-muted">{description}</Text>
       </View>
-      <View className="min-w-0 flex-1 gap-5">{children}</View>
+      <View className="min-w-0 gap-5 lg:flex-1">{children}</View>
     </View>
   );
 }

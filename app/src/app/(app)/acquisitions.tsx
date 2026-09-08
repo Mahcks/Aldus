@@ -498,7 +498,7 @@ export default function AcquisitionsAdministration() {
                 placeholder="http://qbittorrent:8080"
               />
               <View className="gap-4 sm:flex-row">
-                <View className="flex-1">
+                <View className="sm:flex-1">
                   <Field
                     label="qBittorrent username"
                     value={qBitTorrentUsername}
@@ -507,7 +507,7 @@ export default function AcquisitionsAdministration() {
                     autoCorrect={false}
                   />
                 </View>
-                <View className="flex-1">
+                <View className="sm:flex-1">
                   <Field
                     label="qBittorrent password"
                     value={qBitTorrentPassword}
@@ -691,7 +691,7 @@ export default function AcquisitionsAdministration() {
       ) : null}
 
       {tab === 'downloads' ? (
-        <View className="min-w-0 flex-1 gap-8">
+        <View className="min-w-0 gap-8">
           <Section
             title="Downloads"
             action={
@@ -735,7 +735,7 @@ export default function AcquisitionsAdministration() {
                         key={request.id}
                         className="min-h-[72px] gap-2 border-b border-line py-3 lg:flex-row lg:items-start lg:justify-between"
                       >
-                        <View className="min-w-0 flex-1 gap-1.5">
+                        <View className="min-w-0 gap-1.5 lg:flex-1">
                           <Text className="text-sm font-sans-bold text-ink">
                             {request.selected_title || request.query}
                           </Text>
