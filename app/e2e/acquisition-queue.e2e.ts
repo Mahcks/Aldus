@@ -82,8 +82,13 @@ for (const width of [390, 1024, 1440]) {
     await expect(page.getByText('Auto-approved', { exact: true })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Requests', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `../artifacts/acquisition-queue/${width}.png`, fullPage: true });
-    await page.getByRole('button', { name: 'Request status: All requests' }).click();
-    await page.getByRole('radio', { name: 'Awaiting approval', exact: true }).click();
+    const filter = page.getByRole('combobox', { name: 'Request status' });
+    const heading = page.getByText('Book requests', { exact: true });
+    const before = await heading.boundingBox();
+    await filter.click();
+    await page.keyboard.press('Escape');
+    expect((await heading.boundingBox())?.y).toBe(before?.y);
+    await filter.selectOption('pending_approval');
     await expect(page.getByText('Catching Fire', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     await expect(page.getByText('No approvals waiting', { exact: true })).toBeVisible();

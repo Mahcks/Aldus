@@ -15,7 +15,7 @@ import {
   acquisitionFulfillment,
   acquisitionSize,
 } from '@/features/acquisition';
-import { BrowseFacet } from '@/features/browse';
+import { RequestStatusFilter } from '@/features/acquisitions/RequestStatusFilter';
 import { RequestRow } from '@/features/acquisitions/RequestRow';
 import {
   Button,
@@ -304,8 +304,8 @@ export default function AcquisitionsAdministration() {
         <Section
           title="Book requests"
           action={
-            <View className="w-full sm:w-80">
-              <BrowseFacet
+            <View className="w-full sm:w-56">
+              <RequestStatusFilter
                 label="Request status"
                 value={requestFilter}
                 onChange={(value) => setRequestFilter(value as typeof requestFilter)}
