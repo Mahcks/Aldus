@@ -9,6 +9,7 @@ KOREADER_ARCHIVE_URL="https://github.com/koreader/koreader/releases/download/v$K
 SERVER_PORT=${ALDUS_ECOSYSTEM_PORT:-18083}
 WEB_PORT=${ALDUS_ECOSYSTEM_WEB_PORT:-18084}
 WITH_IPHONE=${ALDUS_ECOSYSTEM_IPHONE:-0}
+SKIP_INSTALL=${ALDUS_ECOSYSTEM_SKIP_INSTALL:-0}
 IPHONE_WAIT_SECONDS=${ALDUS_ECOSYSTEM_IPHONE_WAIT_SECONDS:-1800}
 USERNAME=ecosystem-admin
 PASSWORD=aldus-ecosystem-123
@@ -90,6 +91,7 @@ wait_for_progress_source() {
 if [[ ${1:-} == self-test ]]; then
   [[ $KOREADER_ARCHIVE_SHA256 =~ ^[0-9a-f]{64}$ ]]
   [[ $WITH_IPHONE == 0 || $WITH_IPHONE == 1 ]]
+  [[ $SKIP_INSTALL == 0 || $SKIP_INSTALL == 1 ]]
   [[ $IPHONE_WAIT_SECONDS =~ ^[1-9][0-9]*$ ]]
   grep -q 'registerPatchPluginFunc("kosync"' "$ROOT/scripts/koreader-acceptance.lua"
   CHECK_FILE=$(mktemp "${TMPDIR:-/tmp}/aldus-ecosystem-check.XXXXXX")
@@ -106,6 +108,7 @@ for command in bun curl ffprobe go node sha256sum tar; do
   require_command "$command"
 done
 [[ $WITH_IPHONE == 0 || $WITH_IPHONE == 1 ]] || fail "ALDUS_ECOSYSTEM_IPHONE must be 0 or 1"
+[[ $SKIP_INSTALL == 0 || $SKIP_INSTALL == 1 ]] || fail "ALDUS_ECOSYSTEM_SKIP_INSTALL must be 0 or 1"
 [[ $IPHONE_WAIT_SECONDS =~ ^[1-9][0-9]*$ ]] || fail "ALDUS_ECOSYSTEM_IPHONE_WAIT_SECONDS must be a positive integer"
 
 WORKSPACE=$(mktemp -d "${TMPDIR:-/tmp}/aldus-ecosystem-acceptance.XXXXXX")
@@ -174,17 +177,20 @@ curl --fail --silent --show-error -u "$USERNAME:$READER_PASSWORD" \
   "$LOCAL_SERVER/opds/media/$MEDIA_ID" >"$WORKSPACE/alice.epub"
 echo "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c  $WORKSPACE/alice.epub" | sha256sum --check --status || fail "OPDS changed the frozen Alice EPUB"
 
-(
-  cd "$ROOT/app"
-  bun install --frozen-lockfile
-)
+if [[ $SKIP_INSTALL == 0 ]]; then
+  (
+    cd "$ROOT/app"
+    bun install --frozen-lockfile
+  )
+fi
+
+(cd "$ROOT/app" && exec env CI=1 EXPO_PUBLIC_WEB_API_URL="$LOCAL_SERVER" bunx expo start --web --port "$WEB_PORT") >"$ARTIFACT_DIR/web.log" 2>&1 &
+WEB_PID=$!
+wait_for "$WEB_URL" "$WEB_PID" "$ARTIFACT_DIR/web.log"
 
 run_web_phase() {
   local phase=$1
   local resume_label=${2:-Resumed from KOReader}
-  (cd "$ROOT/app" && exec env CI=1 EXPO_PUBLIC_WEB_API_URL="$LOCAL_SERVER" bunx expo start --web --port "$WEB_PORT") >"$ARTIFACT_DIR/web-$phase.log" 2>&1 &
-  WEB_PID=$!
-  wait_for "$WEB_URL" "$WEB_PID" "$ARTIFACT_DIR/web-$phase.log"
   (
     cd "$ROOT/app"
     ALDUS_ECOSYSTEM_SERVER="$LOCAL_SERVER" \
@@ -196,7 +202,6 @@ run_web_phase() {
     ALDUS_ECOSYSTEM_SCREENSHOT="$ARTIFACT_DIR/web-$phase.png" \
     bunx playwright test e2e/ecosystem.e2e.ts --project=chromium --workers=1
   )
-  stop_web
 }
 
 run_koreader() {

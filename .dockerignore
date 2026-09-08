@@ -28,3 +28,9 @@ server/app
 test-fixtures/alice/media
 __pycache__
 *.py[cod]
+
+# Browser tests are validated in CI, not inputs to the exported web application.
+app/e2e
+app/playwright.config.ts
+app/test-results
+app/playwright-report

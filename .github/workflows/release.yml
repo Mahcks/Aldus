@@ -71,7 +71,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ github.ref_name }}
-          cache-from: type=gha,scope=alignment
+          cache-from: |
+            type=gha,scope=alignment
+            type=gha,scope=alignment-arm64
           cache-to: type=gha,mode=max,scope=alignment
 
   cuda:

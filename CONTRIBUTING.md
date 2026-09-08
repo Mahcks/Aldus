@@ -98,3 +98,24 @@ make release-status VERSION=<server-version>
 
 The complete compatibility policy, preparation steps, phase checklist, recovery commands, and
 physical-device gate are in [RELEASING.md](RELEASING.md).
+
+## Continuous integration
+
+CI runs on pushes to `main`, pull requests, and manual dispatches. Feature branches
+without a pull request can be checked with a manual run. A newer push cancels
+superseded validation for the same branch or pull request; manual runs and release
+publication are not canceled by that policy.
+
+Every main commit still runs the full validation suite. Releases require successful
+CI for the exact candidate commit, even if a newer rerun is queued or canceled.
+`make release-status` reports both the latest run state and whether the candidate
+already has a successful run.
+
+Go and Bun dependency downloads and the CPU, CUDA, and ARM64 image layers are
+cached. Frozen-lockfile installs, tests, and image checks still run. Cache misses
+are expected on the first run; compare warm runs before assessing speed gains.
+
+The KOReader acceptance script starts Metro once for its web phases. Standalone
+runs install dependencies as before; CI sets `ALDUS_ECOSYSTEM_SKIP_INSTALL=1`
+after its own frozen-lockfile install. Shared Metro output is saved as `web.log`
+in the acceptance artifact directory, with separate screenshots for each phase.

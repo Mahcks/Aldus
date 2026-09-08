@@ -250,6 +250,13 @@ release_notes() {
   [[ -z $compare_url ]] || printf -- '- [Full comparison](%s)\n' "$compare_url"
 }
 
+ci_status() {
+  local sha=$1
+  shift
+  "$GH_BIN" run list --repo Mahcks/Aldus --workflow ci.yml --commit "$sha" --limit 1 "$@" \
+    --json status,conclusion --jq 'if length == 0 then "not found" elif .[0].status != "completed" then .[0].status else .[0].conclusion end'
+}
+
 release_status() {
   local requested=${1:-}
   local version=${requested#v}
@@ -259,6 +266,7 @@ release_status() {
   local origin_state=unavailable
   local pins=not-checked
   local ci=unavailable
+  local successful_ci=unavailable
   local sha
 
   base=$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
@@ -283,9 +291,8 @@ release_status() {
   fi
 
   if command -v "$GH_BIN" >/dev/null 2>&1; then
-    ci=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 \
-      --json conclusion --jq '.[0].conclusion // "not found"' 2>/dev/null || printf 'unavailable')
-    [[ -n $ci ]] || ci="not found"
+    ci=$(ci_status "$sha" 2>/dev/null) || ci=unavailable
+    successful_ci=$(ci_status "$sha" --status success 2>/dev/null) || successful_ci=unavailable
   fi
 
   echo "Release status"
@@ -297,6 +304,7 @@ release_status() {
   echo "  Requested server version: ${version:-not supplied}"
   echo "  Server pins agree: $pins"
   echo "  Latest CI: $ci"
+  echo "  Successful CI for candidate: $successful_ci"
   echo
   echo "Changed paths:"
   git -C "$ROOT" diff --name-only "$base"..HEAD | sed 's/^/  - /'
@@ -317,7 +325,7 @@ release_status() {
     echo "Next (read-only): git diff --check"
   elif [[ $branch != main || $origin_state != yes ]]; then
     echo "Next (read-only): git status --short --branch"
-  elif [[ $ci != success ]]; then
+  elif [[ $successful_ci != success ]]; then
     echo "Next (read-only): gh run list --workflow CI --commit $sha"
   elif [[ $RELEASE_CONTAINER == 1 && $RELEASE_IOS == 1 ]]; then
     echo "Next (mutating release): make release-all VERSION=$version"
@@ -508,7 +516,7 @@ release() {
   [[ $sha == "$(git -C "$ROOT" rev-parse origin/main)" ]] || fail "Local main must exactly match origin/main"
   version_consistent "${tag#v}" || fail "Public server-version pins must all match ${tag#v}"
 
-  ci=$("$GH_BIN" run list --repo Mahcks/Aldus --workflow CI --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+  ci=$(ci_status "$sha" --status success)
   [[ $ci == success ]] || fail "CI has not succeeded for $sha"
 
   if git -C "$ROOT" rev-parse --verify "refs/tags/$tag^{commit}" >/dev/null 2>&1; then
@@ -567,6 +575,38 @@ case ${1:-} in
     release_notes "$2" "${3:-}"
     ;;
   self-test)
+    (
+      require_command jq
+      mock_ci() {
+        [[ ${*:1:10} == 'run list --repo Mahcks/Aldus --workflow ci.yml --commit candidate --limit 1' ]] || return 1
+        shift 10
+        local filter=""
+        if [[ $1 == --status ]]; then
+          filter=$2
+          shift 2
+        fi
+        [[ ${*:1:3} == '--json status,conclusion --jq' ]] || return 1
+        jq --arg filter "$filter" \
+          '[.[] | select(.headSha == "candidate") | select($filter == "" or .conclusion == $filter)] | .[:1]' \
+          <<<"$runs" | jq -r "$4"
+      }
+      GH_BIN=mock_ci
+      for state in queued in_progress; do
+        runs="[{\"headSha\":\"candidate\",\"status\":\"$state\",\"conclusion\":\"\"}]"
+        [[ $(ci_status candidate) == "$state" ]]
+        [[ $(ci_status candidate --status success) == 'not found' ]]
+      done
+      runs='[{"headSha":"candidate","status":"completed","conclusion":"cancelled"},{"headSha":"candidate","status":"completed","conclusion":"success"}]'
+      [[ $(ci_status candidate) == cancelled ]]
+      [[ $(ci_status candidate --status success) == success ]]
+      runs='[{"headSha":"other","status":"completed","conclusion":"success"}]'
+      [[ $(ci_status candidate --status success) == 'not found' ]]
+      runs='[]'
+      [[ $(ci_status candidate) == 'not found' ]]
+      if GH_BIN=false ci_status candidate --status success; then
+        fail "A failed CI lookup must not allow a release"
+      fi
+    )
     [[ $(tag_for 1.2.3-beta.4) == v1.2.3-beta.4 ]]
     [[ $(tag_for v1.2.3) == v1.2.3 ]]
     if (tag_for nope >/dev/null 2>&1); then
