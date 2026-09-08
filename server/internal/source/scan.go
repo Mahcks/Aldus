@@ -429,7 +429,23 @@ func (s *Store) upsertEntry(ctx context.Context, job Scan, relative, kind string
 	hints, _ := json.Marshal(map[string]any{"basename": strings.TrimSuffix(filepath.Base(relative), filepath.Ext(relative)), "parent": filepath.ToSlash(filepath.Dir(relative)), "components": strings.Split(filepath.ToSlash(relative), "/")})
 	device, inode := fileIdentity(info)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err = s.db.ExecContext(ctx, `INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,detected_kind,metadata_json,path_hints_json,last_seen_scan_id,error_summary,device,inode) VALUES(?,?,?,?,?,?,'registered',?,?,?,?,?,?, '',?,?) ON CONFLICT(source_id,relative_path) DO UPDATE SET size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,sha256=excluded.sha256,state='registered',updated_at=excluded.updated_at,detected_kind=excluded.detected_kind,metadata_json=excluded.metadata_json,path_hints_json=excluded.path_hints_json,last_seen_scan_id=excluded.last_seen_scan_id,error_summary='',device=excluded.device,inode=excluded.inode`, id, job.SourceID, relative, info.Size(), info.ModTime().UTC().Format(time.RFC3339Nano), hash, now, now, kind, string(meta), string(hints), job.ID, device, inode)
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO source_entries (
+		    id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,
+		    detected_kind,metadata_json,path_hints_json,last_seen_scan_id,error_summary,device,inode,
+		    acquisition_scan_id
+		) VALUES (?,?,?,?,?,?,'registered',?,?,?,?,?,?,'',?,?,(
+		    SELECT id FROM source_scans WHERE id=? AND source_id=? AND acquisition_request_id IS NOT NULL
+		))
+		ON CONFLICT(source_id,relative_path) DO UPDATE SET
+		    size_bytes=excluded.size_bytes, modified_at=excluded.modified_at, sha256=excluded.sha256,
+		    state='registered', updated_at=excluded.updated_at, detected_kind=excluded.detected_kind,
+		    metadata_json=excluded.metadata_json, path_hints_json=excluded.path_hints_json,
+		    last_seen_scan_id=excluded.last_seen_scan_id, error_summary='',
+		    device=excluded.device, inode=excluded.inode,
+		    acquisition_scan_id=COALESCE(excluded.acquisition_scan_id,source_entries.acquisition_scan_id)
+	`, id, job.SourceID, relative, info.Size(), info.ModTime().UTC().Format(time.RFC3339Nano), hash,
+		now, now, kind, string(meta), string(hints), job.ID, device, inode, job.ID, job.SourceID)
 	return classification, err
 }
 func (s *Store) upsertProblem(ctx context.Context, job Scan, relative, kind string, info fs.FileInfo, cause error) error {

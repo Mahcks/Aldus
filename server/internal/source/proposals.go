@@ -46,22 +46,37 @@ type ProposalItem struct {
 }
 
 type proposalEntry struct {
-	ID             string
-	Path           string
-	Kind           string
-	Hash           string
-	Title          string
-	Author         string
-	Metadata       map[string]any
-	AdvisoryTitle  string
-	AdvisoryAuthor string
-	AdvisoryISBN   string
-	AdvisoryCover  string
-	AdvisoryYear   int
+	AcquisitionScanID string
+	ID                string
+	Path              string
+	Kind              string
+	Hash              string
+	Title             string
+	Author            string
+	Metadata          map[string]any
+	AdvisoryTitle     string
+	AdvisoryAuthor    string
+	AdvisoryISBN      string
+	AdvisoryCover     string
+	AdvisoryYear      int
 }
 
 func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT e.id,e.relative_path,e.detected_kind,e.sha256,e.metadata_json,COALESCE(ar.advisory_title,''),COALESCE(ar.advisory_author,''),COALESCE(ar.advisory_isbn,''),COALESCE(ar.advisory_year,0),COALESCE(ar.advisory_cover_url,'') FROM source_entries e JOIN library_sources ls ON ls.id=e.source_id LEFT JOIN source_scans sc ON sc.id=e.last_seen_scan_id LEFT JOIN acquisition_requests ar ON ar.id=sc.acquisition_request_id WHERE ls.library_id=? AND ls.deleted_at IS NULL AND e.state='registered' ORDER BY e.id`, libraryID)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.id,e.relative_path,e.detected_kind,e.sha256,e.metadata_json,
+		       COALESCE(ar.advisory_title,''),COALESCE(ar.advisory_author,''),
+		       COALESCE(ar.advisory_isbn,''),COALESCE(ar.advisory_year,0),
+		       COALESCE(ar.advisory_cover_url,''),
+		       COALESCE(e.acquisition_scan_id,
+		           CASE WHEN sc.acquisition_request_id IS NOT NULL THEN sc.id ELSE '' END)
+		FROM source_entries e
+		JOIN library_sources ls ON ls.id=e.source_id
+		LEFT JOIN source_scans sc
+		    ON sc.id=COALESCE(e.acquisition_scan_id,e.last_seen_scan_id) AND sc.source_id=e.source_id
+		LEFT JOIN acquisition_requests ar ON ar.id=sc.acquisition_request_id
+		WHERE ls.library_id=? AND ls.deleted_at IS NULL AND e.state='registered'
+		ORDER BY e.id
+	`, libraryID)
 	if err != nil {
 		return err
 	}
@@ -70,7 +85,7 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 	for rows.Next() {
 		var e proposalEntry
 		var raw string
-		if err := rows.Scan(&e.ID, &e.Path, &e.Kind, &e.Hash, &raw, &e.AdvisoryTitle, &e.AdvisoryAuthor, &e.AdvisoryISBN, &e.AdvisoryYear, &e.AdvisoryCover); err != nil {
+		if err := rows.Scan(&e.ID, &e.Path, &e.Kind, &e.Hash, &raw, &e.AdvisoryTitle, &e.AdvisoryAuthor, &e.AdvisoryISBN, &e.AdvisoryYear, &e.AdvisoryCover, &e.AcquisitionScanID); err != nil {
 			return err
 		}
 		_ = json.Unmarshal([]byte(raw), &e.Metadata)
@@ -103,6 +118,10 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 		if title != "" && author != "" {
 			key = "identity:" + title + "\x00" + author
 		}
+		if e.AcquisitionScanID != "" {
+			key = "acquisition:" + e.AcquisitionScanID + "\x00" + key
+		}
+
 		groups[key] = append(groups[key], e)
 	}
 	keys := make([]string, 0, len(groups))
@@ -155,6 +174,18 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 		var oldRevision int
 		var oldContent, decision string
 		err := tx.QueryRowContext(ctx, `SELECT id,revision,content_key,decision FROM import_groups WHERE library_id=? AND logical_key=?`, libraryID, logical).Scan(&id, &oldRevision, &oldContent, &decision)
+		if errors.Is(err, sql.ErrNoRows) && first.AcquisitionScanID != "" {
+			// Preserve an unchanged accepted/ignored proposal when upgrading its
+			// grouping key. Its ID may already be referenced by an import outcome.
+			err = tx.QueryRowContext(ctx, `
+				SELECT id,revision,content_key,decision FROM import_groups
+				WHERE library_id=? AND content_key=? AND decision!=''
+				ORDER BY updated_at DESC,id LIMIT 1
+			`, libraryID, contentKey).Scan(&id, &oldRevision, &oldContent, &decision)
+			if err == nil {
+				_, err = tx.ExecContext(ctx, `UPDATE import_groups SET logical_key=? WHERE id=?`, logical, id)
+			}
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			id, err = randomID()
 			if err != nil {
