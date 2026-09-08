@@ -25,6 +25,7 @@ func TestSearchAndAdd(t *testing.T) {
 			http.Error(w, "invalid origin", http.StatusForbidden)
 			return
 		}
+
 		switch r.URL.Path {
 		case "/indexer":
 			if r.URL.Query().Get("q") != "Alice Carroll" || r.URL.Query().Get("apikey") != "secret" || r.URL.Query().Get("cat") != "3030,7000" {
@@ -53,20 +54,30 @@ func TestSearchAndAdd(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client, err := New(Options{IndexerURL: server.URL + "/indexer", IndexerAPIKey: "secret", QBitURL: server.URL, Category: "aldus"})
+
+	client, err := New(Options{
+		IndexerURL:    server.URL + "/indexer",
+		IndexerAPIKey: "secret",
+		QBitURL:       server.URL,
+		Category:      "aldus",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	results, err := client.Search(context.Background(), " Alice Carroll ")
 	if err != nil || len(results) != 1 || results[0].Title != "Alice EPUB" || results[0].Size != 123 {
 		t.Fatalf("results=%+v err=%v", results, err)
 	}
-	if _, err := client.addTracked(context.Background(), results[0].DownloadURL, "request_123"); err != nil {
+
+	if _, err := client.submitTracked(context.Background(), results[0].DownloadURL, "request_123"); err != nil {
 		t.Fatal(err)
 	}
+
 	if added != "https://download.test/alice:aldus:request_123" {
 		t.Fatalf("added=%q", added)
 	}
+
 	if requestError != "" {
 		t.Fatal(requestError)
 	}
@@ -112,9 +123,11 @@ func TestAddTrackedUploadsIndexerTorrentInsteadOfLeavingQBitPending(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.addTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
+
+	if _, err := client.submitTracked(context.Background(), server.URL+"/download", "request_123"); err != nil {
 		t.Fatal(err)
 	}
+
 	if uploaded != torrent {
 		t.Fatalf("uploaded %q", uploaded)
 	}
@@ -147,13 +160,17 @@ func TestAddTrackedPassesIndexerMagnetRedirectToQBit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash, err := client.addTracked(context.Background(), server.URL+"/download", "request_123")
+
+	receipt, err := client.submitTracked(context.Background(), server.URL+"/download", "request_123")
+	hash := receipt.Hash
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if added != magnet {
 		t.Fatalf("added %q", added)
 	}
+
 	if hash != "2f969ff125dc4f6ec0b7ffd82c11a4bea561f419" {
 		t.Fatalf("hash %q", hash)
 	}
@@ -714,8 +731,9 @@ func TestSearchReturnsNewznabProtocolError(t *testing.T) {
 		_, _ = w.Write([]byte(`<error code="100" description="Incorrect user credentials"/>`))
 	}))
 	defer server.Close()
+
 	client, _ := New(Options{IndexerURL: server.URL})
-	if _, err := client.Search(context.Background(), "alice"); err == nil || !strings.Contains(err.Error(), "protocol error 100") {
+	if _, err := client.Search(context.Background(), "alice"); err == nil || !errors.Is(err, ErrSearchFailed) {
 		t.Fatalf("err=%v", err)
 	}
 }
@@ -777,14 +795,17 @@ func TestQBitTorrentRejectsProtocolLevelFailures(t *testing.T) {
 					if test.cookie {
 						http.SetCookie(w, &http.Cookie{Name: "SID", Value: "session"})
 					}
+
 					_, _ = w.Write([]byte(test.loginBody))
 					return
 				}
+
 				_, _ = w.Write([]byte(test.addBody))
 			}))
 			defer server.Close()
+
 			client, _ := New(Options{QBitURL: server.URL})
-			if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err == nil {
+			if _, err := client.submitTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err == nil {
 				t.Fatal("accepted qBittorrent failure response")
 			}
 		})
@@ -804,8 +825,9 @@ func TestQBitTorrentAcceptsAcceptedResponse(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+
 	client, _ := New(Options{QBitURL: server.URL})
-	if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err != nil {
+	if _, err := client.submitTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -897,8 +919,9 @@ func TestQBitTorrentKeepsPortScopedSessionCookie(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+
 	client, _ := New(Options{QBitURL: server.URL})
-	if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err != nil {
+	if _, err := client.submitTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -907,16 +930,19 @@ func TestRejectsUnsafeConfigurationAndDownload(t *testing.T) {
 	if _, err := New(Options{IndexerURL: "file:///etc/passwd"}); err == nil {
 		t.Fatal("accepted unsafe indexer URL")
 	}
+
 	if _, err := New(Options{IndexerURL: "https://user:password@indexer.test"}); err == nil {
 		t.Fatal("accepted credentials embedded in connector URL")
 	}
+
 	client, _ := New(Options{QBitURL: "https://qbit.test"})
 	for _, unsafe := range []string{"file:///tmp/book", "https://user:pass@example.test/book", "magnet:?dn=missing-hash"} {
-		if _, err := client.addTracked(context.Background(), unsafe, ""); err == nil || !strings.Contains(err.Error(), "invalid") {
+		if _, err := client.submitTracked(context.Background(), unsafe, ""); err == nil || !strings.Contains(err.Error(), "invalid") {
 			t.Fatalf("url=%q err=%v", unsafe, err)
 		}
 	}
-	if _, err := client.addTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", "bad,tag"); err == nil {
+
+	if _, err := client.submitTracked(context.Background(), "magnet:?xt=urn:btih:abcdef", "bad,tag"); err == nil {
 		t.Fatal("accepted unsafe tracking tag")
 	}
 }
@@ -943,10 +969,30 @@ func TestConflictingSubmissionRequiresExactExistingDownload(t *testing.T) {
 		name, url, tag, downloads string
 		unavailable, success      bool
 	}{
-		{name: "same hash", url: "magnet:?xt=urn:btih:" + hash, downloads: `[{"hash":"` + hash + `"}]`, success: true},
-		{name: "same request tag", url: "https://download.test/book", tag: "request", downloads: `[{"hash":"` + hash + `","tags":"other, request"}]`, success: true},
-		{name: "unrelated torrent", url: "magnet:?xt=urn:btih:" + hash, tag: "request", downloads: `[{"hash":"other","tags":"other-request"}]`},
-		{name: "untagged torrent", url: "https://download.test/book", downloads: `[{"hash":"other","tags":""}]`},
+		{
+			name:      "same hash",
+			url:       "magnet:?xt=urn:btih:" + hash,
+			downloads: `[{"hash":"` + hash + `"}]`,
+			success:   true,
+		},
+		{
+			name:      "same request tag",
+			url:       "https://download.test/book",
+			tag:       "request",
+			downloads: `[{"hash":"` + hash + `","tags":"other, request"}]`,
+			success:   true,
+		},
+		{
+			name:      "unrelated torrent",
+			url:       "magnet:?xt=urn:btih:" + hash,
+			tag:       "request",
+			downloads: `[{"hash":"other","tags":"other-request"}]`,
+		},
+		{
+			name:      "untagged torrent",
+			url:       "https://download.test/book",
+			downloads: `[{"hash":"other","tags":""}]`,
+		},
 		{name: "no torrent", url: "https://download.test/book", downloads: `[]`},
 		{name: "lookup unavailable", url: "https://download.test/book", unavailable: true},
 	} {
@@ -974,15 +1020,17 @@ func TestConflictingSubmissionRequiresExactExistingDownload(t *testing.T) {
 				}
 			}))
 			defer server.Close()
+
 			client, _ := New(Options{QBitURL: server.URL, Category: "aldus"})
-			got, err := client.addTracked(context.Background(), tc.url, tc.tag)
+			got, err := client.submitTracked(context.Background(), tc.url, tc.tag)
 			if tc.success {
-				if err != nil || got != hash {
+				if err != nil || got.Hash != hash {
 					t.Fatalf("hash=%q error=%v", got, err)
 				}
 			} else if err == nil {
 				t.Fatal("accepted an unverified conflict")
 			}
+
 			if errors.Is(err, ErrSubmissionUnknown) != tc.unavailable {
 				t.Fatalf("wrong recovery classification: %v", err)
 			}

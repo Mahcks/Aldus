@@ -27,6 +27,7 @@ func registerAcquisitionRoutes(router chi.Router, store *acquisition.Store) {
 	router.Post("/libraries/{libraryID}/acquisition-discoveries/{discoveryID}/select-pair", selectAcquisitionPair(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests", createAcquisitionRequest(store))
 	router.Get("/libraries/{libraryID}/acquisition-requests/{requestID}/search", searchAcquisitionRequest(store))
+	router.Get("/libraries/{libraryID}/acquisition-requests/{requestID}/search-report", searchAcquisitionReport(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/select", selectAcquisitionResult(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/retry", retryAcquisitionRequest(store))
 	router.Post("/libraries/{libraryID}/acquisition-requests/{requestID}/cancel", cancelAcquisitionRequest(store))
@@ -76,12 +77,14 @@ func createAcquisitionDiscovery(store *acquisition.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
+
 		value, err := store.Discover(r.Context(), actor(r), chi.URLParam(r, "libraryID"), body.SourceID, body.Query)
 		results := make([]contracts.AcquisitionResult, len(value.Results))
 		for i, result := range value.Results {
 			results[i] = acquisitionResultDTO(result)
 		}
-		writeAcquisitionResult(w, contracts.AcquisitionDiscovery{ID: value.ID, Results: results}, err)
+
+		writeAcquisitionResult(w, contracts.AcquisitionDiscovery{ID: value.ID, Results: results, Report: acquisitionSearchReportDTO(value.Report)}, err)
 	}
 }
 
@@ -131,7 +134,16 @@ func markAcquisitionTrackerSeen(store *acquisition.Store) http.HandlerFunc {
 func testAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		value, err := store.TestConnections(r.Context(), actor(r))
-		writeAcquisitionResult(w, contracts.AcquisitionConnectionStatus{ProwlarrOK: value.ProwlarrOK, IndexerCount: value.IndexerCount, ProwlarrError: value.ProwlarrError, QBitTorrentOK: value.QBitTorrentOK, QBitTorrentError: value.QBitTorrentError}, err)
+		writeAcquisitionResult(w, contracts.AcquisitionConnectionStatus{
+			Search:           acquisitionSearchReportDTO(&value.Search),
+			FileVisibility:   value.FileVisibility,
+			FileError:        value.FileError,
+			ProwlarrOK:       value.ProwlarrOK,
+			IndexerCount:     value.IndexerCount,
+			ProwlarrError:    value.ProwlarrError,
+			QBitTorrentOK:    value.QBitTorrentOK,
+			QBitTorrentError: value.QBitTorrentError,
+		}, err)
 	}
 }
 
@@ -228,7 +240,31 @@ func selectAcquisitionResult(store *acquisition.Store) http.HandlerFunc {
 }
 
 func acquisitionRequestDTO(value acquisition.Request) contracts.AcquisitionRequest {
-	return contracts.AcquisitionRequest{ID: value.ID, LibraryID: value.LibraryID, RequestedBy: value.RequestedBy, SourceID: value.SourceID, Query: value.Query, Status: value.Status, DownloadState: value.DownloadState, DownloadError: value.DownloadError, FulfillmentState: value.FulfillmentState, ScanID: value.ScanID, ProposalID: value.ProposalID, WorkID: value.WorkID, PairID: value.PairID, SelectedTitle: value.SelectedTitle, SelectedSource: value.SelectedSource, SelectedSize: value.SelectedSize, SelectedPublishedAt: value.SelectedPublished, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, CanRetry: value.FulfillmentState == "failed", CanCancel: value.FulfillmentState == "submitting" || value.FulfillmentState == "downloading", CanDismiss: value.FulfillmentState == "failed" || value.FulfillmentState == "available"}
+	return contracts.AcquisitionRequest{
+		TorrentOwnership:    value.TorrentOwnership,
+		ID:                  value.ID,
+		LibraryID:           value.LibraryID,
+		RequestedBy:         value.RequestedBy,
+		SourceID:            value.SourceID,
+		Query:               value.Query,
+		Status:              value.Status,
+		DownloadState:       value.DownloadState,
+		DownloadError:       value.DownloadError,
+		FulfillmentState:    value.FulfillmentState,
+		ScanID:              value.ScanID,
+		ProposalID:          value.ProposalID,
+		WorkID:              value.WorkID,
+		PairID:              value.PairID,
+		SelectedTitle:       value.SelectedTitle,
+		SelectedSource:      value.SelectedSource,
+		SelectedSize:        value.SelectedSize,
+		SelectedPublishedAt: value.SelectedPublished,
+		CreatedAt:           value.CreatedAt,
+		UpdatedAt:           value.UpdatedAt,
+		CanRetry:            value.FulfillmentState == "failed",
+		CanCancel:           value.FulfillmentState == "submitting" || value.FulfillmentState == "downloading",
+		CanDismiss:          value.FulfillmentState == "failed" || value.FulfillmentState == "available",
+	}
 }
 
 func acquisitionRequestDTOs(values []acquisition.Request) []contracts.AcquisitionRequest {
@@ -240,7 +276,34 @@ func acquisitionRequestDTOs(values []acquisition.Request) []contracts.Acquisitio
 }
 
 func acquisitionResultDTO(value acquisition.SearchResult) contracts.AcquisitionResult {
-	return contracts.AcquisitionResult{ID: value.ID, Title: value.Title, Source: value.Source, CanonicalTitle: value.CanonicalTitle, Author: value.Author, Language: value.Language, Format: value.Format, Kind: value.Kind, Edition: value.Edition, Narrator: value.Narrator, GroupKey: value.GroupKey, Match: value.Match, Size: value.Size, Published: value.Published, Relevance: value.Relevance, Year: value.Year, ISBN: value.ISBN, CoverURL: value.CoverURL, Abridged: value.Abridged, MatchConfidence: value.MatchConfidence, MatchReasons: value.MatchReasons, LikelyPairIDs: value.LikelyPairIDs}
+	return contracts.AcquisitionResult{
+		Protocol:        value.Metadata.Protocol,
+		Categories:      value.Metadata.Categories,
+		Seeders:         value.Metadata.Seeders,
+		Peers:           value.Metadata.Peers,
+		ID:              value.ID,
+		Title:           value.Title,
+		Source:          value.Source,
+		CanonicalTitle:  value.CanonicalTitle,
+		Author:          value.Author,
+		Language:        value.Language,
+		Format:          value.Format,
+		Kind:            value.Kind,
+		Edition:         value.Edition,
+		Narrator:        value.Narrator,
+		GroupKey:        value.GroupKey,
+		Match:           value.Match,
+		Size:            value.Size,
+		Published:       value.Published,
+		Relevance:       value.Relevance,
+		Year:            value.Year,
+		ISBN:            value.ISBN,
+		CoverURL:        value.CoverURL,
+		Abridged:        value.Abridged,
+		MatchConfidence: value.MatchConfidence,
+		MatchReasons:    value.MatchReasons,
+		LikelyPairIDs:   value.LikelyPairIDs,
+	}
 }
 
 func writeAcquisitionResult(w http.ResponseWriter, value any, err error) {
@@ -275,5 +338,47 @@ func requestLibraries(store *acquisition.Store) http.HandlerFunc {
 			result[i] = contracts.RequestLibrary{LibraryID: value.LibraryID, LibraryName: value.LibraryName, EbookReason: value.EbookReason, AudiobookReason: value.AudiobookReason}
 		}
 		writeAcquisitionResult(w, result, err)
+	}
+}
+
+func acquisitionSearchReportDTO(value *acquisition.SearchReport) *contracts.AcquisitionSearchReport {
+	if value == nil {
+		return nil
+	}
+
+	report := &contracts.AcquisitionSearchReport{
+		Reachable: value.Reachable,
+		Indexers:  make([]contracts.AcquisitionIndexerOutcome, len(value.Indexers)),
+	}
+	for i, item := range value.Indexers {
+		report.Indexers[i] = contracts.AcquisitionIndexerOutcome{
+			Capabilities: item.Capabilities,
+			Name:         item.Name,
+			Error:        item.Error,
+			Results:      item.Results,
+			Excluded:     item.Excluded,
+		}
+	}
+
+	return report
+}
+
+func searchAcquisitionReport(store *acquisition.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		values, report, err := store.SearchWithReport(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "requestID"))
+		if err != nil && !errors.Is(err, acquisition.ErrSearchFailed) {
+			writeAcquisitionResult(w, nil, err)
+			return
+		}
+
+		results := make([]contracts.AcquisitionResult, len(values))
+		for i, value := range values {
+			results[i] = acquisitionResultDTO(value)
+		}
+
+		writeAcquisitionResult(w, contracts.AcquisitionSearchResponse{
+			Results: results,
+			Report:  *acquisitionSearchReportDTO(&report),
+		}, nil)
 	}
 }

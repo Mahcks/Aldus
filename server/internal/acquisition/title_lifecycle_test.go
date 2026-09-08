@@ -203,9 +203,27 @@ func TestReadyRequiresImportedRequestedMedia(t *testing.T) {
 func TestCancellationFailurePreservesRequest(t *testing.T) {
 	ctx := context.Background()
 	db := titleLifecycleFixture(t)
-	if _, err := db.Exec(`UPDATE acquisition_requests SET fulfillment_state='downloading',torrent_hash='shared'; UPDATE title_request_formats SET state='downloading'; INSERT INTO acquisition_requests(id,library_id,requested_by,query,status,torrent_hash,fulfillment_state,created_at,updated_at) VALUES('other','library','reader','Other','queued','shared','downloading','2026-01-01','2026-01-01')`); err != nil {
+	if _, err := db.Exec(`
+		UPDATE acquisition_requests
+		SET fulfillment_state='downloading',
+			torrent_hash='shared',
+			torrent_ownership='created';
+
+		UPDATE title_request_formats
+		SET state='downloading';
+
+		INSERT INTO acquisition_requests (
+			id, library_id, requested_by, query, status, torrent_hash,
+			fulfillment_state, created_at, updated_at
+		)
+		VALUES (
+			'other', 'library', 'reader', 'Other', 'queued', 'shared',
+			'downloading', '2026-01-01', '2026-01-01'
+		)
+	`); err != nil {
 		t.Fatal(err)
 	}
+
 	var failDelete atomic.Bool
 	failDelete.Store(true)
 	var calls atomic.Int32
@@ -226,6 +244,7 @@ func TestCancellationFailurePreservesRequest(t *testing.T) {
 		}
 	}))
 	defer provider.Close()
+
 	client, _ := New(Options{QBitURL: provider.URL})
 	legacy := NewStore(db, client)
 	titles := NewTitleRequestStore(db)
@@ -234,20 +253,25 @@ func TestCancellationFailurePreservesRequest(t *testing.T) {
 	if err := titles.Cancel(ctx, actor, "library", "title", "ebook"); err == nil || calls.Load() != 0 {
 		t.Fatalf("shared cancellation error=%v provider calls=%d", err, calls.Load())
 	}
+
 	if _, err := db.Exec(`DELETE FROM acquisition_requests WHERE id='other'`); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := titles.Cancel(ctx, actor, "library", "title", "ebook"); err == nil {
 		t.Fatal("provider failure was ignored")
 	}
+
 	var state string
 	if err := db.QueryRow(`SELECT state FROM title_request_formats`).Scan(&state); err != nil || state != "downloading" {
 		t.Fatalf("failed cancellation state=%q err=%v", state, err)
 	}
+
 	failDelete.Store(false)
 	if err := titles.Cancel(ctx, actor, "library", "title", "ebook"); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := titles.Cancel(ctx, actor, "library", "title", "ebook"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("repeat cancel: %v", err)
 	}

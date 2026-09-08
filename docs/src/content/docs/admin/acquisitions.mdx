@@ -29,7 +29,9 @@ Open **Acquisitions → Connections**. Every field here maps to a real setting s
 | qBittorrent category | Downloads are tagged with this category in qBittorrent; defaults to `aldus`. |
 | qBittorrent download root | The path **qBittorrent itself** reports for completed files — not Aldus's own `/downloads` mount, unless qBittorrent happens to report that same path. Aldus uses this to translate qBittorrent's view of a finished download into a path it can read. |
 
-Select **Save connections** to persist the settings (it also runs a connection test automatically), or **Test connections** at any time to re-check without saving. A successful test reports how many enabled torrent indexers Prowlarr exposed and whether qBittorrent authenticated.
+Select **Save connections** to persist the settings (it also runs a connection test automatically), or **Test connections** at any time to re-check without saving. Open **Show search details** to see which indexers responded, which releases were excluded, and whether each feed advertises standard book or audiobook categories. Category support alone does not prove a release's file format. Aldus accepts a supported format in the title or explicit format metadata; an unrecognized format stays excluded. Search health, qBittorrent connectivity, and completed-file visibility are separate checks.
+
+Changing the qBittorrent connection applies to new downloads. Existing downloads retain their original client, category, and download-root mapping for polling, retry, restart recovery, and cancellation. Keep the old client reachable until those jobs finish. Updating credentials for the same endpoint also updates its existing jobs; a different endpoint does not inherit the previous endpoint's password. If an old client is unavailable, downloads on another client can still progress.
 
 <Aside type="caution" title="Keep credentials out of URLs">
   Aldus rejects URL-embedded usernames and passwords. Query-string credentials are not a supported configuration and may not be recognized as secrets in logs or backup redaction. Enter credentials only in their dedicated fields.
@@ -96,5 +98,7 @@ import it. Leave that option unchecked when importing other books from the same
 download. The chosen book must contain the requested ebook or audiobook format.
 Dismissing every proposal marks the request as failed so it can be retried.
 
-Canceling a request also stops its linked download. Retrying a failed download
-updates the original family request; its ready notification opens the imported book.
+Canceling removes the linked torrent only when Aldus recorded that it created it.
+A reused torrent, or one whose ownership could not be confirmed, remains in
+qBittorrent. Retrying a failed download updates the original family request; its
+ready notification opens the imported book.

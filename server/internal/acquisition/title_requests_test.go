@@ -55,7 +55,9 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer db.Close()
+
 	applyTestMigration(t, db, "acquisition_policies", "../database/migrations/027_acquisition_policy.sql")
 	applyTestMigration(t, db, "title_requests", "../database/migrations/028_title_requests.sql")
 	root := t.TempDir()
@@ -85,7 +87,14 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	inbox := notification.New(db)
 	store.SetNotificationStore(inbox)
 	reader := auth.User{ID: "reader"}
-	request, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", ExternalSource: "open_library", ExternalID: "OL1W", Title: "Alice", Author: "Lewis Carroll", Formats: []string{"ebook", "audiobook"}})
+	request, err := store.Create(ctx, reader, CreateTitleRequest{
+		LibraryID:      "library",
+		ExternalSource: "open_library",
+		ExternalID:     "OL1W",
+		Title:          "Alice",
+		Author:         "Lewis Carroll",
+		Formats:        []string{"ebook", "audiobook"},
+	})
 	if err != nil || len(request.Formats) != 2 || request.Formats[0].State != "pending_approval" || request.Formats[1].State != "pending_approval" {
 		t.Fatalf("created request=%#v err=%v", request, err)
 	}
@@ -96,63 +105,86 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 		retries.Add(1)
 		go func() {
 			defer retries.Done()
-			repeated, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", ExternalSource: "open_library", ExternalID: "OL1W", Title: "Alice", Author: "Lewis Carroll", Formats: []string{"ebook"}})
+
+			repeated, err := store.Create(ctx, reader, CreateTitleRequest{
+				LibraryID:      "library",
+				ExternalSource: "open_library",
+				ExternalID:     "OL1W",
+				Title:          "Alice",
+				Author:         "Lewis Carroll",
+				Formats:        []string{"ebook"},
+			})
 			if err != nil || repeated.ID != request.ID {
 				t.Errorf("duplicate=%#v error=%v", repeated, err)
 			}
 		}()
 	}
+
 	retries.Wait()
 	var ebookSource, audioSource string
 	if err := db.QueryRow(`SELECT (SELECT source_id FROM title_request_formats WHERE title_request_id=? AND format='ebook'),(SELECT source_id FROM title_request_formats WHERE title_request_id=? AND format='audiobook')`, request.ID, request.ID).Scan(&ebookSource, &audioSource); err != nil || ebookSource != "ebooks" || audioSource != "audio" {
 		t.Fatalf("resolved sources=%q %q, %v", ebookSource, audioSource, err)
 	}
+
 	if _, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Second", Formats: []string{"ebook"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("active request limit error=%v", err)
 	}
+
 	if err := store.Approve(ctx, reader, "library", request.ID, "ebook"); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("reader approval error=%v", err)
 	}
+
 	owner := auth.User{ID: "owner"}
 	if err := store.Approve(ctx, owner, "library", request.ID, "ebook"); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Deny(ctx, owner, "library", request.ID, "audiobook"); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Cancel(ctx, reader, "library", request.ID, "ebook"); err != nil {
 		t.Fatal(err)
 	}
+
 	request, err = store.Get(ctx, reader, "library", request.ID)
 	if err != nil || request.Formats[0].State != "denied" || request.Formats[1].State != "canceled" {
 		t.Fatalf("transitioned request=%#v err=%v", request, err)
 	}
+
 	if _, err := store.Get(ctx, auth.User{ID: "other"}, "library", request.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unrelated user get error=%v", err)
 	}
+
 	listed, err := store.List(ctx, owner, "library")
 	if err != nil || len(listed) != 1 {
 		t.Fatalf("owner list=%#v err=%v", listed, err)
 	}
+
 	var events int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM title_request_events WHERE title_request_id=?`, request.ID).Scan(&events); err != nil || events != 5 {
 		t.Fatalf("events=%d, %v", events, err)
 	}
+
 	history, err := store.Events(ctx, reader, "library", request.ID)
 	if err != nil || len(history) != 5 || history[0].State != "canceled" || history[0].EventType != "canceled" {
 		t.Fatalf("reader history=%#v, %v", history, err)
 	}
+
 	if _, err := store.Events(ctx, auth.User{ID: "other"}, "library", request.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unrelated user history error=%v", err)
 	}
+
 	readerNotifications, err := inbox.List(ctx, "reader", 20, 0)
 	if err != nil || len(readerNotifications) != 5 {
 		t.Fatalf("reader notifications=%#v err=%v", readerNotifications, err)
 	}
+
 	ownerNotifications, err := inbox.List(ctx, "owner", 20, 0)
 	if err != nil || len(ownerNotifications) != 2 || ownerNotifications[0].Kind != "acquisition.approval_needed" {
 		t.Fatalf("owner notifications=%#v err=%v", ownerNotifications, err)
 	}
+
 	restrictedNotifications, err := inbox.List(ctx, "restricted-admin", 20, 0)
 	if err != nil || len(restrictedNotifications) != 0 {
 		t.Fatalf("restricted admin notifications=%#v err=%v", restrictedNotifications, err)
@@ -161,24 +193,36 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	if _, err := db.Exec(`UPDATE library_members SET can_bypass_acquisition_approval=1 WHERE library_id='library' AND user_id='reader'`); err != nil {
 		t.Fatal(err)
 	}
+
 	automatic, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Earthsea", Formats: []string{"ebook"}})
 	if err != nil || len(automatic.Formats) != 1 || automatic.Formats[0].State != "wanted" {
 		t.Fatalf("bypass request=%#v err=%v", automatic, err)
 	}
+
 	paired, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "  EARTHSEA ", Formats: []string{"audiobook"}})
 	if err != nil || paired.ID != automatic.ID || len(paired.Formats) != 2 {
 		t.Fatalf("add missing format at quota=%#v, %v", paired, err)
 	}
-	if _, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", ExternalSource: "open_library", ExternalID: "different", Title: "Earthsea", Formats: []string{"ebook"}}); !errors.Is(err, ErrQuota) {
+
+	if _, err := store.Create(ctx, reader, CreateTitleRequest{
+		LibraryID:      "library",
+		ExternalSource: "open_library",
+		ExternalID:     "different",
+		Title:          "Earthsea",
+		Formats:        []string{"ebook"},
+	}); !errors.Is(err, ErrQuota) {
 		t.Fatalf("distinct external identity must not merge: %v", err)
 	}
+
 	otherReader, err := store.Create(ctx, owner, CreateTitleRequest{LibraryID: "library", Title: "Earthsea", Formats: []string{"ebook"}})
 	if err != nil || otherReader.ID == automatic.ID {
 		t.Fatalf("cross-reader reuse: %#v, %v", otherReader, err)
 	}
+
 	if err := store.Cancel(ctx, reader, "library", automatic.ID, "audiobook"); err != nil {
 		t.Fatal(err)
 	}
+
 	retried, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Earthsea", Formats: []string{"audiobook"}})
 	if err != nil || retried.ID != automatic.ID {
 		t.Fatalf("explicit terminal retry: %#v, %v", retried, err)
@@ -191,20 +235,25 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 		if _, err := db.Exec(`INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES(?,'library','reader','Old split','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, id); err != nil {
 			t.Fatal(err)
 		}
+
 		if _, err := db.Exec(`INSERT INTO title_request_formats(title_request_id,format,state,created_at,updated_at) VALUES(?,?,'wanted','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, id, format); err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	legacy, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Old split", Formats: []string{"audiobook"}})
 	if err != nil || legacy.ID != "old-split-1" {
 		t.Fatalf("legacy format reuse: %#v, %v", legacy, err)
 	}
+
 	if _, err := store.Create(ctx, reader, CreateTitleRequest{LibraryID: "library", Title: "Old split", Formats: []string{"ebook", "audiobook"}}); !errors.Is(err, ErrSplitIntent) {
 		t.Fatalf("split intent must not create duplicates: %v", err)
 	}
+
 	if _, err := db.Exec("DELETE FROM title_requests WHERE id IN ('old-split-0','old-split-1')"); err != nil {
 		t.Fatal(err)
 	}
+
 	// Newer completed titles cannot hide an old approval, and formats belong to the exact page.
 	for i := range 110 {
 		id := fmt.Sprintf("finished-%03d", i)
@@ -213,13 +262,16 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	if _, err := db.Exec(`UPDATE title_request_formats SET state='pending_approval' WHERE title_request_id=?`, automatic.ID); err != nil {
 		t.Fatal(err)
 	}
+
 	pending, err := store.ListPage(ctx, owner, "library", TitleRequestListOptions{Filter: "pending_approval", Limit: 10})
 	if err != nil || len(pending.Items) != 1 || pending.Items[0].ID != automatic.ID || len(pending.Items[0].Formats) != 2 {
 		t.Fatalf("pending page=%#v, %v", pending, err)
 	}
+
 	seen := map[string]bool{}
 	cursor := ""
 	for {
@@ -227,20 +279,25 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		for _, item := range page.Items {
 			if seen[item.ID] || len(item.Formats) != 1 || item.RequestedBy != reader.ID {
 				t.Fatalf("invalid page item: %#v", item)
 			}
+
 			seen[item.ID] = true
 		}
+
 		cursor = page.NextCursor
 		if cursor == "" {
 			break
 		}
 	}
+
 	if len(seen) != 110 {
 		t.Fatalf("paged %d ready requests", len(seen))
 	}
+
 	hidden, err := store.ListPage(ctx, auth.User{ID: "other"}, "library", TitleRequestListOptions{})
 	if err != nil || len(hidden.Items) != 0 {
 		t.Fatalf("private page: %#v, %v", hidden, err)
@@ -250,36 +307,67 @@ func TestTitleRequestsEnforceApprovalPolicyAndRecordTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	readiness := NewStore(db, client)
 	for _, check := range []struct{ name, sql, ebook, audio string }{
 		{"quota", "", "quota", "quota"},
-		{"ebook only", "UPDATE acquisition_policies SET max_active_requests=5,default_audiobook_source_id=NULL", "", "setup"},
-		{"audio only", "UPDATE acquisition_policies SET default_ebook_source_id=NULL,default_audiobook_source_id='audio'", "setup", ""},
-		{"disabled source", "UPDATE library_sources SET enabled=0 WHERE id='audio'", "setup", "setup"},
-		{"deleted source", "UPDATE library_sources SET enabled=1,deleted_at='2026-09-07' WHERE id='audio'", "setup", "setup"},
-		{"permission removed", "UPDATE library_members SET can_request_acquisitions=0 WHERE user_id='reader'", "permission", "permission"},
+		{
+			"ebook only",
+			"UPDATE acquisition_policies SET max_active_requests=5,default_audiobook_source_id=NULL",
+			"",
+			"setup",
+		},
+		{
+			"audio only",
+			"UPDATE acquisition_policies SET default_ebook_source_id=NULL,default_audiobook_source_id='audio'",
+			"setup",
+			"",
+		},
+		{
+			"disabled source",
+			"UPDATE library_sources SET enabled=0 WHERE id='audio'",
+			"setup",
+			"setup",
+		},
+		{
+			"deleted source",
+			"UPDATE library_sources SET enabled=1,deleted_at='2026-09-07' WHERE id='audio'",
+			"setup",
+			"setup",
+		},
+		{
+			"permission removed",
+			"UPDATE library_members SET can_request_acquisitions=0 WHERE user_id='reader'",
+			"permission",
+			"permission",
+		},
 	} {
 		if check.sql != "" {
 			if _, err := db.Exec(check.sql); err != nil {
 				t.Fatal(err)
 			}
 		}
+
 		values, err := readiness.RequestLibraries(ctx, reader)
 		if err != nil || len(values) != 1 || values[0].EbookReason != check.ebook || values[0].AudiobookReason != check.audio {
 			t.Fatalf("%s readiness=%#v, %v", check.name, values, err)
 		}
 	}
+
 	values, err := readiness.RequestLibraries(ctx, auth.User{ID: "restricted-admin", Admin: true})
 	if err != nil || len(values) != 1 || values[0].LibraryID != "restricted" {
 		t.Fatalf("exclusive readiness=%#v, %v", values, err)
 	}
+
 	if _, err := db.Exec("UPDATE library_members SET can_request_acquisitions=1 WHERE user_id='reader'"); err != nil {
 		t.Fatal(err)
 	}
+
 	disabledClient, err := New(Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	values, err = NewStore(db, disabledClient).RequestLibraries(ctx, reader)
 	if err != nil || len(values) != 1 || values[0].EbookReason != "disabled" {
 		t.Fatalf("disabled service=%#v, %v", values, err)
@@ -327,7 +415,9 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer db.Close()
+
 	applyTestMigration(t, db, "acquisition_policies", "../database/migrations/027_acquisition_policy.sql")
 	applyTestMigration(t, db, "title_requests", "../database/migrations/028_title_requests.sql")
 	if _, err := db.Exec(`
@@ -342,10 +432,12 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 		VALUES('library','source','source',1024,1024,'epub','m4b,mp3','en',0,10,'2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
+
 	client, err := New(Options{IndexerURL: server.URL + "/indexer", QBitURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	legacy := NewStore(db, client)
 	store := NewTitleRequestStore(db)
 	store.SetAcquisitionStore(legacy)
@@ -356,55 +448,70 @@ func TestGuidedTitleRequestWorkerFiltersRetriesAndSubmitsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	missing, err := store.Create(ctx, owner, CreateTitleRequest{LibraryID: "library", Title: "No Audio", Formats: []string{"audiobook"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	canceled, err := store.Create(ctx, owner, CreateTitleRequest{LibraryID: "library", Title: "Canceled", Formats: []string{"ebook"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Cancel(ctx, owner, "library", canceled.ID, "ebook"); err != nil {
 		t.Fatal(err)
 	}
+
 	// These requests are already approved. Their requester now has only ordinary
 	// reader permission; the worker must not depend on public release authority.
 	if _, err := db.Exec("UPDATE library_members SET role='reader',can_bypass_acquisition_approval=0 WHERE user_id='owner'"); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	if adds.Load() != 1 || addedTag == "" {
 		t.Fatalf("downloads=%d tag=%q", adds.Load(), addedTag)
 	}
+
 	var state, legacyID, legacyState string
 	if err := db.QueryRow(`SELECT f.state,COALESCE(f.legacy_acquisition_request_id,''),COALESCE(a.fulfillment_state,'') FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? AND f.format='ebook'`, alice.ID).Scan(&state, &legacyID, &legacyState); err != nil || state != "submitting" || legacyState != "submitting" || legacyID != addedTag {
 		t.Fatalf("alice state=%q legacy=%q legacy state=%q tag=%q err=%v", state, legacyID, legacyState, addedTag, err)
 	}
+
 	var retries int
 	var next string
 	if err := db.QueryRow(`SELECT state,retry_count,COALESCE(next_search_at,'') FROM title_request_formats WHERE title_request_id=? AND format='audiobook'`, missing.ID).Scan(&state, &retries, &next); err != nil || state != "awaiting_release" || retries != 1 || next == "" {
 		t.Fatalf("missing state=%q retries=%d next=%q err=%v", state, retries, next, err)
 	}
+
 	if err := store.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	if adds.Load() != 1 {
 		t.Fatalf("duplicate downloads=%d", adds.Load())
 	}
+
 	if err := db.QueryRow(`SELECT state FROM title_request_formats WHERE title_request_id=?`, canceled.ID).Scan(&state); err != nil || state != "canceled" {
 		t.Fatalf("canceled state=%q err=%v", state, err)
 	}
+
 	if _, err := db.Exec(`INSERT INTO works(id,library_id,title,created_at,updated_at) VALUES('alice-work','library','Alice','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); UPDATE acquisition_requests SET fulfillment_state='available',work_id='alice-work' WHERE id=?`, legacyID); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := db.QueryRow(`SELECT state FROM title_request_formats WHERE title_request_id=?`, alice.ID).Scan(&state); err != nil || state != "available" {
 		t.Fatalf("available state=%q err=%v", state, err)
 	}
+
 	notifications, err := inbox.List(ctx, "owner", 20, 0)
 	if err != nil || len(notifications) != 3 || notifications[0].Kind != "acquisition.available" || notifications[0].ActionURL != "/consume/alice-work?mode=read" {
 		t.Fatalf("worker notifications=%#v err=%v", notifications, err)
@@ -439,11 +546,14 @@ func TestCancelTitleRequestStopsLinkedDownload(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer db.Close()
+
 	if _, err := db.Exec(`
 		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
 		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
@@ -453,6 +563,11 @@ func TestCancelTitleRequestStopsLinkedDownload(t *testing.T) {
 		INSERT INTO title_request_formats(title_request_id,format,state,legacy_acquisition_request_id,created_at,updated_at) VALUES('title','ebook','downloading','legacy','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
+
+	if _, err := db.Exec(`UPDATE acquisition_requests SET torrent_hash='abc',torrent_ownership='created' WHERE id='legacy'`); err != nil {
+		t.Fatal(err)
+	}
+
 	client, _ := New(Options{QBitURL: server.URL})
 	legacy := NewStore(db, client)
 	store := NewTitleRequestStore(db)
@@ -460,6 +575,7 @@ func TestCancelTitleRequestStopsLinkedDownload(t *testing.T) {
 	if err := store.Cancel(ctx, auth.User{ID: "reader"}, "library", "title", "ebook"); err != nil {
 		t.Fatal(err)
 	}
+
 	var titleState, legacyState string
 	if err := db.QueryRow(`SELECT f.state,a.fulfillment_state FROM title_request_formats f JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id='title'`).Scan(&titleState, &legacyState); err != nil || titleState != "canceled" || legacyState != "failed" || deletes.Load() != 1 {
 		t.Fatalf("title=%q legacy=%q deletes=%d err=%v", titleState, legacyState, deletes.Load(), err)

@@ -1,6 +1,8 @@
+import { SearchDiagnostics } from '@/features/acquisitions/SearchDiagnostics';
 import type {
   AcquisitionDestination,
   AcquisitionResult,
+  AcquisitionSearchReport,
   Library,
   TitleSearchResult,
   TrendingSection,
@@ -185,6 +187,7 @@ export default function SearchScreen() {
   const [detailDescriptionLoading, setDetailDescriptionLoading] = useState(false);
   const [advancedTarget, setAdvancedTarget] = useState<TitleSearchResult>();
   const [advancedResults, setAdvancedResults] = useState<AcquisitionResult[]>([]);
+  const [searchReport, setSearchReport] = useState<AcquisitionSearchReport>();
   const [advancedSearching, setAdvancedSearching] = useState(false);
   const [advancedError, setAdvancedError] = useState('');
   const [releaseStatuses, setReleaseStatuses] = useState<Record<string, ReleaseStatus>>({});
@@ -354,6 +357,7 @@ export default function SearchScreen() {
     setDetailTarget(undefined);
     setAdvancedTarget(result);
     setAdvancedResults([]);
+    setSearchReport(undefined);
     setAdvancedError('');
     setReleaseStatuses({});
     setReleaseErrors({});
@@ -372,6 +376,7 @@ export default function SearchScreen() {
       if (generation !== advancedGeneration.current) return;
       setDiscoveryID(discovery.id);
       setAdvancedResults(discovery.results);
+      setSearchReport(discovery.report);
     } catch (value) {
       if (generation === advancedGeneration.current) setAdvancedError(errorMessage(value));
     } finally {
@@ -558,6 +563,21 @@ export default function SearchScreen() {
             </Notice>
           ) : null}
           {advancedError ? <Notice tone="danger">{advancedError}</Notice> : null}
+          {searchReport ? (
+            <SearchDiagnostics
+              report={searchReport}
+              onRetry={advancedTarget ? () => void openAdvanced(advancedTarget) : undefined}
+            />
+          ) : null}
+          {!advancedSearching && !searchReport && advancedTarget ? (
+            <View className="items-start">
+              <Button
+                label="Search again"
+                kind="quiet"
+                onPress={() => void openAdvanced(advancedTarget)}
+              />
+            </View>
+          ) : null}
           {advancedSearching ? (
             <LoadingState label="Finding releases…" />
           ) : advancedGroups.length ? (

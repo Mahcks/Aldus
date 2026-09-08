@@ -504,7 +504,7 @@ export default function ActivityScreen() {
       <ConfirmDialog
         visible={Boolean(cancelTarget)}
         title={`Cancel ${cancelTarget ? formatLabel(cancelTarget.format).toLowerCase() : ''} request?`}
-        description="Aldus will stop looking for this format. You can request it again later."
+        description="Aldus will stop looking for this format. Downloads created for this request may be removed; reused torrents and saved library books are kept. You can request it again later."
         confirmLabel="Cancel request"
         busy={canceling}
         danger

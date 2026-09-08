@@ -3,6 +3,7 @@ package contracts
 import "time"
 
 type AcquisitionRequest struct {
+	TorrentOwnership    string    `json:"torrent_ownership,omitempty" tstype:"'created' | 'adopted' | 'unknown'"`
 	ID                  string    `json:"id"`
 	LibraryID           string    `json:"library_id"`
 	RequestedBy         string    `json:"requested_by"`
@@ -28,6 +29,10 @@ type AcquisitionRequest struct {
 }
 
 type AcquisitionResult struct {
+	Protocol        string    `json:"protocol,omitempty"`
+	Categories      []int     `json:"categories,omitempty"`
+	Seeders         *int      `json:"seeders,omitempty"`
+	Peers           *int      `json:"peers,omitempty"`
 	ID              string    `json:"id"`
 	Title           string    `json:"title"`
 	Source          string    `json:"source"`
@@ -70,8 +75,9 @@ type AcquisitionPair struct {
 }
 
 type AcquisitionDiscovery struct {
-	ID      string              `json:"id"`
-	Results []AcquisitionResult `json:"results"`
+	Report  *AcquisitionSearchReport `json:"report,omitempty"`
+	ID      string                   `json:"id"`
+	Results []AcquisitionResult      `json:"results"`
 }
 
 type AcquisitionSettings struct {
@@ -99,11 +105,14 @@ type UpdateAcquisitionSettingsRequest struct {
 }
 
 type AcquisitionConnectionStatus struct {
-	ProwlarrOK       bool   `json:"prowlarr_ok"`
-	IndexerCount     int    `json:"indexer_count"`
-	ProwlarrError    string `json:"prowlarr_error,omitempty"`
-	QBitTorrentOK    bool   `json:"qbittorrent_ok"`
-	QBitTorrentError string `json:"qbittorrent_error,omitempty"`
+	Search           *AcquisitionSearchReport `json:"search,omitempty"`
+	FileVisibility   string                   `json:"file_visibility,omitempty" tstype:"'not_tested' | 'ok' | 'failed'"`
+	FileError        string                   `json:"file_error,omitempty"`
+	ProwlarrOK       bool                     `json:"prowlarr_ok"`
+	IndexerCount     int                      `json:"indexer_count"`
+	ProwlarrError    string                   `json:"prowlarr_error,omitempty"`
+	QBitTorrentOK    bool                     `json:"qbittorrent_ok"`
+	QBitTorrentError string                   `json:"qbittorrent_error,omitempty"`
 }
 
 type AcquisitionCapabilities struct {
@@ -121,4 +130,24 @@ type AcquisitionDestination struct {
 type AcquisitionTracker struct {
 	Requests    []AcquisitionRequest `json:"requests"`
 	UnreadCount int                  `json:"unread_count"`
+}
+
+// AcquisitionSearchReport describes the same search that produced the releases.
+// It contains no download URLs and is only presented to administrators.
+type AcquisitionSearchReport struct {
+	Reachable bool                        `json:"reachable"`
+	Indexers  []AcquisitionIndexerOutcome `json:"indexers"`
+}
+
+type AcquisitionIndexerOutcome struct {
+	Capabilities string `json:"capabilities,omitempty"`
+	Name         string `json:"name"`
+	Error        string `json:"error,omitempty"`
+	Results      int    `json:"results"`
+	Excluded     int    `json:"excluded"`
+}
+
+type AcquisitionSearchResponse struct {
+	Results []AcquisitionResult     `json:"results"`
+	Report  AcquisitionSearchReport `json:"report"`
 }

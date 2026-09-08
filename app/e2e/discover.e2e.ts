@@ -113,6 +113,18 @@ for (const width of [390, 1024, 1440]) {
       if (path === '/libraries/family/acquisition-discoveries')
         json = {
           id: 'discovery',
+          report: {
+            reachable: true,
+            indexers: [
+              { name: 'Books', results: 2, excluded: 1 },
+              {
+                name: 'Audio',
+                results: 0,
+                excluded: 0,
+                error: 'Search failed. Check this indexer in Prowlarr.',
+              },
+            ],
+          },
           results: ['EPUB', 'PDF'].map((format, index) => ({
             id: `release-${index}`,
             group_key: 'alice',
@@ -166,6 +178,7 @@ for (const width of [390, 1024, 1440]) {
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-discover-detail.png` });
     await dialog.getByRole('button', { name: 'Choose a specific release' }).click();
     const releases = page.getByRole('dialog', { name: 'Choose a release', exact: true });
+    await expect(releases.getByText(/Partial search: 1 of 2/)).toBeVisible();
     await releases.getByRole('button', { name: 'Choose edition (2)' }).click();
     await releases.getByRole('button', { name: 'Add', exact: true }).first().click();
     await expect(releases.getByText('Download service unavailable. Retry.')).toBeVisible();

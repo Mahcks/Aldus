@@ -4,6 +4,7 @@
 // source: acquisition.go
 
 export interface AcquisitionRequest {
+  torrent_ownership?: 'created' | 'adopted' | 'unknown';
   id: string;
   library_id: string;
   requested_by: string;
@@ -28,6 +29,10 @@ export interface AcquisitionRequest {
   can_dismiss?: boolean;
 }
 export interface AcquisitionResult {
+  protocol?: string;
+  categories?: number /* int */[];
+  seeders?: number /* int */;
+  peers?: number /* int */;
   id: string;
   title: string;
   source: string;
@@ -66,6 +71,7 @@ export interface AcquisitionPair {
   requests: AcquisitionRequest[];
 }
 export interface AcquisitionDiscovery {
+  report?: AcquisitionSearchReport;
   id: string;
   results: AcquisitionResult[];
 }
@@ -92,6 +98,9 @@ export interface UpdateAcquisitionSettingsRequest {
   qbittorrent_download_root: string;
 }
 export interface AcquisitionConnectionStatus {
+  search?: AcquisitionSearchReport;
+  file_visibility?: 'not_tested' | 'ok' | 'failed';
+  file_error?: string;
   prowlarr_ok: boolean;
   indexer_count: number /* int */;
   prowlarr_error?: string;
@@ -111,6 +120,25 @@ export interface AcquisitionDestination {
 export interface AcquisitionTracker {
   requests: AcquisitionRequest[];
   unread_count: number /* int */;
+}
+/**
+ * AcquisitionSearchReport describes the same search that produced the releases.
+ * It contains no download URLs and is only presented to administrators.
+ */
+export interface AcquisitionSearchReport {
+  reachable: boolean;
+  indexers: AcquisitionIndexerOutcome[];
+}
+export interface AcquisitionIndexerOutcome {
+  capabilities?: string;
+  name: string;
+  error?: string;
+  results: number /* int */;
+  excluded: number /* int */;
+}
+export interface AcquisitionSearchResponse {
+  results: AcquisitionResult[];
+  report: AcquisitionSearchReport;
 }
 
 //////////

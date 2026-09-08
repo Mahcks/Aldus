@@ -1,3 +1,4 @@
+import { ConnectionDiagnostics } from '@/features/acquisitions/SearchDiagnostics';
 import { useTitleRequests } from '@/features/use-title-requests';
 import type {
   AcquisitionRequest,
@@ -171,6 +172,7 @@ export default function AcquisitionsAdministration() {
   async function testSettings() {
     if (testingSettings) return;
     setTestingSettings(true);
+    setConnectionStatus(null);
     setError('');
     try {
       setConnectionStatus(await api.testAcquisitionSettings());
@@ -488,32 +490,7 @@ export default function AcquisitionsAdministration() {
                   </Text>
                 ) : null}
               </View>
-              {connectionStatus ? (
-                <View className="gap-2 border-t border-line pt-4 sm:flex-row">
-                  <StatusBadge
-                    tone={connectionStatus.prowlarr_ok ? 'success' : 'danger'}
-                    label={
-                      connectionStatus.prowlarr_ok
-                        ? `${connectionStatus.indexer_count} enabled torrent indexer${connectionStatus.indexer_count === 1 ? '' : 's'} found`
-                        : 'Search provider unavailable'
-                    }
-                  />
-                  <StatusBadge
-                    tone={connectionStatus.qbittorrent_ok ? 'success' : 'danger'}
-                    label={
-                      connectionStatus.qbittorrent_ok
-                        ? 'qBittorrent connected'
-                        : 'qBittorrent unavailable'
-                    }
-                  />
-                </View>
-              ) : null}
-              {connectionStatus?.prowlarr_error ? (
-                <Notice tone="danger">{connectionStatus.prowlarr_error}</Notice>
-              ) : null}
-              {connectionStatus?.qbittorrent_error ? (
-                <Notice tone="danger">{connectionStatus.qbittorrent_error}</Notice>
-              ) : null}
+              {connectionStatus ? <ConnectionDiagnostics status={connectionStatus} /> : null}
             </View>
           </Section>
 
@@ -630,7 +607,16 @@ export default function AcquisitionsAdministration() {
                             </View>
                           ) : null}
                         </View>
-                        <StatusBadge tone={status.tone} label={status.label} />
+                        <View className="items-start gap-2">
+                          <StatusBadge tone={status.tone} label={status.label} />
+                          {request.can_cancel ? (
+                            <Text className="max-w-[48ch] text-sm text-muted">
+                              {request.torrent_ownership === 'created'
+                                ? 'Created by Aldus. Canceling can remove this download and its files.'
+                                : 'Canceling this request keeps the torrent and its files in qBittorrent.'}
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
                     );
                   })}

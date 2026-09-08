@@ -99,15 +99,19 @@ func normalizeSearchResults(query string, results []Result) []discoveryResult {
 		if compared := strings.Compare(normalizeWords(a.Title), normalizeWords(b.Title)); compared != 0 {
 			return compared
 		}
+
 		if a.Size != b.Size {
 			if a.Size < b.Size {
 				return -1
 			}
+
 			return 1
 		}
+
 		if compared := strings.Compare(strings.ToLower(a.Source), strings.ToLower(b.Source)); compared != 0 {
 			return compared
 		}
+
 		return strings.Compare(a.DownloadURL, b.DownloadURL)
 	})
 	seen := make(map[string]bool, len(results))
@@ -117,20 +121,25 @@ func normalizeSearchResults(query string, results []Result) []discoveryResult {
 		if value.CanonicalTitle == "" || value.Format == "" {
 			continue
 		}
-		key := normalizeWords(result.Title) + "\x00" + strconv.FormatInt(max(0, result.Size), 10)
+
+		key := normalizeWords(result.Title) + "\x00" + strconv.FormatInt(max(0, result.Size), 10) + "\x00" + result.Source + "\x00" + result.DownloadURL
 		if seen[key] {
 			continue
 		}
+
 		seen[key] = true
 		values = append(values, value)
 	}
+
 	slices.SortStableFunc(values, func(a, b discoveryResult) int {
 		if a.Relevance != b.Relevance {
 			return b.Relevance - a.Relevance
 		}
+
 		if compared := strings.Compare(a.CanonicalTitle, b.CanonicalTitle); compared != 0 {
 			return compared
 		}
+
 		return strings.Compare(a.Format, b.Format)
 	})
 	assignGroupKeys(values)
@@ -147,10 +156,16 @@ func parseDiscoveryResult(query string, result Result) discoveryResult {
 			break
 		}
 	}
+
+	if format == "" {
+		format = result.Metadata.Format
+	}
+
 	kind := "audiobook"
 	if ebookFormats[strings.ToLower(format)] {
 		kind = "ebook"
 	}
+
 	language := ""
 	for _, word := range words {
 		switch strings.ToLower(word) {
@@ -164,12 +179,14 @@ func parseDiscoveryResult(query string, result Result) discoveryResult {
 			language = "de"
 		}
 	}
+
 	narrator := submatch(narratedBy, raw)
 	author := submatch(byAuthor, raw)
 	remainder := bracketedMetadata.ReplaceAllString(raw, " ")
 	if narrator != "" {
 		remainder = narratedBy.ReplaceAllString(remainder, " ")
 	}
+
 	if author != "" {
 		if match := byAuthor.FindStringIndex(remainder); match != nil {
 			remainder = remainder[:match[0]] + remainder[match[1]:]
@@ -177,6 +194,7 @@ func parseDiscoveryResult(query string, result Result) discoveryResult {
 	} else if before, after, ok := strings.Cut(remainder, " - "); ok && plausibleName(before) {
 		author, remainder = strings.TrimSpace(before), after
 	}
+
 	edition := ""
 	lower := strings.ToLower(raw)
 	if strings.Contains(lower, "unabridged") {
@@ -184,12 +202,14 @@ func parseDiscoveryResult(query string, result Result) discoveryResult {
 	} else if strings.Contains(lower, "abridged") {
 		edition = "Abridged"
 	}
+
 	canonical := cleanReleaseTitle(remainder)
 	relevance := relevanceScore(query, canonical)
 	match := "related"
 	if comparableTitle(query) == comparableTitle(canonical) {
 		match = "exact"
 	}
+
 	return discoveryResult{
 		Result:         result,
 		CanonicalTitle: canonical,
