@@ -54,7 +54,7 @@ func TestOwnedCancellationUsesPersistedHash(t *testing.T) {
 			if _, err := db.Exec(`
 				UPDATE acquisition_requests
 				SET fulfillment_state='downloading',
-					torrent_hash='owned',
+					download_job_id='owned',
 					torrent_ownership=?
 			`, ownership); err != nil {
 				t.Fatal(err)
@@ -154,7 +154,7 @@ func TestSubmissionOwnershipRequiresNewTaggedTorrent(t *testing.T) {
 				want = "unknown"
 			}
 
-			if err != nil || receipt.Hash != hash || receipt.Ownership != want {
+			if err != nil || receipt.JobID != hash || receipt.Ownership != want {
 				t.Fatalf("receipt=%+v err=%v", receipt, err)
 			}
 

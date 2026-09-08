@@ -60,6 +60,21 @@ export function titleRequestDetail(format: TitleRequestFormat) {
     case 'submitting':
       return 'Preparing to start the download.';
     case 'downloading':
+      if (
+        ['quickcheck', 'verifying', 'repairing', 'fetching'].includes(
+          format.download_state?.toLowerCase() ?? '',
+        )
+      ) {
+        return 'Checking and repairing the downloaded files.';
+      }
+      if (
+        ['extracting', 'moving', 'running'].includes(format.download_state?.toLowerCase() ?? '')
+      ) {
+        return 'Unpacking and preparing the book for your library.';
+      }
+      if (format.download_state?.toLowerCase() === 'paused') {
+        return 'Paused in the download client.';
+      }
       if (['metadl', 'forcedmetadl'].includes(format.download_state?.toLowerCase() ?? '')) {
         return 'Waiting for download sources to respond.';
       }

@@ -54,3 +54,18 @@ describe('title request presentation', () => {
     ).toBe('Waiting for download sources to respond.');
   });
 });
+
+test('explains Usenet processing before a book is ready', () => {
+  const format = {
+    format: 'ebook',
+    state: 'downloading',
+    retry_count: 0,
+    updated_at: '2026-09-08T12:00:00Z',
+  };
+  expect(titleRequestDetail({ ...format, download_state: 'Repairing' })).toBe(
+    'Checking and repairing the downloaded files.',
+  );
+  expect(titleRequestDetail({ ...format, download_state: 'Extracting' })).toBe(
+    'Unpacking and preparing the book for your library.',
+  );
+});

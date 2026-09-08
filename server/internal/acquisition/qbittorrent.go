@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-func (c *Client) RemoveTag(ctx context.Context, hash, tag string) error {
+func (c qbitBackend) RemoveTag(ctx context.Context, hash, tag string) error {
 	if hash == "" || !validTag(tag) {
 		return nil
 	}
@@ -50,12 +50,7 @@ func (c *Client) RemoveTag(ctx context.Context, hash, tag string) error {
 	return nil
 }
 
-type SubmissionReceipt struct {
-	Hash      string
-	Ownership string
-}
-
-func (c *Client) submitTracked(ctx context.Context, downloadURL, tag string) (SubmissionReceipt, error) {
+func (c qbitBackend) submitTracked(ctx context.Context, downloadURL, tag string) (SubmissionReceipt, error) {
 	if c.options.QBitURL == "" {
 		return SubmissionReceipt{Ownership: "unknown"}, ErrUnavailable
 	}
@@ -89,50 +84,50 @@ func (c *Client) submitTracked(ctx context.Context, downloadURL, tag string) (Su
 		}
 
 		if err != nil {
-			return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, err
+			return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, err
 		}
 
 		if redirect.URL == "" {
 			part, err := writer.CreateFormFile("torrents", "download.torrent")
 			if err != nil {
-				return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+				return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 			}
 
 			if _, err := part.Write(torrent); err != nil {
-				return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+				return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 			}
 		}
 	} else if err := writer.WriteField("urls", downloadURL); err != nil {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 	}
 
 	if c.options.Category != "" {
 		if err := writer.WriteField("category", c.options.Category); err != nil {
-			return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+			return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 		}
 	}
 
 	if tag != "" {
 		if err := writer.WriteField("tags", tag); err != nil {
-			return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+			return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 		}
 	}
 
 	if err := writer.Close(); err != nil {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 	}
 
 	// Snapshot before submitting. A failed lookup cannot establish ownership.
 	before, beforeErr := c.Downloads(ctx)
 	for _, download := range before {
-		if infoHash != "" && strings.EqualFold(download.Hash, infoHash) {
-			return SubmissionReceipt{Hash: download.Hash, Ownership: "adopted"}, nil
+		if infoHash != "" && strings.EqualFold(download.JobID, infoHash) {
+			return SubmissionReceipt{JobID: download.JobID, Ownership: "adopted"}, nil
 		}
 	}
 
 	req, err := c.qbitRequest(ctx, http.MethodPost, "/api/v2/torrents/add", &body)
 	if err != nil {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("build qBittorrent request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -142,18 +137,18 @@ func (c *Client) submitTracked(ctx context.Context, downloadURL, tag string) (Su
 
 	response, err := c.http.Do(req)
 	if err != nil {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: send download to qBittorrent: %v", ErrSubmissionUnknown, err)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: send download to qBittorrent: %v", ErrSubmissionUnknown, err)
 	}
 
 	defer response.Body.Close()
 
 	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, (4<<10)+1))
 	if readErr != nil {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: read qBittorrent response: %v", ErrSubmissionUnknown, readErr)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: read qBittorrent response: %v", ErrSubmissionUnknown, readErr)
 	}
 
 	if len(responseBody) > 4<<10 {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: qBittorrent response is too large", ErrSubmissionUnknown)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: qBittorrent response is too large", ErrSubmissionUnknown)
 	}
 
 	responseText := strings.TrimSpace(string(responseBody))
@@ -162,33 +157,33 @@ func (c *Client) submitTracked(ctx context.Context, downloadURL, tag string) (Su
 		// match in the configured category, never a title or an arbitrary torrent.
 		downloads, err := c.Downloads(ctx)
 		if err != nil {
-			return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: verify conflicting qBittorrent submission: %v", ErrSubmissionUnknown, err)
+			return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: verify conflicting qBittorrent submission: %v", ErrSubmissionUnknown, err)
 		}
 
 		for _, download := range downloads {
-			if download.Hash != "" && ((infoHash != "" && strings.EqualFold(download.Hash, infoHash)) || (tag != "" && download.HasTag(tag))) {
-				return SubmissionReceipt{Hash: download.Hash, Ownership: "adopted"}, nil
+			if download.JobID != "" && ((infoHash != "" && strings.EqualFold(download.JobID, infoHash)) || (tag != "" && download.HasTag(tag))) {
+				return SubmissionReceipt{JobID: download.JobID, Ownership: "adopted"}, nil
 			}
 		}
 	}
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("send download to qBittorrent: status %d: %q", response.StatusCode, responseText)
 	}
 
 	if err := acceptedAddResponse(responseText); err != nil {
 		if errors.Is(err, errSubmissionPending) && infoHash != "" {
-			return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, nil
+			return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, nil
 		}
 
 		if errors.Is(err, errSubmissionRejected) {
-			return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("send download to qBittorrent: status %d: %w", response.StatusCode, err)
+			return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("send download to qBittorrent: status %d: %w", response.StatusCode, err)
 		}
 
-		return SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: qBittorrent returned status %d: %v", ErrSubmissionUnknown, response.StatusCode, err)
+		return SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}, fmt.Errorf("%w: qBittorrent returned status %d: %v", ErrSubmissionUnknown, response.StatusCode, err)
 	}
 
-	receipt := SubmissionReceipt{Hash: infoHash, Ownership: "unknown"}
+	receipt := SubmissionReceipt{JobID: infoHash, Ownership: "unknown"}
 	// Duplicate submissions do not apply the new request tag. Require a
 	// previously absent hash and that exact tag after an acknowledged add.
 	if beforeErr == nil && tag != "" {
@@ -196,7 +191,7 @@ func (c *Client) submitTracked(ctx context.Context, downloadURL, tag string) (Su
 		if err == nil {
 			var matches []Download
 			for _, download := range downloads {
-				if download.Hash != "" && download.HasTag(tag) && (infoHash == "" || strings.EqualFold(download.Hash, infoHash)) {
+				if download.JobID != "" && download.HasTag(tag) && (infoHash == "" || strings.EqualFold(download.JobID, infoHash)) {
 					matches = append(matches, download)
 				}
 			}
@@ -205,13 +200,13 @@ func (c *Client) submitTracked(ctx context.Context, downloadURL, tag string) (Su
 				candidate := matches[0]
 				existed := false
 				for _, download := range before {
-					if strings.EqualFold(download.Hash, candidate.Hash) || download.HasTag(tag) {
+					if strings.EqualFold(download.JobID, candidate.JobID) || download.HasTag(tag) {
 						existed = true
 					}
 				}
 
 				if !existed {
-					receipt.Hash = candidate.Hash
+					receipt.JobID = candidate.JobID
 					receipt.Ownership = "created"
 				}
 			}
@@ -239,7 +234,10 @@ func (c *Client) fetchTorrent(ctx context.Context, raw string) ([]byte, error) {
 		return nil, errors.New("build torrent download request: invalid request")
 	}
 
-	req.Header.Set("X-Api-Key", c.options.IndexerAPIKey)
+	if c.shouldFetchTorrent(raw) {
+		req.Header.Set("X-Api-Key", c.options.IndexerAPIKey)
+	}
+
 	response, err := c.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -368,7 +366,7 @@ func (c *Client) ensureCategory(ctx context.Context, cookies []*http.Cookie) err
 	return nil
 }
 
-func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
+func (c qbitBackend) Downloads(ctx context.Context) ([]Download, error) {
 	if c.options.QBitURL == "" {
 		return nil, ErrUnavailable
 	}
@@ -404,7 +402,7 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 	}
 
 	var raw []struct {
-		Hash        string  `json:"hash"`
+		JobID       string  `json:"hash"`
 		Name        string  `json:"name"`
 		State       string  `json:"state"`
 		ContentPath string  `json:"content_path"`
@@ -421,7 +419,7 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 	downloads := make([]Download, len(raw))
 	for i, item := range raw {
 		downloads[i] = Download{
-			Hash: item.Hash, Name: item.Name, State: item.State, ContentPath: item.ContentPath, Tags: item.Tags,
+			JobID: item.JobID, Name: item.Name, State: item.State, ContentPath: item.ContentPath, Tags: item.Tags,
 			Progress: item.Progress, Size: item.Size,
 			Seeds: item.Seeds, Peers: item.Peers,
 		}
@@ -430,7 +428,7 @@ func (c *Client) Downloads(ctx context.Context) ([]Download, error) {
 	return downloads, nil
 }
 
-func (c *Client) CancelTracked(ctx context.Context, hash, tag string) error {
+func (c qbitBackend) CancelTracked(ctx context.Context, hash, tag string) error {
 	if (tag != "" && !validTag(tag)) || (tag == "" && hash == "") {
 		return errors.New("invalid download tag")
 	}
@@ -442,16 +440,16 @@ func (c *Client) CancelTracked(ctx context.Context, hash, tag string) error {
 
 	var hashes []string
 	for _, download := range downloads {
-		if download.Hash != "" && hash != "" && strings.EqualFold(download.Hash, hash) {
-			hashes = []string{download.Hash}
+		if download.JobID != "" && hash != "" && strings.EqualFold(download.JobID, hash) {
+			hashes = []string{download.JobID}
 			break
 		}
 	}
 
 	if len(hashes) == 0 && hash == "" {
 		for _, download := range downloads {
-			if download.HasTag(tag) && download.Hash != "" {
-				hashes = append(hashes, download.Hash)
+			if download.HasTag(tag) && download.JobID != "" {
+				hashes = append(hashes, download.JobID)
 			}
 		}
 	}

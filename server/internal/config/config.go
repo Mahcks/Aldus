@@ -31,6 +31,10 @@ type Config struct {
 	IndexerURL              string
 	IndexerAPIKey           string
 	NYTAPIKey               string
+	SABnzbdURL              string
+	SABnzbdAPIKey           string
+	SABnzbdCategory         string
+	SABnzbdDownloadRoot     string
 	QBitTorrentURL          string
 	QBitTorrentUser         string
 	QBitTorrentPass         string
@@ -48,6 +52,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+
 	cfg := Config{
 		Addr:                    envOr("ALDUS_ADDR", "127.0.0.1:8080"),
 		DataDir:                 envOr("ALDUS_DATA_DIR", "/data"),
@@ -68,6 +73,10 @@ func Load() (Config, error) {
 		IndexerURL:              os.Getenv("ALDUS_INDEXER_URL"),
 		IndexerAPIKey:           os.Getenv("ALDUS_INDEXER_API_KEY"),
 		NYTAPIKey:               os.Getenv("ALDUS_NYT_API_KEY"),
+		SABnzbdURL:              os.Getenv("ALDUS_SABNZBD_URL"),
+		SABnzbdAPIKey:           os.Getenv("ALDUS_SABNZBD_API_KEY"),
+		SABnzbdCategory:         os.Getenv("ALDUS_SABNZBD_CATEGORY"),
+		SABnzbdDownloadRoot:     os.Getenv("ALDUS_SABNZBD_DOWNLOAD_ROOT"),
 		QBitTorrentURL:          os.Getenv("ALDUS_QBITTORRENT_URL"),
 		QBitTorrentUser:         os.Getenv("ALDUS_QBITTORRENT_USERNAME"),
 		QBitTorrentPass:         os.Getenv("ALDUS_QBITTORRENT_PASSWORD"),
@@ -83,12 +92,15 @@ func Load() (Config, error) {
 	if exposureHost == "" {
 		exposureHost = listenerHost(cfg.Addr)
 	}
+
 	if cfg.Environment == "production" && !cfg.SecureCookies && !cfg.AllowInsecureHTTP && !isLoopbackHost(exposureHost) {
 		return Config{}, fmt.Errorf("plain HTTP on non-loopback host %q requires ALDUS_ALLOW_INSECURE_HTTP=true", exposureHost)
 	}
+
 	if cfg.MediaDir != "" && !within(cfg.DataDir, cfg.MediaDir) {
 		return Config{}, fmt.Errorf("ALDUS_MEDIA_DIR must be inside ALDUS_DATA_DIR so verified backups include managed media")
 	}
+
 	return cfg, nil
 }
 

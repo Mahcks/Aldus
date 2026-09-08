@@ -162,7 +162,7 @@ func TestAddTrackedPassesIndexerMagnetRedirectToQBit(t *testing.T) {
 	}
 
 	receipt, err := client.submitTracked(context.Background(), server.URL+"/download", "request_123")
-	hash := receipt.Hash
+	hash := receipt.JobID
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,6 +376,7 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 				if tagged {
 					tag = "request"
 				}
+
 				_, _ = w.Write([]byte(`[{"hash":"other","tags":"other","state":"downloading","progress":0.5},{"hash":"` + reportedHash + `","tags":"` + tag + `","state":"downloading","progress":0.5}]`))
 			} else {
 				_, _ = w.Write([]byte(`[]`))
@@ -406,20 +407,25 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 		}
 	}))
 	defer server.Close()
+
 	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer db.Close()
+
 	_, err = db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),('other','other','other','Other','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES('library','reader','reader',1,'2026-01-01T00:00:00Z'),('library','other','reader',1,'2026-01-01T00:00:00Z'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Downloads','/downloads',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,selected_title,selected_url,download_state,download_error,fulfillment_state,created_at,updated_at) VALUES('request','library','reader','source','Alice','requested','Alice','https://download.test/alice','','','submitting','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	client, _ := New(Options{QBitURL: server.URL, Category: "aldus"})
 	// This fixture exercises direct release operations, which require both permissions.
 	if _, err := db.Exec("UPDATE library_members SET can_advanced_acquisition_request=1,can_bypass_acquisition_approval=1"); err != nil {
 		t.Fatal(err)
 	}
+
 	store := NewStore(db, client)
 	store.SetHandoff(func(context.Context, string, string, string, string) (string, error) { return "", nil })
 	store.markDownloadProblem(ctx, "request", "download client unavailable")
@@ -427,59 +433,75 @@ func TestFailedAcquisitionRetriesCancelsAndDismissesWithoutDuplicateDownload(t *
 	if err := db.QueryRow(`SELECT fulfillment_state,download_error FROM acquisition_requests WHERE id='request'`).Scan(&failedState, &diagnosis); err != nil || failedState != "failed" || diagnosis != "download client unavailable" {
 		t.Fatalf("failed state=%q diagnosis=%q err=%v", failedState, diagnosis, err)
 	}
+
 	reader := auth.User{ID: "reader"}
 	if err := store.Retry(ctx, auth.User{ID: "other"}, "library", "request"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other user retry = %v", err)
 	}
+
 	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 1 {
 		t.Fatalf("retry adds=%d err=%v", adds, err)
 	}
+
 	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 1 || deletedHash != "hash" || deleteFiles != "true" {
 		t.Fatalf("pre-hash cancel deletes=%d hash=%q deleteFiles=%q err=%v", deletes, deletedHash, deleteFiles, err)
 	}
+
 	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 2 {
 		t.Fatalf("retry after cancel adds=%d err=%v", adds, err)
 	}
+
 	if err := store.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	var torrentHash string
-	if err := db.QueryRow(`SELECT torrent_hash FROM acquisition_requests WHERE id='request'`).Scan(&torrentHash); err != nil || torrentHash != "hash" || !active || tagged {
+	if err := db.QueryRow(`SELECT download_job_id FROM acquisition_requests WHERE id='request'`).Scan(&torrentHash); err != nil || torrentHash != "hash" || !active || tagged {
 		t.Fatalf("poll hash=%q active=%t tagged=%t err=%v", torrentHash, active, tagged, err)
 	}
+
 	if err := store.Cancel(ctx, auth.User{ID: "other"}, "library", "request"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other user cancel = %v", err)
 	}
+
 	reportedHash = "HASH"
 	rejectDelete = true
 	if err := store.Cancel(ctx, reader, "library", "request"); err == nil || deletes != 2 {
 		t.Fatalf("failed cancel deletes=%d err=%v", deletes, err)
 	}
+
 	assertAcquisitionState(t, db, "request", "downloading", "")
 	if !active {
 		t.Fatal("failed delete removed download")
 	}
+
 	rejectDelete = false
 	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 3 || deletedHash != "HASH" || deleteFiles != "true" {
 		t.Fatalf("hash cancel deletes=%d hash=%q deleteFiles=%q err=%v", deletes, deletedHash, deleteFiles, err)
 	}
+
 	if err := store.Cancel(ctx, reader, "library", "request"); !errors.Is(err, ErrInvalid) || deletes != 3 {
 		t.Fatalf("repeated cancel deletes=%d err=%v", deletes, err)
 	}
+
 	if err := store.Retry(ctx, reader, "library", "request"); err != nil || adds != 3 {
 		t.Fatalf("retry before missing cancel adds=%d err=%v", adds, err)
 	}
+
 	active = false
 	tagged = false
-	if _, err := db.Exec(`UPDATE acquisition_requests SET torrent_hash='missing' WHERE id='request'`); err != nil {
+	if _, err := db.Exec(`UPDATE acquisition_requests SET download_job_id='missing' WHERE id='request'`); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Cancel(ctx, reader, "library", "request"); err != nil || deletes != 3 {
 		t.Fatalf("missing cancel deletes=%d err=%v", deletes, err)
 	}
+
 	if err := store.Dismiss(ctx, reader, "library", "request"); err != nil {
 		t.Fatal(err)
 	}
+
 	tracker, err := store.Tracker(ctx, reader)
 	if err != nil || len(tracker.Requests) != 0 {
 		t.Fatalf("dismissed tracker = %#v, %v", tracker, err)
@@ -1024,7 +1046,7 @@ func TestConflictingSubmissionRequiresExactExistingDownload(t *testing.T) {
 			client, _ := New(Options{QBitURL: server.URL, Category: "aldus"})
 			got, err := client.submitTracked(context.Background(), tc.url, tc.tag)
 			if tc.success {
-				if err != nil || got.Hash != hash {
+				if err != nil || got.JobID != hash {
 					t.Fatalf("hash=%q error=%v", got, err)
 				}
 			} else if err == nil {

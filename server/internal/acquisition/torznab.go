@@ -19,6 +19,15 @@ func (c *Client) searchFeed(ctx context.Context, rawURL, query, source string) (
 }
 
 func (c *Client) searchFeedReport(ctx context.Context, rawURL, query, source string) ([]Result, int, error) {
+	protocol := "torrent"
+	if c.options.IndexerKind == "newznab" {
+		protocol = "usenet"
+	}
+
+	return c.searchProtocolFeed(ctx, rawURL, query, source, protocol)
+}
+
+func (c *Client) searchProtocolFeed(ctx context.Context, rawURL, query, source, protocol string) ([]Result, int, error) {
 	u, _ := url.Parse(rawURL)
 	values := u.Query()
 	values.Set("t", "search")
@@ -71,7 +80,11 @@ func (c *Client) searchFeedReport(ctx context.Context, rawURL, query, source str
 	results := make([]Result, 0, len(feed.Items))
 	for _, item := range feed.Items {
 		metadata := feedMetadata(item.GUID, item.Enclosure.Type, item.Attributes)
-		if metadata.Protocol != "torrent" || (!supportedReleaseTitle(item.Title) && metadata.Format == "") {
+		if protocol == "usenet" {
+			metadata.Protocol = "usenet"
+		}
+
+		if (metadata.Protocol == "usenet" && c.options.SABnzbdURL == "") || (metadata.Protocol != "torrent" && metadata.Protocol != "usenet") || (!supportedReleaseTitle(item.Title) && metadata.Format == "") {
 			excluded++
 			continue
 		}

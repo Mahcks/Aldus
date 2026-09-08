@@ -809,24 +809,49 @@ func scanTitleRequest(row rowScanner) (TitleRequest, error) {
 }
 
 func (s *TitleRequestStore) formats(ctx context.Context, id string) ([]TitleRequestFormat, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT f.format,f.state,COALESCE(f.source_id,''),f.error,COALESCE(a.qbit_state,''),f.retry_count,COALESCE(f.last_searched_at,''),COALESCE(f.next_search_at,''),f.created_at,f.updated_at FROM title_request_formats f LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id WHERE f.title_request_id=? ORDER BY f.format`, id)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			f.format, f.state, COALESCE(f.source_id,''), f.error,
+			COALESCE(a.client_state,''), f.retry_count,
+			COALESCE(f.last_searched_at,''), COALESCE(f.next_search_at,''),
+			f.created_at, f.updated_at
+		FROM title_request_formats f
+		LEFT JOIN acquisition_requests a ON a.id=f.legacy_acquisition_request_id
+		WHERE f.title_request_id=?
+		ORDER BY f.format
+	`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list title request formats: %w", err)
 	}
+
 	defer rows.Close()
+
 	values := make([]TitleRequestFormat, 0, 2)
 	for rows.Next() {
 		var value TitleRequestFormat
 		var searched, next, created, updated string
-		if err := rows.Scan(&value.Format, &value.State, &value.SourceID, &value.Error, &value.DownloadState, &value.RetryCount, &searched, &next, &created, &updated); err != nil {
+		if err := rows.Scan(
+			&value.Format,
+			&value.State,
+			&value.SourceID,
+			&value.Error,
+			&value.DownloadState,
+			&value.RetryCount,
+			&searched,
+			&next,
+			&created,
+			&updated,
+		); err != nil {
 			return nil, err
 		}
+
 		value.LastSearchedAt, _ = time.Parse(time.RFC3339Nano, searched)
 		value.NextSearchAt, _ = time.Parse(time.RFC3339Nano, next)
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 		value.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 		values = append(values, value)
 	}
+
 	return values, rows.Err()
 }
 

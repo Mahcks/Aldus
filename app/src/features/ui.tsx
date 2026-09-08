@@ -173,6 +173,7 @@ export function Button({
   loading,
   accessibilityRole = 'button',
   accessibilityLabel,
+  expanded,
 }: {
   label: string;
   onPress: () => void;
@@ -183,6 +184,7 @@ export function Button({
   iconOnly?: boolean;
   loading?: boolean;
   accessibilityLabel?: string;
+  expanded?: boolean;
   /** Override for use inside a radiogroup or tablist. */
   accessibilityRole?: 'button' | 'radio' | 'tab';
 }) {
@@ -216,11 +218,13 @@ export function Button({
     <Pressable
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel || label}
+      aria-expanded={expanded}
       accessibilityState={{
         disabled: isInactive,
         selected: accessibilityRole === 'radio' ? undefined : selected,
         checked: accessibilityRole === 'radio' ? selected : undefined,
         busy: loading,
+        expanded,
       }}
       disabled={isInactive}
       onBlur={handleBlur}

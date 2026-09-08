@@ -27,11 +27,16 @@ func (c *Client) SearchReport(ctx context.Context, query string) (SearchReport, 
 	}
 
 	results, excluded, err := c.searchFeedReport(ctx, c.options.IndexerURL, query, "")
-	outcome := IndexerOutcome{Name: "Torznab", Results: len(results), Excluded: excluded}
+	name := "Torznab"
+	if c.options.IndexerKind == "newznab" {
+		name = "Newznab"
+	}
+
+	outcome := IndexerOutcome{Name: name, Results: len(results), Excluded: excluded}
 	if err != nil {
 		outcome.Error = searchDiagnostic(err)
 		if ctx.Err() == nil {
-			err = fmt.Errorf("%w: Torznab unavailable", ErrSearchFailed)
+			err = fmt.Errorf("%w: %s unavailable", ErrSearchFailed, name)
 		}
 	}
 
@@ -107,7 +112,20 @@ func (c *Client) searchProwlarr(ctx context.Context, query string) (SearchReport
 	semaphore := make(chan struct{}, 4)
 	var count int
 	for _, indexer := range indexers {
-		if !indexer.Enabled || indexer.Protocol != "torrent" {
+		if !indexer.Enabled {
+			continue
+		}
+
+		switch indexer.Protocol {
+		case "torrent":
+			if c.options.QBitURL == "" && c.options.SABnzbdURL != "" {
+				continue
+			}
+		case "usenet":
+			if c.options.SABnzbdURL == "" {
+				continue
+			}
+		default:
 			continue
 		}
 
@@ -117,7 +135,7 @@ func (c *Client) searchProwlarr(ctx context.Context, query string) (SearchReport
 			defer func() { <-semaphore }()
 
 			feed := fmt.Sprintf("%s/%d/api", strings.TrimRight(c.options.IndexerURL, "/"), value.ID)
-			items, excluded, err := c.searchFeedReport(ctx, feed, query, safeIndexerName(value.Name, c.options.IndexerAPIKey))
+			items, excluded, err := c.searchProtocolFeed(ctx, feed, query, safeIndexerName(value.Name, c.options.IndexerAPIKey), value.Protocol)
 			for i := range items {
 				items[i].Metadata.IndexerID = value.ID
 			}
@@ -155,7 +173,7 @@ func (c *Client) searchProwlarr(ctx context.Context, query string) (SearchReport
 	}
 
 	if count == 0 {
-		return report, fmt.Errorf("%w: Prowlarr has no enabled torrent indexers", ErrSearchFailed)
+		return report, fmt.Errorf("%w: Prowlarr has no enabled indexers for the configured download clients", ErrSearchFailed)
 	}
 
 	if successes == 0 {

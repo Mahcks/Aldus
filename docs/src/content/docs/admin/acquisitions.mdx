@@ -7,7 +7,7 @@ import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
 
 Automatic requests are entirely optional. Aldus reads and streams files you already own with no external services at all — this page only matters once you want household members to ask for a format they don't have yet.
 
-Aldus currently works with [Prowlarr](https://prowlarr.com/) to search indexers and [qBittorrent](https://www.qbittorrent.org/) to download the selected release. Usenet clients aren't supported yet. **The server owner is responsible for the indexers and tracker credentials configured here — Aldus doesn't provide, endorse, or ship any of them.**
+Aldus works with [Prowlarr](https://prowlarr.com/) to search indexers, [qBittorrent](https://www.qbittorrent.org/) for torrents, and [SABnzbd](https://sabnzbd.org/) for Usenet. Configure either download client or both; the selected release determines which client receives it. **The server owner is responsible for the indexers and tracker credentials configured here — Aldus doesn't provide, endorse, or ship any of them.**
 
 ## Connect Prowlarr and qBittorrent
 
@@ -22,7 +22,7 @@ Open **Acquisitions → Connections**. Every field here maps to a real setting s
 | Field | Notes |
 | --- | --- |
 | Search provider | **Prowlarr** (recommended) or a direct **Torznab feed** for a single advanced indexer. |
-| Prowlarr URL / Torznab feed URL | Must be a valid `http(s)://` URL with a host. Do not embed a username, password, or API key in the URL; use the dedicated credential field. With Prowlarr, Aldus discovers and searches every indexer you have enabled there — you don't configure indexers individually in Aldus. |
+| Prowlarr URL / Torznab feed URL | Must be a valid `http(s)://` URL with a host. Do not embed a username, password, or API key in the URL; use the dedicated credential field. With Prowlarr, Aldus discovers enabled indexers for the download clients you have configured — you don't configure indexers individually in Aldus. |
 | Indexer API key | Prowlarr's API key. Stored, never redisplayed. |
 | qBittorrent URL | The Web UI address, e.g. `http://qbittorrent:8080` on a shared Docker network. |
 | qBittorrent username / password | Credentials for that Web UI. |
@@ -40,6 +40,49 @@ Changing the qBittorrent connection applies to new downloads. Existing downloads
 <Aside type="danger" title="qBittorrent and Aldus must see the same folder">
   This is the single most common setup mistake. qBittorrent's *download root* setting here has to describe the same physical folder as `ALDUS_DOWNLOAD_PATH` in Aldus's own `.env` — otherwise Aldus computes a path it can't actually open once a torrent finishes, and the request gets stuck. If a download completes in qBittorrent but the title never shows up in Aldus, this mapping is the first thing to check.
 </Aside>
+
+## Connect SABnzbd for Usenet
+
+In **Acquisitions → Connections**, enter SABnzbd's Web UI URL, full API key,
+optional existing category, and completed download root. The NZB-only key cannot
+read queue/history or manage jobs. With Prowlarr, enable Usenet book or audiobook
+indexers; for a single provider, choose **Direct Newznab feed (Usenet)**.
+
+Aldus retrieves and validates the NZB, then uploads it to SABnzbd. Keep Usenet
+server subscriptions and credentials in SABnzbd. Aldus needs only its API key and
+access to completed output. The completed download root is the path SABnzbd
+reports; mount those same files under Aldus's `ALDUS_DOWNLOAD_INGRESS`. When both
+clients are used, both completed folders must be visible under that ingress.
+
+The download remains active through verification, repair, unpacking, moving,
+and post-processing. Only completed output enters the existing import workflow.
+Aldus makes its managed library copy without deleting SABnzbd's original files.
+Connection diagnostics report SABnzbd connectivity and completed-file visibility
+separately from qBittorrent.
+
+Keep SABnzbd queue/history entries until Aldus has imported the book. Restart
+recovery uses the persisted client and job ID. Failed jobs can be retried through
+SABnzbd; Aldus records the replacement ID returned by the retry. If a submission
+response is lost, Aldus looks for its request marker instead of uploading again.
+If the job cannot be found after 15 minutes, the request reports an error. Check
+SABnzbd before creating another request, especially if history was pruned or the
+job was renamed. Aldus does not guess whether a missing job completed.
+
+Canceling an Aldus-owned queued job leaves downloaded files intact. Cancellation
+while SABnzbd is post-processing asks you to wait, preserving completed output.
+Changing the connection affects new jobs; existing jobs retain their original
+client and completed-folder mapping.
+
+Environment defaults are `ALDUS_SABNZBD_URL`, `ALDUS_SABNZBD_API_KEY`,
+`ALDUS_SABNZBD_CATEGORY`, and `ALDUS_SABNZBD_DOWNLOAD_ROOT`. Saved connection
+settings take precedence. Connector keys are omitted from redacted backups and
+must be re-entered after restoring one.
+
+For development, `make acquisition-usenet-smoke` starts a disposable SABnzbd
+5.1.2 container and a local NNTP fixture serving the repository's public-domain
+Alice EPUB. It checks download, restart, exact managed-copy contents, library import, and
+the family request becoming ready without an external indexer or Usenet account. The script cleans up its container,
+network, and temporary files.
 
 ## Per-library download rules
 
@@ -70,8 +113,8 @@ Both size limits are internally clamped between 1 KB and 1 TiB regardless of wha
 
 1. A member with **can request** submits a title. Unless they also have **skip approval** (or hold the owner/editor role, which always bypasses the queue), the request waits in the **Requests** tab for an owner, editor, or admin to approve or deny each format.
 2. Once approved, Aldus searches every enabled Prowlarr indexer concurrently and filters results against the library's format, size, and language rules.
-3. The selected release is handed to qBittorrent, tagged with the request's own ID so Aldus can find it again even if the Aldus process restarts mid-download.
-4. Aldus polls qBittorrent roughly every 15 seconds. Once the torrent reports as finished, Aldus copies the file from qBittorrent's download folder into the library's managed Source, verifying its SHA-256 hash both during and after the copy.
+3. The selected release goes to its matching download client. Aldus saves that connection and the returned job ID, with a request marker for recovery if a submission response is lost.
+4. Aldus checks downloads roughly every 15 seconds. Once the client reports completed output, including any SABnzbd repair and unpacking, Aldus copies the files into the library's managed Source and verifies their hashes during and after the copy.
 5. That copy triggers a scan of the managed Source, which produces an import proposal exactly as described in [Media sources](/admin/sources/) — a high-confidence match imports immediately if the managed Source has auto-import on; anything less certain waits in **Import review**.
 6. The request's status moves through **Requests → Downloads** and finally to **Available** once the matching work exists in the library — or **Needs review** if the import needs a human decision, or **Failed** with a plain-language reason and an expandable technical detail panel if something went wrong along the way.
 

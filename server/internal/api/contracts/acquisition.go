@@ -3,6 +3,8 @@ package contracts
 import "time"
 
 type AcquisitionRequest struct {
+	DownloadClientKind  string    `json:"download_client_kind,omitempty"`
+	ClientState         string    `json:"client_state,omitempty"`
 	TorrentOwnership    string    `json:"torrent_ownership,omitempty" tstype:"'created' | 'adopted' | 'unknown'"`
 	ID                  string    `json:"id"`
 	LibraryID           string    `json:"library_id"`
@@ -81,7 +83,11 @@ type AcquisitionDiscovery struct {
 }
 
 type AcquisitionSettings struct {
-	IndexerKind             string `json:"indexer_kind" tstype:"'prowlarr' | 'torznab'"`
+	SABnzbdURL              string `json:"sabnzbd_url,omitempty"`
+	SABnzbdCategory         string `json:"sabnzbd_category,omitempty"`
+	SABnzbdDownloadRoot     string `json:"sabnzbd_download_root,omitempty"`
+	HasSABnzbdAPIKey        bool   `json:"has_sabnzbd_api_key,omitempty"`
+	IndexerKind             string `json:"indexer_kind" tstype:"'prowlarr' | 'torznab' | 'newznab'"`
 	IndexerURL              string `json:"indexer_url"`
 	HasIndexerAPIKey        bool   `json:"has_indexer_api_key"`
 	HasNYTAPIKey            bool   `json:"has_nyt_api_key"`
@@ -93,26 +99,36 @@ type AcquisitionSettings struct {
 }
 
 type UpdateAcquisitionSettingsRequest struct {
-	IndexerKind             string `json:"indexer_kind" tstype:"'prowlarr' | 'torznab'"`
-	IndexerURL              string `json:"indexer_url"`
-	IndexerAPIKey           string `json:"indexer_api_key"`
-	NYTAPIKey               string `json:"nyt_api_key"`
-	QBitTorrentURL          string `json:"qbittorrent_url"`
-	QBitTorrentUsername     string `json:"qbittorrent_username"`
-	QBitTorrentPassword     string `json:"qbittorrent_password"`
-	QBitTorrentCategory     string `json:"qbittorrent_category"`
-	QBitTorrentDownloadRoot string `json:"qbittorrent_download_root"`
+	SABnzbdURL              *string `json:"sabnzbd_url,omitempty"`
+	SABnzbdCategory         string  `json:"sabnzbd_category,omitempty"`
+	SABnzbdDownloadRoot     string  `json:"sabnzbd_download_root,omitempty"`
+	SABnzbdAPIKey           string  `json:"sabnzbd_api_key,omitempty"`
+	IndexerKind             string  `json:"indexer_kind" tstype:"'prowlarr' | 'torznab' | 'newznab'"`
+	IndexerURL              string  `json:"indexer_url"`
+	IndexerAPIKey           string  `json:"indexer_api_key"`
+	NYTAPIKey               string  `json:"nyt_api_key"`
+	QBitTorrentURL          string  `json:"qbittorrent_url"`
+	QBitTorrentUsername     string  `json:"qbittorrent_username"`
+	QBitTorrentPassword     string  `json:"qbittorrent_password"`
+	QBitTorrentCategory     string  `json:"qbittorrent_category"`
+	QBitTorrentDownloadRoot string  `json:"qbittorrent_download_root"`
 }
 
 type AcquisitionConnectionStatus struct {
-	Search           *AcquisitionSearchReport `json:"search,omitempty"`
-	FileVisibility   string                   `json:"file_visibility,omitempty" tstype:"'not_tested' | 'ok' | 'failed'"`
-	FileError        string                   `json:"file_error,omitempty"`
-	ProwlarrOK       bool                     `json:"prowlarr_ok"`
-	IndexerCount     int                      `json:"indexer_count"`
-	ProwlarrError    string                   `json:"prowlarr_error,omitempty"`
-	QBitTorrentOK    bool                     `json:"qbittorrent_ok"`
-	QBitTorrentError string                   `json:"qbittorrent_error,omitempty"`
+	QBitTorrentConfigured *bool                    `json:"qbittorrent_configured,omitempty"`
+	SABnzbdConfigured     bool                     `json:"sabnzbd_configured,omitempty"`
+	SABnzbdOK             bool                     `json:"sabnzbd_ok,omitempty"`
+	SABnzbdError          string                   `json:"sabnzbd_error,omitempty"`
+	SABnzbdFileVisibility string                   `json:"sabnzbd_file_visibility,omitempty"`
+	SABnzbdFileError      string                   `json:"sabnzbd_file_error,omitempty"`
+	Search                *AcquisitionSearchReport `json:"search,omitempty"`
+	FileVisibility        string                   `json:"file_visibility,omitempty" tstype:"'not_tested' | 'ok' | 'failed'"`
+	FileError             string                   `json:"file_error,omitempty"`
+	ProwlarrOK            bool                     `json:"prowlarr_ok"`
+	IndexerCount          int                      `json:"indexer_count"`
+	ProwlarrError         string                   `json:"prowlarr_error,omitempty"`
+	QBitTorrentOK         bool                     `json:"qbittorrent_ok"`
+	QBitTorrentError      string                   `json:"qbittorrent_error,omitempty"`
 }
 
 type AcquisitionCapabilities struct {

@@ -17,7 +17,7 @@ func TestChangingDefaultDoesNotRedirectCancellation(t *testing.T) {
 	if _, err := db.Exec(`
 		UPDATE acquisition_requests
 		SET fulfillment_state='downloading', selected_url='magnet:?xt=urn:btih:abcdef',
-			torrent_hash='owned', torrent_ownership='created'
+			download_job_id='owned', torrent_ownership='created'
 		WHERE id='legacy'
 	`); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestRetryAndRecoveryKeepOriginalClient(t *testing.T) {
 
 			if _, err := db.Exec(`
 				UPDATE acquisition_requests
-				SET fulfillment_state=?, selected_url='magnet:?xt=urn:btih:abcdef', torrent_hash='owned'
+				SET fulfillment_state=?, selected_url='magnet:?xt=urn:btih:abcdef', download_job_id='owned'
 				WHERE id='legacy'
 			`, state); err != nil {
 				t.Fatal(err)
@@ -176,7 +176,7 @@ func TestUnavailableOriginalClientDoesNotBlockOtherDownloads(t *testing.T) {
 	db := titleLifecycleFixture(t)
 	if _, err := db.Exec(`
 		UPDATE acquisition_requests
-		SET fulfillment_state='submitting', selected_url='magnet:?xt=urn:btih:abcdef', torrent_hash='old'
+		SET fulfillment_state='submitting', selected_url='magnet:?xt=urn:btih:abcdef', download_job_id='old'
 		WHERE id='legacy'
 	`); err != nil {
 		t.Fatal(err)
@@ -206,7 +206,7 @@ func TestUnavailableOriginalClientDoesNotBlockOtherDownloads(t *testing.T) {
 
 	if _, err := db.Exec(`
 		INSERT INTO acquisition_requests (
-			id, library_id, query, status, fulfillment_state, torrent_hash, created_at, updated_at
+			id, library_id, query, status, fulfillment_state, download_job_id, created_at, updated_at
 		)
 		VALUES ('new', 'library', 'Alice', 'queued', 'downloading', 'new', '2026-01-01', '2026-01-01')
 	`); err != nil {

@@ -174,7 +174,7 @@ func TestDiscoveryPreservesReleaseMetadataThroughSelection(t *testing.T) {
 func TestSelectionRejectsUnsupportedTransport(t *testing.T) {
 	db := titleLifecycleFixture(t)
 	if _, err := db.Exec(`
-		UPDATE acquisition_results SET release_metadata='{"protocol":"usenet"}' WHERE id='release'
+		UPDATE acquisition_results SET release_metadata='{"protocol":"unsupported"}' WHERE id='release'
 	`); err != nil {
 		t.Fatal(err)
 	}

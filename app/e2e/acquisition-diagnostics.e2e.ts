@@ -56,7 +56,7 @@ for (const width of [390, 1024, 1440]) {
     const check = page.getByRole('button', { name: 'Test connections', exact: true });
     await check.click();
     await expect(page.getByText(/Partial search: 1 of 2/)).toBeVisible();
-    await expect(page.getByText(/File access not tested/)).toBeVisible();
+    await expect(page.getByText(/File access not verified/)).toBeVisible();
     const disclosure = page.getByRole('button', { name: 'Show search details' });
     await disclosure.focus();
     await page.keyboard.press('Enter');
@@ -71,7 +71,7 @@ for (const width of [390, 1024, 1440]) {
       await check.click();
       const message =
         next === 'empty'
-          ? /No enabled torrent indexers/
+          ? /No matching indexers/
           : next === 'failed'
             ? /All indexers failed/
             : next === 'offline'
@@ -79,5 +79,24 @@ for (const width of [390, 1024, 1440]) {
               : /2 search sources responded/;
       await expect(page.getByText(message)).toBeVisible();
     }
+    let finishCheck!: () => void;
+    const held = new Promise<void>((resolve) => {
+      finishCheck = resolve;
+    });
+    await page.route('**/acquisition-settings/test', async (route) => {
+      await held;
+      await route.fulfill({
+        json: { prowlarr_ok: true, qbittorrent_ok: true, file_visibility: 'ok' },
+      });
+    });
+    await check.click();
+    await expect(
+      page.getByRole('button', { name: 'Save connections', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      page.getByRole('button', { name: 'Save trending settings', exact: true }),
+    ).toBeDisabled();
+    finishCheck();
+    await expect(page.getByText('File access verified', { exact: true })).toBeVisible();
   });
 }

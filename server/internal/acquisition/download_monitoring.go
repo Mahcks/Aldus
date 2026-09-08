@@ -18,7 +18,7 @@ type downloadMonitorRequest struct {
 	id              string
 	libraryID       string
 	sourceID        string
-	hash            string
+	jobID           string
 	lastSeen        string
 	progressUpdated string
 	updated         string
@@ -31,18 +31,22 @@ func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequ
 		if baseline == "" {
 			baseline = request.progressUpdated
 		}
+
 		if baseline == "" {
 			baseline = request.updated
 		}
+
 		seenAt, err := time.Parse(time.RFC3339Nano, baseline)
 		if err != nil || now.Sub(seenAt) < downloadMissingGrace {
 			return false, nil
 		}
+
 		if request.lastSeen == "" {
-			s.markDownloadProblem(ctx, request.id, "qBittorrent never reported this download after 15 minutes. Check its category, tags, and add permissions.")
+			s.markDownloadProblem(ctx, request.id, "The download client never reported this download after 15 minutes. Check its category, tags, and add permissions.")
 		} else {
-			s.markDownloadProblem(ctx, request.id, "qBittorrent no longer has this download. It may have been removed from the download client.")
+			s.markDownloadProblem(ctx, request.id, "The download client no longer has this download. It may have been removed from the download client.")
 		}
+
 		return true, nil
 	}
 
@@ -52,11 +56,29 @@ func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequ
 	if progressChanged {
 		progressUpdated = stamp
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=?,qbit_state=?,download_last_seen_at=?,download_progress=?,download_progress_updated_at=? WHERE id=? AND fulfillment_state='downloading'`, download.Hash, download.State, stamp, download.Progress, progressUpdated, request.id); err != nil {
+
+	if _, err := s.db.ExecContext(
+		ctx,
+		`
+		UPDATE acquisition_requests
+		SET download_job_id=?, client_state=?, download_last_seen_at=?,
+			download_progress=?, download_progress_updated_at=?
+		WHERE id=? AND fulfillment_state='downloading'
+		`,
+		download.JobID,
+		download.State,
+		stamp,
+		download.Progress,
+		progressUpdated,
+		request.id,
+	); err != nil {
 		return false, fmt.Errorf("record acquisition download progress: %w", err)
 	}
 
 	switch strings.ToLower(download.State) {
+	case "failed":
+		s.markDownloadProblem(ctx, request.id, "SABnzbd could not complete this download. Check its history for verification, repair or unpacking errors, then retry.")
+		return true, nil
 	case "error":
 		s.markDownloadProblem(ctx, request.id, "qBittorrent reported an error for this download. Open qBittorrent for the underlying client message.")
 		return true, nil
@@ -67,17 +89,18 @@ func (s *Store) monitorDownload(ctx context.Context, request downloadMonitorRequ
 		startedAt, err := time.Parse(time.RFC3339Nano, request.progressUpdated)
 		if err == nil && download.Seeds == 0 && download.Peers == 0 && now.Sub(startedAt) >= metadataStallLimit {
 			diagnosis := "No peers supplied torrent metadata for 30 minutes. Aldus will try a different release."
-			return true, s.markReleaseProblem(ctx, request.id, download.Hash, diagnosis)
+			return true, s.markReleaseProblem(ctx, request.id, download.JobID, diagnosis)
 		}
 	}
 
 	if !progressChanged && activeDownloadState(download.State) {
 		changedAt, err := time.Parse(time.RFC3339Nano, request.progressUpdated)
 		if err == nil && now.Sub(changedAt) >= downloadStallLimit {
-			s.markDownloadProblem(ctx, request.id, "The qBittorrent download made no progress for 24 hours. Check peers, trackers, and available disk space, then retry.")
+			s.markDownloadProblem(ctx, request.id, "The download made no progress for 24 hours. Check the download client and available disk space, then retry.")
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 

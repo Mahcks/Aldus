@@ -42,12 +42,11 @@ export function RequestRow({
         {request.formats.map((format) => {
           const status = titleRequestPresentation(format.state);
           const key = `${request.id}:${format.format}`;
+          const formatLabel = format.format === 'audiobook' ? 'Audiobook' : 'Ebook';
           return (
             <View key={format.format} className="gap-2">
               <View className="flex-row flex-wrap items-center justify-between gap-2">
-                <Text className="text-sm font-sans-semibold text-ink">
-                  {format.format === 'audiobook' ? 'Audiobook' : 'Ebook'}
-                </Text>
+                <Text className="text-sm font-sans-semibold text-ink">{formatLabel}</Text>
                 <StatusBadge tone={status?.tone ?? 'info'} label={status?.label ?? 'Requested'} />
               </View>
               <Text className="text-sm leading-5 text-muted">{titleRequestDetail(format)}</Text>
@@ -55,6 +54,7 @@ export function RequestRow({
                 <View className="flex-row flex-wrap gap-2 sm:justify-end">
                   <Button
                     label="Approve"
+                    accessibilityLabel={`Approve ${formatLabel.toLowerCase()} request for ${request.title}`}
                     kind="primary"
                     loading={busy === key}
                     disabled={Boolean(busy)}
@@ -62,6 +62,7 @@ export function RequestRow({
                   />
                   <Button
                     label="Deny"
+                    accessibilityLabel={`Deny ${formatLabel.toLowerCase()} request for ${request.title}`}
                     kind="quiet"
                     disabled={Boolean(busy)}
                     onPress={() => onDeny(format.format)}

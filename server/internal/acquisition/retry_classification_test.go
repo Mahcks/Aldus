@@ -55,7 +55,7 @@ func TestReleaseFailureClassificationResetsOnRetry(t *testing.T) {
 	_, err := db.Exec(`
 		UPDATE title_request_formats SET state='downloading' WHERE title_request_id='title';
 		UPDATE acquisition_requests
-		SET status='queued', fulfillment_state='downloading', torrent_hash='dead',
+		SET status='queued', fulfillment_state='downloading', download_job_id='dead',
 		    selected_url='https://download.test/current'
 		WHERE id='legacy'
 	`)
@@ -81,6 +81,7 @@ func TestReleaseFailureClassificationResetsOnRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	acquisitions := NewStore(db, client)
 	titles := NewTitleRequestStore(db)
 
@@ -88,10 +89,11 @@ func TestReleaseFailureClassificationResetsOnRetry(t *testing.T) {
 	now := time.Now().UTC()
 	failed, err := acquisitions.monitorDownload(ctx, downloadMonitorRequest{
 		id: "legacy", progressUpdated: now.Add(-31 * time.Minute).Format(time.RFC3339Nano),
-	}, &Download{Hash: "dead", State: "metaDL"}, now)
+	}, &Download{JobID: "dead", State: "metaDL"}, now)
 	if err != nil || !failed {
 		t.Fatalf("failed=%v err=%v", failed, err)
 	}
+
 	if err := titles.syncLegacyFulfillment(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +102,7 @@ func TestReleaseFailureClassificationResetsOnRetry(t *testing.T) {
 	if err := db.QueryRow(`SELECT state,COALESCE(next_search_at,'') FROM title_request_formats WHERE title_request_id='title'`).Scan(&state, &next); err != nil {
 		t.Fatal(err)
 	}
+
 	if state != "awaiting_release" || next == "" {
 		t.Fatalf("fresh release failure: state=%q next=%q", state, next)
 	}
@@ -108,10 +111,12 @@ func TestReleaseFailureClassificationResetsOnRetry(t *testing.T) {
 	if err := acquisitions.Retry(ctx, auth.User{ID: "reader"}, "library", "legacy"); err != nil {
 		t.Fatal(err)
 	}
+
 	var failureKind string
 	if err := db.QueryRow(`SELECT failure_kind FROM acquisition_requests WHERE id='legacy'`).Scan(&failureKind); err != nil {
 		t.Fatal(err)
 	}
+
 	if failureKind != "" {
 		t.Fatalf("retry retained failure kind %q", failureKind)
 	}
@@ -119,14 +124,17 @@ func TestReleaseFailureClassificationResetsOnRetry(t *testing.T) {
 	if _, err := db.Exec(`UPDATE title_request_formats SET state='scanning' WHERE title_request_id='title'`); err != nil {
 		t.Fatal(err)
 	}
+
 	acquisitions.markDownloadProblem(ctx, "legacy", "Import storage unavailable.")
 	if err := titles.syncLegacyFulfillment(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	var diagnosis string
 	if err := db.QueryRow(`SELECT state,error,COALESCE(next_search_at,'') FROM title_request_formats WHERE title_request_id='title'`).Scan(&state, &diagnosis, &next); err != nil {
 		t.Fatal(err)
 	}
+
 	if state != "failed" || diagnosis != "Import storage unavailable." || next != "" {
 		t.Fatalf("new import failure: state=%q error=%q next=%q", state, diagnosis, next)
 	}

@@ -206,14 +206,14 @@ func TestCancellationFailurePreservesRequest(t *testing.T) {
 	if _, err := db.Exec(`
 		UPDATE acquisition_requests
 		SET fulfillment_state='downloading',
-			torrent_hash='shared',
+			download_job_id='shared',
 			torrent_ownership='created';
 
 		UPDATE title_request_formats
 		SET state='downloading';
 
 		INSERT INTO acquisition_requests (
-			id, library_id, requested_by, query, status, torrent_hash,
+			id, library_id, requested_by, query, status, download_job_id,
 			fulfillment_state, created_at, updated_at
 		)
 		VALUES (

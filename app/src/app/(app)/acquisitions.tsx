@@ -1,3 +1,4 @@
+import { ConnectionSection, ConnectionEditor } from '@/features/acquisitions/ConnectionSection';
 import { ConnectionDiagnostics } from '@/features/acquisitions/SearchDiagnostics';
 import { useTitleRequests } from '@/features/use-title-requests';
 import type {
@@ -58,6 +59,7 @@ export default function AcquisitionsAdministration() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [settingsAction, setSettingsAction] = useState<'connections' | 'trending'>('connections');
   const [settings, setSettings] = useState<AcquisitionSettings | null>(null);
   const [indexerURL, setIndexerURL] = useState('');
   const [indexerAPIKey, setIndexerAPIKey] = useState('');
@@ -66,13 +68,17 @@ export default function AcquisitionsAdministration() {
   const [qBitTorrentPassword, setQBitTorrentPassword] = useState('');
   const [qBitTorrentCategory, setQBitTorrentCategory] = useState('aldus');
   const [qBitTorrentDownloadRoot, setQBitTorrentDownloadRoot] = useState('');
+  const [sabURL, setSabURL] = useState('');
+  const [sabKey, setSabKey] = useState('');
+  const [sabCategory, setSabCategory] = useState('');
+  const [sabRoot, setSabRoot] = useState('');
   const [nytAPIKey, setNYTAPIKey] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   const [testingSettings, setTestingSettings] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<AcquisitionConnectionStatus | null>(
     null,
   );
-  const [indexerKind, setIndexerKind] = useState<'prowlarr' | 'torznab'>('prowlarr');
+  const [indexerKind, setIndexerKind] = useState<'prowlarr' | 'torznab' | 'newznab'>('prowlarr');
   const hasActiveDownloads = requests.some((request) => request.download_state === 'downloading');
   const visibleRequests = requests.filter((request) => acquisitionFulfillment(request));
   const reloadApprovals = requestPages.refresh;
@@ -86,6 +92,9 @@ export default function AcquisitionsAdministration() {
         setUsers(availableUsers);
         setLibraryID(available[0]?.id ?? '');
         setSettings(configured);
+        setSabURL(configured.sabnzbd_url ?? '');
+        setSabCategory(configured.sabnzbd_category ?? '');
+        setSabRoot(configured.sabnzbd_download_root ?? '');
         setIndexerKind(configured.indexer_kind || 'prowlarr');
         setIndexerURL(configured.indexer_url);
         setQBitTorrentURL(configured.qbittorrent_url);
@@ -135,31 +144,75 @@ export default function AcquisitionsAdministration() {
     return () => clearInterval(timer);
   }, [libraries, reloadApprovals]);
 
+  const connectionsDirty =
+    !settings ||
+    Boolean(indexerAPIKey || qBitTorrentPassword || sabKey) ||
+    indexerKind !== settings.indexer_kind ||
+    indexerURL.trim() !== (settings.indexer_url || '') ||
+    qBitTorrentURL.trim() !== (settings.qbittorrent_url || '') ||
+    qBitTorrentUsername.trim() !== (settings.qbittorrent_username || '') ||
+    (qBitTorrentCategory.trim() || 'aldus') !== (settings.qbittorrent_category || 'aldus') ||
+    qBitTorrentDownloadRoot.trim() !== (settings.qbittorrent_download_root || '') ||
+    sabURL.trim() !== (settings.sabnzbd_url || '') ||
+    sabCategory.trim() !== (settings.sabnzbd_category || '') ||
+    sabRoot.trim() !== (settings.sabnzbd_download_root || '');
+
   async function saveSettings(testConnections = true) {
-    if (savingSettings) return;
+    if (savingSettings || testingSettings || (!testConnections && !settings)) return;
+    setSettingsAction(testConnections ? 'connections' : 'trending');
     setSavingSettings(true);
     setError('');
     setSuccess('');
+    if (testConnections) setConnectionStatus(null);
     try {
+      // The trending action preserves saved connections, including any stored secrets.
+      const connections = testConnections
+        ? {
+            sabnzbd_url: sabURL.trim(),
+            sabnzbd_api_key: sabKey.trim(),
+            sabnzbd_category: sabCategory.trim(),
+            sabnzbd_download_root: sabRoot.trim(),
+            indexer_url: indexerURL.trim(),
+            indexer_kind: indexerKind,
+            indexer_api_key: indexerAPIKey.trim(),
+            qbittorrent_url: qBitTorrentURL.trim(),
+            qbittorrent_username: qBitTorrentUsername.trim(),
+            qbittorrent_password: qBitTorrentPassword,
+            qbittorrent_category: qBitTorrentCategory.trim() || 'aldus',
+            qbittorrent_download_root: qBitTorrentDownloadRoot.trim(),
+          }
+        : {
+            indexer_api_key: '',
+            qbittorrent_password: '',
+            sabnzbd_url: settings!.sabnzbd_url || '',
+            sabnzbd_category: settings!.sabnzbd_category || '',
+            sabnzbd_download_root: settings!.sabnzbd_download_root || '',
+            indexer_url: settings!.indexer_url,
+            indexer_kind: settings!.indexer_kind,
+            qbittorrent_url: settings!.qbittorrent_url,
+            qbittorrent_username: settings!.qbittorrent_username,
+            qbittorrent_category: settings!.qbittorrent_category,
+            qbittorrent_download_root: settings!.qbittorrent_download_root,
+          };
       const configured = await api.updateAcquisitionSettings({
-        indexer_url: indexerURL.trim(),
-        indexer_kind: indexerKind,
-        indexer_api_key: indexerAPIKey.trim(),
-        nyt_api_key: nytAPIKey.trim(),
-        qbittorrent_url: qBitTorrentURL.trim(),
-        qbittorrent_username: qBitTorrentUsername.trim(),
-        qbittorrent_password: qBitTorrentPassword,
-        qbittorrent_category: qBitTorrentCategory.trim() || 'aldus',
-        qbittorrent_download_root: qBitTorrentDownloadRoot.trim(),
+        ...connections,
+        nyt_api_key: testConnections ? '' : nytAPIKey.trim(),
       });
       setSettings(configured);
-      setIndexerAPIKey('');
-      setNYTAPIKey('');
-      setQBitTorrentPassword('');
       if (testConnections) {
-        setConnectionStatus(await api.testAcquisitionSettings());
-        setSuccess('Acquisition settings saved and tested.');
+        setIndexerAPIKey('');
+        setQBitTorrentPassword('');
+        setSabKey('');
+        setSuccess('Connections saved.');
+        try {
+          setConnectionStatus(await api.testAcquisitionSettings());
+        } catch (value) {
+          setError(
+            `Connections were saved, but the check could not finish. ${errorMessage(value)}`,
+          );
+        }
       } else {
+        setNYTAPIKey('');
         setSuccess('Trending settings saved.');
       }
     } catch (value) {
@@ -170,10 +223,12 @@ export default function AcquisitionsAdministration() {
   }
 
   async function testSettings() {
-    if (testingSettings) return;
+    if (testingSettings || savingSettings || connectionsDirty) return;
+    setSettingsAction('connections');
     setTestingSettings(true);
     setConnectionStatus(null);
     setError('');
+    setSuccess('');
     try {
       setConnectionStatus(await api.testAcquisitionSettings());
     } catch (value) {
@@ -279,8 +334,8 @@ export default function AcquisitionsAdministration() {
 
   return (
     <Page title="Acquisitions" editorial={false}>
-      {error ? <Notice tone="danger">{error}</Notice> : null}
-      {success ? <Notice tone="success">{success}</Notice> : null}
+      {error && tab !== 'settings' ? <Notice tone="danger">{error}</Notice> : null}
+      {success && tab !== 'settings' ? <Notice tone="success">{success}</Notice> : null}
 
       <View accessibilityRole="tablist" className="flex-row border-b border-line">
         {(['requests', 'downloads', 'settings'] as const).map((value) => (
@@ -288,7 +343,7 @@ export default function AcquisitionsAdministration() {
             key={value}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === value }}
-            className={`min-h-11 justify-center border-b-2 px-4 ${
+            className={`min-h-11 min-w-0 flex-1 items-center justify-center border-b-2 px-2 sm:flex-none sm:px-4 ${
               tab === value ? 'border-accent' : 'border-transparent'
             }`}
             onPress={() => setTab(value)}
@@ -371,52 +426,68 @@ export default function AcquisitionsAdministration() {
       ) : null}
 
       {tab === 'settings' ? (
-        <View className="w-full max-w-[720px] gap-10">
-          <Section title="Connections">
-            <View className="max-w-[720px] gap-4">
-              <Text className="text-base font-sans-semibold text-ink">Find releases</Text>
-              <Select
-                label="Search provider"
-                value={indexerKind}
-                options={[
-                  { value: 'prowlarr', label: 'Prowlarr' },
-                  { value: 'torznab', label: 'Direct Torznab feed (advanced)' },
-                ]}
-                onChange={(value) => setIndexerKind(value as 'prowlarr' | 'torznab')}
-              />
-              <Field
-                label={indexerKind === 'prowlarr' ? 'Prowlarr URL' : 'Torznab feed URL'}
-                value={indexerURL}
-                onChangeText={setIndexerURL}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                placeholder={
-                  indexerKind === 'prowlarr'
-                    ? 'http://prowlarr:9696'
-                    : 'https://indexer.example/api'
-                }
-                help={
-                  indexerKind === 'prowlarr'
-                    ? 'Aldus discovers and searches all enabled Prowlarr indexers.'
-                    : 'Use an individual torrent indexer feed URL.'
-                }
-              />
-              <Field
-                label="Indexer API key"
-                value={indexerAPIKey}
-                onChangeText={setIndexerAPIKey}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-                placeholder={settings?.has_indexer_api_key ? 'Saved, leave blank to keep it' : ''}
-              />
-              <View className="gap-1 border-t border-line-subtle pt-6">
-                <Text className="text-base font-sans-semibold text-ink">Download files</Text>
-                <Text className="text-sm text-muted">
-                  Connect qBittorrent to receive the releases you approve.
-                </Text>
-              </View>
+        <View className="w-full max-w-[1080px]">
+          <Text className="mb-6 max-w-[680px] text-base leading-7 text-muted">
+            Connect a search provider and a download client. Aldus finds releases, waits for
+            downloads to finish, then imports the books into your library.
+          </Text>
+          <ConnectionSection
+            title="Find releases"
+            description="Prowlarr searches your connected indexers. Choose a direct feed only if you already have its Torznab or Newznab address."
+          >
+            <Select
+              label="Search provider"
+              value={indexerKind}
+              options={[
+                { value: 'prowlarr', label: 'Prowlarr' },
+                { value: 'torznab', label: 'Direct Torznab feed (advanced)' },
+                { value: 'newznab', label: 'Direct Newznab feed (Usenet)' },
+              ]}
+              onChange={(value) => setIndexerKind(value as 'prowlarr' | 'torznab' | 'newznab')}
+            />
+            <Field
+              label={
+                indexerKind === 'prowlarr'
+                  ? 'Prowlarr URL'
+                  : indexerKind === 'newznab'
+                    ? 'Newznab feed URL'
+                    : 'Torznab feed URL'
+              }
+              value={indexerURL}
+              onChangeText={setIndexerURL}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              placeholder={
+                indexerKind === 'prowlarr' ? 'http://prowlarr:9696' : 'https://indexer.example/api'
+              }
+              help={
+                indexerKind === 'prowlarr'
+                  ? 'Aldus discovers and searches all enabled Prowlarr indexers.'
+                  : indexerKind === 'newznab'
+                    ? 'Use the API feed address from your Usenet indexer.'
+                    : 'Use the Torznab API feed address from your torrent indexer.'
+              }
+            />
+            <Field
+              label="Indexer API key"
+              value={indexerAPIKey}
+              onChangeText={setIndexerAPIKey}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              placeholder={settings?.has_indexer_api_key ? 'Saved, leave blank to keep it' : ''}
+            />
+          </ConnectionSection>
+          <ConnectionSection
+            title="Download files"
+            description="Use qBittorrent for torrents, SABnzbd for Usenet, or both. You only need to configure the services you use."
+          >
+            <ConnectionEditor
+              name="qBittorrent"
+              description="Torrents · keeps your original files for seeding"
+              configured={Boolean(settings?.qbittorrent_url)}
+            >
               <Field
                 label="qBittorrent URL"
                 value={qBitTorrentURL}
@@ -465,40 +536,129 @@ export default function AcquisitionsAdministration() {
                 placeholder="/downloads"
                 help="Enter the path qBittorrent reports for completed files. This is not Aldus's /downloads mount unless qBittorrent also reports /downloads."
               />
-              <View className="items-start">
-                <View className="gap-3 sm:flex-row">
-                  <Button
-                    label="Save connections"
-                    icon="check"
-                    kind="primary"
-                    loading={savingSettings}
-                    disabled={!indexerURL.trim() || !qBitTorrentURL.trim()}
-                    onPress={() => void saveSettings()}
-                  />
-                  <Button
-                    label="Test connections"
-                    icon="synced"
-                    kind="secondary"
-                    loading={testingSettings}
-                    disabled={!settings || savingSettings}
-                    onPress={() => void testSettings()}
-                  />
-                </View>
-                {!indexerURL.trim() || !qBitTorrentURL.trim() ? (
-                  <Text className="mt-2 text-sm text-warning">
-                    Add both service URLs before saving.
-                  </Text>
-                ) : null}
+            </ConnectionEditor>
+            <View className="border-t border-line-subtle" />
+            <ConnectionEditor
+              name="SABnzbd"
+              description="Usenet · repairs and unpacks before importing"
+              configured={Boolean(settings?.sabnzbd_url)}
+            >
+              <Field
+                label="SABnzbd URL"
+                value={sabURL}
+                onChangeText={setSabURL}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="http://sabnzbd:8080"
+              />
+              <Field
+                label="SABnzbd API key"
+                value={sabKey}
+                onChangeText={setSabKey}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder={settings?.has_sabnzbd_api_key ? 'Saved, leave blank to keep it' : ''}
+                help="Use the full API key from SABnzbd Settings → General, not the NZB-only key."
+              />
+              <Field
+                label="SABnzbd category"
+                value={sabCategory}
+                onChangeText={setSabCategory}
+                autoCapitalize="none"
+                autoCorrect={false}
+                help="Use an existing category, or leave blank for SABnzbd's default."
+              />
+              <Field
+                label="SABnzbd completed download root"
+                value={sabRoot}
+                onChangeText={setSabRoot}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="/downloads"
+                help="The completed folder reported by SABnzbd. Mount the same files into Aldus's download folder. Aldus waits for repair and unpacking to finish."
+              />
+            </ConnectionEditor>
+          </ConnectionSection>
+          <ConnectionSection
+            title="Check your setup"
+            description="Save your changes to test the provider and clients together. A connection can work even when Aldus cannot yet see completed files."
+          >
+            <ConnectionEditor
+              help
+              name="Connection help"
+              description="Addresses, Docker networking, and shared folders"
+              configured={false}
+            >
+              <Text className="text-sm leading-6 text-muted">
+                Use an address reachable from the Aldus server. In Docker, localhost points to the
+                Aldus container itself. Use a service name on the same Docker network, or your
+                server’s LAN address and published port.
+              </Text>
+              <Text className="text-sm leading-6 text-muted">
+                Both apps must see the same completed files. For example, mount the host’s completed
+                folder at /downloads in both containers, then enter /downloads as the client
+                download root. If the client reports a different path, enter that path instead.
+              </Text>
+              <Text className="text-sm leading-6 text-muted">
+                If the test cannot verify file access yet, finish a download and test again. Aldus
+                makes its own library copy and keeps the downloader’s original files.
+              </Text>
+            </ConnectionEditor>
+            <View className="items-start">
+              <View className="gap-3 sm:flex-row">
+                <Button
+                  label="Save connections"
+                  icon="check"
+                  kind="primary"
+                  loading={savingSettings}
+                  disabled={
+                    testingSettings ||
+                    !indexerURL.trim() ||
+                    (!qBitTorrentURL.trim() && !sabURL.trim())
+                  }
+                  onPress={() => void saveSettings()}
+                />
+                <Button
+                  label="Test connections"
+                  icon="synced"
+                  kind="secondary"
+                  loading={testingSettings}
+                  disabled={!settings || savingSettings || connectionsDirty}
+                  onPress={() => void testSettings()}
+                />
               </View>
-              {connectionStatus ? <ConnectionDiagnostics status={connectionStatus} /> : null}
+              {!indexerURL.trim() || (!qBitTorrentURL.trim() && !sabURL.trim()) ? (
+                <Text className="mt-2 text-sm text-warning">
+                  Add a search provider and at least one download client before saving.
+                </Text>
+              ) : null}
             </View>
-          </Section>
+            <Text className="text-sm text-muted">
+              {connectionsDirty
+                ? 'Save your connection changes before testing. Trending settings are saved separately.'
+                : 'Test connections checks your saved settings without changing them.'}
+            </Text>
+            {settingsAction === 'connections' && error ? (
+              <Notice tone="danger">{error}</Notice>
+            ) : null}
+            {settingsAction === 'connections' && success ? (
+              <Notice tone="success">{success}</Notice>
+            ) : null}
+            {connectionStatus && !connectionsDirty ? (
+              <ConnectionDiagnostics status={connectionStatus} />
+            ) : null}
+          </ConnectionSection>
 
-          <Section title="Trending books">
+          <ConnectionSection
+            title="Trending books"
+            description="Optional discovery lists. Open Library works without an API key; add an NYT key for Best Sellers."
+          >
             <View className="max-w-[720px] gap-4">
               <Notice>
-                Optional. Once configured, Discover shows NYT Best Sellers alongside its always-on
-                Open Library trending feed. Registering a key is free at developer.nytimes.com.
+                Get an API key at developer.nytimes.com and enable the Books API for your
+                application.
               </Notice>
               <Field
                 label="NYT API key"
@@ -512,14 +672,21 @@ export default function AcquisitionsAdministration() {
               <View className="items-start">
                 <Button
                   label="Save trending settings"
+                  disabled={testingSettings || !settings}
                   icon="check"
                   kind="primary"
                   loading={savingSettings}
                   onPress={() => void saveSettings(false)}
                 />
               </View>
+              {settingsAction === 'trending' && error ? (
+                <Notice tone="danger">{error}</Notice>
+              ) : null}
+              {settingsAction === 'trending' && success ? (
+                <Notice tone="success">{success}</Notice>
+              ) : null}
             </View>
-          </Section>
+          </ConnectionSection>
         </View>
       ) : null}
 
@@ -552,8 +719,11 @@ export default function AcquisitionsAdministration() {
               ) : null}
 
               {shownDownloads.length === 0 ? (
-                <EmptyState icon="acquire" title="No active downloads">
-                  New downloads will appear here. Open history to review earlier attempts.
+                <EmptyState
+                  icon="acquire"
+                  title={showDownloadHistory ? 'No download history' : 'No active downloads'}
+                >
+                  New downloads will appear here when a requested release starts downloading.
                 </EmptyState>
               ) : (
                 <View>
@@ -563,7 +733,7 @@ export default function AcquisitionsAdministration() {
                     return (
                       <View
                         key={request.id}
-                        className="min-h-[72px] gap-2 border-b border-line py-3 sm:flex-row sm:items-center sm:justify-between"
+                        className="min-h-[72px] gap-2 border-b border-line py-3 lg:flex-row lg:items-start lg:justify-between"
                       >
                         <View className="min-w-0 flex-1 gap-1.5">
                           <Text className="text-sm font-sans-bold text-ink">
@@ -607,13 +777,15 @@ export default function AcquisitionsAdministration() {
                             </View>
                           ) : null}
                         </View>
-                        <View className="items-start gap-2">
+                        <View className="items-start gap-2 lg:w-72">
                           <StatusBadge tone={status.tone} label={status.label} />
                           {request.can_cancel ? (
                             <Text className="max-w-[48ch] text-sm text-muted">
-                              {request.torrent_ownership === 'created'
-                                ? 'Created by Aldus. Canceling can remove this download and its files.'
-                                : 'Canceling this request keeps the torrent and its files in qBittorrent.'}
+                              {request.download_client_kind === 'sabnzbd'
+                                ? 'Canceling stops this request and keeps downloaded files in SABnzbd.'
+                                : request.torrent_ownership === 'created'
+                                  ? 'Created by Aldus. Canceling can remove this download and its files.'
+                                  : 'Canceling this request keeps the torrent and its files in qBittorrent.'}
                             </Text>
                           ) : null}
                         </View>

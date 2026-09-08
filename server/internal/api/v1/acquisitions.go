@@ -135,14 +135,20 @@ func testAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		value, err := store.TestConnections(r.Context(), actor(r))
 		writeAcquisitionResult(w, contracts.AcquisitionConnectionStatus{
-			Search:           acquisitionSearchReportDTO(&value.Search),
-			FileVisibility:   value.FileVisibility,
-			FileError:        value.FileError,
-			ProwlarrOK:       value.ProwlarrOK,
-			IndexerCount:     value.IndexerCount,
-			ProwlarrError:    value.ProwlarrError,
-			QBitTorrentOK:    value.QBitTorrentOK,
-			QBitTorrentError: value.QBitTorrentError,
+			Search:                acquisitionSearchReportDTO(&value.Search),
+			FileVisibility:        value.FileVisibility,
+			FileError:             value.FileError,
+			ProwlarrOK:            value.ProwlarrOK,
+			IndexerCount:          value.IndexerCount,
+			ProwlarrError:         value.ProwlarrError,
+			QBitTorrentOK:         value.QBitTorrentOK,
+			QBitTorrentConfigured: &value.QBitTorrentConfigured,
+			SABnzbdConfigured:     value.SABnzbdConfigured,
+			SABnzbdOK:             value.SABnzbdOK,
+			SABnzbdError:          value.SABnzbdError,
+			SABnzbdFileVisibility: value.SABnzbdFileVisibility,
+			SABnzbdFileError:      value.SABnzbdFileError,
+			QBitTorrentError:      value.QBitTorrentError,
 		}, err)
 	}
 }
@@ -186,13 +192,47 @@ func updateAcquisitionSettings(store *acquisition.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		value, err := store.UpdateSettings(r.Context(), actor(r), acquisition.SettingsUpdate{IndexerKind: body.IndexerKind, IndexerURL: body.IndexerURL, IndexerAPIKey: body.IndexerAPIKey, NYTAPIKey: body.NYTAPIKey, QBitURL: body.QBitTorrentURL, QBitUsername: body.QBitTorrentUsername, QBitPassword: body.QBitTorrentPassword, QBitCategory: body.QBitTorrentCategory, QBitDownloadRoot: body.QBitTorrentDownloadRoot})
+
+		update := acquisition.SettingsUpdate{
+			IndexerKind:      body.IndexerKind,
+			IndexerURL:       body.IndexerURL,
+			IndexerAPIKey:    body.IndexerAPIKey,
+			NYTAPIKey:        body.NYTAPIKey,
+			QBitURL:          body.QBitTorrentURL,
+			QBitUsername:     body.QBitTorrentUsername,
+			QBitPassword:     body.QBitTorrentPassword,
+			QBitCategory:     body.QBitTorrentCategory,
+			QBitDownloadRoot: body.QBitTorrentDownloadRoot,
+		}
+		update.PreserveSABnzbd = body.SABnzbdURL == nil
+		if body.SABnzbdURL != nil {
+			update.SABnzbdURL = *body.SABnzbdURL
+		}
+
+		update.SABnzbdAPIKey = body.SABnzbdAPIKey
+		update.SABnzbdCategory = body.SABnzbdCategory
+		update.SABnzbdDownloadRoot = body.SABnzbdDownloadRoot
+		value, err := store.UpdateSettings(r.Context(), actor(r), update)
 		writeAcquisitionResult(w, acquisitionSettingsDTO(value), err)
 	}
 }
 
 func acquisitionSettingsDTO(value acquisition.Settings) contracts.AcquisitionSettings {
-	return contracts.AcquisitionSettings{IndexerKind: value.IndexerKind, IndexerURL: value.IndexerURL, HasIndexerAPIKey: value.HasIndexerAPIKey, HasNYTAPIKey: value.HasNYTAPIKey, QBitTorrentURL: value.QBitURL, QBitTorrentUsername: value.QBitUsername, HasQBitTorrentPassword: value.HasQBitPassword, QBitTorrentCategory: value.QBitCategory, QBitTorrentDownloadRoot: value.QBitDownloadRoot}
+	return contracts.AcquisitionSettings{
+		SABnzbdURL:              value.SABnzbdURL,
+		SABnzbdCategory:         value.SABnzbdCategory,
+		SABnzbdDownloadRoot:     value.SABnzbdDownloadRoot,
+		HasSABnzbdAPIKey:        value.HasSABnzbdAPIKey,
+		IndexerKind:             value.IndexerKind,
+		IndexerURL:              value.IndexerURL,
+		HasIndexerAPIKey:        value.HasIndexerAPIKey,
+		HasNYTAPIKey:            value.HasNYTAPIKey,
+		QBitTorrentURL:          value.QBitURL,
+		QBitTorrentUsername:     value.QBitUsername,
+		HasQBitTorrentPassword:  value.HasQBitPassword,
+		QBitTorrentCategory:     value.QBitCategory,
+		QBitTorrentDownloadRoot: value.QBitDownloadRoot,
+	}
 }
 
 func listAcquisitionRequests(store *acquisition.Store) http.HandlerFunc {
@@ -249,6 +289,8 @@ func acquisitionRequestDTO(value acquisition.Request) contracts.AcquisitionReque
 		Query:               value.Query,
 		Status:              value.Status,
 		DownloadState:       value.DownloadState,
+		DownloadClientKind:  value.DownloadClientKind,
+		ClientState:         value.ClientState,
 		DownloadError:       value.DownloadError,
 		FulfillmentState:    value.FulfillmentState,
 		ScanID:              value.ScanID,

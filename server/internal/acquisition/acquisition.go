@@ -12,19 +12,24 @@ import (
 var (
 	ErrSearchFailed      = errors.New("search failed")
 	ErrUnavailable       = errors.New("acquisition is not configured")
-	ErrSubmissionUnknown = errors.New("qBittorrent submission outcome is unknown")
+	ErrSubmissionUnknown = errors.New("download submission outcome is unknown")
 )
 
 type Options struct {
-	IndexerKind   string
-	IndexerURL    string
-	IndexerAPIKey string
-	NYTAPIKey     string
-	QBitURL       string
-	QBitUsername  string
-	QBitPassword  string
-	Category      string
-	DownloadRoot  string
+	SABnzbdURL          string
+	SABnzbdAPIKey       string
+	SABnzbdCategory     string
+	SABnzbdDownloadRoot string
+	downloadKind        string
+	IndexerKind         string
+	IndexerURL          string
+	IndexerAPIKey       string
+	NYTAPIKey           string
+	QBitURL             string
+	QBitUsername        string
+	QBitPassword        string
+	Category            string
+	DownloadRoot        string
 }
 
 type Client struct {
@@ -49,15 +54,16 @@ type Indexer struct {
 }
 
 type Download struct {
-	Hash        string
-	Name        string
-	State       string
-	ContentPath string
-	Tags        string
-	Progress    float64
-	Size        int64
-	Seeds       int
-	Peers       int
+	PostProcessing bool
+	JobID          string
+	Name           string
+	State          string
+	ContentPath    string
+	Tags           string
+	Progress       float64
+	Size           int64
+	Seeds          int
+	Peers          int
 }
 
 func (d Download) HasTag(tag string) bool {
@@ -73,8 +79,9 @@ func (d Download) ReadyForImport() bool {
 	if d.Progress < 1 || d.ContentPath == "" {
 		return false
 	}
+
 	switch strings.ToLower(d.State) {
-	case "uploading", "stalledup", "queuedup", "forcedup", "pausedup", "stoppedup":
+	case "completed", "uploading", "stalledup", "queuedup", "forcedup", "pausedup", "stoppedup":
 		return true
 	default:
 		return false
@@ -82,18 +89,21 @@ func (d Download) ReadyForImport() bool {
 }
 
 func New(options Options) (*Client, error) {
-	if options.IndexerKind != "" && options.IndexerKind != "prowlarr" && options.IndexerKind != "torznab" {
+	if options.IndexerKind != "" && options.IndexerKind != "prowlarr" && options.IndexerKind != "torznab" && options.IndexerKind != "newznab" {
 		return nil, fmt.Errorf("invalid indexer kind %q", options.IndexerKind)
 	}
-	for _, raw := range []string{options.IndexerURL, options.QBitURL} {
+
+	for _, raw := range []string{options.IndexerURL, options.QBitURL, options.SABnzbdURL} {
 		if raw == "" {
 			continue
 		}
+
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
 			return nil, fmt.Errorf("invalid acquisition URL %q", raw)
 		}
 	}
+
 	return &Client{
 		options: options,
 		http: &http.Client{
@@ -102,9 +112,11 @@ func New(options Options) (*Client, error) {
 				if req.URL.Scheme == "magnet" && validDownloadURL(req.URL.String()) {
 					return magnetRedirectError{URL: req.URL.String()}
 				}
+
 				if len(via) > 0 && !sameOrigin(via[0].URL, req.URL) {
 					return errors.New("cross-origin redirect refused")
 				}
+
 				return nil
 			},
 		},

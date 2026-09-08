@@ -564,7 +564,7 @@ func TestCancelTitleRequestStopsLinkedDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(`UPDATE acquisition_requests SET torrent_hash='abc',torrent_ownership='created' WHERE id='legacy'`); err != nil {
+	if _, err := db.Exec(`UPDATE acquisition_requests SET download_job_id='abc',torrent_ownership='created' WHERE id='legacy'`); err != nil {
 		t.Fatal(err)
 	}
 

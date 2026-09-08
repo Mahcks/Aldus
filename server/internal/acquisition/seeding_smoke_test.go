@@ -102,7 +102,7 @@ func TestDisposableSeedingSmoke(t *testing.T) {
 		}
 
 		for _, d := range downloads {
-			if strings.EqualFold(d.Hash, hash) && d.ReadyForImport() {
+			if strings.EqualFold(d.JobID, hash) && d.ReadyForImport() {
 				return true
 			}
 		}
@@ -165,6 +165,7 @@ func TestDisposableSeedingSmoke(t *testing.T) {
 	if endpoint := "http://" + strings.TrimSpace(string(port)); endpoint != client.options.QBitURL {
 		t.Fatal("disposable client endpoint changed across restart")
 	}
+
 	wait(func() bool {
 		_, err := client.Downloads(ctx)
 		return err == nil
@@ -181,7 +182,7 @@ func TestDisposableSeedingSmoke(t *testing.T) {
 
 	found := false
 	for _, d := range downloads {
-		if strings.EqualFold(d.Hash, hash) {
+		if strings.EqualFold(d.JobID, hash) {
 			found = true
 		}
 	}
@@ -211,10 +212,10 @@ func TestDisposableSeedingSmoke(t *testing.T) {
 	if _, err := db.Exec(`
 		UPDATE acquisition_requests
 		SET fulfillment_state='downloading',
-			torrent_hash=?,
+			download_job_id=?,
 			torrent_ownership='created'
 		WHERE id='legacy'
-	`, receipt.Hash); err != nil {
+	`, receipt.JobID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -229,7 +230,7 @@ func TestDisposableSeedingSmoke(t *testing.T) {
 		}
 
 		for _, d := range downloads {
-			if strings.EqualFold(d.Hash, ownedHash) {
+			if strings.EqualFold(d.JobID, ownedHash) {
 				return false
 			}
 		}

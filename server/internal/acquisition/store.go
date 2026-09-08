@@ -27,62 +27,29 @@ var (
 	ErrForbidden = errors.New("administrator access required")
 )
 
-type Settings struct {
-	IndexerKind      string
-	IndexerURL       string
-	QBitURL          string
-	QBitUsername     string
-	QBitCategory     string
-	QBitDownloadRoot string
-	HasIndexerAPIKey bool
-	HasQBitPassword  bool
-	HasNYTAPIKey     bool
-}
-
-type SettingsUpdate struct {
-	IndexerKind      string
-	IndexerURL       string
-	IndexerAPIKey    string
-	NYTAPIKey        string
-	QBitURL          string
-	QBitUsername     string
-	QBitPassword     string
-	QBitCategory     string
-	QBitDownloadRoot string
-}
-
-type ConnectionStatus struct {
-	Search           SearchReport
-	FileVisibility   string
-	FileError        string
-	ProwlarrOK       bool
-	QBitTorrentOK    bool
-	IndexerCount     int
-	ProwlarrError    string
-	QBitTorrentError string
-}
-
 type Request struct {
-	TorrentOwnership  string
-	ID                string
-	LibraryID         string
-	RequestedBy       string
-	SourceID          string
-	Query             string
-	Status            string
-	PairID            string
-	DownloadState     string
-	DownloadError     string
-	FulfillmentState  string
-	ScanID            string
-	ProposalID        string
-	WorkID            string
-	SelectedTitle     string
-	SelectedSource    string
-	SelectedSize      int64
-	SelectedPublished time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	DownloadClientKind string
+	ClientState        string
+	TorrentOwnership   string
+	ID                 string
+	LibraryID          string
+	RequestedBy        string
+	SourceID           string
+	Query              string
+	Status             string
+	PairID             string
+	DownloadState      string
+	DownloadError      string
+	FulfillmentState   string
+	ScanID             string
+	ProposalID         string
+	WorkID             string
+	SelectedTitle      string
+	SelectedSource     string
+	SelectedSize       int64
+	SelectedPublished  time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type SearchResult struct {
@@ -214,279 +181,13 @@ func (s *Store) SetDownloadIngress(root string) {
 	}
 }
 
-func (s *Store) Settings(ctx context.Context, actor auth.User) (Settings, error) {
-	if !actor.Admin {
-		return Settings{}, ErrForbidden
-	}
-	options, err := s.options(ctx)
-	if err != nil {
-		return Settings{}, err
-	}
-	return Settings{
-		IndexerKind:      options.IndexerKind,
-		IndexerURL:       options.IndexerURL,
-		QBitURL:          options.QBitURL,
-		QBitUsername:     options.QBitUsername,
-		QBitCategory:     options.Category,
-		QBitDownloadRoot: options.DownloadRoot,
-		HasIndexerAPIKey: options.IndexerAPIKey != "",
-		HasQBitPassword:  options.QBitPassword != "",
-		HasNYTAPIKey:     options.NYTAPIKey != "",
-	}, nil
-}
-
-func (s *Store) UpdateSettings(ctx context.Context, actor auth.User, update SettingsUpdate) (Settings, error) {
-	if !actor.Admin {
-		return Settings{}, ErrForbidden
-	}
-
-	s.clientMu.Lock()
-	defer s.clientMu.Unlock()
-
-	current, err := s.options(ctx)
-	if err != nil {
-		return Settings{}, err
-	}
-
-	options := Options{
-		IndexerKind:   strings.TrimSpace(update.IndexerKind),
-		IndexerURL:    strings.TrimSpace(update.IndexerURL),
-		IndexerAPIKey: strings.TrimSpace(update.IndexerAPIKey),
-		NYTAPIKey:     strings.TrimSpace(update.NYTAPIKey),
-		QBitURL:       strings.TrimSpace(update.QBitURL),
-		QBitUsername:  strings.TrimSpace(update.QBitUsername),
-		QBitPassword:  update.QBitPassword,
-		Category:      strings.TrimSpace(update.QBitCategory),
-		DownloadRoot:  strings.TrimSpace(update.QBitDownloadRoot),
-	}
-	if options.IndexerKind == "" {
-		options.IndexerKind = "prowlarr"
-	}
-
-	if options.IndexerKind != "prowlarr" && options.IndexerKind != "torznab" {
-		return Settings{}, ErrInvalid
-	}
-
-	if options.IndexerAPIKey == "" && (current.IndexerURL == "" || options.IndexerURL == current.IndexerURL) {
-		options.IndexerAPIKey = current.IndexerAPIKey
-	}
-
-	if options.NYTAPIKey == "" {
-		options.NYTAPIKey = current.NYTAPIKey
-	}
-
-	if options.QBitPassword == "" {
-		if current.QBitURL == "" || strings.TrimRight(options.QBitURL, "/") == strings.TrimRight(current.QBitURL, "/") {
-			options.QBitPassword = current.QBitPassword
-		} else {
-			// Re-selecting a saved endpoint may reuse its own credentials,
-			// never the password belonging to the endpoint being replaced.
-			err := s.db.QueryRowContext(ctx, `
-				SELECT password FROM acquisition_download_clients
-				WHERE kind='qbittorrent' AND url=? AND username=? LIMIT 1
-			`, strings.TrimRight(options.QBitURL, "/"), options.QBitUsername).Scan(&options.QBitPassword)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return Settings{}, err
-			}
-		}
-	}
-
-	if options.Category == "" {
-		options.Category = "aldus"
-	}
-
-	if _, err := New(options); err != nil {
-		return Settings{}, ErrInvalid
-	}
-
-	if current.QBitURL != "" {
-		if err := s.preserveDownloadClients(ctx, current, ""); err != nil {
-			return Settings{}, err
-		}
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Settings{}, err
-	}
-
-	defer tx.Rollback()
-
-	if options.QBitURL != "" {
-		if _, err := saveDownloadClient(ctx, tx, options); err != nil {
-			return Settings{}, err
-		}
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO acquisition_settings (
-			id,
-			indexer_url,
-			indexer_api_key,
-			nyt_api_key,
-			qbittorrent_url,
-			qbittorrent_username,
-			qbittorrent_password,
-			qbittorrent_category,
-			indexer_kind,
-			qbittorrent_download_root,
-			updated_at
-		)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET
-			indexer_url = excluded.indexer_url,
-			indexer_api_key = excluded.indexer_api_key,
-			nyt_api_key = excluded.nyt_api_key,
-			qbittorrent_url = excluded.qbittorrent_url,
-			qbittorrent_username = excluded.qbittorrent_username,
-			qbittorrent_password = excluded.qbittorrent_password,
-			qbittorrent_category = excluded.qbittorrent_category,
-			indexer_kind = excluded.indexer_kind,
-			qbittorrent_download_root = excluded.qbittorrent_download_root,
-			updated_at = excluded.updated_at`,
-		options.IndexerURL,
-		options.IndexerAPIKey,
-		options.NYTAPIKey,
-		options.QBitURL,
-		options.QBitUsername,
-		options.QBitPassword,
-		options.Category,
-		options.IndexerKind,
-		options.DownloadRoot,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	)
-	if err != nil {
-		return Settings{}, fmt.Errorf("save acquisition settings: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return Settings{}, err
-	}
-
-	return s.Settings(ctx, actor)
-}
-
-func (s *Store) options(ctx context.Context) (Options, error) {
-	options := s.client.options
-	err := s.db.QueryRowContext(ctx, `
-		SELECT
-			indexer_url,
-			indexer_api_key,
-			nyt_api_key,
-			qbittorrent_url,
-			qbittorrent_username,
-			qbittorrent_password,
-			qbittorrent_category,
-			indexer_kind,
-			qbittorrent_download_root
-		FROM acquisition_settings
-		WHERE id = 1`,
-	).Scan(
-		&options.IndexerURL,
-		&options.IndexerAPIKey,
-		&options.NYTAPIKey,
-		&options.QBitURL,
-		&options.QBitUsername,
-		&options.QBitPassword,
-		&options.Category,
-		&options.IndexerKind,
-		&options.DownloadRoot,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return options, nil
-	}
-	if err != nil {
-		return Options{}, fmt.Errorf("load acquisition settings: %w", err)
-	}
-	return options, nil
-}
-
-func (s *Store) configuredClient(ctx context.Context) (*Client, error) {
-	options, err := s.options(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return New(options)
-}
-
-func (s *Store) TestConnections(ctx context.Context, actor auth.User) (ConnectionStatus, error) {
-	if !actor.Admin {
-		return ConnectionStatus{}, ErrForbidden
-	}
-
-	client, err := s.configuredClient(ctx)
-	if err != nil {
-		return ConnectionStatus{}, err
-	}
-
-	status := ConnectionStatus{FileVisibility: "not_tested"}
-	status.Search, err = client.SearchReport(ctx, "aldus connection test")
-	client.checkIndexerCapabilities(ctx, &status.Search)
-	status.ProwlarrOK = status.Search.Reachable
-	status.IndexerCount = len(status.Search.Indexers)
-	if err != nil && !status.ProwlarrOK {
-		status.ProwlarrError = "Cannot reach the search provider. Check its URL and API key."
-	}
-
-	downloads, err := client.Downloads(ctx)
-	status.QBitTorrentOK = err == nil
-	if err != nil {
-		status.QBitTorrentError = "Cannot reach qBittorrent. Check its URL and credentials."
-	} else if s.downloadIngress != "" && client.options.DownloadRoot != "" {
-		var completed []Download
-		for _, download := range downloads {
-			if download.ReadyForImport() {
-				completed = append(completed, download)
-			}
-		}
-
-		if len(completed) > 0 {
-			status.FileVisibility = "ok"
-			if err := s.validateDownloadIngress(completed, client.options.DownloadRoot); err != nil {
-				status.FileVisibility = "failed"
-				status.FileError = "A completed download is not visible to Aldus. Check the shared download mount and download root."
-			}
-		}
-	}
-
-	return status, nil
-}
-
-func (s *Store) validateDownloadIngress(downloads []Download, remoteRoot string) error {
-	info, err := os.Stat(s.downloadIngress)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("Aldus download ingress %q is unavailable; mount qBittorrent's completed-download folder there", s.downloadIngress)
-	}
-	directory, err := os.Open(s.downloadIngress)
-	if err != nil {
-		return fmt.Errorf("Aldus cannot read download ingress %q: %w", s.downloadIngress, err)
-	}
-	_ = directory.Close()
-	if remoteRoot == "" {
-		return nil
-	}
-	for _, download := range downloads {
-		if download.ContentPath == "" {
-			continue
-		}
-		relative, err := relativeDownloadPath(download.ContentPath, remoteRoot)
-		if err != nil {
-			return err
-		}
-		mapped := filepath.Join(s.downloadIngress, filepath.FromSlash(relative))
-		if _, err := os.Stat(mapped); err != nil {
-			return fmt.Errorf("qBittorrent sees %q but Aldus cannot see it at %q; ALDUS_DOWNLOAD_PATH must mount the same host folder: %w", download.ContentPath, mapped, err)
-		}
-	}
-	return nil
-}
-
 func (s *Store) Available(ctx context.Context) (bool, error) {
 	options, err := s.options(ctx)
 	if err != nil {
 		return false, err
 	}
-	return options.IndexerURL != "" && options.QBitURL != "", nil
+
+	return options.IndexerURL != "" && (options.QBitURL != "" || options.SABnzbdURL != ""), nil
 }
 
 func (s *Store) Destinations(ctx context.Context, actor auth.User) ([]Destination, error) {
@@ -535,7 +236,9 @@ func (s *Store) Tracker(ctx context.Context, actor auth.User) (Tracker, error) {
 			COALESCE(r.selected_published_at,''),
 			r.created_at,
 			r.updated_at,
-			r.torrent_ownership
+			r.torrent_ownership,
+ COALESCE((SELECT kind FROM acquisition_download_clients WHERE id=r.download_client_id), ''),
+ r.client_state
 		FROM acquisition_requests r
 		WHERE r.requested_by=?
 			AND r.dismissed_at=''
@@ -585,7 +288,7 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 		return permissionErr
 	}
 
-	var selectedURL, scanID, state, torrentHash string
+	var selectedURL, scanID, state, jobID string
 	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
 	args = append(args, actor.Admin, actor.ID)
 	err := s.db.QueryRowContext(ctx, `
@@ -593,11 +296,11 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 			COALESCE(r.selected_url,''),
 			COALESCE(r.scan_id,''),
 			r.fulfillment_state,
-			r.torrent_hash
+			r.download_job_id
 		FROM acquisition_requests r
 		LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=?
 		WHERE r.id=? AND r.library_id=?
-			AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&selectedURL, &scanID, &state, &torrentHash)
+			AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+` AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)`, args...).Scan(&selectedURL, &scanID, &state, &jobID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -661,14 +364,22 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 
 	found := false
 	for _, download := range downloads {
-		if (torrentHash != "" && strings.EqualFold(download.Hash, torrentHash)) || (torrentHash == "" && download.HasTag(requestID)) {
+		if (jobID != "" && client.sameJobID(download.JobID, jobID)) || (jobID == "" && download.HasTag(requestID)) {
+			if client.options.downloadKind == "sabnzbd" && download.State == "failed" {
+				return s.retryUsenetJob(ctx, client, requestID, download.JobID)
+			}
+
 			found = true
-			torrentHash = download.Hash
+			jobID = download.JobID
 			break
 		}
 	}
 
 	if !found {
+		if client.options.downloadKind == "sabnzbd" {
+			return errors.New("SABnzbd no longer reports this job. Check its queue and history before making a new request.")
+		}
+
 		if _, err := s.db.ExecContext(ctx, `
 			UPDATE acquisition_requests
 			SET torrent_ownership='unknown'
@@ -677,12 +388,12 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 		}
 
 		receipt, submitErr := client.submitTracked(ctx, selectedURL, requestID)
-		torrentHash, err = receipt.Hash, submitErr
+		jobID, err = receipt.JobID, submitErr
 		if _, saveErr := s.db.ExecContext(ctx, `
 			UPDATE acquisition_requests
-			SET torrent_hash=?, torrent_ownership=?
+			SET download_job_id=?, torrent_ownership=?
 			WHERE id=? AND fulfillment_state='failed'
-		`, receipt.Hash, receipt.Ownership, requestID); saveErr != nil {
+		`, receipt.JobID, receipt.Ownership, requestID); saveErr != nil {
 			return saveErr
 		}
 
@@ -696,10 +407,10 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 		SET status='queued',download_state='downloading',fulfillment_state='downloading',
 		    download_error='',
 		    failure_kind='',dismissed_at='',
-		    torrent_hash=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,
+		    download_job_id=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,
 		    updated_at=?
 		WHERE id=? AND fulfillment_state='failed'
-	`, torrentHash, now, now, requestID)
+	`, jobID, now, now, requestID)
 	return err
 }
 
@@ -710,17 +421,17 @@ func (s *Store) Cancel(ctx context.Context, actor auth.User, libraryID, requestI
 }
 
 func (s *Store) cancel(ctx context.Context, actor auth.User, libraryID, requestID string) error {
-	var state, torrentHash, ownership string
+	var state, jobID, ownership string
 	args := append([]any{actor.ID, requestID, libraryID}, auth.LibraryAccessArgs(actor)...)
 	args = append(args, actor.Admin, actor.ID)
 	err := s.db.QueryRowContext(ctx, `
-		SELECT r.fulfillment_state, COALESCE(r.torrent_hash,''), r.torrent_ownership
+		SELECT r.fulfillment_state, COALESCE(r.download_job_id,''), r.torrent_ownership
 		FROM acquisition_requests r
 		LEFT JOIN library_members m ON m.library_id=r.library_id AND m.user_id=?
 		WHERE r.id=? AND r.library_id=?
 			AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+`
 			AND (? OR m.role IN ('owner','editor') OR r.requested_by=?)
-	`, args...).Scan(&state, &torrentHash, &ownership)
+	`, args...).Scan(&state, &jobID, &ownership)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -747,7 +458,7 @@ func (s *Store) cancel(ctx context.Context, actor auth.User, libraryID, requestI
 
 	var client *Client
 	var clientID string
-	if ownership == "created" && torrentHash != "" {
+	if ownership == "created" && jobID != "" {
 		client, clientID, err = s.requestClient(ctx, requestID)
 		if err != nil {
 			return err
@@ -755,15 +466,15 @@ func (s *Store) cancel(ctx context.Context, actor auth.User, libraryID, requestI
 	}
 
 	var shared bool
-	if ownership == "created" && torrentHash != "" {
+	if ownership == "created" && jobID != "" {
 		if err := s.db.QueryRowContext(ctx, `
 			SELECT EXISTS(
 				SELECT 1 FROM acquisition_requests
 				WHERE id!=?
-					AND lower(torrent_hash)=lower(?)
+					AND lower(download_job_id)=lower(?)
 					AND download_client_id=?
 					AND fulfillment_state NOT IN ('failed','available')
-			)`, requestID, torrentHash, clientID).Scan(&shared); err != nil {
+			)`, requestID, jobID, clientID).Scan(&shared); err != nil {
 			return err
 		}
 
@@ -772,9 +483,9 @@ func (s *Store) cancel(ctx context.Context, actor auth.User, libraryID, requestI
 		}
 	}
 
-	if ownership == "created" && torrentHash != "" {
-		// Ownership is bound to this persisted hash. Never fall back to tags.
-		if err := client.CancelTracked(ctx, torrentHash, ""); err != nil {
+	if ownership == "created" && jobID != "" {
+		// Ownership is bound to this persisted jobID. Never fall back to tags.
+		if err := client.CancelTracked(ctx, jobID, ""); err != nil {
 			return err
 		}
 	}
@@ -844,7 +555,7 @@ func (s *Store) Poll(ctx context.Context) error {
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			id, library_id, COALESCE(source_id,''), torrent_hash,
+			id, library_id, COALESCE(source_id,''), download_job_id,
 			download_last_seen_at, download_progress, download_progress_updated_at, updated_at
 		FROM acquisition_requests
 		WHERE status='queued' AND fulfillment_state='downloading'
@@ -858,7 +569,7 @@ func (s *Store) Poll(ctx context.Context) error {
 	var requests []downloadMonitorRequest
 	for rows.Next() {
 		var value downloadMonitorRequest
-		if err := rows.Scan(&value.id, &value.libraryID, &value.sourceID, &value.hash, &value.lastSeen, &value.progress, &value.progressUpdated, &value.updated); err != nil {
+		if err := rows.Scan(&value.id, &value.libraryID, &value.sourceID, &value.jobID, &value.lastSeen, &value.progress, &value.progressUpdated, &value.updated); err != nil {
 			return err
 		}
 
@@ -895,7 +606,7 @@ func (s *Store) Poll(ctx context.Context) error {
 
 		var download *Download
 		for i := range downloads {
-			if (request.hash != "" && strings.EqualFold(downloads[i].Hash, request.hash)) || (request.hash == "" && downloads[i].HasTag(request.id)) {
+			if (request.jobID != "" && client.sameJobID(downloads[i].JobID, request.jobID)) || (request.jobID == "" && downloads[i].HasTag(request.id)) {
 				download = &downloads[i]
 				break
 			}
@@ -906,8 +617,8 @@ func (s *Store) Poll(ctx context.Context) error {
 			return err
 		}
 
-		if download != nil && download.Hash != "" && download.HasTag(request.id) {
-			_ = client.RemoveTag(ctx, download.Hash, request.id)
+		if download != nil && download.JobID != "" && download.HasTag(request.id) {
+			_ = client.RemoveTag(ctx, download.JobID, request.id)
 		}
 
 		if failed || download == nil || !download.ReadyForImport() {
@@ -968,7 +679,7 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 	defer s.selectMu.Unlock()
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, selected_url, torrent_hash, updated_at
+		SELECT id, selected_url, download_job_id, updated_at
 		FROM acquisition_requests
 		WHERE fulfillment_state='submitting'
 		ORDER BY created_at, id
@@ -982,13 +693,13 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 	type submission struct {
 		id      string
 		url     string
-		hash    string
+		jobID   string
 		updated string
 	}
 	var pending []submission
 	for rows.Next() {
 		var value submission
-		if err := rows.Scan(&value.id, &value.url, &value.hash, &value.updated); err != nil {
+		if err := rows.Scan(&value.id, &value.url, &value.jobID, &value.updated); err != nil {
 			return err
 		}
 
@@ -1024,14 +735,23 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 
 		found := false
 		for _, download := range downloads {
-			if (value.hash != "" && strings.EqualFold(download.Hash, value.hash)) || (value.hash == "" && download.HasTag(value.id)) {
+			if (value.jobID != "" && client.sameJobID(download.JobID, value.jobID)) || (value.jobID == "" && download.HasTag(value.id)) {
 				found = true
-				value.hash = download.Hash
+				value.jobID = download.JobID
 				break
 			}
 		}
 
 		if !found {
+			if client.options.downloadKind == "sabnzbd" {
+				updated, _ := time.Parse(time.RFC3339Nano, value.updated)
+				if time.Since(updated) >= downloadMissingGrace {
+					s.markDownloadProblem(ctx, value.id, "SABnzbd submission could not be confirmed. Check its queue and history before requesting this release again.")
+				}
+
+				continue
+			}
+
 			updated, _ := time.Parse(time.RFC3339Nano, value.updated)
 			if time.Since(updated) < downloadMissingGrace {
 				continue
@@ -1045,10 +765,10 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 			}
 
 			receipt, err := client.submitTracked(ctx, value.url, value.id)
-			hash := receipt.Hash
-			if hash != "" {
-				value.hash = hash
-				_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET torrent_hash=? WHERE id=? AND fulfillment_state='submitting'`, hash, value.id)
+			jobID := receipt.JobID
+			if jobID != "" {
+				value.jobID = jobID
+				_, _ = s.db.ExecContext(ctx, `UPDATE acquisition_requests SET download_job_id=? WHERE id=? AND fulfillment_state='submitting'`, jobID, value.id)
 			}
 
 			if err != nil {
@@ -1073,10 +793,10 @@ func (s *Store) recoverSubmissions(ctx context.Context) error {
 			SET status='queued',download_state='downloading',fulfillment_state='downloading',
 			    download_error='',
 			    failure_kind='',
-			    torrent_hash=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,
+			    download_job_id=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,
 			    updated_at=?
 			WHERE id=? AND fulfillment_state='submitting'
-		`, value.hash, stamp, stamp, value.id); err != nil {
+		`, value.jobID, stamp, stamp, value.id); err != nil {
 			return fmt.Errorf("finish recovered acquisition submission: %w", err)
 		}
 	}
@@ -1307,7 +1027,9 @@ func (s *Store) List(ctx context.Context, actor auth.User, libraryID string) ([]
 			COALESCE(r.selected_published_at,''),
 			r.created_at,
 			r.updated_at,
-			r.torrent_ownership
+			r.torrent_ownership,
+ COALESCE((SELECT kind FROM acquisition_download_clients WHERE id=r.download_client_id), ''),
+ r.client_state
 		FROM acquisition_requests r
 		JOIN libraries l ON l.id=r.library_id
 		LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=?
@@ -1828,8 +1550,19 @@ func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, r
 		return Request{}, fmt.Errorf("read selected release metadata: %w", err)
 	}
 
-	if result.Metadata.Protocol != "" && result.Metadata.Protocol != "torrent" {
+	if result.Metadata.Protocol != "" && result.Metadata.Protocol != "torrent" && result.Metadata.Protocol != "usenet" {
 		return Request{}, ErrInvalid
+	}
+
+	if result.Metadata.Protocol == "usenet" {
+		options, err := s.options(ctx)
+		if err != nil {
+			return Request{}, err
+		}
+
+		if options.SABnzbdURL == "" || options.SABnzbdAPIKey == "" {
+			return Request{}, ErrUnavailable
+		}
 	}
 
 	result.Published, _ = time.Parse(time.RFC3339Nano, published)
@@ -1870,12 +1603,12 @@ func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, r
 	}
 
 	receipt, addErr := client.submitTracked(ctx, result.DownloadURL, requestID)
-	hash := receipt.Hash
+	jobID := receipt.JobID
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE acquisition_requests
-		SET torrent_hash=?, torrent_ownership=?
+		SET download_job_id=?, torrent_ownership=?
 		WHERE id=? AND fulfillment_state='submitting'
-	`, hash, receipt.Ownership, requestID); err != nil {
+	`, jobID, receipt.Ownership, requestID); err != nil {
 		return Request{}, fmt.Errorf("record submission receipt: %w", err)
 	}
 
@@ -1883,8 +1616,8 @@ func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, r
 		downloads, listErr := client.Downloads(ctx)
 		if listErr == nil {
 			for _, download := range downloads {
-				if (hash != "" && strings.EqualFold(download.Hash, hash)) || (hash == "" && download.HasTag(requestID)) {
-					hash, addErr = download.Hash, nil
+				if (jobID != "" && client.sameJobID(download.JobID, jobID)) || (jobID == "" && download.HasTag(requestID)) {
+					jobID, addErr = download.JobID, nil
 					break
 				}
 			}
@@ -1896,7 +1629,7 @@ func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, r
 			return s.request(ctx, requestID)
 		}
 
-		return Request{}, errors.Join(addErr, s.markReleaseProblem(ctx, requestID, hash, addErr.Error()))
+		return Request{}, errors.Join(addErr, s.markReleaseProblem(ctx, requestID, jobID, addErr.Error()))
 	}
 
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
@@ -1905,10 +1638,10 @@ func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, r
 		SET status='queued',download_state='downloading',fulfillment_state='downloading',
 		    download_error='',
 		    failure_kind='',
-		    torrent_hash=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,
+		    download_job_id=?,download_last_seen_at='',download_progress=0,download_progress_updated_at=?,
 		    updated_at=?
 		WHERE id=? AND fulfillment_state='submitting'
-	`, hash, stamp, stamp, requestID)
+	`, jobID, stamp, stamp, requestID)
 	if err != nil {
 		return Request{}, fmt.Errorf("finish acquisition submission: %w", err)
 	}
@@ -1918,7 +1651,7 @@ func (s *Store) selectRelease(ctx context.Context, actor auth.User, libraryID, r
 
 // markReleaseProblem records a retryable failure and its exclusion together.
 // General download/import failures use markDownloadProblem instead.
-func (s *Store) markReleaseProblem(ctx context.Context, requestID, hash, diagnosis string) error {
+func (s *Store) markReleaseProblem(ctx context.Context, requestID, jobID, diagnosis string) error {
 	diagnosis = strings.TrimSpace(diagnosis)
 	if len(diagnosis) > 500 {
 		diagnosis = diagnosis[:500]
@@ -1928,6 +1661,7 @@ func (s *Store) markReleaseProblem(ctx context.Context, requestID, hash, diagnos
 	if err != nil {
 		return fmt.Errorf("record failed release: %w", err)
 	}
+
 	defer tx.Rollback()
 
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
@@ -1939,10 +1673,12 @@ func (s *Store) markReleaseProblem(ctx context.Context, requestID, hash, diagnos
 	if err != nil {
 		return fmt.Errorf("mark failed release: %w", err)
 	}
+
 	changed, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("check failed release update: %w", err)
 	}
+
 	if changed == 0 {
 		return nil
 	}
@@ -1956,10 +1692,11 @@ func (s *Store) markReleaseProblem(ctx context.Context, requestID, hash, diagnos
 		WHERE a.id=? AND a.selected_url!=''
 		ON CONFLICT(title_request_id,format,download_url) DO UPDATE SET
 		    info_hash=excluded.info_hash, reason=excluded.reason, failed_at=excluded.failed_at
-	`, hash, diagnosis, stamp, requestID)
+	`, jobID, diagnosis, stamp, requestID)
 	if err != nil {
 		return fmt.Errorf("exclude failed release: %w", err)
 	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit failed release: %w", err)
 	}
@@ -1989,7 +1726,9 @@ func (s *Store) request(ctx context.Context, id string) (Request, error) {
 			COALESCE(selected_published_at,''),
 			created_at,
 			updated_at,
-			torrent_ownership
+			torrent_ownership,
+ COALESCE((SELECT kind FROM acquisition_download_clients WHERE id=acquisition_requests.download_client_id), ''),
+ client_state
 		FROM acquisition_requests WHERE id=?`, id)
 	value, err := scanRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -2053,7 +1792,7 @@ func scanRequest(row rowScanner) (Request, error) {
 		&value.DownloadState, &value.DownloadError, &value.FulfillmentState,
 		&value.ScanID, &value.ProposalID, &value.WorkID,
 		&value.SelectedTitle, &value.SelectedSource, &value.SelectedSize,
-		&published, &created, &updated, &value.TorrentOwnership,
+		&published, &created, &updated, &value.TorrentOwnership, &value.DownloadClientKind, &value.ClientState,
 	); err != nil {
 		return Request{}, fmt.Errorf("scan acquisition request: %w", err)
 	}

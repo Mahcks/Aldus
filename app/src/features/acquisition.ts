@@ -78,8 +78,28 @@ export function acquisitionFulfillment(request: AcquisitionRequest): Acquisition
       return { label: 'Needs review', tone: 'warning', pending: false, action: 'review' };
     case 'available':
       return { label: 'Available', tone: 'success', pending: false, action: 'open' };
-    case 'downloading':
-      return { label: 'Downloading', tone: 'info', pending: true };
+    case 'downloading': {
+      const stages: Record<string, string> = {
+        queued: 'Queued',
+        paused: 'Paused',
+        propagating: 'Waiting for articles',
+        quickcheck: 'Verifying',
+        verifying: 'Verifying',
+        repairing: 'Repairing',
+        fetching: 'Fetching repair data',
+        extracting: 'Unpacking',
+        moving: 'Moving files',
+        running: 'Post-processing',
+      };
+      return {
+        label:
+          request.download_client_kind === 'sabnzbd'
+            ? (stages[request.client_state ?? ''] ?? 'Downloading')
+            : 'Downloading',
+        tone: 'info',
+        pending: true,
+      };
+    }
     case 'awaiting_selection':
       return null;
     default:

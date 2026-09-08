@@ -198,11 +198,11 @@ for (const width of [390, 1024, 1440]) {
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-source-folder.png` });
     await page.goto('/acquisitions');
     await page.getByRole('tab', { name: 'Requests', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Approve ebook request for/ })).toBeVisible();
     await page.screenshot({
       path: `../artifacts/design-redesign/${width}-acquisition-approval.png`,
     });
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await page.getByRole('button', { name: /Approve ebook request for/ }).click();
     await expect.poll(() => approved).toBe(true);
     await page.getByRole('tab', { name: 'Downloads', exact: true }).click();
     await expect(page.getByText('Download failed', { exact: true })).toBeVisible();

@@ -37,6 +37,7 @@ var version = "dev"
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
 	if len(os.Args) > 1 && (os.Args[1] == "backup" || os.Args[1] == "restore" || os.Args[1] == "reset-password") {
 		command := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 		dataDir := command.String("data-dir", "/data", "Aldus data directory")
@@ -48,62 +49,82 @@ func main() {
 				fmt.Fprintln(os.Stderr, "--username is required")
 				os.Exit(2)
 			}
+
 			databasePath := filepath.Join(*dataDir, "aldus.db")
 			if info, err := os.Stat(databasePath); err != nil || !info.Mode().IsRegular() {
 				fmt.Fprintln(os.Stderr, "Aldus database was not found:", databasePath)
 				os.Exit(1)
 			}
+
 			db, err := database.Open(ctx, databasePath)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "open database:", err)
 				os.Exit(1)
 			}
+
 			defer db.Close()
+
 			store, err := auth.New(db, auth.Options{})
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "open authentication database:", err)
 				os.Exit(1)
 			}
+
 			temporaryPassword, err := store.ResetAdministratorPasswordFromHost(ctx, *username)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "reset administrator password:", err)
 				os.Exit(1)
 			}
+
 			fmt.Println("Temporary password:", temporaryPassword)
 			fmt.Println("Sign in and finish account setup immediately. All previous sessions were revoked.")
 			return
 		}
+
 		if *archive == "" {
 			fmt.Fprintln(os.Stderr, "--archive is required")
 			os.Exit(2)
 		}
+
 		if os.Args[1] == "backup" {
 			err := backup.Create(ctx, *dataDir, *archive, version)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "backup failed:", err)
 				os.Exit(1)
 			}
+
 			fmt.Println("Backup verified:", *archive)
 			return
 		}
+
 		if err := backup.Restore(ctx, *archive, *dataDir); err != nil {
 			fmt.Fprintln(os.Stderr, "restore failed:", err)
 			os.Exit(1)
 		}
+
 		fmt.Println("Restore verified:", *dataDir)
 		return
 	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel, AddSource: cfg.LogLevel == slog.LevelDebug})))
-	fmt.Fprintf(os.Stdout, "\n  ALDUS  ·  your library, in sync\n  %s  |  %s  |  log=%s\n\n", version, cfg.Environment, strings.ToLower(cfg.LogLevel.String()))
+	fmt.Fprintf(
+		os.Stdout,
+		"\n  ALDUS  ·  your library, in sync\n  %s  |  %s  |  log=%s\n\n",
+		version,
+		cfg.Environment,
+		strings.ToLower(cfg.LogLevel.String()),
+	)
 	slog.Info("starting Aldus", "version", version, "environment", cfg.Environment)
 	if version == "dev" {
 		slog.Warn("development build", "diagnosis", "not intended for production")
 	}
+
 	slog.Debug(
 		"runtime configuration",
 		"addr", cfg.Addr,
@@ -118,12 +139,14 @@ func main() {
 		slog.Error("create data directory", "error", err)
 		os.Exit(1)
 	}
+
 	databasePath := filepath.Join(cfg.DataDir, "aldus.db")
 	db, err := database.Open(ctx, databasePath)
 	if err != nil {
 		slog.Error("open database", "error", err)
 		os.Exit(1)
 	}
+
 	slog.Debug("database ready", "path", databasePath)
 	store := position.New(db)
 	catalogStore := catalog.New(db)
@@ -133,6 +156,7 @@ func main() {
 	if mediaDir == "" {
 		mediaDir = filepath.Join(cfg.DataDir, "media")
 	}
+
 	sourceStore, err := source.New(db, source.Options{
 		AllowedRoots: cfg.SourceRoots,
 		ManagedRoot:  mediaDir,
@@ -144,11 +168,13 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+
 	if err := sourceStore.Start(ctx); err != nil {
 		slog.Error("recover source scans", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	slog.Debug("library source scanner ready", "roots", len(cfg.SourceRoots))
 	ingestStore, err := ingest.New(db, ingest.Options{
 		Root:     mediaDir,
@@ -160,6 +186,7 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+
 	if updated, err := ingestStore.BackfillKOReaderAliases(ctx); err != nil {
 		slog.Error("upgrade KOReader EPUB identities", "error", err)
 		db.Close()
@@ -167,6 +194,7 @@ func main() {
 	} else if updated > 0 {
 		slog.Info("KOReader EPUB identity upgrade complete", "updated", updated)
 	}
+
 	alignmentManager, err := alignment.New(db, alignment.Options{
 		MediaRoot:    mediaDir,
 		Media:        sourceStore,
@@ -180,26 +208,31 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+
 	updated, skipped, err := alignmentManager.BackfillKOReader(ctx)
 	if err != nil {
 		slog.Error("upgrade KOReader alignment locators", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	if updated > 0 || skipped > 0 {
 		slog.Info("KOReader alignment upgrade complete", "updated", updated, "requires_realign", skipped)
 	}
+
 	if err := alignmentManager.Start(ctx); err != nil {
 		slog.Error("recover alignment jobs", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	slog.Debug("alignment worker ready")
 	if err := store.RemoveLegacyFixture(ctx); err != nil {
 		slog.Error("remove legacy synthetic fixture", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	authStore, err := auth.New(db, auth.Options{
 		SecureCookies: cfg.SecureCookies,
 		DemoLibraryID: cfg.DemoLibraryID,
@@ -209,27 +242,34 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+
 	if err := authStore.CleanupExpiredDemoUsers(ctx); err != nil {
 		slog.Error("clean expired demo users", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	acquisitionClient, err := acquisition.New(acquisition.Options{
-		IndexerKind:   cfg.IndexerKind,
-		IndexerURL:    cfg.IndexerURL,
-		IndexerAPIKey: cfg.IndexerAPIKey,
-		NYTAPIKey:     cfg.NYTAPIKey,
-		QBitURL:       cfg.QBitTorrentURL,
-		QBitUsername:  cfg.QBitTorrentUser,
-		QBitPassword:  cfg.QBitTorrentPass,
-		Category:      cfg.QBitTorrentCategory,
-		DownloadRoot:  cfg.QBitTorrentDownloadRoot,
+		IndexerKind:         cfg.IndexerKind,
+		IndexerURL:          cfg.IndexerURL,
+		IndexerAPIKey:       cfg.IndexerAPIKey,
+		NYTAPIKey:           cfg.NYTAPIKey,
+		SABnzbdURL:          cfg.SABnzbdURL,
+		SABnzbdAPIKey:       cfg.SABnzbdAPIKey,
+		SABnzbdCategory:     cfg.SABnzbdCategory,
+		SABnzbdDownloadRoot: cfg.SABnzbdDownloadRoot,
+		QBitURL:             cfg.QBitTorrentURL,
+		QBitUsername:        cfg.QBitTorrentUser,
+		QBitPassword:        cfg.QBitTorrentPass,
+		Category:            cfg.QBitTorrentCategory,
+		DownloadRoot:        cfg.QBitTorrentDownloadRoot,
 	})
 	if err != nil {
 		slog.Error("configure acquisition", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	acquisitionStore := acquisition.NewStore(db, acquisitionClient)
 	acquisitionStore.SetDownloadIngress(cfg.DownloadIngress)
 	acquisitionPolicyStore := acquisition.NewPolicyStore(db)
@@ -242,6 +282,7 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+
 	acquisitionStore.SetHandoff(sourceStore.EnqueueAcquisitionScan)
 	acquisitionStore.SetScanRetry(sourceStore.RetryAcquisitionScan)
 	acquisitionStore.SetPairHandoff(func(ctx context.Context, pair acquisition.ReadyPair) error {
@@ -277,17 +318,21 @@ func main() {
 				if err := db.PingContext(ctx); err != nil {
 					return fmt.Errorf("database: %w", err)
 				}
+
 				probe, err := os.CreateTemp(cfg.DataDir, ".aldus-ready-*")
 				if err != nil {
 					return fmt.Errorf("data directory: %w", err)
 				}
+
 				name := probe.Name()
 				if err := probe.Close(); err != nil {
 					return fmt.Errorf("data directory: %w", err)
 				}
+
 				if err := os.Remove(name); err != nil {
 					return fmt.Errorf("data directory: %w", err)
 				}
+
 				return nil
 			},
 		}),
@@ -333,11 +378,13 @@ func main() {
 		db.Close()
 		os.Exit(1)
 	}
+
 	if err = <-errCh; !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("serve HTTP", "error", err)
 		db.Close()
 		os.Exit(1)
 	}
+
 	titleRequestStore.Wait()
 	acquisitionStore.Wait()
 	alignmentManager.Wait()
@@ -346,5 +393,6 @@ func main() {
 		slog.Error("close database", "error", err)
 		os.Exit(1)
 	}
+
 	slog.Info("shutdown complete")
 }

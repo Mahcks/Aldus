@@ -38,3 +38,34 @@ Audio keeps playing when the screen locks or you switch to another app — Aldus
 ## Local servers
 
 The first time you connect to a server on your home network, iOS will prompt for local-network access. Aldus asks for that permission only to reach the server address you connect it to — it doesn't scan your network or discover other devices. If you decline the prompt, connecting to a local (`http://192.168.x.x`) server will fail until you grant it in **Settings → Aldus → Local Network**.
+
+## Keep the development app beside TestFlight
+
+Contributor builds use **Aldus Dev** (`com.mahcks.aldus.dev`). TestFlight keeps
+**Aldus** (`com.mahcks.aldus`). The apps have separate local settings and downloads;
+sign in to the same server to access your account and synced reading progress.
+
+On your Mac, with this version of the repository checked out and your iPhone
+connected, run these commands from the repository root:
+
+```sh
+bun install --cwd app
+make ios-dev
+```
+
+Select your iPhone and Apple development team if prompted. This regenerates the
+iOS project with the development identity before building and installing it.
+The generated native project is not tracked; keep native customizations in Expo
+config plugins. A Metro reload cannot change an installed app's identity.
+
+Start the development server from the machine hosting your checkout:
+
+```sh
+make expo-dev
+```
+
+Open **Aldus Dev** to connect to it. Use the same Wi-Fi network and a reachable
+server address. TestFlight continues to open **Aldus** independently.
+
+EAS's `development` profile selects the same development identity. Production
+and internal-preview profiles retain the release identity.

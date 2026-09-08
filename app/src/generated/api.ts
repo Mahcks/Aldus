@@ -4,6 +4,8 @@
 // source: acquisition.go
 
 export interface AcquisitionRequest {
+  download_client_kind?: string;
+  client_state?: string;
   torrent_ownership?: 'created' | 'adopted' | 'unknown';
   id: string;
   library_id: string;
@@ -76,7 +78,11 @@ export interface AcquisitionDiscovery {
   results: AcquisitionResult[];
 }
 export interface AcquisitionSettings {
-  indexer_kind: 'prowlarr' | 'torznab';
+  sabnzbd_url?: string;
+  sabnzbd_category?: string;
+  sabnzbd_download_root?: string;
+  has_sabnzbd_api_key?: boolean;
+  indexer_kind: 'prowlarr' | 'torznab' | 'newznab';
   indexer_url: string;
   has_indexer_api_key: boolean;
   has_nyt_api_key: boolean;
@@ -87,7 +93,11 @@ export interface AcquisitionSettings {
   qbittorrent_download_root: string;
 }
 export interface UpdateAcquisitionSettingsRequest {
-  indexer_kind: 'prowlarr' | 'torznab';
+  sabnzbd_url?: string;
+  sabnzbd_category?: string;
+  sabnzbd_download_root?: string;
+  sabnzbd_api_key?: string;
+  indexer_kind: 'prowlarr' | 'torznab' | 'newznab';
   indexer_url: string;
   indexer_api_key: string;
   nyt_api_key: string;
@@ -98,6 +108,12 @@ export interface UpdateAcquisitionSettingsRequest {
   qbittorrent_download_root: string;
 }
 export interface AcquisitionConnectionStatus {
+  qbittorrent_configured?: boolean;
+  sabnzbd_configured?: boolean;
+  sabnzbd_ok?: boolean;
+  sabnzbd_error?: string;
+  sabnzbd_file_visibility?: string;
+  sabnzbd_file_error?: string;
   search?: AcquisitionSearchReport;
   file_visibility?: 'not_tested' | 'ok' | 'failed';
   file_error?: string;

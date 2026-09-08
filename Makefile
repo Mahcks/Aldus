@@ -143,3 +143,7 @@ docker-alignment:
 
 release-smoke:
 	./scripts/release-smoke.sh "$${IMAGE:-aldus:ci}"
+
+.PHONY: acquisition-usenet-smoke
+acquisition-usenet-smoke:
+	./scripts/acquisition-usenet-smoke.sh

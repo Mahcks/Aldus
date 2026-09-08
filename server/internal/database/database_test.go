@@ -591,3 +591,54 @@ func schemaVersion(t *testing.T, db *sql.DB) int {
 func migrationFixture(version int) string {
 	return strings.Join(migrations[:version], "")
 }
+
+func TestUsenetMigrationPreservesBoundTorrent(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/aldus.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = db.Exec(migrationFixture(61) + `
+ PRAGMA user_version=61;
+ INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01','2026-01-01');
+ INSERT INTO acquisition_download_clients(id,kind,url,password) VALUES('client','qbittorrent','http://qbit','private');
+ INSERT INTO acquisition_requests(id,library_id,query,status,created_at,updated_at,torrent_hash,qbit_state,download_client_id)
+ VALUES('request','library','Alice','queued','2026-01-01','2026-01-01','abc123','uploading','client');
+ INSERT INTO acquisition_settings(id,indexer_kind,updated_at) VALUES(1,'torznab','2026-01-01');
+ `)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer db.Close()
+
+	var id, state, kind, password string
+	err = db.QueryRow(`SELECT r.download_job_id,r.client_state,c.kind,c.password FROM acquisition_requests r JOIN acquisition_download_clients c ON c.id=r.download_client_id`).Scan(&id, &state, &kind, &password)
+	if err != nil || id != "abc123" || state != "uploading" || kind != "qbittorrent" || password != "private" {
+		t.Fatalf("bound job was not preserved: %v", err)
+	}
+
+	if _, err := db.Exec(`UPDATE acquisition_settings SET indexer_kind='newznab'; INSERT INTO acquisition_download_clients(id,kind,url) VALUES('sab','sabnzbd','http://sab')`); err != nil {
+		t.Fatal(err)
+	}
+
+	var foreignKeys int
+	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil || foreignKeys != 1 {
+		t.Fatal("foreign keys not restored")
+	}
+
+	if _, err := db.Exec(`UPDATE acquisition_requests SET download_client_id='missing'`); err == nil {
+		t.Fatal("missing client reference accepted")
+	}
+}
