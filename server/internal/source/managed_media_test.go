@@ -1,7 +1,13 @@
 package source
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -126,7 +132,7 @@ func TestManagedAcquisitionCopyFailureLeavesNoPartialDirectory(t *testing.T) {
 	if err := os.Symlink("book.epub", filepath.Join(download, "linked.epub")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyManagedDownload(root, "request", download, 1<<20); err == nil {
+	if _, err := copyManagedDownload(context.Background(), root, "request", download, 1<<20); err == nil {
 		t.Fatal("accepted symlink")
 	}
 	if _, err := os.Stat(filepath.Join(root, "request")); !os.IsNotExist(err) {
@@ -144,7 +150,7 @@ func TestManagedAcquisitionRejectsOversizedDownload(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(download, "book.epub"), []byte("too large"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyManagedDownload(root, "request", download, 4); err == nil {
+	if _, err := copyManagedDownload(context.Background(), root, "request", download, 4); err == nil {
 		t.Fatal("accepted oversized managed download")
 	}
 	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
@@ -178,4 +184,140 @@ func TestSourceListLazilyCreatesManagedDestinationWithoutExposingPath(t *testing
 	if err != nil || len(again) != 1 {
 		t.Fatalf("idempotent list=%v err=%v", again, err)
 	}
+}
+
+func TestManagedCopyCancellationAndLimit(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(t.TempDir(), "book.epub")
+	if err := os.WriteFile(source, []byte("book bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := copyManagedDownload(ctx, root, "request", source, 10); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled copy returned %v", err)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatalf("partial files remain: %v, %v", entries, err)
+	}
+}
+
+// The hook cancels synchronously at a filesystem milestone, without sleeps or
+// racing a background writer against the copy.
+type managedCopyContext struct {
+	context.Context
+	check func()
+}
+
+func (c managedCopyContext) Err() error {
+	c.check()
+	return c.Context.Err()
+}
+
+func TestManagedCopyPreservesSourceAndCleansCanceledStages(t *testing.T) {
+	payload := bytes.Repeat([]byte("a"), 3*(128<<10))
+	for _, phase := range []string{"copy", "checksum", "success", "oversize"} {
+		t.Run(phase, func(t *testing.T) {
+			root := t.TempDir()
+			source := filepath.Join(t.TempDir(), "book.epub")
+			if err := os.WriteFile(source, payload, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fullChecks := 0
+			checked := managedCopyContext{Context: ctx, check: func() {
+				stages, err := filepath.Glob(filepath.Join(root, ".acquisition-*", "*"))
+				if err != nil || len(stages) == 0 {
+					return
+				}
+				info, err := os.Stat(stages[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if phase == "copy" && info.Size() == 128<<10 {
+					cancel()
+				}
+				if phase == "checksum" && info.Size() == int64(len(payload)) {
+					fullChecks++
+					// Two checks finish the copy's EOF probe. The next checks
+					// occur in hashPath, before its first and second chunks.
+					if fullChecks == 4 {
+						cancel()
+					}
+				}
+			}}
+
+			limit := int64(len(payload))
+			if phase == "oversize" {
+				limit--
+			}
+			final, err := copyManagedDownload(checked, root, "request", source, limit)
+			if phase == "success" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				copied, err := os.ReadFile(filepath.Join(final, "file-000001.epub"))
+				if err != nil || sha256.Sum256(copied) != sha256.Sum256(payload) {
+					t.Fatalf("copy differs: %v", err)
+				}
+				entries, err := os.ReadDir(root)
+				if err != nil || len(entries) != 1 || entries[0].Name() != "request" {
+					t.Fatalf("unexpected published files: %v, %v", entries, err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("failed copy succeeded")
+				}
+				if phase != "oversize" && !errors.Is(err, context.Canceled) {
+					t.Fatalf("lost cancellation: %v", err)
+				}
+				if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+					t.Fatalf("staging or final files remain: %v, %v", entries, err)
+				}
+			}
+			original, err := os.ReadFile(source)
+			if err != nil || !bytes.Equal(original, payload) {
+				t.Fatalf("seed payload changed: %v", err)
+			}
+		})
+	}
+}
+
+func TestManagedCopyBoundsStreamingInput(t *testing.T) {
+	for _, limit := range []int64{0, 128 << 10, math.MaxInt64} {
+		t.Run(fmt.Sprint(limit), func(t *testing.T) {
+			payload := bytes.Repeat([]byte("x"), (128<<10)+100)
+			reader := bytes.NewReader(payload)
+			var target bytes.Buffer
+			written, err := copyBounded(context.Background(), &target, reader, limit)
+			consumed := int64(len(payload) - reader.Len())
+			if limit < int64(len(payload)) {
+				if err == nil || written > limit || consumed > limit+1 {
+					t.Fatalf("limit=%d written=%d consumed=%d err=%v", limit, written, consumed, err)
+				}
+			} else if err != nil || !bytes.Equal(target.Bytes(), payload) {
+				t.Fatalf("valid copy failed: %v", err)
+			}
+		})
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := cancelingCopyReader{Reader: bytes.NewReader([]byte("book")), cancel: cancel}
+	var target bytes.Buffer
+	if _, err := copyBounded(ctx, &target, reader, 4); !errors.Is(err, context.Canceled) || target.Len() != 0 {
+		t.Fatalf("wrote after cancellation: bytes=%d err=%v", target.Len(), err)
+	}
+}
+
+type cancelingCopyReader struct {
+	io.Reader
+	cancel context.CancelFunc
+}
+
+func (r cancelingCopyReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.cancel()
+	return n, err
 }
