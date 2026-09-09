@@ -142,8 +142,8 @@ services:
 ```
 
 Recreate the container to apply environment changes. A longer timeout gives a job
-more time; it does not speed up alignment. See [Interrupted alignment jobs](/read-listen/synchronization/#interrupted-alignment-jobs)
-for checkpoint and retry behavior.
+more time; it does not speed up alignment. See [Preparing a book](/read-listen/synchronization/#for-administrators-preparing-a-book)
+for what to do if matching stops.
 
 ### NVIDIA GPU (one command)
 
@@ -154,7 +154,7 @@ curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.20/compos
 docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
 ```
 
-The override recreates the existing `aldus` container with the CUDA image, requests one GPU through Compose, and uses the same data and model cache. Aldus selects CUDA, FP16, and a conservative batch size internally. If PyTorch cannot use the GPU, only the alignment job fails with a focused diagnostic; reading, listening, and administration remain available.
+The override recreates the existing `aldus` container with the CUDA image, requests one GPU through Compose, and uses the same data and model cache. New worker builds select a GPU-supported precision and a conservative batch size internally; beta.20 uses FP16. If PyTorch cannot use the GPU, only the alignment job fails with a focused diagnostic; reading, listening, and administration remain available.
 
 Check startup with `docker compose -f compose.yml -f compose.gpu.yml logs aldus`. Docker Desktop on macOS cannot pass an NVIDIA GPU through; use CPU there.
 
@@ -164,9 +164,55 @@ Return to normal CPU processing with:
 docker compose up -d --pull always
 ```
 
+### Which image should I choose?
+
+Use the same Aldus release version for whichever image you choose. Replace
+`<version>` below with that version, such as `0.1.0-beta.20`.
+
+| Your server | Image |
+| --- | --- |
+| No NVIDIA GPU, or you are unsure | `ghcr.io/mahcks/aldus:<version>` |
+| GTX 16-series, RTX 20-series or newer | `ghcr.io/mahcks/aldus:<version>-cuda` |
+| Older NVIDIA cards: GTX 900/10-series, including GTX 1050 Ti | `ghcr.io/mahcks/aldus:<version>-cuda-legacy` |
+
+The legacy option is available only in releases that include
+`compose.gpu-legacy.yml`; **beta.20 does not include it**. Until you install a
+release with that file, use CPU processing on those older cards.
+
+For Quadro, Tesla, and other NVIDIA models, check the card's architecture:
+Maxwell, Pascal, and Volta use the legacy option; Turing and newer use `-cuda`.
+Older architectures are not supported by these GPU images. The GTX 16-series
+uses Turing, so it belongs with the newer cards despite its GTX name.
+
+To use the legacy option, download `compose.gpu-legacy.yml` from the
+[release you installed](https://github.com/Mahcks/Aldus/releases).
+In your server's Aldus folder, run:
+
+```sh
+docker compose -f compose.yml -f compose.gpu-legacy.yml up -d --pull always
+```
+
+Use only one GPU override. Both options keep your books, accounts, and saved
+positions. Processing settings are chosen automatically in releases containing
+the legacy option. Speed depends on your card and the audiobook.
+
+#### Why two GPU images?
+
+Newer GPU software drops support for some older cards. The legacy image keeps
+an older, tested set of dependencies so those cards can still prepare books.
+Aldus itself can continue receiving fixes in both images.
+
+The current build uses PyTorch 2.8 with CUDA 12.8 for `-cuda`, and CUDA 12.6 for
+`-cuda-legacy`. These versions are chosen to work with Aldus's speech software;
+they are not settings you need to change. Future dependency upgrades must
+preserve compatibility with the cards each image supports.
+
+AMD and Intel GPU acceleration are not currently supported. Use the standard
+CPU image on those servers. Vulkan is not currently an available Aldus backend.
+
 ### Advanced GPU troubleshooting
 
-Most installations should not set any alignment variables. Aldus deliberately owns device and compute-type selection. If a supported GPU still runs out of memory, `ALDUS_ALIGNMENT_BATCH_SIZE` is the one advanced override retained: set it to `2` or `1` in `.env`, then rerun the GPU command. The default is `4`; larger values may improve throughput but are not part of the supported baseline.
+Most installations should not set any alignment variables. Aldus deliberately owns device and compute-type selection. If a supported GPU still runs out of memory, `ALDUS_ALIGNMENT_BATCH_SIZE` is the one advanced override retained: set it to `2` or `1` under the service’s `environment` in `compose.gpu.yml`, then rerun the GPU command. New worker builds default to `1` on GPUs with 4 GB or less and `4` on larger GPUs; larger values may improve throughput but are not part of the supported baseline.
 
 ## Troubleshooting
 

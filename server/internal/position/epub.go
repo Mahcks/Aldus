@@ -33,6 +33,7 @@ type KOReaderTextNode struct {
 type KOReaderParagraph struct {
 	Fragment int                `json:"fragment"`
 	Nodes    []KOReaderTextNode `json:"nodes"`
+	DOMPath  string             `json:"dom_path,omitempty"`
 }
 
 func ImportEPUB(filename string) (EPUB, error) {

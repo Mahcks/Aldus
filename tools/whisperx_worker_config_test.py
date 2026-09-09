@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from whisperx_worker_config import load
+from whisperx_worker_config import gpu_settings, load
 
 
 class ConfigTest(unittest.TestCase):
@@ -11,6 +11,16 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(load(), ("cpu", "int8", 4))
         with patch.dict(os.environ, {"ALDUS_ALIGNMENT_ACCELERATOR": "cuda"}, clear=True):
             self.assertEqual(load(), ("cuda", "float16", 4))
+
+    def test_gpu_defaults_follow_supported_precision_and_memory(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(gpu_settings({"int8_float32", "float32"}, 4 * 1024**3, 4), ("int8_float32", 1))
+            self.assertEqual(gpu_settings({"float16", "float32"}, 8 * 1024**3, 4), ("float16", 4))
+            self.assertEqual(gpu_settings({"float32"}, 4 * 1024**3, 4), ("float32", 1))
+            with self.assertRaises(ValueError):
+                gpu_settings(set(), 4 * 1024**3, 4)
+        with patch.dict(os.environ, {"ALDUS_ALIGNMENT_BATCH_SIZE": "2"}, clear=True):
+            self.assertEqual(gpu_settings({"float32"}, 4 * 1024**3, 2), ("float32", 2))
 
     def test_rejects_unknown_accelerator(self):
         with patch.dict(os.environ, {"ALDUS_ALIGNMENT_ACCELERATOR": "magic"}, clear=True):

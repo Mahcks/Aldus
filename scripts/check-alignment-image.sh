@@ -47,8 +47,8 @@ print("CPU alignment runtime initialized")
     docker volume rm -f "$cache_volume" >/dev/null
     trap - EXIT
     ;;
-  cuda)
-    docker run --rm --entrypoint python3 "$image" -c '
+  cuda|cuda-legacy)
+    docker run --rm -e EXPECT_CUDA="$(if [ "$mode" = cuda-legacy ]; then echo 12.6; else echo 12.8; fi)" --entrypoint python3 "$image" -c '
 import importlib.metadata as metadata
 import os
 import sys
@@ -57,7 +57,7 @@ from whisperx_worker import Checkpoints
 import torch
 import whisperx
 
-assert torch.version.cuda == "12.8", torch.version.cuda
+assert torch.version.cuda == os.environ["EXPECT_CUDA"], torch.version.cuda
 assert os.environ["ALDUS_ALIGNMENT_ACCELERATOR"] == "cuda"
 assert metadata.version("whisperx") == "3.8.6"
 assert metadata.version("ctranslate2") == "4.8.1"
@@ -75,7 +75,7 @@ print("CUDA alignment dependencies installed; physical GPU runtime not exercised
     fi
     ;;
   *)
-    echo "mode must be cpu or cuda" >&2
+    echo "mode must be cpu, cuda, or cuda-legacy" >&2
     exit 2
     ;;
 esac

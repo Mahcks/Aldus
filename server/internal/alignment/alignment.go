@@ -526,6 +526,9 @@ func (m *Manager) run(parent context.Context, job Job) {
 		m.writeStage(job.ID, "validating")
 		err = m.publish(ctx, job, artifactPath, artifactID)
 		summary = "artifact validation failed"
+		if err != nil {
+			slog.Error("publish alignment failed", "job_id", job.ID, "error", err)
+		}
 	}
 	if err != nil {
 		if parent.Err() != nil {
@@ -789,7 +792,7 @@ func validate(a *Artifact, input workerInput, tool string) error {
 		}
 		words, err := normalizeWordTimings(s.WordTimings, s.Audio.StartMS, s.Audio.EndMS)
 		if err != nil {
-			return fmt.Errorf("invalid words %d", i)
+			return fmt.Errorf("invalid words in segment %d: %w", i, err)
 		}
 		s.WordTimings = words
 		ids[s.ID] = true
@@ -843,22 +846,25 @@ func normalizeWordTimings(raw json.RawMessage, segmentStart, segmentEnd int64) (
 		canonical := value.Text != nil || value.StartTime != nil || value.EndTime != nil || value.Confidence != nil
 		legacy := value.Word != nil || value.Start != nil || value.End != nil || value.Score != nil
 		if canonical == legacy || canonical != canonicalFormat {
-			return nil, ErrInvalid
+			return nil, fmt.Errorf("word %d mixes or omits timing formats: %w", i, ErrInvalid)
 		}
 		word := timedWord{Confidence: value.Confidence}
 		if canonical {
 			if value.Text == nil || value.StartTime == nil || value.EndTime == nil {
-				return nil, ErrInvalid
+				return nil, fmt.Errorf("word %d has incomplete canonical timing: %w", i, ErrInvalid)
 			}
 			word.Text, word.StartTime, word.EndTime = *value.Text, *value.StartTime, *value.EndTime
 		} else {
 			if value.Word == nil || value.Start == nil || value.End == nil {
-				return nil, ErrInvalid
+				return nil, fmt.Errorf("word %d has incomplete legacy timing: %w", i, ErrInvalid)
 			}
 			word.Text, word.StartTime, word.EndTime, word.Confidence = *value.Word, *value.Start, *value.End, value.Score
 		}
 		if strings.TrimSpace(word.Text) == "" || math.IsNaN(word.StartTime) || math.IsInf(word.StartTime, 0) || math.IsNaN(word.EndTime) || math.IsInf(word.EndTime, 0) || word.StartTime < last || word.EndTime < word.StartTime || word.EndTime > float64(segmentEnd)/1000+.002 {
-			return nil, ErrInvalid
+			return nil, fmt.Errorf(
+				"word %d has empty text or invalid timing (start=%g, end=%g, earliest=%g, segment_end_ms=%d): %w",
+				i, word.StartTime, word.EndTime, last, segmentEnd, ErrInvalid,
+			)
 		}
 		words[i] = word
 		last = word.EndTime

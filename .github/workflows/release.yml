@@ -79,6 +79,16 @@ jobs:
   cuda:
     needs: verify
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cuda: '12.8'
+            check: cuda
+            cache: alignment-nvidia
+          - cuda: '12.6'
+            check: cuda-legacy
+            cache: alignment-nvidia-12.6
     permissions:
       contents: read
       packages: write
@@ -96,7 +106,9 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/mahcks/aldus
-          tags: type=semver,pattern={{version}},suffix=-cuda
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},suffix=-${{ matrix.check }}
           labels: |
             org.opencontainers.image.url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -109,9 +121,19 @@ jobs:
           sbom: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ github.ref_name }}
-          cache-from: type=gha,scope=alignment-nvidia
-          cache-to: type=gha,mode=max,scope=alignment-nvidia
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            CUDA_VERSION=${{ matrix.cuda }}
+          cache-from: type=gha,scope=${{ matrix.cache }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache }}
+
+      - name: Check published CUDA dependencies
+        env:
+          CHECK_MODE: ${{ matrix.check }}
+        run: |
+          image="ghcr.io/mahcks/aldus:${GITHUB_REF_NAME#v}-${CHECK_MODE}"
+          docker pull "$image"
+          ./scripts/check-alignment-image.sh "$image" "$CHECK_MODE"
 
   publish:
     needs: [standard, cuda]
@@ -132,19 +154,24 @@ jobs:
           manifest=$(docker manifest inspect "$image")
           grep -q '"architecture": "amd64"' <<<"$manifest"
           grep -q '"architecture": "arm64"' <<<"$manifest"
-          docker manifest inspect "${image}-cuda" >/dev/null
+          for variant in cuda cuda-legacy; do
+            docker manifest inspect "${image}-${variant}" >/dev/null
+          done
           docker pull "$image"
           EXPECTED_VERSION="${GITHUB_REF_NAME}" make release-smoke IMAGE="$image"
           standard_digest=$(docker buildx imagetools inspect "$image" | awk '$1 == "Digest:" { print $2; exit }')
           cuda_digest=$(docker buildx imagetools inspect "${image}-cuda" | awk '$1 == "Digest:" { print $2; exit }')
-          [[ $standard_digest == sha256:* && $cuda_digest == sha256:* ]]
+          cuda_legacy_digest=$(docker buildx imagetools inspect "${image}-cuda-legacy" | awk '$1 == "Digest:" { print $2; exit }')
+          [[ $standard_digest == sha256:* && $cuda_digest == sha256:* && $cuda_legacy_digest == sha256:* ]]
           echo "standard_digest=$standard_digest" >> "$GITHUB_OUTPUT"
           echo "cuda_digest=$cuda_digest" >> "$GITHUB_OUTPUT"
+          echo "cuda_legacy_digest=$cuda_legacy_digest" >> "$GITHUB_OUTPUT"
       - name: Publish release notes and Compose files
         env:
           GH_TOKEN: ${{ github.token }}
           STANDARD_IMAGE_DIGEST: ${{ steps.images.outputs.standard_digest }}
           CUDA_IMAGE_DIGEST: ${{ steps.images.outputs.cuda_digest }}
+          CUDA_LEGACY_IMAGE_DIGEST: ${{ steps.images.outputs.cuda_legacy_digest }}
         run: |
           ./scripts/release.sh notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
           prerelease=()
@@ -154,4 +181,4 @@ jobs:
           else
             gh release create "${GITHUB_REF_NAME}" --verify-tag --title "Aldus ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/release-notes.md" "${prerelease[@]}"
           fi
-          gh release upload "${GITHUB_REF_NAME}" compose.yml compose.gpu.yml --clobber
+          gh release upload "${GITHUB_REF_NAME}" compose.yml compose.gpu.yml compose.gpu-legacy.yml --clobber

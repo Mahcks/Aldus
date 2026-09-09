@@ -76,3 +76,59 @@ The real Chromium acceptance run restored the original DOM range exactly for all
 ## Conclusion
 
 Automatic alignment is **not good enough to proceed as the production default**. Text matching and exact EPUB restoration are sound, but only half the anchors are within 500 ms and three exceed one second. The next bounded experiment should benchmark WhisperX (or another true acoustic forced aligner) against the same frozen chapter before committing. The canonical model should not change: the observed failures are timestamp extraction failures.
+
+
+## Development worker diagnostics and GPU qualification
+
+These notes describe the development candidate, not a published release.
+
+### Worker diagnostics
+
+Each worker attempt writes `stages.json` beside its job artifacts. It records the
+active stage and its start time, completed-stage durations, model and compute
+settings, and peak process memory sampled at stage boundaries. These measurements
+separate model loading, transcription, word alignment, and text matching.
+
+The file is updated atomically before each stage starts, so a timeout or killed
+worker leaves its last recorded stage available. After a forced stop it can still
+say `running`; use the server's job status to determine whether the job is active.
+There is no within-stage heartbeat or GPU-memory measurement. A normal exception
+records its type, and a retry replaces this file with the new attempt's diagnostics.
+`runtime.json` remains the completed attempt's aggregate timing report.
+
+### NVIDIA acceleration
+
+Use an NVIDIA alignment image and give its container GPU access. Aldus selects a
+supported compute precision automatically and uses a smaller batch on GPUs with
+4 GB of memory or less. Normal setup does not require precision or batch flags.
+The existing batch-size override is for advanced tuning only.
+
+The standard CUDA image uses CUDA 12.8. A CUDA 12.6 candidate is available to build
+for older NVIDIA cards such as the GTX 1050 Ti; it is not a published release tag. A reported GTX 1050 Ti test completed a full
+Catching Fire audiobook, but server validation and manual timing checks remain
+separate release checks. Build it from the
+repository with `make docker-cuda-legacy`. This reuses the same worker and models.
+
+On the GPU host, with the candidate image and repository available, run:
+
+```sh
+make alignment-gpu-check IMAGE=aldus:cuda-legacy
+```
+
+This processes 90 seconds of the pinned public-domain Alice narration using both
+transcription and word alignment. It mounts no library data, exposes no ports, and
+runs with networking disabled. A successful check is a first hardware check, not
+proof that a full audiobook fits memory or completes within the configured timeout.
+Test a full book before changing a production deployment. Docker still needs the
+NVIDIA Container Toolkit and compatible host drivers; the app cannot configure
+host GPU access from inside its container.
+
+### Checkpoint binding
+
+Completed transcription and word-timing checkpoints are bound to the source
+hashes, extracted ebook text, model, worker code, dependency versions, and compute
+settings. Changes invalidate reuse. Recovery repeats an interrupted stage from
+its beginning; it does not resume within transcription or a chapter. Switching
+CPU/GPU settings also invalidates existing checkpoints. Final server validation
+is required even when checkpoints are reused. Older released workers may not
+have saved checkpoints.

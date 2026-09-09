@@ -188,6 +188,16 @@ jobs:
 
   docker-cuda:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cuda: '12.8'
+            check: cuda
+            cache: alignment-nvidia
+          - cuda: '12.6'
+            check: cuda-legacy
+            cache: alignment-nvidia-12.6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Free disk space for the CUDA image
@@ -197,12 +207,13 @@ jobs:
         with:
           context: .
           target: alignment-nvidia
+          build-args: CUDA_VERSION=${{ matrix.cuda }}
           load: true
           push: false
           tags: aldus:ci-cuda
-          cache-from: type=gha,scope=alignment-nvidia
-          cache-to: type=gha,mode=max,scope=alignment-nvidia
-      - run: ./scripts/check-alignment-image.sh aldus:ci-cuda cuda
+          cache-from: type=gha,scope=${{ matrix.cache }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache }}
+      - run: ./scripts/check-alignment-image.sh aldus:ci-cuda ${{ matrix.check }}
 
   docker-arm64:
     runs-on: ubuntu-latest

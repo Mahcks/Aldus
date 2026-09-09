@@ -112,3 +112,20 @@ func TestKOReaderObservedXPointerForms(t *testing.T) {
 		})
 	}
 }
+
+func TestEmptyKOReaderBlocksHaveDistinctIdentitiesButNoTextTarget(t *testing.T) {
+	first := EPUBParagraph{KOReaderFragment: 1, DOMPath: "html[1]/body[1]/p[1]"}
+	second := EPUBParagraph{KOReaderFragment: 1, DOMPath: "html[1]/body[1]/p[2]"}
+	left, right := MarshalKOReaderParagraph(first), MarshalKOReaderParagraph(second)
+	if left == right {
+		t.Fatal("distinct empty blocks share a storage locator")
+	}
+	for _, raw := range []string{left, right} {
+		if _, err := canonicalToKOReader(raw, 0); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("empty block became a reading target: %v", err)
+		}
+		if _, err := koReaderToCanonical(raw, "/body/DocFragment[1]/body/p/text().0"); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("empty block resolved a text position: %v", err)
+		}
+	}
+}

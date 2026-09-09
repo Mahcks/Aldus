@@ -147,3 +147,13 @@ release-smoke:
 .PHONY: acquisition-usenet-smoke
 acquisition-usenet-smoke:
 	./scripts/acquisition-usenet-smoke.sh
+
+# Local CUDA 12.6 build; run the hardware check on the intended GPU host.
+.PHONY: docker-cuda-legacy
+docker-cuda-legacy:
+	docker build --target alignment-nvidia --build-arg CUDA_VERSION=12.6 -t aldus:cuda-legacy .
+	./scripts/check-alignment-image.sh aldus:cuda-legacy cuda-legacy
+
+.PHONY: alignment-gpu-check
+alignment-gpu-check:
+	./scripts/check-alignment-gpu.sh "$(IMAGE)"

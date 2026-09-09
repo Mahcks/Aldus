@@ -226,21 +226,24 @@ release_notes() {
   printf '| Build | Platforms | Image |\n'
   printf '| --- | --- | --- |\n'
   printf '| Standard | AMD64, ARM64 | [`%s:%s`](%s) |\n' "$image" "$version" "$package_url"
-  printf '| NVIDIA CUDA | AMD64 | [`%s:%s-cuda`](%s) |\n\n' "$image" "$version" "$package_url"
+  printf '| NVIDIA (GTX 16 series, RTX 20 series and newer) | AMD64 | [`%s:%s-cuda`](%s) |\n' "$image" "$version" "$package_url"
+  printf '| Older NVIDIA (including GTX 10 series) | AMD64 | [`%s:%s-cuda-legacy`](%s) |\n\n' "$image" "$version" "$package_url"
+  printf 'Choose one image for your hardware. Both GPU images include the complete Aldus server.\n\n'
   printf '```sh\n'
   printf 'docker pull %s:%s\n' "$image" "$version"
-  printf 'docker pull %s:%s-cuda\n' "$image" "$version"
   printf '```\n\n'
-  if [[ -n ${STANDARD_IMAGE_DIGEST:-} && -n ${CUDA_IMAGE_DIGEST:-} ]]; then
+  if [[ -n ${STANDARD_IMAGE_DIGEST:-} && -n ${CUDA_IMAGE_DIGEST:-} && -n ${CUDA_LEGACY_IMAGE_DIGEST:-} ]]; then
     printf '<details>\n<summary>Verified immutable image digests</summary>\n\n'
     printf -- '- Standard: `%s@%s`\n' "$image" "$STANDARD_IMAGE_DIGEST"
-    printf -- '- NVIDIA CUDA: `%s@%s`\n\n' "$image" "$CUDA_IMAGE_DIGEST"
+    printf -- '- NVIDIA (GTX 16 series, RTX 20 series and newer): `%s@%s`\n' "$image" "$CUDA_IMAGE_DIGEST"
+    printf -- '- Older NVIDIA: `%s@%s`\n\n' "$image" "$CUDA_LEGACY_IMAGE_DIGEST"
     printf '</details>\n\n'
   fi
 
   printf '## Install or upgrade\n\n'
   printf -- '- [Download `compose.yml`](%s/releases/download/%s/compose.yml)\n' "$repository_url" "$tag"
   printf -- '- [Download `compose.gpu.yml`](%s/releases/download/%s/compose.gpu.yml) for NVIDIA acceleration\n' "$repository_url" "$tag"
+  printf -- '- [Download `compose.gpu-legacy.yml`](%s/releases/download/%s/compose.gpu-legacy.yml) for older NVIDIA cards, including GTX 10 series\n' "$repository_url" "$tag"
   printf -- '- [Installation and upgrade guide](%s/admin/install/)\n\n' "$DOCS_ORIGIN"
   printf '> Create and download a verified backup before upgrading. Compose files are attached to this exact release.\n\n'
 
@@ -672,11 +675,15 @@ EOF
         fail "Stale release pins must be rejected"
       fi
     )
-    notes=$(STANDARD_IMAGE_DIGEST=sha256:standard CUDA_IMAGE_DIGEST=sha256:cuda release_notes 1.2.3 HEAD)
+    notes=$(STANDARD_IMAGE_DIGEST=sha256:standard CUDA_IMAGE_DIGEST=sha256:cuda CUDA_LEGACY_IMAGE_DIGEST=sha256:cuda126 release_notes 1.2.3 HEAD)
     grep -Fq '# Aldus 1.2.3' <<<"$notes"
     grep -Fq 'ghcr.io/mahcks/aldus:1.2.3' <<<"$notes"
     grep -Fq 'ghcr.io/mahcks/aldus@sha256:standard' <<<"$notes"
     grep -Fq '/releases/download/v1.2.3/compose.yml' <<<"$notes"
+    grep -Fq 'ghcr.io/mahcks/aldus:1.2.3-cuda-legacy' <<<"$notes"
+    grep -Fq 'ghcr.io/mahcks/aldus:1.2.3-cuda' <<<"$notes"
+    grep -Fq 'ghcr.io/mahcks/aldus@sha256:cuda126' <<<"$notes"
+    grep -Fq '/releases/download/v1.2.3/compose.gpu-legacy.yml' <<<"$notes"
     echo "release checks passed"
     ;;
   *)

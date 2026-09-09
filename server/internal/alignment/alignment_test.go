@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -89,6 +90,9 @@ func setupManager(t *testing.T, mode string, timeout time.Duration) *testState {
 	mediaDir := filepath.Join(root, "media")
 	os.MkdirAll(filepath.Join(mediaDir, "aa"), 0o750)
 	epub := testEPUB(t)
+	if mode == "empty_blocks" {
+		epub = testEPUB(t, `<p>Alice was beginning to get very tired.</p><p/><p><img src="cover.jpg"/></p>`)
+	}
 	audio := []byte("ID3audio")
 	eh := sha(epub)
 	ah := sha(audio)
@@ -446,7 +450,7 @@ func TestCancelAndRestartRecovery(t *testing.T) {
 }
 
 func sha(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
-func testEPUB(t *testing.T) []byte {
+func testEPUB(t *testing.T, content ...string) []byte {
 	t.Helper()
 	var b bytes.Buffer
 	z := zip.NewWriter(&b)
@@ -461,7 +465,11 @@ func testEPUB(t *testing.T) []byte {
 	}
 	write("META-INF/container.xml", `<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>`)
 	write("book.opf", `<package><manifest><item id="c" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c"/></spine></package>`)
-	write("chapter.xhtml", `<html><body><div><p>Alice was beginning to get very tired.</p></div></body></html>`)
+	body := `<p>Alice was beginning to get very tired.</p>`
+	if len(content) > 0 {
+		body = content[0]
+	}
+	write("chapter.xhtml", `<html><body><div>`+body+`</div></body></html>`)
 	z.Close()
 	return b.Bytes()
 }
@@ -479,8 +487,77 @@ s=inp['segments'][0]
 segment={'id':s['id'],'ordinal':0,'text':s['text'],'normalized_text':' '.join(s['text'].split()),'epub':{'href':s['href'],'dom_path':s['dom_path'],'locator':{'type':'dom-element','dom_path':s['dom_path']}},'audio':{'resource':inp['audio_resource'],'start_ms':100,'end_ms':500},'status':'aligned','highlightable':True,'confidence_signals':{'score':0.9},'word_timings':[{'word':'Alice','start':0.1,'end':0.14,'score':0.9},{'word':'was','start':0.15,'end':0.18},{'word':'beginning','start':0.19,'end':0.24},{'word':'to','start':0.25,'end':0.28},{'word':'get','start':0.29,'end':0.32},{'word':'very','start':0.33,'end':0.36},{'word':'tired','start':0.37,'end':0.4}]}
 if mode=='unresolved': segment['status']='unresolved';segment['highlightable']=False
 segments=[segment]
+if mode=='empty_blocks':
+    for s in inp['segments'][1:]:
+        segments.append({'id':s['id'],'ordinal':s['ordinal'],'text':s['text'],'normalized_text':' '.join(s['text'].split()),'epub':{'href':s['href'],'dom_path':s['dom_path'],'locator':{'type':'dom-element','dom_path':s['dom_path']}},'audio':{'resource':inp['audio_resource'],'start_ms':500+s['ordinal']*10,'end_ms':501+s['ordinal']*10},'status':'unresolved','highlightable':False})
 artifact={'version':1,'tool':'whisperx 3.8.6','model':inp['model'],'epub_sha256':inp['epub_sha256'],'audio_sha256':inp['audio_sha256'],'segments':segments}
 if mode=='wrong_hash': artifact['audio_sha256']='0'*64
 json.dump(artifact,open(out,'w'))
 `
+}
+
+func TestPublishFailureLogsUnderlyingError(t *testing.T) {
+	state := setupManager(t, "wrong_hash", time.Second)
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	ctx := context.Background()
+	job, err := state.manager.Enqueue(ctx, state.admin, state.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, ok, err := state.manager.claim(ctx)
+	if err != nil || !ok {
+		t.Fatalf("claim: %v, %v", ok, err)
+	}
+	state.manager.run(ctx, claimed)
+
+	var record struct {
+		Message string `json:"msg"`
+		JobID   string `json:"job_id"`
+		Error   string `json:"error"`
+	}
+	if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.Message != "publish alignment failed" || record.JobID != job.ID || record.Error != "artifact contract or input mismatch" {
+		t.Fatalf("missing publication diagnostic: %+v", record)
+	}
+	failed, err := state.manager.Job(ctx, state.admin, job.ID)
+	if err != nil || failed.State != "failed" || failed.Error != "artifact validation failed" {
+		t.Fatalf("public failure: %+v, %v", failed, err)
+	}
+}
+
+func TestPublishPreservesEmptyBlocksWithoutKOReaderCollisions(t *testing.T) {
+	state := setupManager(t, "empty_blocks", time.Second)
+	ctx := context.Background()
+	job, err := state.manager.Enqueue(ctx, state.admin, state.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, ok, err := state.manager.claim(ctx)
+	if err != nil || !ok {
+		t.Fatalf("claim: %v, %v", ok, err)
+	}
+	state.manager.run(ctx, claimed)
+	ready, err := state.manager.Job(ctx, state.admin, job.ID)
+	if err != nil || ready.State != "ready" {
+		t.Fatalf("publication: %+v, %v", ready, err)
+	}
+	var count, distinct, empty int
+	err = state.manager.db.QueryRowContext(ctx, `
+        SELECT COUNT(*), COUNT(DISTINCT koreader_locator),
+            SUM(CASE WHEN text='' AND highlightable=0 THEN 1 ELSE 0 END)
+        FROM alignment_segments WHERE alignment_id=?`, ready.AlignmentID).Scan(&count, &distinct, &empty)
+	if err != nil || count != 3 || distinct != 3 || empty != 2 {
+		t.Fatalf("segments=%d distinct=%d empty=%d: %v", count, distinct, empty, err)
+	}
+	// Historical backfill uses the same serializer and must preserve uniqueness.
+	updated, err := state.manager.backfillKOReaderAlignment(ctx, ready.AlignmentID, "epub")
+	if err != nil || !updated {
+		t.Fatalf("backfill: %v, %v", updated, err)
+	}
 }

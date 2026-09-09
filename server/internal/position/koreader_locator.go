@@ -14,7 +14,16 @@ type koCharacter struct {
 }
 
 func MarshalKOReaderParagraph(paragraph EPUBParagraph) string {
-	data, _ := json.Marshal(KOReaderParagraph{Fragment: paragraph.KOReaderFragment, Nodes: paragraph.KOReaderNodes})
+	locator := KOReaderParagraph{
+		Fragment: paragraph.KOReaderFragment,
+		Nodes:    paragraph.KOReaderNodes,
+	}
+	// Empty blocks have no text-node paths to distinguish them. Keep their
+	// identity for storage; koCharacters still rejects them as reading targets.
+	if len(locator.Nodes) == 0 {
+		locator.DOMPath = paragraph.DOMPath
+	}
+	data, _ := json.Marshal(locator)
 	return string(data)
 }
 

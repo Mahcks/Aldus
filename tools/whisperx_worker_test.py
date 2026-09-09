@@ -54,5 +54,21 @@ class WordTimingTest(unittest.TestCase):
                 canonical_words([word])
 
 
+class AcceleratorTest(unittest.TestCase):
+    def test_detected_gpu_without_working_kernels_fails_early(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from whisperx_worker import require_accelerator
+
+        torch = SimpleNamespace(
+            cuda=SimpleNamespace(is_available=lambda: True),
+            ones=Mock(side_effect=RuntimeError("no kernel image")),
+        )
+        with patch.dict("sys.modules", {"torch": torch}):
+            with self.assertRaises(SystemExit) as raised:
+                require_accelerator("cuda")
+            self.assertEqual(raised.exception.code, 78)
+
+
 if __name__ == "__main__":
     unittest.main()

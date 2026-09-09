@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from whisperx_worker_config import load as load_worker_config
+from whisperx_worker_config import gpu_settings, load as load_worker_config
 from whisperx_checkpoints import Checkpoints, fingerprint
 from whisperx_diagnostics import StageDiagnostics
 
@@ -51,6 +51,16 @@ def require_accelerator(device):
                 file=sys.stderr,
             )
             raise SystemExit(CUDA_UNAVAILABLE_EXIT)
+        try:
+            # Detection alone does not prove this wheel has kernels for the GPU.
+            probe = torch.ones((16, 16), device="cuda")
+            (probe @ probe).sum().item()
+            torch.cuda.synchronize()
+            del probe
+        except RuntimeError as error:
+            print(f"Aldus CUDA calculation failed: {error}", file=sys.stderr)
+            raise SystemExit(CUDA_UNAVAILABLE_EXIT) from error
+
 
 
 def canonical_words(words):
@@ -109,10 +119,20 @@ def run(args, diagnostics):
         args.model = job["model"]
 
     device, compute_type, batch_size = load_worker_config()
-    diagnostics.details(model=args.model, device=device, compute_type=compute_type, batch_size=batch_size)
     if args.job_input:
         diagnostics.details(audio_duration_ms=job.get("audio_duration_ms"))
     require_accelerator(device)
+    if device == "cuda":
+        import ctranslate2
+
+        import torch
+
+        compute_type, batch_size = gpu_settings(
+            ctranslate2.get_supported_compute_types("cuda"),
+            torch.cuda.get_device_properties(0).total_memory,
+            batch_size,
+        )
+    diagnostics.details(model=args.model, device=device, compute_type=compute_type, batch_size=batch_size)
     started = time.monotonic()
     checkpoints = None
     result = None
