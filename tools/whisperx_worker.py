@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from whisperx_worker_config import load as load_worker_config
+from whisperx_checkpoints import Checkpoints, fingerprint
 
 CUDA_UNAVAILABLE_EXIT = 78
 
@@ -102,15 +103,32 @@ def main():
 
     device, compute_type, batch_size = load_worker_config()
     require_accelerator(device)
-    report_stage("loading_audio")
-    audio = whisperx.load_audio(args.audio)
     started = time.monotonic()
+    checkpoints = None
+    result = None
+    resumed = []
     if args.job_input:
-        report_stage("loading_model")
-        model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
-        report_stage("transcribing")
-        transcription = model.transcribe(audio, batch_size=batch_size, language="en")
-        segments = transcription["segments"]
+        checkpoints = Checkpoints(args.output, fingerprint(job, [device, compute_type, batch_size]))
+        result = checkpoints.load("word-timings")
+    audio = None
+    if result is None:
+        report_stage("loading_audio")
+        audio = whisperx.load_audio(args.audio)
+    if args.job_input:
+        transcription = checkpoints.load("transcription") if result is None else None
+        if result is not None:
+            resumed.append("word-timings")
+            segments = []
+        else:
+            if transcription is None:
+                report_stage("loading_model")
+                model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+                report_stage("transcribing")
+                transcription = model.transcribe(audio, batch_size=batch_size, language="en")
+                checkpoints.save("transcription", {"segments": transcription["segments"]})
+            else:
+                resumed.append("transcription")
+            segments = transcription["segments"]
         asr_seconds = time.monotonic() - started
     elif args.known_segments:
         candidate = json.loads(Path(args.known_segments).read_text())
@@ -134,10 +152,16 @@ def main():
             write(args.raw_asr, result)
 
     align_started = time.monotonic()
-    report_stage("loading_alignment_model")
-    align_model, metadata = whisperx.load_align_model(language_code="en", device=device)
-    report_stage("aligning_words")
-    result = whisperx.align(segments, align_model, metadata, audio, device, return_char_alignments=True)
+    metadata = {}
+    if result is None or not args.job_input:
+        report_stage("loading_alignment_model")
+        align_model, metadata = whisperx.load_align_model(language_code="en", device=device)
+        report_stage("aligning_words")
+        result = whisperx.align(segments, align_model, metadata, audio, device, return_char_alignments=True)
+        if checkpoints is not None:
+            checkpoints.save("word-timings", {"word_segments": result["word_segments"]})
+    if resumed:
+        print("Resumed alignment from checkpoint: " + ", ".join(resumed), flush=True)
     if args.job_input:
         report_stage("matching_text")
         spoken = canonical_words(
@@ -249,6 +273,7 @@ def main():
             "tool": f"whisperx {importlib.metadata.version('whisperx')}",
             "asr_model": None if args.known_segments else args.model,
             "alignment_model": metadata.get("type"),
+            "resumed_stages": resumed,
             "device": device,
             "compute_type": compute_type,
             "asr_seconds": asr_seconds,

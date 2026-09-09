@@ -10,6 +10,9 @@ case "$mode" in
 import importlib.metadata as metadata
 import os
 import platform
+import sys
+sys.path.insert(0, "/app/tools")
+from whisperx_worker import Checkpoints
 import torch
 import whisperx
 
@@ -48,6 +51,9 @@ print("CPU alignment runtime initialized")
     docker run --rm --entrypoint python3 "$image" -c '
 import importlib.metadata as metadata
 import os
+import sys
+sys.path.insert(0, "/app/tools")
+from whisperx_worker import Checkpoints
 import torch
 import whisperx
 

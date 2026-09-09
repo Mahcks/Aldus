@@ -29,6 +29,25 @@ does not display an estimated completion percentage. Long audiobooks can take
 considerably longer on CPU. Older servers or custom workers without stage reporting
 show a general preparation message instead.
 
+## Interrupted alignment jobs
+
+The bundled worker saves a checkpoint after transcription and another after word
+timing finishes. When a job restarts or you retry it from **Manage work → Sync**, it
+reuses matching completed stages. An interruption inside a stage repeats that
+stage from its beginning; this is not chapter-by-chapter or mid-transcription resume.
+
+Checkpoints are stored with the job artifacts in Aldus's persistent data directory.
+Keep that directory mounted across container updates. They are bound to the source
+hashes, extracted ebook text, model name, worker code, dependency versions, and
+compute settings. A mismatch or damaged checkpoint causes that stage to run again.
+Switching from CPU to CUDA invalidates existing checkpoints because the compute
+settings differ. Final alignment validation still runs before readers can use it.
+
+The server automatically retries an interrupted job once; after repeated interruptions,
+use the existing retry action. A canceled job stays canceled until you explicitly
+retry it. Checkpoints remain with the job for reuse and consume additional disk space.
+Jobs started with an older worker have no checkpoints to recover.
+
 ## What Aldus saves
 
 Aldus keeps two complementary positions:
