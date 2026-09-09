@@ -94,6 +94,17 @@ This updates only the approved server-version files. It never changes the iOS ma
 Review and commit the result, push it, wait for that exact commit's CI, then rerun
 `make release-status`.
 
+Version-only preparation uses a short CI run when its immediate parent already has
+successful push CI on `main`. CI verifies the exact version substitutions in the
+five approved files, runs the release-script checks, and builds the docs. It reuses
+the parent's server, app, end-to-end, and Docker checks. The tagged commit still
+needs its own successful CI run; release image builds and smoke tests still run.
+
+Push version preparation after the parent turns green to use this shortcut. If the
+parent is still running, failed, or cannot be checked, CI runs the full suite.
+Any other edit, including workflow changes, also requires full CI. Manual CI runs
+always run the full suite.
+
 Before the container phase, record the result of:
 
 ```sh

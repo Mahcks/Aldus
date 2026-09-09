@@ -12,7 +12,40 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  release-prep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      reuse: ${{ steps.check.outputs.reuse }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - run: python3 scripts/release-prep-ci.test.py
+      - run: bash scripts/release.sh self-test
+      - name: Reuse green parent checks only for exact version preparation
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          echo "reuse=false" >> "$GITHUB_OUTPUT"
+          [[ "$EVENT_NAME" == push ]] || exit 0
+          parent=$(python3 scripts/release-prep-ci.py)
+          [[ -n "$parent" ]] || exit 0
+          count=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+            -f head_sha="$parent" -f branch=main -f event=push -f status=success \
+            --jq '.total_count') || exit 0
+          if [[ "$count" -gt 0 ]]; then
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+            echo "Version-only preparation: reusing successful CI for $parent." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   server:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,6 +70,8 @@ jobs:
       - run: go build ./...
 
   app:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,6 +94,8 @@ jobs:
       - run: bun run build:web
 
   web-e2e:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,6 +126,8 @@ jobs:
           retention-days: 7
 
   koreader-e2e:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -139,6 +178,8 @@ jobs:
       - run: bun run build
 
   docker:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,6 +228,8 @@ jobs:
           EXPECT_SCHEMA_UPGRADE: ${{ steps.previous.outputs.schema_upgrade }}
 
   docker-cuda:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -216,6 +259,8 @@ jobs:
       - run: ./scripts/check-alignment-image.sh aldus:ci-cuda ${{ matrix.check }}
 
   docker-arm64:
+    needs: release-prep
+    if: needs.release-prep.outputs.reuse != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
