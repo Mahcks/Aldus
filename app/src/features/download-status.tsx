@@ -122,49 +122,47 @@ export function DownloadList({
   const rows = (
     <View className="gap-2">
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      {visible.map((item) => {
+      {visible.map((item, index) => {
+        const format = item.filename.endsWith('.epub') ? 'Ebook' : 'Audiobook';
+        const label = compact ? format : item.label;
         const active = item.status === 'downloading' || item.status === 'queued';
         const pending = busy.includes(item.id);
         const bytes = active ? (item.transferredBytes ?? item.bytes) : item.bytes;
         return (
-          <View
-            key={item.id}
-            className={
-              compact ? 'gap-1 border-b border-line py-2' : 'gap-2 border-b border-line py-3'
-            }
-          >
-            {!compact ? (
-              <Text className="text-base font-sans-medium text-ink">{item.label}</Text>
-            ) : null}
-            <View className="flex-row flex-wrap items-center gap-2">
-              {compact ? (
-                <Text className="text-sm font-sans-semibold text-ink">
-                  {item.filename.endsWith('.epub') ? 'Ebook' : 'Audiobook'}
-                </Text>
+          <View key={item.id} className={`gap-2 py-3 ${index > 0 ? 'border-t border-line' : ''}`}>
+            <View className="flex-row items-center gap-3">
+              <View className="min-w-0 flex-1 gap-1">
+                <Text className="text-base font-sans-semibold text-ink">{label}</Text>
+                {item.status === 'complete' ? (
+                  <Text className="text-sm text-muted">
+                    Saved on this device · {megabytes(item.storageBytes ?? item.bytes)}
+                  </Text>
+                ) : (
+                  <View className="flex-row flex-wrap items-center gap-2">
+                    <StatusBadge
+                      label={item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                      tone={item.status === 'failed' ? 'danger' : 'neutral'}
+                    />
+                    <Text
+                      className="text-sm text-muted"
+                      accessibilityRole="progressbar"
+                      accessibilityValue={{ min: 0, max: item.expectedSize, now: bytes }}
+                      accessibilityLabel={`${label} download progress`}
+                    >
+                      {megabytes(bytes)} of {megabytes(item.expectedSize)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {item.status === 'complete' && item.workID ? (
+                <Button
+                  label="Remove"
+                  accessibilityLabel={`Remove ${format.toLowerCase()}`}
+                  kind="quiet"
+                  loading={pending}
+                  onPress={() => void onAction(item, 'remove')}
+                />
               ) : null}
-              <StatusBadge
-                label={
-                  item.status === 'complete'
-                    ? 'Saved'
-                    : item.status.charAt(0).toUpperCase() + item.status.slice(1)
-                }
-                tone={
-                  item.status === 'failed'
-                    ? 'danger'
-                    : item.status === 'complete'
-                      ? 'success'
-                      : 'neutral'
-                }
-                icon={item.status === 'complete' ? 'check' : undefined}
-              />
-              <Text
-                className="text-sm text-muted"
-                accessibilityRole="progressbar"
-                accessibilityValue={{ min: 0, max: item.expectedSize, now: bytes }}
-                accessibilityLabel={`${compact ? (item.filename.endsWith('.epub') ? 'Ebook' : 'Audiobook') : item.label} download progress`}
-              >
-                {megabytes(bytes)} of {megabytes(item.expectedSize)}
-              </Text>
             </View>
             {item.status !== 'complete' && item.expectedSize > 0 ? (
               <View
@@ -185,16 +183,6 @@ export function DownloadList({
             ) : null}
             {pending && !active ? (
               <Text className="text-sm text-muted">Updating download…</Text>
-            ) : null}
-            {item.status === 'complete' && item.workID ? (
-              <View className="flex-row flex-wrap gap-2">
-                <Button
-                  label={item.filename.endsWith('.epub') ? 'Remove ebook' : 'Remove audiobook'}
-                  kind="quiet"
-                  loading={pending}
-                  onPress={() => void onAction(item, 'remove')}
-                />
-              </View>
             ) : null}
             {item.status !== 'complete' ? (
               <View className="flex-row flex-wrap gap-2">

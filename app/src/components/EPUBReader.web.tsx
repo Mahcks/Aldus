@@ -46,6 +46,8 @@ export type ReaderLocation = {
   reason?: 'relocate' | 'forward' | 'explicit' | 'restore';
 };
 export type EPUBReaderHandle = {
+  revealRestoredPlace?: () => void;
+  confirmSavedPlace?: (location: { cfi: string }, result: 'saved' | 'offline') => void;
   captureSelection: () => ReaderCapture | null;
   restoreSelection: (capture: ReaderCapture) => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;

@@ -19,6 +19,15 @@ export function shouldLoadConsumptionMedia(mode: 'read' | 'listen', kind: 'epub'
   return (mode === 'read' && kind === 'epub') || (mode === 'listen' && kind === 'audio');
 }
 
+// A metadata refresh does not remount an already-open publication.
+export function reusesReaderPublication(
+  loadedMediaID: string,
+  selectedMediaID: string | undefined,
+  source: unknown,
+) {
+  return Boolean(source && selectedMediaID && loadedMediaID === selectedMediaID);
+}
+
 export function queueTask(current: Promise<void>, task: () => Promise<void>) {
   return current.catch(() => {}).then(task);
 }
@@ -110,7 +119,7 @@ export function progressSaveLabel(
     return 'Progress saves automatically';
   if (state === 'saving') return 'Saving…';
   if (state !== 'saved') return '';
-  return 'Saved here';
+  return 'Reading place saved';
 }
 
 export function playbackRate(rate?: number) {

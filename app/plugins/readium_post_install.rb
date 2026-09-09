@@ -1,5 +1,11 @@
 # Temporary RC 17 compatibility hook. Remove after upgrading react-native-readium.
 def aldus_readium_post_install(installer)
+  selection_patch = File.join(__dir__, 'readium-selection.cjs')
+  navigator_root = File.join(installer.sandbox.root, 'ReadiumNavigator')
+  unless system('node', selection_patch, navigator_root)
+    raise 'Could not apply the Aldus text-selection paging fix.'
+  end
+
   modulemap = <<~MODULEMAP
     module Minizip [extern_c] [system] {
       header "Minizip-umbrella.h"

@@ -1,5 +1,13 @@
 import { File, Paths } from 'expo-file-system';
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -29,6 +37,7 @@ import { colors } from '@/features/theme';
 import { flattenReaderContents } from '@/features/reader-navigation';
 import { Text, View } from '@/features/tw';
 import { IconButton } from '@/features/ui';
+import { ReaderSaveFeedback } from '@/features/reader-save-feedback';
 
 type ReaderLocation = {
   href: string;
@@ -56,6 +65,8 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
 export type ReaderNavigationItem = { title: string; location: unknown; depth: number };
 export type ReaderSearchResult = { title: string; excerpt: string; location: unknown };
 export type EPUBReaderHandle = {
+  revealRestoredPlace?: () => void;
+  confirmSavedPlace?: (location: { cfi: string }, result: 'saved' | 'offline') => void;
   captureSelection: () => null;
   restoreSelection: () => Promise<string>;
   restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
@@ -110,13 +121,41 @@ export const EPUBReader = forwardRef<
   const direction = useRef<'forward' | 'backward' | undefined>(undefined);
   const locationRequest = useRef(0);
   const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
+  const selectedPage = useRef<Locator | undefined>(undefined);
+  const currentPage = useRef<Locator | undefined>(undefined);
+  const selectedTextLocation = useRef<string | undefined>(undefined);
+  const pendingHighlight = useRef<Locator | undefined>(undefined);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const restoring = useRef(false);
   const pendingNavigation = useRef<
-    { href: string; finish: (success: boolean) => void } | undefined
+    { href: string; locator: Locator; finish: (success: boolean) => void } | undefined
   >(undefined);
 
   const [fileURL, setFileURL] = useState('');
   const [resumeDecorations, setResumeDecorations] = useState<DecorationGroup[]>([]);
+  const [saveFeedback, setSaveFeedback] = useState<'saved' | 'offline'>();
+  const clearFeedback = useCallback(() => {
+    clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = undefined;
+    setSaveFeedback(undefined);
+  }, []);
+  const clearHighlight = useCallback(() => {
+    clearTimeout(highlightTimer.current);
+    highlightTimer.current = undefined;
+    pendingHighlight.current = undefined;
+    setResumeDecorations([]);
+  }, []);
+
+  const highlightPlace = useCallback(
+    (locator: Locator) => {
+      clearHighlight();
+      setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+      highlightTimer.current = setTimeout(clearHighlight, 4000);
+    },
+    [clearHighlight],
+  );
+
   const readiumPreferences = useMemo<Preferences>(
     () => ({
       backgroundColor: preferences.theme === 'night' ? colors.readerNightPaper : colors.paper,
@@ -158,7 +197,11 @@ export const EPUBReader = forwardRef<
     pendingNavigation.current?.finish(false);
     restoring.current = false;
     pendingRestore.current = undefined;
-    setResumeDecorations([]);
+    selectedPage.current = undefined;
+    currentPage.current = undefined;
+    selectedTextLocation.current = undefined;
+    clearFeedback();
+    clearHighlight();
     direction.current = undefined;
     lastProgression.current = undefined;
     async function prepare() {
@@ -183,12 +226,32 @@ export const EPUBReader = forwardRef<
       active = false;
       locationRequest.current += 1;
       pendingNavigation.current?.finish(false);
+      clearHighlight();
+      clearFeedback();
     };
-  }, [source]);
+  }, [source, clearHighlight, clearFeedback]);
 
   useImperativeHandle(
     ref,
     () => ({
+      revealRestoredPlace: () => {
+        const locator = pendingHighlight.current;
+        if (locator) highlightPlace(locator);
+      },
+      confirmSavedPlace: (location, result) => {
+        if (selectedTextLocation.current !== location.cfi || !selectedPage.current) return;
+        clearHighlight();
+        clearFeedback();
+        const locator = savedLocator(location);
+        if (locator) {
+          setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+        }
+        setSaveFeedback(result);
+        feedbackTimer.current = setTimeout(() => {
+          clearFeedback();
+          clearHighlight();
+        }, 3500);
+      },
       captureSelection: () => null,
       restoreSelection: async () => '',
       navigate: async (location) => {
@@ -237,10 +300,12 @@ export const EPUBReader = forwardRef<
         const saved = savedLocator(location);
         if (saved) {
           if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
-          setResumeDecorations([]);
+          clearHighlight();
           restoring.current = true;
           try {
-            return await navigateAndWait(view, saved);
+            const success = await navigateAndWait(view, saved);
+            if (success && saved.text?.highlight) pendingHighlight.current = saved;
+            return success;
           } finally {
             restoring.current = false;
           }
@@ -326,10 +391,10 @@ export const EPUBReader = forwardRef<
               query: matchedQuery,
             });
           pendingRestore.current = target;
-          setResumeDecorations(
-            readiumResumeDecorations(matches[0].locator, highlight, colors.accentSoft),
-          );
-          return await navigateAndWait(view, matches[0].locator);
+          clearHighlight();
+          const success = await navigateAndWait(view, matches[0].locator);
+          if (success && highlight) pendingHighlight.current = matches[0].locator;
+          return success;
         } catch (cause) {
           pendingRestore.current = undefined;
           if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
@@ -346,7 +411,7 @@ export const EPUBReader = forwardRef<
         }
       },
     }),
-    [],
+    [highlightPlace, clearHighlight, clearFeedback],
   );
 
   // The bridge dispatches goTo synchronously; only a destination event confirms navigation.
@@ -360,7 +425,7 @@ export const EPUBReader = forwardRef<
         if (pendingNavigation.current?.finish === finish) pendingNavigation.current = undefined;
         resolve(success);
       }
-      pendingNavigation.current = { href: locator.href, finish };
+      pendingNavigation.current = { href: locator.href, locator, finish };
       try {
         view.goTo(locator);
       } catch {
@@ -371,6 +436,22 @@ export const EPUBReader = forwardRef<
 
   async function handleLocation(locator: Locator) {
     const navigation = pendingNavigation.current;
+    // Dismissing the selection menu can repeat the page location. Keep the
+    // selected sentence until the reader actually navigates to another page.
+    const selected = selectedPage.current;
+    if (
+      selected &&
+      !navigation &&
+      !direction.current &&
+      selected.href === locator.href &&
+      JSON.stringify(selected.locations) === JSON.stringify(locator.locations)
+    )
+      return;
+    selectedPage.current = undefined;
+    selectedTextLocation.current = undefined;
+    clearFeedback();
+    clearHighlight();
+    currentPage.current = locator;
     if (restoring.current && !navigation) return;
     if (navigation && locator.href.split('#')[0] !== navigation.href.split('#')[0]) return;
     const request = ++locationRequest.current;
@@ -389,7 +470,11 @@ export const EPUBReader = forwardRef<
       (navigation && pendingNavigation.current !== navigation)
     )
       return;
-    const readingLocator = preferredReadiumLocator(locator, visible);
+    // The visible page can begin before the saved sentence. Preserve the exact
+    // text anchor after restoring instead of immediately saving the page start.
+    const savedSelection = navigation?.locator.text?.highlight ? navigation.locator : undefined;
+    const readingLocator = savedSelection ?? preferredReadiumLocator(locator, visible);
+    if (savedSelection) selectedPage.current = locator;
     const sync = mapReadiumLocator(readingLocator, currentSegments);
     if (navigation) {
       direction.current = undefined;
@@ -440,6 +525,12 @@ export const EPUBReader = forwardRef<
 
   function handleSelection(event: SelectionActionEvent) {
     if (restoring.current) return;
+    if (event.actionId !== 'save-place' && event.actionId !== 'listen-here') return;
+    clearFeedback();
+    clearHighlight();
+    // Choosing a sentence supersedes any page turn still waiting for a mapped location.
+    direction.current = undefined;
+    selectedPage.current = currentPage.current;
     locationRequest.current += 1;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
     const sync = mapReadiumSelection(event.locator, event.selectedText, currentSegments);
@@ -456,6 +547,7 @@ export const EPUBReader = forwardRef<
       syncState: sync ? 'full' : 'none',
       reason: 'explicit',
     };
+    selectedTextLocation.current = event.actionId === 'save-place' ? location.cfi : undefined;
     onLocation?.(location);
     if (event.actionId === 'listen-here') onListenFromLocation?.(location);
   }
@@ -468,6 +560,11 @@ export const EPUBReader = forwardRef<
         depth: item.depth,
       })),
     );
+  }
+
+  let displayedStatus = statusLabel;
+  if (resumeDecorations.length) {
+    displayedStatus = 'Your saved place';
   }
 
   if (!fileURL)
@@ -487,7 +584,10 @@ export const EPUBReader = forwardRef<
           file={{ url: fileURL }}
           preferences={readiumPreferences}
           decorations={resumeDecorations}
-          selectionActions={[{ id: 'listen-here', label: 'Listen from here' }]}
+          selectionActions={[
+            { id: 'save-place', label: 'Save reading place' },
+            { id: 'listen-here', label: 'Listen from here' },
+          ]}
           onLocationChange={handleLocation}
           onPublicationReady={handleReady}
           onSelectionAction={handleSelection}
@@ -506,7 +606,9 @@ export const EPUBReader = forwardRef<
               onPress={() => {
                 if (restoring.current) return;
                 pendingRestore.current = undefined;
-                setResumeDecorations([]);
+                clearHighlight();
+                clearFeedback();
+                selectedTextLocation.current = undefined;
                 direction.current = 'backward';
                 reader.current?.goBackward();
               }}
@@ -514,16 +616,23 @@ export const EPUBReader = forwardRef<
           ) : (
             <View className="h-11 w-11" />
           )}
-          <Text
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={
-              statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
-            }
-            numberOfLines={1}
-            className="flex-shrink text-center text-xs text-muted"
-          >
-            {statusLabel ?? 'Page navigation'}
-          </Text>
+          <View className="min-h-12 min-w-0 flex-1 items-center justify-center">
+            {saveFeedback || resumeDecorations.length ? (
+              <ReaderSaveFeedback result={saveFeedback ?? 'restored'} />
+            ) : (
+              <Text
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={
+                  displayedStatus ? `Reading status: ${displayedStatus}` : 'Page navigation'
+                }
+                numberOfLines={1}
+                className="text-center text-xs text-muted"
+              >
+                {displayedStatus ?? 'Page navigation'}
+              </Text>
+            )}
+          </View>
+
           {preferences?.layout !== 'scrolled' ? (
             <IconButton
               icon="nextPage"
@@ -532,7 +641,9 @@ export const EPUBReader = forwardRef<
               onPress={() => {
                 if (restoring.current) return;
                 pendingRestore.current = undefined;
-                setResumeDecorations([]);
+                clearHighlight();
+                clearFeedback();
+                selectedTextLocation.current = undefined;
                 direction.current = 'forward';
                 reader.current?.goForward();
               }}

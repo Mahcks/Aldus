@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -205,6 +206,15 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err := snapshotDatabase(ctx, filepath.Join(dataDir, "aldus.db"), snapshot); err != nil {
 		return err
 	}
+
+	schemaVersion, err := verifyDatabase(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	if schemaVersion != database.SupportedSchemaVersion() {
+		return fmt.Errorf("backup schema version %d does not match this Aldus version; take the backup using the release that created this database", schemaVersion)
+	}
+
 	// Redact only the isolated snapshot. The live database keeps its connector
 	// credentials and in-flight state.
 	if err := redactConnectorSecrets(ctx, snapshot); err != nil {
@@ -214,10 +224,7 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err != nil {
 		return err
 	}
-	schemaVersion, err := verifyDatabase(ctx, snapshot)
-	if err != nil {
-		return err
-	}
+
 	manifest := Manifest{
 		Version:                  version,
 		SchemaVersion:            schemaVersion,
@@ -293,29 +300,39 @@ func redactConnectorSecrets(ctx context.Context, path string) error {
 }
 
 func snapshotDatabase(ctx context.Context, source, destination string) error {
-	db, err := database.Open(ctx, source)
+	dsn := (&url.URL{
+		Scheme:   "file",
+		Path:     source,
+		RawQuery: "mode=ro&_pragma=busy_timeout(5000)",
+	}).String()
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return fmt.Errorf("open database for backup: %w", err)
 	}
 	defer db.Close()
+
 	connection, err := db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("reserve database connection: %w", err)
 	}
 	defer connection.Close()
+
 	return connection.Raw(func(driverConnection any) error {
 		sourceConnection, ok := driverConnection.(sqliteBackupConn)
 		if !ok {
 			return errors.New("SQLite online backup is unavailable")
 		}
+
 		operation, err := sourceConnection.NewBackup(destination)
 		if err != nil {
 			return fmt.Errorf("start SQLite backup: %w", err)
 		}
+
 		if _, err := operation.Step(-1); err != nil {
 			operation.Finish()
 			return fmt.Errorf("copy SQLite database: %w", err)
 		}
+
 		if err := operation.Finish(); err != nil {
 			return fmt.Errorf("finish SQLite backup: %w", err)
 		}
@@ -394,12 +411,13 @@ func writeArchive(path string, manifest Manifest, files map[string]string) error
 }
 
 func Verify(ctx context.Context, archivePath string) error {
-	temporary, err := os.MkdirTemp("", "aldus-verify-*")
+	temporary, err := os.MkdirTemp(filepath.Dir(archivePath), ".aldus-verify-*")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(temporary)
-	manifest, err := extractAndVerify(archivePath, temporary)
+
+	manifest, err := extractAndVerify(ctx, archivePath, temporary, false)
 	if err != nil {
 		return err
 	}
@@ -447,7 +465,8 @@ func Restore(ctx context.Context, archivePath, dataDir string) error {
 		return err
 	}
 	defer os.RemoveAll(temporary)
-	manifest, err := extractAndVerify(archivePath, temporary)
+
+	manifest, err := extractAndVerify(ctx, archivePath, temporary, true)
 	if err != nil {
 		return err
 	}
@@ -477,7 +496,7 @@ func Restore(ctx context.Context, archivePath, dataDir string) error {
 	return nil
 }
 
-func extractAndVerify(archivePath, destination string) (Manifest, error) {
+func extractAndVerify(ctx context.Context, archivePath, destination string, extractMedia bool) (Manifest, error) {
 	input, err := os.Open(archivePath)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("open backup: %w", err)
@@ -490,8 +509,13 @@ func extractAndVerify(archivePath, destination string) (Manifest, error) {
 	defer gzipReader.Close()
 	tarReader := tar.NewReader(gzipReader)
 	var manifest Manifest
+	seenManifest := false
 	found := map[string]string{}
 	for {
+		if err := ctx.Err(); err != nil {
+			return Manifest{}, err
+		}
+
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
 			break
@@ -504,30 +528,49 @@ func extractAndVerify(archivePath, destination string) (Manifest, error) {
 			return Manifest{}, errors.New("backup contains an unsafe entry")
 		}
 		if name == manifestName {
+			if seenManifest {
+				return Manifest{}, errors.New("backup contains a duplicate manifest")
+			}
+			seenManifest = true
+
 			if err := json.NewDecoder(io.LimitReader(tarReader, 1<<20)).Decode(&manifest); err != nil {
 				return Manifest{}, fmt.Errorf("read backup manifest: %w", err)
 			}
 			continue
 		}
-		target := filepath.Join(destination, name)
-		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
-			return Manifest{}, err
+		if _, exists := found[filepath.ToSlash(name)]; exists {
+			return Manifest{}, errors.New("backup contains a duplicate file")
 		}
-		file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fs.FileMode(header.Mode)&0o770)
-		if err != nil {
-			return Manifest{}, err
-		}
+
 		hash := sha256.New()
-		_, copyErr := io.Copy(io.MultiWriter(file, hash), tarReader)
-		closeErr := file.Close()
-		if copyErr != nil {
-			return Manifest{}, copyErr
+		if extractMedia || name == "aldus.db" {
+			target := filepath.Join(destination, name)
+			if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+				return Manifest{}, err
+			}
+
+			file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fs.FileMode(header.Mode)&0o770)
+			if err != nil {
+				return Manifest{}, err
+			}
+
+			_, copyErr := io.Copy(io.MultiWriter(file, hash), tarReader)
+			closeErr := file.Close()
+			if err := errors.Join(copyErr, closeErr); err != nil {
+				return Manifest{}, err
+			}
+		} else if _, err := io.Copy(hash, tarReader); err != nil {
+			return Manifest{}, err
 		}
-		if closeErr != nil {
-			return Manifest{}, closeErr
-		}
+
 		found[filepath.ToSlash(name)] = hex.EncodeToString(hash.Sum(nil))
 	}
+
+	// Reading through gzip EOF also checks its trailer and compressed checksum.
+	if _, err := io.Copy(io.Discard, gzipReader); err != nil {
+		return Manifest{}, fmt.Errorf("verify backup compression: %w", err)
+	}
+
 	if len(manifest.Files) == 0 || manifest.Files["aldus.db"] == "" {
 		return Manifest{}, errors.New("backup manifest is missing")
 	}

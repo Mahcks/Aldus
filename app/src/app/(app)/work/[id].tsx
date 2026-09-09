@@ -524,7 +524,7 @@ export default function WorkScreen() {
       ) : null}
 
       {activeAlignment ? (
-        <View className="gap-3 border-y border-line py-4">
+        <View className="gap-3 border-t border-line pt-4">
           <AlignmentProgress job={activeAlignment} unreachable={progressUnreachable} />
           {canEdit ? (
             <Button

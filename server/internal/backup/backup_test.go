@@ -150,7 +150,7 @@ func TestCreateVerifyAndRestore(t *testing.T) {
 	}
 
 	extracted := t.TempDir()
-	manifest, err := extractAndVerify(archive, extracted)
+	manifest, err := extractAndVerify(ctx, archive, extracted, true)
 	if err != nil || !manifest.ConnectorSecretsRedacted {
 		t.Fatalf("backup manifest redaction=%v, %v", manifest.ConnectorSecretsRedacted, err)
 	}

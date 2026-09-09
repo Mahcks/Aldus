@@ -410,39 +410,117 @@ export async function updateOfflineRepresentationState(
   });
 }
 
-export async function reconcileOfflineRepresentationStates() {
+export type RepresentationConflict = {
+  workID: string;
+  kind: 'epub' | 'audio';
+  local: RepresentationState;
+  remote: RepresentationState;
+};
+
+export async function acknowledgeOfflineRepresentationState(
+  workID: string,
+  kind: 'epub' | 'audio',
+  submitted: RepresentationState,
+  saved: RepresentationState,
+  rebaseNewer = true,
+  scope = activeStorageScope(),
+) {
+  return serialize(async () => {
+    if (scope !== activeStorageScope()) return;
+    const value = await offlineWork(workID, scope);
+    const field = kind === 'epub' ? 'epub_state' : 'audio_state';
+    const current = value?.[field];
+    if (!value || !current || !value.pending_representation_states?.[kind]) return;
+    if (current.representation_id !== submitted.representation_id) return;
+
+    const unchanged = JSON.stringify(current) === JSON.stringify(submitted);
+    if (!unchanged && (!rebaseNewer || current.revision !== submitted.revision)) return;
+    // A newer local edit still needs sending. Only advance its base revision
+    // after our own successful write; never substitute the server's position.
+    const next = unchanged ? saved : { ...current, revision: saved.revision };
+    await AsyncStorage.setItem(
+      key(scope, workID),
+      JSON.stringify({
+        ...value,
+        [field]: next,
+        pending_representation_states: {
+          ...value.pending_representation_states,
+          [kind]: !unchanged,
+        },
+      }),
+    );
+  });
+}
+
+const reconciliations = new Map<string, Promise<RepresentationConflict[]>>();
+
+export async function reconcileOfflineRepresentationStates(
+  workID?: string,
+): Promise<RepresentationConflict[]> {
   const scope = activeStorageScope();
-  if (!scope) return;
+  if (!scope) return [];
+  const selected = workID ? await offlineWork(workID, scope) : null;
+  const works = workID ? (selected ? [selected] : []) : await offlineWorks(scope);
+  const conflicts: RepresentationConflict[] = [];
+  for (const work of works) {
+    if (scope !== activeStorageScope()) break;
+    const id = key(scope, work.work.id);
+    let pending = reconciliations.get(id);
+    if (!pending) {
+      pending = reconcileRepresentationStates(scope, work).finally(() => {
+        reconciliations.delete(id);
+      });
+      reconciliations.set(id, pending);
+    }
+    conflicts.push(...(await pending));
+  }
+  return conflicts;
+}
+
+async function reconcileRepresentationStates(scope: string, work: OfflineWork) {
+  const conflicts: RepresentationConflict[] = [];
   const origin = getAPIBaseURL();
   const stillActive = () => origin === getAPIBaseURL() && scope === activeStorageScope();
-  for (const work of await offlineWorks(scope)) {
-    for (const kind of ['epub', 'audio'] as const) {
-      if (!work.pending_representation_states?.[kind]) continue;
-      const local = kind === 'epub' ? work.epub_state : work.audio_state;
-      if (!local) continue;
-      try {
-        if (!stillActive()) return;
-        let expectedRevision = local.revision;
+  for (const kind of ['epub', 'audio'] as const) {
+    if (!work.pending_representation_states?.[kind]) continue;
+    const local = kind === 'epub' ? work.epub_state : work.audio_state;
+    if (!local) continue;
+    try {
+      if (!stillActive()) return conflicts;
+      const saved = await api.updateRepresentationState(
+        local.representation_id,
+        representationStateUpdate(local, local.revision),
+      );
+      if (!stillActive()) return conflicts;
+      await acknowledgeOfflineRepresentationState(work.work.id, kind, local, saved, true, scope);
+    } catch (error) {
+      if (!stillActive()) return conflicts;
+      if (error instanceof APIError && error.status === 409) {
         try {
           const remote = await api.representationState(local.representation_id);
-          if (!stillActive()) return;
-          expectedRevision = remote?.revision ?? 0;
-        } catch (error) {
-          if (!(error instanceof APIError && error.status === 404)) throw error;
-          expectedRevision = 0;
+          if (!stillActive()) return conflicts;
+          if (remote) {
+            const current = await serialize(async () => {
+              const latest = await offlineWork(work.work.id, scope);
+              if (!latest?.pending_representation_states?.[kind]) return null;
+              return kind === 'epub' ? latest.epub_state : latest.audio_state;
+            });
+            if (!stillActive()) return conflicts;
+            if (
+              current?.representation_id === local.representation_id &&
+              current.revision === local.revision
+            ) {
+              conflicts.push({ workID: work.work.id, kind, local: current, remote });
+            }
+          }
+        } catch {
+          // Keep the conflict queued if the server cannot supply its position.
         }
-        if (!stillActive()) return;
-        const saved = await api.updateRepresentationState(
-          local.representation_id,
-          representationStateUpdate(local, expectedRevision),
-        );
-        if (!stillActive()) return;
-        await updateOfflineRepresentationState(work.work.id, kind, saved, false, scope);
-      } catch {
-        // Leave the local state pending for the next foreground attempt.
       }
+      // Conflicts and failed requests remain queued; never force a new revision.
     }
   }
+  return conflicts;
 }
 
 export async function retryOfflineDownload(mediaID: string) {

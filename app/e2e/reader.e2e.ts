@@ -13,7 +13,7 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByText('Saved here')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Reading place saved')).toBeVisible({ timeout: 10_000 });
 
   await settings.click();
   await expect(page.getByText('Typography', { exact: true })).toBeVisible();

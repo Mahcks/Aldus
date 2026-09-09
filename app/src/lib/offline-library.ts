@@ -1,7 +1,7 @@
 import type { CanonicalPosition, Library, RepresentationState, WorkSummary } from '@/generated/api';
-import type { OfflineWork } from './offline-library.native';
+import type { OfflineWork, RepresentationConflict } from './offline-library.native';
 
-export type { OfflineWork };
+export type { OfflineWork, RepresentationConflict };
 export async function offlineWork(_workID: string): Promise<OfflineWork | null> {
   return null;
 }
@@ -28,6 +28,17 @@ export async function updateOfflineRepresentationState(
 ) {
   return false;
 }
-export async function reconcileOfflineRepresentationStates() {}
+export async function acknowledgeOfflineRepresentationState(
+  _workID: string,
+  _kind: 'epub' | 'audio',
+  _submitted: RepresentationState,
+  _saved: RepresentationState,
+  _rebaseNewer = true,
+) {}
+export async function reconcileOfflineRepresentationStates(
+  _workID?: string,
+): Promise<RepresentationConflict[]> {
+  return [];
+}
 
 export async function retryOfflineDownload(_mediaID: string) {}

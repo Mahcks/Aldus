@@ -60,7 +60,7 @@ for (const width of [390, 1024, 1440]) {
             epub_media_id: 'epub-0',
             audio_media_id: 'audio-0',
             created_at: '2026-09-01T12:00:00Z',
-            error: 'Source validation failed',
+            error: 'worker timeout',
           },
         ];
       if (path === '/works/book/representations') json = editions;
@@ -92,6 +92,9 @@ for (const width of [390, 1024, 1440]) {
     await expect(page.getByText('Reading editions', { exact: true })).toBeVisible();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-populated-files.png` });
     await page.getByRole('tab', { name: 'Sync', exact: true }).click();
+    await expect(page.getByText(/Sync reached the server’s time limit/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry sync', exact: true })).toBeEnabled();
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-sync-timeout.png` });
     const second = page.getByRole('radio', { name: 'Alice illustrated 2.epub', exact: true });
     await second.focus();
     await page.keyboard.press('Space');

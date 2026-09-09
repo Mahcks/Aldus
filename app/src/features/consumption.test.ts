@@ -16,6 +16,7 @@ import {
   progressSourceLabel,
   queueTask,
   readerControlsReady,
+  reusesReaderPublication,
   readToListen,
   readyJob,
   resumedProgressLabel,
@@ -26,6 +27,14 @@ import {
   synchronizationLabel,
   workProgressLabel,
 } from './consumption';
+
+it('keeps publication readiness across cached-to-online refreshes, but not a different book', () => {
+  const downloadedSource = 'file:///downloads/book.epub';
+  expect(reusesReaderPublication('book', 'book', downloadedSource)).toBe(true);
+  expect(reusesReaderPublication('book', 'other-book', downloadedSource)).toBe(false);
+  expect(reusesReaderPublication('book', 'book', undefined)).toBe(false);
+  expect(reusesReaderPublication('', undefined, downloadedSource)).toBe(false);
+});
 
 it('loads only the media needed by the active consumption mode', () => {
   expect(shouldLoadConsumptionMedia('read', 'epub')).toBe(true);
@@ -178,7 +187,7 @@ it('only claims progress is saved after confirmation', () => {
   expect(progressSaveLabel('saving', 'read')).toBe('Saving…');
   expect(progressSaveLabel('error', 'read')).toBe('Couldn’t save');
   expect(progressSaveLabel('offline', 'read')).toBe('Saved on this device');
-  expect(progressSaveLabel('saved', 'read')).toBe('Saved here');
+  expect(progressSaveLabel('saved', 'read')).toBe('Reading place saved');
   expect(progressSaveLabel('saving', 'listen')).toBe('Progress saves automatically');
   expect(progressSaveLabel('saved', 'listen')).toBe('Progress saves automatically');
 });

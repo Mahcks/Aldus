@@ -3,7 +3,7 @@ title: Backups and upgrades
 description: What a backup actually contains, how the online snapshot and checksum verification work, and a real restore walkthrough.
 ---
 
-import { Steps, Aside, Card, CardGrid } from "@astrojs/starlight/components";
+import { Aside, Card, CardGrid } from "@astrojs/starlight/components";
 
 ## Take a backup
 
@@ -16,24 +16,24 @@ docker compose run --rm aldus backup \
   --archive /backups/aldus-backup-$(date +%Y%m%d).tar.gz
 ```
 
-This runs against the live server — Aldus does not need to be stopped. `--archive` must point somewhere outside the data directory itself (`/backups` is the dedicated backup volume in the default Compose setup); Aldus refuses to write a backup inside the directory it's backing up, and refuses to overwrite a file that already exists at the target path.
+This runs against the live server — Aldus does not need to be stopped. Use the same release as the running server. If Aldus reports that the database belongs to a different release, run the backup with the matching release; the backup command does not upgrade your database. `--archive` must point somewhere outside the data directory itself (`/backups` is the dedicated backup volume in the default Compose setup); Aldus refuses to write a backup inside the directory it's backing up, and refuses to overwrite a file that already exists at the target path.
 
 ## What actually happens during a backup
 
 <CardGrid>
   <Card title="A true hot snapshot" icon="seti:db">
-    Aldus uses SQLite's own online backup API to copy the live database into a temporary file without pausing the server. This is a consistent point-in-time snapshot, not a raw copy of a file that might be mid-write.
+    Aldus reads the live database without changing it and makes a consistent copy using SQLite, the software that stores your library records. You can keep using the server during the backup.
   </Card>
   <Card title="Dedicated credentials and sessions are removed" icon="seti:lock">
-    On the snapshot only, Aldus clears the stored Prowlarr API key and qBittorrent password, removes selected download URLs from request history, clears legacy connector URLs containing URL user-information, and deletes active app sessions. It then runs `VACUUM` with secure-delete so those removed bytes are overwritten rather than merely unlinked.
+    In the backup copy, Aldus removes saved provider and download-client credentials, including Prowlarr, qBittorrent, SABnzbd, and the New York Times API key. It also removes active app sessions and saved download links. The running server keeps its credentials and sessions.
   </Card>
   <Card title="Every file is checksummed" icon="seti:lock">
-    Each file written into the archive gets a SHA-256 hash recorded in a `manifest.json` inside it. Immediately after writing the archive, Aldus extracts and re-verifies it against that manifest before reporting success — a `backup` command that exits cleanly has already round-tripped itself.
+    Aldus records a checksum — a value used to detect changes — for each file. Before reporting success, it reads the completed archive and checks every file against that record. It extracts only the database for additional checks, without making a second full copy of your media.
   </Card>
 </CardGrid>
 
-<Aside type="caution" title="You'll need to re-enter Prowlarr and qBittorrent credentials after a restore">
-  Because those credentials are deliberately erased at backup time, restoring from a backup always leaves acquisitions disconnected until you go back to **Acquisitions → Connections** and re-save them. This is expected, not a bug in the restore.
+<Aside type="caution" title="Reconnect services after a restore">
+  Re-enter credentials for your configured providers and download clients after restoring, including Prowlarr, qBittorrent, or SABnzbd under **Acquisitions → Connections**. Re-enter your New York Times API key too, if you use it.
 </Aside>
 
 <Aside type="caution" title="A backup is still sensitive">
@@ -48,54 +48,149 @@ Aldus also refuses to include a symbolic link anywhere under the data directory,
 
 ## Restore
 
-<Steps>
+Run these commands in your Aldus folder on the server, beside `compose.yml` and `.env`. They use a downloaded backup, so they also work when the original server or backup volume is gone. If you normally use a custom Compose project name or extra `-f` files, include those same options in every command below.
 
-1. Stop Aldus:
+Use the release that created the backup, or a newer compatible release. For a rollback, use the backup taken **before** the upgrade and its original release. Do not start an older image against data already upgraded by a newer release.
+
+### Prepare the files
+
+1. Place your downloaded archive in a folder named `restore-files` beside `compose.yml`. In the commands below, replace `aldus-backup.tar.gz` with its filename.
+
+2. Keep your `.env` and any customized Compose files with your backups. They are not included in the archive. You will need the same settings, especially your media folders and network address.
+
+3. Restore external book and audiobook folders from their separate backups. Set `ALDUS_SOURCE_PATH` in `.env` to their location on this host. Keep the same folder structure and paths **inside** the container so Aldus can find the cataloged files. Restore any additional custom media mounts too.
+
+### On the same host
+
+These steps apply to the standard Compose setup, which stores `/data` in a named Docker volume.
+
+1. Stop Aldus and identify its actual data volume before removing the container:
 
    ```sh
    docker compose stop aldus
+   ALDUS_CONTAINER=$(docker compose ps --all --quiet aldus)
+   docker inspect "$ALDUS_CONTAINER" --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Type}} {{.Name}} {{.Source}}{{end}}{{end}}'
    ```
 
-2. Make sure the target data directory is empty. Restoring onto a data directory that already has files in it is refused outright — if you're recovering onto the same host, this usually means removing or renaming the existing `aldus-data` volume first, not restoring on top of it.
+   If the command fails or prints no mount, stop and check that you are using the right Aldus folder and Compose options. The output must begin with `volume`, followed by its name, such as `aldus_aldus-data`. Use the name shown on **your** server; the folder used to install Aldus affects this name. Write down this name so you can identify the original data later. If the output starts with `bind`, you use a custom host folder: move that folder to a safe location and create an empty replacement at the same path, with the same ownership and permissions. Skip the named-volume change below.
 
-3. Restore the archive:
+2. Keep the old data while you restore into a new, empty volume. First save a copy of your Compose file:
 
    ```sh
-   docker compose run --rm aldus restore \
-     --archive /backups/aldus-backup-20260819.tar.gz \
-     --data-dir /data
+   cp compose.yml compose.before-restore.yml
    ```
 
-   Restore re-verifies every file's checksum against the archive's manifest before touching anything, and separately confirms the backup's database schema isn't newer than what this build of Aldus understands — an incompatible backup is rejected with a clear error rather than silently restored into a broken state.
+   In `compose.yml`, add `name` under the existing `aldus-data` entry at the bottom. Leave `aldus-backups` and all other settings unchanged:
 
-4. Start Aldus again:
+   ```yaml
+   volumes:
+     aldus-data:
+       name: aldus-restored-20260909
+     aldus-backups:
+   ```
+
+   Choose a new name for each restore. Check it with `docker volume inspect aldus-restored-20260909`: **no such volume** means the name is available. If a volume already exists, choose another name. Keep this setting in your Compose file after restoration; removing it would switch Aldus back to the old data.
+
+3. Remove only the stopped container:
+
+   ```sh
+   docker compose rm --force aldus
+   ```
+
+   Your original data and backup volumes remain on disk. Do not run `docker compose down --volumes` or delete either volume. The restored library will contain the backup's accounts, progress, and files; changes made after that backup stay only in the original data. Keep that original volume until you have checked the restored library. Allow enough free disk space for both copies.
+
+### On a new host
+
+1. Install Docker and its Compose plugin as described in [Install](/admin/install/). Create an Aldus folder and copy in your saved `.env`, Compose files, and `restore-files` folder. If you did not save the configuration, download the Compose files from the release that created the backup and recreate your settings using the install guide.
+
+2. Restore and configure the external media folders as described above. Pull the selected image with `docker compose pull`, but **do not start Aldus yet**. Starting it creates a database; restore requires an empty data volume. If you already started it, follow the same-host steps before continuing.
+
+### Restore and check
+
+1. Restore from the downloaded archive:
+
+   ```sh
+   docker compose run --rm \
+     --volume "$PWD/restore-files:/restore-input:ro" \
+     aldus restore --archive /restore-input/aldus-backup.tar.gz --data-dir /data
+   ```
+
+   Compose creates the empty data volume if needed. Aldus checks the archive and refuses a damaged backup, an unsupported database version, or a nonempty destination. Wait for the command to finish successfully before starting the server. If it fails, keep the archive and resolve the reported error first.
+
+2. Start Aldus and check its status:
 
    ```sh
    docker compose up -d
+   docker compose ps
    ```
 
-5. Reconnect Prowlarr and qBittorrent under **Acquisitions → Connections** — their credentials were scrubbed from the backup on purpose.
+   For NVIDIA installations, use the matching GPU command under **Upgrading** below when starting the server. Wait until Aldus reports **healthy**. If it does not, run `docker compose logs --tail=100 aldus`.
 
-6. Sign in again on each Aldus app or browser. Active sessions are intentionally excluded from backups.
+3. Sign in again on each app or browser. Open a book, play an audiobook if available, and check that a saved reading position from the backup returns. If externally stored books are unavailable, check their restored folders and mounts.
 
-</Steps>
+4. Reconnect your configured providers and download clients, including Prowlarr, qBittorrent, or SABnzbd under **Acquisitions → Connections**. Re-enter your New York Times API key if used. Saved sessions and these credentials are deliberately excluded from backups.
 
 ## Upgrading
 
-Keep the image and Compose configuration on the same release. After creating and downloading a verified backup, replace `0.1.0-beta.21` below with the version you are moving to:
+Run these steps in your existing Aldus folder. Keep your current `.env` values, media paths, and Compose customizations.
 
-```sh
-ALDUS_VERSION=0.1.0-beta.21
-curl -fL "https://github.com/Mahcks/Aldus/releases/download/v$ALDUS_VERSION/compose.yml" -o compose.yml
-printf 'ALDUS_VERSION=%s\n' "$ALDUS_VERSION" > .env
-docker compose pull
-docker compose up -d
-docker compose ps
-```
+1. Create and download a verified backup. Save copies of `.env`, `compose.yml`, and any GPU or custom override files outside this folder so you can restore the previous configuration.
 
-If you use NVIDIA acceleration, download the matching `compose.gpu.yml` from that same release and start with both files. Wait for `docker compose ps` to report **healthy** before considering the upgrade complete.
+2. Download the new release's Compose file under a temporary name. Replace `0.1.0-beta.21` with your target release:
 
-If something goes wrong, restore the backup you took and return to both the previous `ALDUS_VERSION` and its matching Compose files. Merely starting the old image against a database already migrated by a newer version is not a safe rollback. Avoid `latest` for a server you depend on — see [Install](/admin/install/) for why.
+   ```sh
+   ALDUS_TARGET_VERSION=0.1.0-beta.21
+   curl -fL "https://github.com/Mahcks/Aldus/releases/download/v$ALDUS_TARGET_VERSION/compose.yml" -o compose.release.yml
+   ```
+
+   Compare `compose.release.yml` with your existing `compose.yml`. Apply the release's changes while keeping your custom mounts and settings. If your existing file is unchanged from the previous release, you can replace it with the downloaded file.
+
+3. Edit **only** the `ALDUS_VERSION` line in your existing `.env` to the target version. Do not replace the whole file: that would discard your other settings. Keep the version without a GPU suffix; the GPU override selects that image.
+
+4. Choose the command for your installation:
+
+   **CPU:**
+
+   ```sh
+   docker compose pull
+   docker compose up -d
+   ```
+
+   **NVIDIA CUDA (Turing and newer, including GTX 16-series and RTX cards):**
+
+   Download and review the matching override, preserving any custom settings before replacing your existing file:
+
+   ```sh
+   curl -fL "https://github.com/Mahcks/Aldus/releases/download/v$ALDUS_TARGET_VERSION/compose.gpu.yml" -o compose.gpu.release.yml
+   ```
+
+   Once the reviewed file is saved as `compose.gpu.yml`, run:
+
+   ```sh
+   docker compose -f compose.yml -f compose.gpu.yml pull
+   docker compose -f compose.yml -f compose.gpu.yml up -d
+   ```
+
+   **NVIDIA CUDA legacy (Maxwell, Pascal, or Volta, including GTX 900/10-series):**
+
+   Use this option only if the target release includes `compose.gpu-legacy.yml`. Otherwise, use CPU processing; see [GPU support](/admin/install/#which-image-should-i-choose).
+
+   ```sh
+   curl -fL "https://github.com/Mahcks/Aldus/releases/download/v$ALDUS_TARGET_VERSION/compose.gpu-legacy.yml" -o compose.gpu-legacy.release.yml
+   ```
+
+   Review it and preserve your custom settings. Once saved as `compose.gpu-legacy.yml`, run:
+
+   ```sh
+   docker compose -f compose.yml -f compose.gpu-legacy.yml pull
+   docker compose -f compose.yml -f compose.gpu-legacy.yml up -d
+   ```
+
+   Use only one GPU override. If you normally supply other custom `-f` files, keep including them in your Compose commands.
+
+5. Run `docker compose ps` and wait for **healthy**. Open Aldus and confirm you can read a book and resume your saved place. If startup fails, check `docker compose logs --tail=100 aldus`.
+
+If you need to roll back, restore the pre-upgrade backup using the procedure above and the saved previous `.env` and Compose files. Avoid `latest` for a server you depend on — see [Install](/admin/install/) for why.
 
 ## A realistic schedule
 

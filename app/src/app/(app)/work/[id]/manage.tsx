@@ -1,3 +1,4 @@
+import { alignmentJobHint } from '@/features/alignment-status';
 import {
   AlignmentProgress,
   alignmentRunning,
@@ -83,15 +84,6 @@ function alignmentJobTone(state: string): 'neutral' | 'info' | 'success' | 'warn
   if (state === 'stale') return 'warning';
   if (state === 'processing') return 'info';
   return 'neutral';
-}
-
-function alignmentJobHint(state: string) {
-  if (state === 'ready') return 'Readers can switch between reading and listening in sync.';
-  if (state === 'failed') return 'Alignment failed. See technical details, then try again.';
-  if (state === 'stale')
-    return 'One of the source files changed since this finished. Start a new alignment to keep sync accurate.';
-  if (state === 'processing') return 'Preparing synchronized reading and listening on the server.';
-  return 'Queued to begin shortly.';
 }
 
 function alignmentJobLabel(state: string) {
@@ -933,7 +925,7 @@ export default function ManageWorkScreen() {
                       <AlignmentProgress job={selectedPairJob} unreachable={progressUnreachable} />
                     ) : selectedPairJob ? (
                       <Notice tone={alignmentNoticeTone(selectedPairJob.state)}>
-                        {alignmentJobHint(selectedPairJob.state)}
+                        {alignmentJobHint(selectedPairJob)}
                       </Notice>
                     ) : (
                       <Text className={shared.itemMeta}>
@@ -1019,7 +1011,7 @@ export default function ManageWorkScreen() {
                               audioMedia?.representation.label ||
                               'Audiobook'}
                           </Text>
-                          <Text className={shared.itemMeta}>{alignmentJobHint(job.state)}</Text>
+                          <Text className={shared.itemMeta}>{alignmentJobHint(job)}</Text>
                           <TechnicalDetails
                             rows={[
                               { label: 'Job ID', value: job.id, copyable: true },
