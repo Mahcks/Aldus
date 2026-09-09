@@ -3,6 +3,7 @@
 
 import argparse
 import difflib
+import gc
 import importlib.metadata
 import json
 import math
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from whisperx_worker_config import load as load_worker_config
 from whisperx_checkpoints import Checkpoints, fingerprint
+from whisperx_diagnostics import StageDiagnostics
 
 CUDA_UNAVAILABLE_EXIT = 78
 
@@ -79,9 +81,6 @@ def canonical_words(words):
 
 
 def main():
-    report_stage("loading_model")
-    import whisperx
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--audio")
     parser.add_argument("--output", required=True)
@@ -91,6 +90,16 @@ def main():
     parser.add_argument("--model", default="base.en")
     parser.add_argument("--window-seconds", type=float, default=0)
     args = parser.parse_args()
+    if not args.job_input and not args.audio:
+        parser.error("--audio is required without --job-input")
+    with StageDiagnostics(Path(args.output).with_name("stages.json")) as diagnostics:
+        run(args, diagnostics)
+
+
+def run(args, diagnostics):
+    diagnostics.stage("loading_runtime")
+    report_stage("loading_model")
+    import whisperx
 
     if args.job_input:
         job = json.loads(Path(args.job_input).read_text())
@@ -98,20 +107,24 @@ def main():
             raise ValueError("unsupported Aldus worker contract")
         args.audio = job["audio_path"]
         args.model = job["model"]
-    elif not args.audio:
-        parser.error("--audio is required without --job-input")
 
     device, compute_type, batch_size = load_worker_config()
+    diagnostics.details(model=args.model, device=device, compute_type=compute_type, batch_size=batch_size)
+    if args.job_input:
+        diagnostics.details(audio_duration_ms=job.get("audio_duration_ms"))
     require_accelerator(device)
     started = time.monotonic()
     checkpoints = None
     result = None
     resumed = []
+    diagnostics.stage("loading_checkpoints")
     if args.job_input:
         checkpoints = Checkpoints(args.output, fingerprint(job, [device, compute_type, batch_size]))
         result = checkpoints.load("word-timings")
+    model = None
     audio = None
     if result is None:
+        diagnostics.stage("loading_audio")
         report_stage("loading_audio")
         audio = whisperx.load_audio(args.audio)
     if args.job_input:
@@ -121,8 +134,10 @@ def main():
             segments = []
         else:
             if transcription is None:
+                diagnostics.stage("loading_model")
                 report_stage("loading_model")
                 model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+                diagnostics.stage("transcribing")
                 report_stage("transcribing")
                 transcription = model.transcribe(audio, batch_size=batch_size, language="en")
                 checkpoints.save("transcription", {"segments": transcription["segments"]})
@@ -142,8 +157,10 @@ def main():
         ]
         asr_seconds = 0
     else:
+        diagnostics.stage("loading_model")
         report_stage("loading_model")
         model = whisperx.load_model(args.model, device, compute_type=compute_type, vad_method="silero", language="en")
+        diagnostics.stage("transcribing")
         report_stage("transcribing")
         result = model.transcribe(audio, batch_size=batch_size, language="en")
         segments = result["segments"]
@@ -151,18 +168,36 @@ def main():
         if args.raw_asr:
             write(args.raw_asr, result)
 
+    diagnostics.stage("releasing_transcription_model")
+    if model is not None:
+        del model
+        gc.collect()
+        if device == "cuda":
+            import torch
+            torch.cuda.empty_cache()
+    diagnostics.details(resumed_stages=resumed)
     align_started = time.monotonic()
     metadata = {}
     if result is None or not args.job_input:
+        diagnostics.stage("loading_alignment_model")
         report_stage("loading_alignment_model")
         align_model, metadata = whisperx.load_align_model(language_code="en", device=device)
+        diagnostics.stage("aligning_words")
         report_stage("aligning_words")
-        result = whisperx.align(segments, align_model, metadata, audio, device, return_char_alignments=True)
+        result = whisperx.align(segments, align_model, metadata, audio, device, return_char_alignments=not bool(args.job_input))
         if checkpoints is not None:
             checkpoints.save("word-timings", {"word_segments": result["word_segments"]})
+        diagnostics.stage("releasing_alignment_model")
+        del align_model
+        audio = None
+        gc.collect()
+        if device == "cuda":
+            import torch
+            torch.cuda.empty_cache()
     if resumed:
         print("Resumed alignment from checkpoint: " + ", ".join(resumed), flush=True)
     if args.job_input:
+        diagnostics.stage("matching_text")
         report_stage("matching_text")
         spoken = canonical_words(
             word for word in result["word_segments"] if "start" in word and "end" in word
@@ -254,6 +289,7 @@ def main():
                     "word_timings": words,
                 }
             )
+        diagnostics.stage("writing_artifact")
         write(
             args.output,
             {
@@ -266,6 +302,7 @@ def main():
             },
         )
     else:
+        diagnostics.stage("writing_artifact")
         write(args.output, result)
     write(
         Path(args.output).with_name("runtime.json"),

@@ -99,3 +99,17 @@ For a title without read/listen alignment, the ebook or audio locator still save
 Not every title has synchronization. If a book only has one format, or an alignment hasn't been generated yet, the work page simply shows the one format available with no **Read & Listen** indicator. If the underlying ebook or audio edition changes after an alignment was produced, Aldus treats the old alignment as stale rather than silently applying a mapping that's no longer accurate for the new files — you'll see the single-format experience again until a fresh alignment is produced.
 
 The standard Aldus image generates alignments with WhisperX on CPU. Administrators with a supported x86-64 Linux NVIDIA host can accelerate the same work without changing Aldus data or synchronization behavior. See [Install Aldus](/admin/install/#whisperx-alignment) for the one-command GPU option and hardware requirements.
+
+## Worker diagnostics
+
+Each worker attempt writes `stages.json` beside its job artifacts. It records the
+active stage and its start time, completed-stage durations, model and compute
+settings, and peak process memory sampled at stage boundaries. These measurements
+separate model loading, transcription, word alignment, and text matching.
+
+The file is updated atomically before each stage starts, so a timeout or killed
+worker leaves its last recorded stage available. After a forced stop it can still
+say `running`; use the server's job status to determine whether the job is active.
+There is no within-stage heartbeat or GPU-memory measurement. A normal exception
+records its type, and a retry replaces this file with the new attempt's diagnostics.
+`runtime.json` remains the completed attempt's aggregate timing report.
