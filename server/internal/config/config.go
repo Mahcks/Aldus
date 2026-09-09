@@ -64,7 +64,7 @@ func Load() (Config, error) {
 		MediaDir:                envOr("ALDUS_MEDIA_DIR", ""),
 		MaxUploadBytes:          envInt64("ALDUS_MAX_UPLOAD_BYTES", 2<<30),
 		AlignmentCommand:        envOr("ALDUS_ALIGNMENT_COMMAND", "python3 ../tools/whisperx_worker.py"),
-		AlignmentTimeout:        time.Duration(envInt64("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", 7200)) * time.Second,
+		AlignmentTimeout:        time.Duration(envInt64("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", 28800)) * time.Second,
 		AlignmentModelDir:       os.Getenv("ALDUS_ALIGNMENT_MODEL_DIR"),
 		SourceRoots:             envList("ALDUS_SOURCE_ROOTS"),
 		Environment:             envOr("ALDUS_ENV", "production"),

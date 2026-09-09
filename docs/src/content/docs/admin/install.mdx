@@ -131,6 +131,20 @@ That mode exposes credentials and sessions to anyone able to observe the LAN. Do
 
 The standard Aldus image includes the alignment runtime and required models. New read/listen alignments run on CPU automatically with no separate service or setup. Models are copied into Aldus's existing data volume on first start, so recreating or upgrading the container does not download them again. A full audiobook can take hours on CPU, so supported NVIDIA hosts can opt into acceleration below.
 
+Alignment jobs have an eight-hour timeout by default. To override it, set
+`ALDUS_ALIGNMENT_TIMEOUT_SECONDS` in the Aldus container's environment. For example:
+
+```yaml
+services:
+  aldus:
+    environment:
+      ALDUS_ALIGNMENT_TIMEOUT_SECONDS: "28800"
+```
+
+Recreate the container to apply environment changes. A longer timeout gives a job
+more time; it does not speed up alignment. See [Interrupted alignment jobs](/read-listen/synchronization/#interrupted-alignment-jobs)
+for checkpoint and retry behavior.
+
 ### NVIDIA GPU (one command)
 
 On an x86-64 Linux host, install a current NVIDIA driver and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Docker Compose 2.30 or newer is required. Then start GPU alignment:

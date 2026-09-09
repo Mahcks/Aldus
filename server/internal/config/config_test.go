@@ -64,11 +64,16 @@ func TestLoadRequiresExplicitNonLoopbackHTTP(t *testing.T) {
 }
 
 func TestLoadDefaultsDirectListenerToLoopback(t *testing.T) {
+	t.Setenv("ALDUS_ALIGNMENT_TIMEOUT_SECONDS", "")
 	t.Setenv("ALDUS_ENV", "production")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
+	if cfg.AlignmentTimeout != 8*time.Hour {
+		t.Fatalf("AlignmentTimeout = %s, want 8h", cfg.AlignmentTimeout)
+	}
+
 	if cfg.Addr != "127.0.0.1:8080" {
 		t.Fatalf("Addr = %q", cfg.Addr)
 	}
