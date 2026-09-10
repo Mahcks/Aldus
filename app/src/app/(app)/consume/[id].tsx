@@ -474,6 +474,7 @@ export default function ConsumeWorkScreen() {
               alignment_id: pending.alignment_id,
               segment_id: pending.segment_id,
               offset: pending.offset,
+              revision: pending.expected_revision,
             }
           : stored.progress;
         const storedEPUBID = stored.epubs.some((item) => item.id === params.epub)
@@ -527,6 +528,7 @@ export default function ConsumeWorkScreen() {
               alignment_id: pending.alignment_id,
               segment_id: pending.segment_id,
               offset: pending.offset,
+              revision: pending.expected_revision,
             }
           : nextProgress;
         if (canceled) return;
@@ -885,11 +887,23 @@ export default function ConsumeWorkScreen() {
         let audioTimestampMS: number | undefined;
         if (mode === 'read') {
           const target = await api.canonicalToEPUB(alignmentID, next);
-          if (!active) return;
+          if (
+            !active ||
+            !isCurrentReader() ||
+            canonicalSaves.current !== pending ||
+            progressRef.current !== next
+          )
+            return;
           queueReaderRestore(target);
         } else {
           const target = await api.canonicalToAudio(alignmentID, next);
-          if (!active) return;
+          if (
+            !active ||
+            !isCurrentReader() ||
+            canonicalSaves.current !== pending ||
+            progressRef.current !== next
+          )
+            return;
           restoredAudio.current = '';
           setAudioReady(false);
           setInitialAudioMS(target.timestamp_ms);
@@ -1023,7 +1037,8 @@ export default function ConsumeWorkScreen() {
   }
 
   useEffect(() => {
-    if (mode !== 'read' || !readerLocation || !selectedEPUB) return;
+    if (mode !== 'read' || !readerLocation || !selectedEPUB || readerLocation.reason === 'restore')
+      return;
     const location = readerLocation;
     let saved = false;
     function save() {
@@ -1100,6 +1115,7 @@ export default function ConsumeWorkScreen() {
     playbackSpeed = status.playbackRate || 1,
   ): Promise<'saved' | 'offline' | 'error'> {
     const selected = kind === 'epub' ? selectedEPUB : selectedAudio;
+    const saveScope = readerScope;
     if (!selected || !isCurrentReader()) return 'error';
     if (editionConflictRef.current) return 'error';
     // Replay uses the same saved revision as foreground saves. Wait for it and
@@ -1139,7 +1155,12 @@ export default function ConsumeWorkScreen() {
         ? { epub_locator: value, reader_layout: readerPreferences.layout }
         : { audio_timestamp_ms: value as number, playback_speed: playbackSpeed }),
     };
+    let staged = false;
     try {
+      if (Platform.OS !== 'web' && work) {
+        staged = await updateOfflineRepresentationState(work.id, kind, local, true, saveScope);
+        if (!isCurrentReader()) return 'error';
+      }
       const next = await api.updateRepresentationState(
         selected.representation.id,
         kind === 'epub'
@@ -1162,14 +1183,26 @@ export default function ConsumeWorkScreen() {
         audioStateRef.current = next;
         setAudioState(next);
       }
-      if (work) await updateOfflineRepresentationState(work.id, kind, next).catch(() => false);
+      if (work) {
+        if (staged) {
+          await acknowledgeOfflineRepresentationState(work.id, kind, local, next, true, saveScope);
+        } else {
+          await updateOfflineRepresentationState(work.id, kind, next, false, saveScope).catch(
+            () => false,
+          );
+        }
+      }
       return 'saved';
     } catch (error) {
       if (error instanceof APIError && error.status === 409 && work && isCurrentReader()) {
         try {
           const remote = await api.representationState(selected.representation.id);
           if (!isCurrentReader() || !remote) return 'error';
-          await updateOfflineRepresentationState(work.id, kind, local, true).catch(() => false);
+          if (!staged) {
+            await updateOfflineRepresentationState(work.id, kind, local, true, saveScope).catch(
+              () => false,
+            );
+          }
           showEditionConflict({ workID: work.id, kind, local, remote });
         } catch (refreshError) {
           setNotice(errorMessage(refreshError));
@@ -1177,9 +1210,11 @@ export default function ConsumeWorkScreen() {
         return 'error';
       }
       if (error instanceof APIError && error.status === 0 && work && isCurrentReader()) {
-        const stored = await updateOfflineRepresentationState(work.id, kind, local, true).catch(
-          () => false,
-        );
+        const stored =
+          staged ||
+          (await updateOfflineRepresentationState(work.id, kind, local, true, saveScope).catch(
+            () => false,
+          ));
         if (stored) {
           if (kind === 'epub') {
             epubStateRef.current = local;
@@ -1196,7 +1231,8 @@ export default function ConsumeWorkScreen() {
   }
 
   async function saveEPUBLocation(location: ReaderLocation) {
-    if (readerInputBlocked.current) return false;
+    // Opening a book reads its saved position; it must not replace that position.
+    if (readerInputBlocked.current || location.reason === 'restore') return false;
     const saveScope = readerScope;
     const saveOrigin = readerOrigin;
     const attempt = ++representationSaveAttempt.current;
@@ -1244,6 +1280,26 @@ export default function ConsumeWorkScreen() {
           }
           if (!isCurrentReader() || progressConflictRef.current || editionConflictRef.current)
             return;
+          if (Platform.OS !== 'web') {
+            // Wait for replay, then adopt its acknowledgment only for the exact
+            // place we already hold. A different cached place is not permission
+            // to overwrite another device's progress.
+            await pendingProgress(work.id, saveScope);
+            const cached = (await offlineWork(work.id))?.progress;
+            const previous = progressRef.current;
+            if (!isCurrentReader() || progressConflictRef.current || editionConflictRef.current)
+              return;
+            if (
+              cached &&
+              previous &&
+              cached.alignment_id === previous.alignment_id &&
+              cached.segment_id === previous.segment_id &&
+              cached.offset === previous.offset &&
+              (cached.revision ?? 0) > (previous.revision ?? 0)
+            ) {
+              progressRef.current = cached;
+            }
+          }
           const current = progressRef.current;
           if (
             current?.alignment_id === alignmentID &&
@@ -1503,31 +1559,41 @@ export default function ConsumeWorkScreen() {
     });
     if (result && location.reason === 'explicit')
       reader.current?.confirmSavedPlace?.(location, result);
+    return result;
   }
 
   async function saveListeningPosition(timestampMS: number, speed = status.playbackRate || 1) {
     const currentAlignmentID = switching.current ? undefined : alignmentID;
     const currentAlignment = switching.current ? undefined : alignment;
     const audioResource = currentAlignment?.segments[0]?.audio_resource;
+    let saved = false;
     audioSaves.current = queueTask(audioSaves.current, async () => {
       if (!isCurrentReader()) return;
-      await saveRepresentation('audio', timestampMS, speed);
-      if (!currentAlignmentID || !currentAlignment || !audioResource) return;
+      const result = await saveRepresentation('audio', timestampMS, speed);
+      if (result === 'error') return;
+      if (!currentAlignmentID) {
+        saved = true;
+        return;
+      }
+      if (!currentAlignment || !audioResource) return;
       const locator: AudioLocator = {
         resource: audioResource,
         timestamp_ms: timestampMS,
       };
       try {
-        await saveCanonical(await api.audioToCanonical(currentAlignmentID, locator));
+        saved = Boolean(
+          await saveCanonical(await api.audioToCanonical(currentAlignmentID, locator)),
+        );
       } catch (error) {
         if (error instanceof APIError && error.status === 0) {
           const canonical = offlineAudioToCanonical(currentAlignment, locator);
-          if (canonical) await saveCanonical(canonical);
+          if (canonical) saved = Boolean(await saveCanonical(canonical));
         } else if (error instanceof APIError && error.status === 404) setSyncAvailable(false);
         else setNotice(errorMessage(error));
       }
     });
     await audioSaves.current;
+    return saved;
   }
 
   async function switchToListen(location = readerLocation) {
@@ -1608,16 +1674,37 @@ export default function ConsumeWorkScreen() {
   async function leaveReader() {
     if (leaving.current) return;
     leaving.current = true;
-    if (mode === 'read' && readerLocation && selectedEPUB) {
-      await saveEPUBLocation(readerLocation);
-      if (commitsReadingProgress(readerLocation.reason)) await saveReadingCursor(readerLocation);
-    } else if (mode === 'listen' && status.isLoaded && selectedAudio) {
-      const timestamp = Math.round(player.currentTime * 1000);
-      lastAudioSave.current = timestamp;
-      await saveListeningPosition(timestamp);
+    try {
+      if (
+        mode === 'read' &&
+        readerLocation &&
+        selectedEPUB &&
+        !readerInputBlocked.current &&
+        readerLocation.reason !== 'restore'
+      ) {
+        if (!(await saveEPUBLocation(readerLocation))) {
+          setNotice('Your latest place could not be saved. Please try again before closing.');
+          return;
+        }
+        if (alignmentID && readerLocation.sync && commitsReadingProgress(readerLocation.reason)) {
+          if (!(await saveReadingCursor(readerLocation))) {
+            setNotice('Your reading place could not be synced. Please try again before closing.');
+            return;
+          }
+        }
+      } else if (mode === 'listen' && status.isLoaded && selectedAudio) {
+        const timestamp = Math.round(player.currentTime * 1000);
+        lastAudioSave.current = timestamp;
+        if (!(await saveListeningPosition(timestamp))) {
+          setNotice('Your latest place could not be saved. Please try again before closing.');
+          return;
+        }
+      }
+      await canonicalSaves.current;
+      goBackOr(`/work/${params.id}`);
+    } finally {
+      leaving.current = false;
     }
-    await canonicalSaves.current;
-    goBackOr(`/work/${params.id}`);
   }
 
   async function switchToRead() {
@@ -1773,21 +1860,51 @@ export default function ConsumeWorkScreen() {
     if (event.nativeEvent.actionName === 'increment') stepPlaybackRate(1);
     else if (event.nativeEvent.actionName === 'decrement') stepPlaybackRate(-1);
   }
-  function handleReadMode() {
-    if (formatSwitchBusy) return;
-    if (mode === 'listen' && alignmentID && status.isLoaded) void switchToRead();
-    else {
+  async function handleReadMode() {
+    if (formatSwitchBusy || switching.current) return;
+    if (mode === 'listen' && alignmentID && status.isLoaded) {
+      await switchToRead();
+      return;
+    }
+    switching.current = true;
+    try {
+      if (mode === 'listen' && status.isLoaded && selectedAudio) {
+        const timestamp = Math.round(player.currentTime * 1000);
+        lastAudioSave.current = timestamp;
+        if (!(await saveListeningPosition(timestamp))) {
+          setNotice('Your latest place could not be saved. Please try again before switching.');
+          return;
+        }
+      }
       pendingAudioHandoff.current = undefined;
       setMode('read');
+    } finally {
+      switching.current = false;
     }
   }
-  function handleListenMode() {
-    if (formatSwitchBusy) return;
+  async function handleListenMode() {
+    if (formatSwitchBusy || switching.current) return;
     setSettingsOpen(false);
-    if (mode === 'read' && readerLocation?.sync && alignmentID) void switchToListen();
-    else {
+    if (mode === 'read' && readerLocation?.sync && alignmentID) {
+      await switchToListen();
+      return;
+    }
+    switching.current = true;
+    try {
+      if (
+        mode === 'read' &&
+        readerLocation &&
+        !readerInputBlocked.current &&
+        readerLocation.reason !== 'restore' &&
+        !(await saveEPUBLocation(readerLocation))
+      ) {
+        setNotice('Your latest place could not be saved. Please try again before switching.');
+        return;
+      }
       pendingAudioHandoff.current = undefined;
       setMode('listen');
+    } finally {
+      switching.current = false;
     }
   }
   async function toggleAcceptanceNetwork() {

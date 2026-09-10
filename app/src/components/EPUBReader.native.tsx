@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ReadiumView,
@@ -231,190 +231,185 @@ export const EPUBReader = forwardRef<
     };
   }, [source, clearHighlight, clearFeedback]);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      revealRestoredPlace: () => {
-        const locator = pendingHighlight.current;
-        if (locator) highlightPlace(locator);
-      },
-      confirmSavedPlace: (location, result) => {
-        if (selectedTextLocation.current !== location.cfi || !selectedPage.current) return;
-        clearHighlight();
+  useImperativeHandle(ref, () => ({
+    revealRestoredPlace: () => {
+      const locator = pendingHighlight.current;
+      if (locator) highlightPlace(locator);
+    },
+    confirmSavedPlace: (location, result) => {
+      if (selectedTextLocation.current !== location.cfi || !selectedPage.current) return;
+      clearHighlight();
+      clearFeedback();
+      const locator = savedLocator(location);
+      if (locator) {
+        setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+      }
+      setSaveFeedback(result);
+      feedbackTimer.current = setTimeout(() => {
         clearFeedback();
-        const locator = savedLocator(location);
-        if (locator) {
-          setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+        clearHighlight();
+      }, 3500);
+    },
+    captureSelection: () => null,
+    restoreSelection: async () => '',
+    navigate: async (location) => {
+      const view = reader.current;
+      if (restoring.current || !view || !location || typeof location !== 'object') return false;
+      pendingRestore.current = undefined;
+      setResumeDecorations([]);
+      direction.current = 'backward';
+      view.goTo(location as Locator);
+      return true;
+    },
+    search: async (query) => {
+      const view = reader.current;
+      if (!view || !query.trim()) return [];
+      try {
+        let page = await view.search(query.trim(), {
+          caseSensitive: false,
+          diacriticSensitive: false,
+        });
+        if (!page.isSupported) return [];
+        const results: SearchResult[] = [];
+        for (let pageCount = 0; pageCount < 100 && results.length < 100; pageCount += 1) {
+          results.push(...page.results.slice(0, 100 - results.length));
+          if (!page.hasMore) break;
+          page = await view.loadMoreSearchResults();
         }
-        setSaveFeedback(result);
-        feedbackTimer.current = setTimeout(() => {
-          clearFeedback();
-          clearHighlight();
-        }, 3500);
-      },
-      captureSelection: () => null,
-      restoreSelection: async () => '',
-      navigate: async (location) => {
-        const view = reader.current;
-        if (restoring.current || !view || !location || typeof location !== 'object') return false;
-        pendingRestore.current = undefined;
-        setResumeDecorations([]);
-        direction.current = 'backward';
-        view.goTo(location as Locator);
-        return true;
-      },
-      search: async (query) => {
-        const view = reader.current;
-        if (!view || !query.trim()) return [];
+        return results.map((result) => ({
+          title: result.locator.title?.trim() || 'Search result',
+          excerpt: [result.before, result.highlight, result.after].filter(Boolean).join(''),
+          location: result.locator,
+        }));
+      } finally {
         try {
-          let page = await view.search(query.trim(), {
+          view.cancelSearch();
+        } catch {
+          // Older native reader binaries may not implement search cleanup yet.
+        }
+      }
+    },
+    restoreLocation: async (location, highlight = false) => {
+      const view = reader.current;
+      if (!view) {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
+        return false;
+      }
+      const saved = savedLocator(location);
+      if (saved) {
+        if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
+        clearHighlight();
+        restoring.current = true;
+        try {
+          const success = await navigateAndWait(view, saved);
+          if (success && saved.text?.highlight) pendingHighlight.current = saved;
+          return success;
+        } finally {
+          restoring.current = false;
+        }
+      }
+      if (!location || typeof location !== 'object') {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: invalid target', location);
+        return false;
+      }
+      const target = location as EPUBLocator;
+      const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
+      if (!segment) {
+        if (__DEV__)
+          console.debug('Aldus native EPUB restore skipped: alignment segment not found', target);
+        return false;
+      }
+      const queries = readiumSearchQueries(
+        segment,
+        target.offset,
+        segmentsRef.current as AlignmentSegment[],
+      );
+      if (!queries[0]) {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: empty search query', target);
+        return false;
+      }
+      if (
+        typeof view.search !== 'function' ||
+        typeof view.loadMoreSearchResults !== 'function' ||
+        typeof view.cancelSearch !== 'function'
+      ) {
+        if (__DEV__) console.warn('Aldus native EPUB search bridge is unavailable.');
+        onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
+        return false;
+      }
+      restoring.current = true;
+      locationRequest.current += 1;
+      try {
+        let matches: SearchResult[] = [];
+        let matchedQuery = '';
+        for (const query of queries) {
+          let page = await view.search(query, {
             caseSensitive: false,
             diacriticSensitive: false,
+            wholeWord: !query.includes(' '),
           });
-          if (!page.isSupported) return [];
-          const results: SearchResult[] = [];
-          for (let pageCount = 0; pageCount < 100 && results.length < 100; pageCount += 1) {
-            results.push(...page.results.slice(0, 100 - results.length));
-            if (!page.hasMore) break;
-            page = await view.loadMoreSearchResults();
-          }
-          return results.map((result) => ({
-            title: result.locator.title?.trim() || 'Search result',
-            excerpt: [result.before, result.highlight, result.after].filter(Boolean).join(''),
-            location: result.locator,
-          }));
-        } finally {
-          try {
-            view.cancelSearch();
-          } catch {
-            // Older native reader binaries may not implement search cleanup yet.
-          }
-        }
-      },
-      restoreLocation: async (location, highlight = false) => {
-        const view = reader.current;
-        if (!view) {
-          if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
-          return false;
-        }
-        const saved = savedLocator(location);
-        if (saved) {
-          if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
-          clearHighlight();
-          restoring.current = true;
-          try {
-            const success = await navigateAndWait(view, saved);
-            if (success && saved.text?.highlight) pendingHighlight.current = saved;
-            return success;
-          } finally {
-            restoring.current = false;
-          }
-        }
-        if (!location || typeof location !== 'object') {
-          if (__DEV__) console.debug('Aldus native EPUB restore skipped: invalid target', location);
-          return false;
-        }
-        const target = location as EPUBLocator;
-        const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
-        if (!segment) {
-          if (__DEV__)
-            console.debug('Aldus native EPUB restore skipped: alignment segment not found', target);
-          return false;
-        }
-        const queries = readiumSearchQueries(
-          segment,
-          target.offset,
-          segmentsRef.current as AlignmentSegment[],
-        );
-        if (!queries[0]) {
-          if (__DEV__)
-            console.debug('Aldus native EPUB restore skipped: empty search query', target);
-          return false;
-        }
-        if (
-          typeof view.search !== 'function' ||
-          typeof view.loadMoreSearchResults !== 'function' ||
-          typeof view.cancelSearch !== 'function'
-        ) {
-          if (__DEV__) console.warn('Aldus native EPUB search bridge is unavailable.');
-          onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
-          return false;
-        }
-        restoring.current = true;
-        locationRequest.current += 1;
-        try {
-          let matches: SearchResult[] = [];
-          let matchedQuery = '';
-          for (const query of queries) {
-            let page = await view.search(query, {
-              caseSensitive: false,
-              diacriticSensitive: false,
-              wholeWord: !query.includes(' '),
-            });
-            if (!page.isSupported) {
-              if (__DEV__)
-                console.debug('Aldus native EPUB restore skipped: search is unsupported');
-              pendingRestore.current = undefined;
-              return false;
-            }
-            matches = [];
-            for (let pageCount = 0; pageCount < 100; pageCount += 1) {
-              matches.push(
-                ...page.results.filter(
-                  (result) => readiumRestoreDisposition(target, result.locator.href) === 'restore',
-                ),
-              );
-              if (!page.hasMore || matches.length > 1) break;
-              page = await view.loadMoreSearchResults();
-            }
-            if (page.hasMore && matches.length <= 1) matches = [];
-            if (matches.length === 1) {
-              matchedQuery = query;
-              break;
-            }
-          }
-          if (matches.length !== 1) {
-            if (__DEV__)
-              console.debug('Aldus native EPUB restore search was not unique', {
-                href: target.href,
-                queries,
-                matches: matches.length,
-              });
+          if (!page.isSupported) {
+            if (__DEV__) console.debug('Aldus native EPUB restore skipped: search is unsupported');
             pendingRestore.current = undefined;
             return false;
           }
-          if (__DEV__)
-            console.debug('Aldus native EPUB restoring canonical target', {
-              segment_id: segment.id,
-              offset: target.offset,
-              href: target.href,
-              query: matchedQuery,
-            });
-          pendingRestore.current = target;
-          clearHighlight();
-          const success = await navigateAndWait(view, matches[0].locator);
-          if (success && highlight) pendingHighlight.current = matches[0].locator;
-          return success;
-        } catch (cause) {
-          pendingRestore.current = undefined;
-          if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
-          onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
-          return false;
-        } finally {
-          restoring.current = false;
-          pendingRestore.current = undefined;
-          try {
-            view.cancelSearch();
-          } catch {
-            // An older native binary has no search iterator to cancel.
+          matches = [];
+          for (let pageCount = 0; pageCount < 100; pageCount += 1) {
+            matches.push(
+              ...page.results.filter(
+                (result) => readiumRestoreDisposition(target, result.locator.href) === 'restore',
+              ),
+            );
+            if (!page.hasMore || matches.length > 1) break;
+            page = await view.loadMoreSearchResults();
+          }
+          if (page.hasMore && matches.length <= 1) matches = [];
+          if (matches.length === 1) {
+            matchedQuery = query;
+            break;
           }
         }
-      },
-    }),
-    [highlightPlace, clearHighlight, clearFeedback],
-  );
+        if (matches.length !== 1) {
+          if (__DEV__)
+            console.debug('Aldus native EPUB restore search was not unique', {
+              href: target.href,
+              queries,
+              matches: matches.length,
+            });
+          pendingRestore.current = undefined;
+          return false;
+        }
+        if (__DEV__)
+          console.debug('Aldus native EPUB restoring canonical target', {
+            segment_id: segment.id,
+            offset: target.offset,
+            href: target.href,
+            query: matchedQuery,
+          });
+        pendingRestore.current = target;
+        clearHighlight();
+        const success = await navigateAndWait(view, matches[0].locator);
+        if (success && highlight) pendingHighlight.current = matches[0].locator;
+        return success;
+      } catch (cause) {
+        pendingRestore.current = undefined;
+        if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
+        onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
+        return false;
+      } finally {
+        restoring.current = false;
+        pendingRestore.current = undefined;
+        try {
+          view.cancelSearch();
+        } catch {
+          // An older native binary has no search iterator to cancel.
+        }
+      }
+    },
+  }));
 
-  // The bridge dispatches goTo synchronously; only a destination event confirms navigation.
+  // Only the native anchor-visibility check can confirm restoration. Location
+  // events may arrive from an earlier page in the same chapter.
   function navigateAndWait(view: ReadiumViewRef, locator: Locator) {
     locationRequest.current += 1;
     pendingNavigation.current?.finish(false);
@@ -425,17 +420,47 @@ export const EPUBReader = forwardRef<
         if (pendingNavigation.current?.finish === finish) pendingNavigation.current = undefined;
         resolve(success);
       }
-      pendingNavigation.current = { href: locator.href, locator, finish };
-      try {
-        view.goTo(locator);
-      } catch {
-        finish(false);
+      const navigation = { href: locator.href, locator, finish };
+      pendingNavigation.current = navigation;
+      async function restore() {
+        try {
+          // Android retains its existing bridge until it supports anchor verification.
+          if (Platform.OS !== 'ios') {
+            view.goTo(locator);
+            return;
+          }
+          if (typeof view.restoreTo !== 'function') {
+            onErrorRef.current?.(new Error('Update Aldus to restore your saved reading place.'));
+            finish(false);
+            return;
+          }
+          const restored = await view.restoreTo(locator);
+          if (pendingNavigation.current !== navigation) return;
+          if (!restored) {
+            finish(false);
+            return;
+          }
+          const visible = await view.currentVisibleLocation();
+          if (pendingNavigation.current !== navigation) return;
+          if (!visible) {
+            finish(false);
+            return;
+          }
+          await handleLocation(visible, navigation);
+        } catch {
+          finish(false);
+        }
       }
+      void restore();
     });
   }
 
-  async function handleLocation(locator: Locator) {
+  async function handleLocation(
+    locator: Locator,
+    confirmedNavigation?: NonNullable<typeof pendingNavigation.current>,
+  ) {
     const navigation = pendingNavigation.current;
+    if (navigation && Platform.OS === 'ios' && confirmedNavigation !== navigation) return;
     // Dismissing the selection menu can repeat the page location. Keep the
     // selected sentence until the reader actually navigates to another page.
     const selected = selectedPage.current;
@@ -461,7 +486,7 @@ export const EPUBReader = forwardRef<
     if (restoreDisposition === 'suppress') return;
     let visible: Locator | undefined;
     try {
-      visible = await reader.current?.currentVisibleLocation();
+      visible = confirmedNavigation ? locator : await reader.current?.currentVisibleLocation();
     } catch {
       // The installed native client predates the visible-location bridge.
     }

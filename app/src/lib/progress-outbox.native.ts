@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CanonicalPosition, WorkProgressUpdate } from '@/generated/api';
 import { APIError, api } from './api';
 import { getAPIBaseURL } from './api-base';
+import { updateOfflineProgress } from './offline-library.native';
 import { parseStoredJSON } from './stored-json';
 import { activeStorageScope, scopedStorageKey } from './storage-scope';
 
@@ -53,6 +54,11 @@ export function pendingProgress(workID: string, scope = activeStorageScope()) {
   return serialize(() => readPendingProgress(workID, scope));
 }
 
+// Manifest mutations must not wait for the outbox queue: replay updates the manifest.
+export async function pendingProgressSnapshot(workID: string, scope: string) {
+  return parseStoredJSON<WorkProgressUpdate>(await AsyncStorage.getItem(key(scope, workID)));
+}
+
 export function discardPendingProgress(workID: string, scope = activeStorageScope()) {
   return serialize(() => discard(workID, scope));
 }
@@ -65,19 +71,19 @@ export function saveWorkProgress(
 ): Promise<CanonicalPosition | null> {
   if (!scope) return Promise.reject(new Error('No active Aldus account.'));
   return serialize(async () => {
+    // A suspended app must retain this update even if the request never returns.
+    await AsyncStorage.setItem(key(scope, workID), JSON.stringify(update));
+    await track(scope, workID, true);
+    if (scope !== activeStorageScope() || origin !== getAPIBaseURL()) {
+      throw new Error('The active account changed. Progress is saved for the original reader.');
+    }
     try {
-      if (scope !== activeStorageScope() || origin !== getAPIBaseURL()) {
-        await AsyncStorage.setItem(key(scope, workID), JSON.stringify(update));
-        await track(scope, workID, true);
-        throw new Error('The active account changed. Progress is saved for the original reader.');
-      }
       const saved = await api.updateWorkProgress(workID, update);
+      await updateOfflineProgress(workID, saved, scope);
       await discard(workID, scope);
       return saved;
     } catch (error) {
       if (!(error instanceof APIError) || error.status !== 0) throw error;
-      await AsyncStorage.setItem(key(scope, workID), JSON.stringify(update));
-      await track(scope, workID, true);
       return null;
     }
   });
@@ -99,7 +105,9 @@ export function reconcilePendingProgress(
     const remote = await api.workProgress(workID);
     if ((remote?.revision ?? 0) !== local.expected_revision && remote) return { local, remote };
     if (!stillActive()) throw new Error('Aldus server or account changed during progress sync.');
-    await api.updateWorkProgress(workID, local);
+    const saved = await api.updateWorkProgress(workID, local);
+    if (!stillActive()) throw new Error('Aldus server or account changed during progress sync.');
+    await updateOfflineProgress(workID, saved, scope);
     if (!stillActive()) throw new Error('Aldus server or account changed during progress sync.');
     await discard(workID, scope);
     return null;

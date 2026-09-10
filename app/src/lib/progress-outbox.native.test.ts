@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, mock, test } from 'bun:test';
 
 const storage = new Map<string, string>();
 let blockedIndexWrite: { started: () => void; wait: Promise<void> } | undefined;
+let blockedWorkWrite: { started: () => void; wait: Promise<void> } | undefined;
 
 function deferNextIndexWrite() {
   let started!: () => void;
@@ -29,6 +30,12 @@ mock.module('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: async (key: string) => storage.get(key) ?? null,
     setItem: async (key: string, value: string) => {
+      if (key.endsWith('offline-work:work') && blockedWorkWrite) {
+        const blocked = blockedWorkWrite;
+        blockedWorkWrite = undefined;
+        blocked.started();
+        await blocked.wait;
+      }
       if (key.endsWith('progress-outbox:index') && blockedIndexWrite) {
         const blocked = blockedIndexWrite;
         blockedIndexWrite = undefined;
@@ -43,16 +50,26 @@ mock.module('@react-native-async-storage/async-storage', () => ({
   },
 }));
 mock.module('react-native', () => ({ Platform: { OS: 'ios' } }));
+mock.module('expo-file-system/legacy', () => ({
+  createDownloadResumable: () => {},
+  FileSystemSessionType: { FOREGROUND: 0 },
+}));
+mock.module('expo-file-system', () => ({
+  File: class {},
+  Paths: { document: 'file:///documents/' },
+}));
 
 const { getAPIBaseURL, setAPIBaseURL } = await import('./api-base');
 const {
   reconcileAllPendingProgress,
   discardPendingProgress,
   pendingProgress,
+  pendingProgressSnapshot,
   reconcilePendingProgress,
   saveWorkProgress,
 } = await import('./progress-outbox.native');
 const { activeStorageScope, setStorageUserID } = await import('./storage-scope');
+const { offlineWork } = await import('./offline-library.native');
 const originalAPIBaseURL = getAPIBaseURL();
 const originalFetch = globalThis.fetch;
 
@@ -67,6 +84,7 @@ const update = {
 beforeEach(() => {
   storage.clear();
   blockedIndexWrite = undefined;
+  blockedWorkWrite = undefined;
   setAPIBaseURL('http://localhost:8080');
   setStorageUserID('reader-one');
 });
@@ -93,6 +111,97 @@ test('reconciles queued progress and removes it from the outbox', async () => {
 
   expect(await reconcilePendingProgress('work')).toBeNull();
   expect(await pendingProgress('work')).toBeNull();
+});
+
+test('replay saves its acknowledged revision for the next offline edit', async () => {
+  const workKey = `aldus:${activeStorageScope()}:offline-work:work`;
+  storage.set(
+    workKey,
+    JSON.stringify({ work: { id: 'work' }, epubs: [], audio: [], progress: null }),
+  );
+  const goOffline = () => {
+    globalThis.fetch = (async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+  };
+  let revision = 0;
+  const goOnline = () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        const submitted = JSON.parse(String(init.body));
+        expect(submitted.expected_revision).toBe(revision);
+        revision++;
+        return Response.json({ ...submitted, work_id: 'work', revision });
+      }
+      return Response.json({ ...update, work_id: 'work', revision });
+    }) as unknown as typeof fetch;
+  };
+
+  goOffline();
+  await saveWorkProgress('work', update);
+  goOnline();
+  await reconcilePendingProgress('work');
+  const cached = await offlineWork('work');
+  expect(cached?.progress?.revision).toBe(1);
+  expect(await pendingProgress('work')).toBeNull();
+
+  goOffline();
+  await saveWorkProgress('work', {
+    ...update,
+    offset: 700_000,
+    expected_revision: cached!.progress!.revision!,
+  });
+  goOnline();
+  expect(await reconcilePendingProgress('work')).toBeNull();
+  expect((await offlineWork('work'))?.progress).toMatchObject({
+    offset: 700_000,
+    revision: 2,
+  });
+  expect(await pendingProgress('work')).toBeNull();
+});
+
+test('replay persists its cache before clearing pending progress or admitting a newer save', async () => {
+  const scope = activeStorageScope();
+  storage.set(
+    `aldus:${scope}:offline-work:work`,
+    JSON.stringify({ work: { id: 'work' }, epubs: [], audio: [], progress: null }),
+  );
+  globalThis.fetch = (async () => {
+    throw new Error('offline');
+  }) as unknown as typeof fetch;
+  await saveWorkProgress('work', update);
+
+  let release!: () => void;
+  let started!: () => void;
+  const start = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  blockedWorkWrite = {
+    started,
+    wait: new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+  };
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) =>
+    Response.json({
+      ...update,
+      revision: init?.method === 'PUT' ? 1 : 0,
+    })) as unknown as typeof fetch;
+  const replay = reconcilePendingProgress('work');
+  await start;
+  // The manifest queue can inspect pending progress without waiting for replay.
+  expect(await pendingProgressSnapshot('work', scope)).toEqual(update);
+  expect((await offlineWork('work'))?.progress).toBeNull();
+  globalThis.fetch = (async () => {
+    throw new Error('offline');
+  }) as unknown as typeof fetch;
+  const newer = { ...update, offset: 800_000, expected_revision: 1 };
+  const save = saveWorkProgress('work', newer);
+  release();
+  await replay;
+  expect(await save).toBeNull();
+  expect((await offlineWork('work'))?.progress?.revision).toBe(1);
+  expect(await pendingProgress('work')).toEqual(newer);
 });
 
 test('pending progress is not submitted after the active account changes', async () => {
@@ -171,7 +280,7 @@ test('foreground progress sync does nothing without an active account', async ()
 test('a save waiting in the queue keeps its original reader after account switching', async () => {
   const blocked = deferNextIndexWrite();
   globalThis.fetch = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch;
-  const first = saveWorkProgress('first', update);
+  const first = saveWorkProgress('first', update).catch((error: unknown) => error);
   await blocked.started;
   const oldScope = activeStorageScope();
   const second = saveWorkProgress('second', update);
@@ -183,9 +292,34 @@ test('a save waiting in the queue keeps its original reader after account switch
     return Response.json({ ...update, revision: 1 });
   }) as unknown as typeof fetch;
   blocked.release();
-  await first;
+  expect(((await first) as Error).message).toContain('original reader');
   expect(((await rejected) as Error).message).toContain('original reader');
   expect(sent).toBe(0);
   expect(await pendingProgress('second', oldScope)).toEqual(update);
   expect(await pendingProgress('second')).toBeNull();
+});
+
+test('progress is durable before the network responds and survives a failed request', async () => {
+  const scope = activeStorageScope();
+  let release!: () => void;
+  let started!: () => void;
+  const requestStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const response = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  globalThis.fetch = (async () => {
+    started();
+    await response;
+    return Response.json({ error: 'unavailable' }, { status: 503 });
+  }) as unknown as typeof fetch;
+  const saving = saveWorkProgress('work', update);
+  const failure = saving.catch((error: unknown) => error);
+  await requestStarted;
+  expect(await pendingProgressSnapshot('work', scope)).toEqual(update);
+  expect(indexedWorkIDs()).toEqual(['work']);
+  release();
+  expect(await failure).toBeInstanceOf(Error);
+  expect(await pendingProgress('work')).toEqual(update);
 });

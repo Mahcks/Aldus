@@ -25,7 +25,7 @@ import {
   stopDownloads,
   stopServerDownloads,
 } from './native-download.native';
-import { pendingProgress } from './progress-outbox.native';
+import { pendingProgress, pendingProgressSnapshot } from './progress-outbox.native';
 import { parseStoredJSON } from './stored-json';
 import { activeStorageScope, scopedMediaFileName, scopedStorageKey } from './storage-scope';
 
@@ -275,7 +275,8 @@ async function performDownload(owner: {
       await AsyncStorage.getItem(key(scope, value.work.id)),
     );
     check();
-    const pending = await pendingProgress(value.work.id, scope);
+    // Replay holds the outbox queue while updating this manifest; never wait on it here.
+    const pending = await pendingProgressSnapshot(value.work.id, scope);
     check();
     const stored = { ...value, downloaded_at: new Date().toISOString() };
     if (previous) {
@@ -374,8 +375,11 @@ function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: 
   }
 }
 
-export async function updateOfflineProgress(workID: string, progress: CanonicalPosition) {
-  const scope = activeStorageScope();
+export async function updateOfflineProgress(
+  workID: string,
+  progress: CanonicalPosition,
+  scope = activeStorageScope(),
+) {
   return serialize(async () => {
     if (scope !== activeStorageScope()) return;
     const value = await offlineWork(workID, scope);

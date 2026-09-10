@@ -25,6 +25,7 @@ export async function updateOfflineRepresentationState(
   _kind: 'epub' | 'audio',
   _state: RepresentationState,
   _pending = false,
+  _scope?: string,
 ) {
   return false;
 }
@@ -34,6 +35,7 @@ export async function acknowledgeOfflineRepresentationState(
   _submitted: RepresentationState,
   _saved: RepresentationState,
   _rebaseNewer = true,
+  _scope?: string,
 ) {}
 export async function reconcileOfflineRepresentationStates(
   _workID?: string,

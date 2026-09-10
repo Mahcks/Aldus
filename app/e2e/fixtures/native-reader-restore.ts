@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 (globalThis as any).__DEV__ = false;
 let searchRelease: (value: unknown) => void = () => {};
+let restoreRelease: (value: boolean) => void = () => {};
 let steps = 0;
 let visible: any;
 let decorations: any[] = [];
@@ -27,6 +28,7 @@ function tickFeedback() {
 }
 const bridge = {
   goTo: (_locator: unknown) => {},
+  restoreTo: (_locator: unknown) => new Promise<boolean>((resolve) => { restoreRelease = resolve; }),
   goForward: () => steps++,
   goBackward: () => steps++,
   search: () =>
@@ -63,7 +65,7 @@ mock.module('react', () => ({
 const jsx = (type: unknown, props: unknown) => ({ type, props });
 mock.module('react/jsx-runtime', () => ({ jsx, jsxs: jsx }));
 mock.module('react/jsx-dev-runtime', () => ({ jsxDEV: jsx }));
-mock.module('react-native', () => ({ ActivityIndicator: 'Spinner' }));
+mock.module('react-native', () => ({ ActivityIndicator: 'Spinner', Platform: { OS: 'ios' } }));
 mock.module('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 mock.module('react-native-readium', () => ({ ReadiumView: 'ReadiumView' }));
 mock.module('expo-file-system', () => ({ File: class {}, Paths: {} }));
@@ -129,8 +131,12 @@ await Promise.resolve();
 assert.equal(settled, false, 'goTo dispatch is not restore completion');
 await native.onLocationChange({ ...destination, href: 'cover.xhtml' });
 assert.equal(settled, false, 'An opening-page event cannot unlock the reader');
+visible = { ...destination, locations: { progression: 0.01 } };
+await native.onLocationChange(visible);
+assert.equal(settled, false, 'Page 2 in the correct chapter is not proof of restoration');
+assert.equal(events.length, 0, 'An early same-chapter event must not publish progress');
 visible = destination;
-await native.onLocationChange(destination);
+restoreRelease(true);
 assert.equal(await restoring, true);
 assert.equal(events.length, 1);
 assert.equal(events[0].reason, 'restore');
@@ -146,6 +152,8 @@ const saved = ref.current
 await Promise.resolve();
 assert.equal(settled, false, 'Unaligned saved locators also await navigation');
 await native.onLocationChange(destination);
+assert.equal(settled, false, 'Even an identical location event needs native anchor verification');
+restoreRelease(true);
 assert.equal(await saved, true);
 assert.equal(events.at(-1).reason, 'restore');
 
@@ -200,6 +208,7 @@ assert.equal(saveFeedback, undefined, 'A late save after leaving the page must n
 
 const restoreChosen = ref.current.restoreLocation({ cfi: JSON.stringify(chosen) });
 await native.onLocationChange(destination);
+restoreRelease(true);
 assert.equal(await restoreChosen, true);
 assert.deepEqual(JSON.parse(events.at(-1).cfi), chosen, 'Reopening must retain the saved sentence');
 assert.equal(decorations.length, 0, 'The cue must not expire behind the opening cover');
@@ -233,6 +242,13 @@ for (const actionId of ['save-place', 'listen-here']) {
     `${actionId}: an earlier unaligned page turn must not replace the selected sentence`,
   );
 }
+
+const beforeFailedRestore = events.length;
+const failedRestore = ref.current.restoreLocation(destination);
+await native.onLocationChange(destination);
+restoreRelease(false);
+assert.equal(await failedRestore, false, 'An invisible or missing anchor must fail restoration');
+assert.equal(events.length, beforeFailedRestore);
 
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;

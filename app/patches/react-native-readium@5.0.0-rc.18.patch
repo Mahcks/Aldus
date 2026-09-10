@@ -1,30 +1,103 @@
 diff --git a/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt b/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt
-index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..d713e4a972631733eb657db3d5344353abcf92c8 100644
+index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b4975e611a5 100644
 --- a/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt
 +++ b/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt
-@@ -149,6 +149,8 @@ class HybridReadiumView(private val context: android.content.Context) : HybridRe
+@@ -149,6 +149,10 @@ class HybridReadiumView(private val context: android.content.Context) : HybridRe
  
    // MARK: - Imperative navigation
  
 +  override fun currentVisibleLocation(): Promise<SearchPage> = Promise.resolved(unsupportedSearchPage())
 +
++  override fun restoreTo(locator: Locator): Promise<Boolean> = Promise.resolved(false)
++
    override fun goTo(locator: Locator) {
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..d7a6a0183b868494f0c05ce4753007f2674fd176 100644
+index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840259b6979 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
-@@ -208,5 +208,4 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+   /// when superseded checks this so it can't close or clobber the iterator that
+   /// replaced it.
+   private var searchGeneration = 0
++  private var restorationGeneration = 0
+   private var subscriptions = Set<AnyCancellable>()
+   private var pendingFileUrl: String?
+   private var pendingInitialLocation: Locator?
+@@ -208,7 +209,6 @@ class HybridReadiumView: HybridReadiumViewSpec {
      viewController!.addChild(readerViewController!)
      let rootView = readerViewController!.view!
      hostView.addSubview(rootView)
 -    viewController!.addChild(readerViewController!)
      readerViewController!.didMove(toParent: viewController!)
-@@ -276,6 +275,67 @@ class HybridReadiumView: HybridReadiumViewSpec {
+ 
+     rootView.translatesAutoresizingMaskIntoConstraints = false
+@@ -256,6 +256,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+   func goTo(locator: Locator) {
+     Task { @MainActor [weak self] in
+       guard let self else { return }
++      self.restorationGeneration += 1
+       guard let navigator = self.readerViewController?.navigator else { return }
+       guard let readiumLocator = nitroLocatorToReadium(locator) else { return }
+       _ = await navigator.go(to: readiumLocator, options: .animated)
+@@ -264,6 +265,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+ 
+   func goForward() {
+     Task { @MainActor in
++      restorationGeneration += 1
+       guard let navigator = readerViewController?.navigator else { return }
+       _ = await navigator.goForward(options: .animated)
+     }
+@@ -271,11 +273,112 @@ class HybridReadiumView: HybridReadiumViewSpec {
+ 
+   func goBackward() {
+     Task { @MainActor in
++      restorationGeneration += 1
+       guard let navigator = readerViewController?.navigator else { return }
+       _ = await navigator.goBackward(options: .animated)
      }
    }
  
++  func restoreTo(locator: Locator) throws -> Promise<Bool> {
++    Promise.async { @MainActor [weak self] in
++      guard let self,
++            let navigator = self.readerViewController?.navigator as? EPUBNavigatorViewController,
++            let target = nitroLocatorToReadium(locator),
++            let json = target.jsonString
++      else {
++        return false
++      }
++
++      self.restorationGeneration += 1
++      let generation = self.restorationGeneration
++      let navigated = await navigator.go(to: target, options: .animated)
++      guard navigated,
++            self.restorationGeneration == generation,
++            self.readerViewController?.navigator === navigator,
++            navigator.currentLocation?.href.string.split(separator: "#", maxSplits: 1).first
++              == target.href.string.split(separator: "#", maxSplits: 1).first
++      else {
++        return false
++      }
++
++      let result = await navigator.evaluateJavaScript("""
++        typeof window.readium?.aldusLocatorVisible === "function"
++          && window.readium.aldusLocatorVisible(\(json)) === true;
++        """)
++      guard self.restorationGeneration == generation,
++            self.readerViewController?.navigator === navigator,
++            navigator.currentLocation?.href.string.split(separator: "#", maxSplits: 1).first
++              == target.href.string.split(separator: "#", maxSplits: 1).first,
++            case let .success(value) = result
++      else {
++        return false
++      }
++
++      return (value as? Bool) == true
++    }
++  }
++
 +  func currentVisibleLocation() throws -> Promise<SearchPage> {
 +    Promise.async { @MainActor [weak self] in
 +      guard
@@ -89,23 +162,179 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..d7a6a0183b868494f0c05ce4753007f2
    func destroy() {
      if Thread.isMainThread {
        cleanup()
+@@ -389,6 +492,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+ 
+   // Cleanup
+   func cleanup() {
++    restorationGeneration += 1
+     searchIterator?.close()
+     searchIterator = nil
+ 
+diff --git a/lib/src/components/ReadiumView.js b/lib/src/components/ReadiumView.js
+index 1af3e82c2d452e4e0ecadeef06165511de330af8..3f2f8e9241460796bbd142ac1551dcda2bb8a45c 100644
+--- a/lib/src/components/ReadiumView.js
++++ b/lib/src/components/ReadiumView.js
+@@ -26,8 +26,17 @@ export const ReadiumView = forwardRef(({ onLocationChange, onPublicationReady, o
+     }, [onPublicationReady]);
+     useImperativeHandle(forwardedRef, () => ({
+         goTo: (locator) => hybridRef.current?.goTo(locator),
++        restoreTo: async (locator) => {
++            try {
++                return (await hybridRef.current?.restoreTo?.(locator)) === true;
++            }
++            catch {
++                return false;
++            }
++        },
+         goForward: () => hybridRef.current?.goForward(),
+         goBackward: () => hybridRef.current?.goBackward(),
++        currentVisibleLocation: async () => (await hybridRef.current?.currentVisibleLocation())?.results[0]?.locator,
+         search: (query, options) => hybridRef.current?.search(query, options) ??
+             Promise.resolve({
+                 results: [],
 diff --git a/lib/src/components/ReadiumView.types.d.ts b/lib/src/components/ReadiumView.types.d.ts
-index 6bea12ce8f058f3d7338a4ad257d906c676b51e7..ce3d12179b79fea74405ac2119e60905739e7df1 100644
+index 6bea12ce8f058f3d7338a4ad257d906c676b51e7..f6e13e657e0afef8ba8afabd9f7e04eee54d2bb1 100644
 --- a/lib/src/components/ReadiumView.types.d.ts
 +++ b/lib/src/components/ReadiumView.types.d.ts
-@@ -3,6 +3,7 @@ export type ReadiumViewRef = {
+@@ -1,8 +1,10 @@
+ import type { Preferences, Locator, File, DecorationGroup, SelectionAction, PublicationReadyEvent, DecorationActivatedEvent, SelectionEvent, SelectionActionEvent, SearchOptions, SearchPage } from '../interfaces';
+ export type ReadiumViewRef = {
      goTo: (locator: Locator) => void;
++    restoreTo?: (locator: Locator) => Promise<boolean>;
      goForward: () => void;
      goBackward: () => void;
 +    currentVisibleLocation: () => Promise<Locator | undefined>;
      /** Starts a new search and resolves with the first page of results. */
      search: (query: string, options?: SearchOptions) => Promise<SearchPage>;
      /** Resolves with the next page of results for the in-flight search. */
+diff --git a/lib/src/specs/ReadiumView.nitro.d.ts b/lib/src/specs/ReadiumView.nitro.d.ts
+index 2138ae63ec877a5650d548f201975d1d079d0410..9454188a02925041db9c4e08c0c01ddb0c1733af 100644
+--- a/lib/src/specs/ReadiumView.nitro.d.ts
++++ b/lib/src/specs/ReadiumView.nitro.d.ts
+@@ -219,9 +219,11 @@ export interface ReadiumViewProps extends HybridViewProps {
+ }
+ export interface ReadiumViewMethods extends HybridViewMethods {
+     goTo(locator: Locator): void;
++    restoreTo(locator: Locator): Promise<boolean>;
+     goForward(): void;
+     goBackward(): void;
+     destroy(): void;
++    currentVisibleLocation(): Promise<SearchPage>;
+     /** Starts a new full-text search and resolves with the first page of results. */
+     search(query: string, options?: SearchOptions): Promise<SearchPage>;
+     /** Resolves with the next page of results for the in-flight search. */
 diff --git a/nitrogen/generated/android/c++/JHybridReadiumViewSpec.cpp b/nitrogen/generated/android/c++/JHybridReadiumViewSpec.cpp
-index 34fa29e41e8de33656bafc1f51363c63f35ac261..55af0e4b2be200d78aa5ed5f1ffd6ea53913492b 100644
+index 34fa29e41e8de33656bafc1f51363c63f35ac261..60959b574f1ffe7bf8f23149a82e3e31be8e60b3 100644
 --- a/nitrogen/generated/android/c++/JHybridReadiumViewSpec.cpp
 +++ b/nitrogen/generated/android/c++/JHybridReadiumViewSpec.cpp
-@@ -331,6 +331,22 @@ namespace margelo::nitro::readium {
+@@ -117,9 +117,9 @@ namespace margelo::nitro::readium { struct SearchOptions; }
+ #include "SelectionActionEvent.hpp"
+ #include "JFunc_void_SelectionActionEvent.hpp"
+ #include "JSelectionActionEvent.hpp"
+-#include "SearchPage.hpp"
+ #include <NitroModules/Promise.hpp>
+ #include <NitroModules/JPromise.hpp>
++#include "SearchPage.hpp"
+ #include "JSearchPage.hpp"
+ #include "SearchResult.hpp"
+ #include "JSearchResult.hpp"
+@@ -177,56 +177,56 @@ namespace margelo::nitro::readium {
+   std::optional<std::vector<DecorationGroup>> JHybridReadiumViewSpec::getDecorations() {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<JDecorationGroup>>()>("getDecorations");
+     auto __result = method(_javaPart);
+-    return __result != nullptr ? std::make_optional([&]() {
+-      size_t __size = __result->size();
++    return __result != nullptr ? std::make_optional([&](auto&& __input) {
++      size_t __size = __input->size();
+       std::vector<DecorationGroup> __vector;
+       __vector.reserve(__size);
+       for (size_t __i = 0; __i < __size; __i++) {
+-        auto __element = __result->getElement(__i);
++        auto __element = __input->getElement(__i);
+         __vector.push_back(__element->toCpp());
+       }
+       return __vector;
+-    }()) : std::nullopt;
++    }(__result)) : std::nullopt;
+   }
+   void JHybridReadiumViewSpec::setDecorations(const std::optional<std::vector<DecorationGroup>>& decorations) {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayClass<JDecorationGroup>> /* decorations */)>("setDecorations");
+-    method(_javaPart, decorations.has_value() ? [&]() {
+-      size_t __size = decorations.value().size();
++    method(_javaPart, decorations.has_value() ? [&](auto&& __input) {
++      size_t __size = __input.size();
+       jni::local_ref<jni::JArrayClass<JDecorationGroup>> __array = jni::JArrayClass<JDecorationGroup>::newArray(__size);
+       for (size_t __i = 0; __i < __size; __i++) {
+-        const auto& __element = decorations.value()[__i];
++        const auto& __element = __input[__i];
+         auto __elementJni = JDecorationGroup::fromCpp(__element);
+         __array->setElement(__i, *__elementJni);
+       }
+       return __array;
+-    }() : nullptr);
++    }(decorations.value()) : nullptr);
+   }
+   std::optional<std::vector<SelectionAction>> JHybridReadiumViewSpec::getSelectionActions() {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<JSelectionAction>>()>("getSelectionActions");
+     auto __result = method(_javaPart);
+-    return __result != nullptr ? std::make_optional([&]() {
+-      size_t __size = __result->size();
++    return __result != nullptr ? std::make_optional([&](auto&& __input) {
++      size_t __size = __input->size();
+       std::vector<SelectionAction> __vector;
+       __vector.reserve(__size);
+       for (size_t __i = 0; __i < __size; __i++) {
+-        auto __element = __result->getElement(__i);
++        auto __element = __input->getElement(__i);
+         __vector.push_back(__element->toCpp());
+       }
+       return __vector;
+-    }()) : std::nullopt;
++    }(__result)) : std::nullopt;
+   }
+   void JHybridReadiumViewSpec::setSelectionActions(const std::optional<std::vector<SelectionAction>>& selectionActions) {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayClass<JSelectionAction>> /* selectionActions */)>("setSelectionActions");
+-    method(_javaPart, selectionActions.has_value() ? [&]() {
+-      size_t __size = selectionActions.value().size();
++    method(_javaPart, selectionActions.has_value() ? [&](auto&& __input) {
++      size_t __size = __input.size();
+       jni::local_ref<jni::JArrayClass<JSelectionAction>> __array = jni::JArrayClass<JSelectionAction>::newArray(__size);
+       for (size_t __i = 0; __i < __size; __i++) {
+-        const auto& __element = selectionActions.value()[__i];
++        const auto& __element = __input[__i];
+         auto __elementJni = JSelectionAction::fromCpp(__element);
+         __array->setElement(__i, *__elementJni);
+       }
+       return __array;
+-    }() : nullptr);
++    }(selectionActions.value()) : nullptr);
+   }
+   std::optional<std::function<void(const Locator& /* locator */)>> JHybridReadiumViewSpec::getOnLocationChange() {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_Locator::javaobject>()>("getOnLocationChange_cxx");
+@@ -319,6 +319,22 @@ namespace margelo::nitro::readium {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JLocator> /* locator */)>("goTo");
+     method(_javaPart, JLocator::fromCpp(locator));
+   }
++  std::shared_ptr<Promise<bool>> JHybridReadiumViewSpec::restoreTo(const Locator& locator) {
++    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JLocator> /* locator */)>("restoreTo");
++    auto __result = method(_javaPart, JLocator::fromCpp(locator));
++    return [&]() {
++      auto __promise = Promise<bool>::create();
++      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
++        auto __result = jni::static_ref_cast<jni::JBoolean>(__boxedResult);
++        __promise->resolve(static_cast<bool>(__result->value()));
++      });
++      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
++        jni::JniException __jniError(__throwable);
++        __promise->reject(std::make_exception_ptr(__jniError));
++      });
++      return __promise;
++    }();
++  }
+   void JHybridReadiumViewSpec::goForward() {
+     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("goForward");
+     method(_javaPart);
+@@ -331,6 +347,22 @@ namespace margelo::nitro::readium {
      static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("destroy");
      method(_javaPart);
    }
@@ -129,10 +358,28 @@ index 34fa29e41e8de33656bafc1f51363c63f35ac261..55af0e4b2be200d78aa5ed5f1ffd6ea5
      static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* query */, jni::alias_ref<JSearchOptions> /* options */)>("search");
      auto __result = method(_javaPart, jni::make_jstring(query), options.has_value() ? JSearchOptions::fromCpp(options.value()) : nullptr);
 diff --git a/nitrogen/generated/android/c++/JHybridReadiumViewSpec.hpp b/nitrogen/generated/android/c++/JHybridReadiumViewSpec.hpp
-index 672e6982c9dac284ff8b6dd668c21fef5d12e88a..0cf252af082227c39f52f53e1a6c2429d8f11d0b 100644
+index 672e6982c9dac284ff8b6dd668c21fef5d12e88a..bb6810bb6fde89b8be159d2d20e9536f67302f67 100644
 --- a/nitrogen/generated/android/c++/JHybridReadiumViewSpec.hpp
 +++ b/nitrogen/generated/android/c++/JHybridReadiumViewSpec.hpp
-@@ -75,6 +75,7 @@ namespace margelo::nitro::readium {
+@@ -21,11 +21,11 @@ namespace margelo::nitro::readium {
+   class JHybridReadiumViewSpec: public virtual HybridReadiumViewSpec, public virtual JHybridObject {
+   public:
+     struct JavaPart: public jni::JavaClass<JavaPart, JHybridObject::JavaPart> {
+-      static auto constexpr kJavaDescriptor = "Lcom/margelo/nitro/reactnativereadium/HybridReadiumViewSpec;";
++      static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/reactnativereadium/HybridReadiumViewSpec;";
+       std::shared_ptr<JHybridReadiumViewSpec> getJHybridReadiumViewSpec();
+     };
+     struct CxxPart: public jni::HybridClass<CxxPart, JHybridObject::CxxPart> {
+-      static auto constexpr kJavaDescriptor = "Lcom/margelo/nitro/reactnativereadium/HybridReadiumViewSpec$CxxPart;";
++      static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/reactnativereadium/HybridReadiumViewSpec$CxxPart;";
+       static jni::local_ref<jhybriddata> initHybrid(jni::alias_ref<jhybridobject> jThis);
+       static void registerNatives();
+       using HybridBase::HybridBase;
+@@ -72,9 +72,11 @@ namespace margelo::nitro::readium {
+   public:
+     // Methods
+     void goTo(const Locator& locator) override;
++    std::shared_ptr<Promise<bool>> restoreTo(const Locator& locator) override;
      void goForward() override;
      void goBackward() override;
      void destroy() override;
@@ -141,10 +388,29 @@ index 672e6982c9dac284ff8b6dd668c21fef5d12e88a..0cf252af082227c39f52f53e1a6c2429
      std::shared_ptr<Promise<SearchPage>> loadMoreSearchResults() override;
      void cancelSearch() override;
 diff --git a/nitrogen/generated/android/kotlin/com/margelo/nitro/reactnativereadium/HybridReadiumViewSpec.kt b/nitrogen/generated/android/kotlin/com/margelo/nitro/reactnativereadium/HybridReadiumViewSpec.kt
-index de9697d055d250ee4d93facbe0bbe27076d5d487..3ac66ef584be100836cfba5758bba54e45208a02 100644
+index de9697d055d250ee4d93facbe0bbe27076d5d487..483d0bc1d4ce621a6f91b76a4233943d00f13f28 100644
 --- a/nitrogen/generated/android/kotlin/com/margelo/nitro/reactnativereadium/HybridReadiumViewSpec.kt
 +++ b/nitrogen/generated/android/kotlin/com/margelo/nitro/reactnativereadium/HybridReadiumViewSpec.kt
-@@ -138,6 +138,10 @@ abstract class HybridReadiumViewSpec: HybridView() {
+@@ -10,6 +10,7 @@ package com.margelo.nitro.reactnativereadium
+ import androidx.annotation.Keep
+ import com.facebook.jni.HybridData
+ import com.facebook.proguard.annotations.DoNotStrip
++import dalvik.annotation.optimization.FastNative
+ import com.margelo.nitro.core.Promise
+ import com.margelo.nitro.core.HybridObject
+ import com.margelo.nitro.views.HybridView
+@@ -126,6 +127,10 @@ abstract class HybridReadiumViewSpec: HybridView() {
+   @Keep
+   abstract fun goTo(locator: Locator): Unit
+   
++  @DoNotStrip
++  @Keep
++  abstract fun restoreTo(locator: Locator): Promise<Boolean>
++  
+   @DoNotStrip
+   @Keep
+   abstract fun goForward(): Unit
+@@ -138,6 +143,10 @@ abstract class HybridReadiumViewSpec: HybridView() {
    @Keep
    abstract fun destroy(): Unit
    
@@ -155,11 +421,190 @@ index de9697d055d250ee4d93facbe0bbe27076d5d487..3ac66ef584be100836cfba5758bba54e
    @DoNotStrip
    @Keep
    abstract fun search(query: String, options: SearchOptions?): Promise<SearchPage>
+@@ -160,6 +169,7 @@ abstract class HybridReadiumViewSpec: HybridView() {
+   @Keep
+   protected open class CxxPart(javaPart: HybridReadiumViewSpec): HybridObject.CxxPart(javaPart) {
+     // C++ JHybridReadiumViewSpec::CxxPart::initHybrid(...)
++    @FastNative
+     external override fun initHybrid(): HybridData
+   }
+   override fun createCxxPart(): CxxPart {
+diff --git a/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.cpp b/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.cpp
+index 7b9f54e9d84e338208042eafbc4bf0a8c7854eb1..9031745b97a136862990e42b1e30f97201a03e18 100644
+--- a/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.cpp
++++ b/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.cpp
+@@ -54,10 +54,10 @@ namespace margelo::nitro::readium::bridge::swift {
+     };
+   }
+   
+-  // pragma MARK: std::function<void(const SearchPage& /* result */)>
+-  Func_void_SearchPage create_Func_void_SearchPage(void* NON_NULL swiftClosureWrapper) noexcept {
+-    auto swiftClosure = NitroReadium::Func_void_SearchPage::fromUnsafe(swiftClosureWrapper);
+-    return [swiftClosure = std::move(swiftClosure)](const SearchPage& result) mutable -> void {
++  // pragma MARK: std::function<void(bool /* result */)>
++  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept {
++    auto swiftClosure = NitroReadium::Func_void_bool::fromUnsafe(swiftClosureWrapper);
++    return [swiftClosure = std::move(swiftClosure)](bool result) mutable -> void {
+       swiftClosure.call(result);
+     };
+   }
+@@ -70,6 +70,14 @@ namespace margelo::nitro::readium::bridge::swift {
+     };
+   }
+   
++  // pragma MARK: std::function<void(const SearchPage& /* result */)>
++  Func_void_SearchPage create_Func_void_SearchPage(void* NON_NULL swiftClosureWrapper) noexcept {
++    auto swiftClosure = NitroReadium::Func_void_SearchPage::fromUnsafe(swiftClosureWrapper);
++    return [swiftClosure = std::move(swiftClosure)](const SearchPage& result) mutable -> void {
++      swiftClosure.call(result);
++    };
++  }
++  
+   // pragma MARK: std::shared_ptr<HybridReadiumViewSpec>
+   std::shared_ptr<HybridReadiumViewSpec> create_std__shared_ptr_HybridReadiumViewSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+     NitroReadium::HybridReadiumViewSpec_cxx swiftPart = NitroReadium::HybridReadiumViewSpec_cxx::fromUnsafe(swiftUnsafePointer);
+diff --git a/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.hpp b/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.hpp
+index 0ecf3e9b3e6b15192d5ed41f8a7f483528f50623..fff70e478f8647c02a68be8c8a5ca4e7100dcc9a 100644
+--- a/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.hpp
++++ b/nitrogen/generated/ios/NitroReadium-Swift-Cxx-Bridge.hpp
+@@ -721,6 +721,62 @@ namespace margelo::nitro::readium::bridge::swift {
+     return optional.value();
+   }
+   
++  // pragma MARK: std::shared_ptr<Promise<bool>>
++  /**
++   * Specialized version of `std::shared_ptr<Promise<bool>>`.
++   */
++  using std__shared_ptr_Promise_bool__ = std::shared_ptr<Promise<bool>>;
++  inline std::shared_ptr<Promise<bool>> create_std__shared_ptr_Promise_bool__() noexcept {
++    return Promise<bool>::create();
++  }
++  inline PromiseHolder<bool> wrap_std__shared_ptr_Promise_bool__(std::shared_ptr<Promise<bool>> promise) noexcept {
++    return PromiseHolder<bool>(std::move(promise));
++  }
++  
++  // pragma MARK: std::function<void(bool /* result */)>
++  /**
++   * Specialized version of `std::function<void(bool)>`.
++   */
++  using Func_void_bool = std::function<void(bool /* result */)>;
++  /**
++   * Wrapper class for a `std::function<void(bool / * result * /)>`, this can be used from Swift.
++   */
++  class Func_void_bool_Wrapper final {
++  public:
++    explicit Func_void_bool_Wrapper(std::function<void(bool /* result */)>&& func): _function(std::make_unique<std::function<void(bool /* result */)>>(std::move(func))) {}
++    inline void call(bool result) const noexcept {
++      _function->operator()(result);
++    }
++  private:
++    std::unique_ptr<std::function<void(bool /* result */)>> _function;
++  } SWIFT_NONCOPYABLE;
++  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept;
++  inline Func_void_bool_Wrapper wrap_Func_void_bool(Func_void_bool value) noexcept {
++    return Func_void_bool_Wrapper(std::move(value));
++  }
++  
++  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
++  /**
++   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
++   */
++  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
++  /**
++   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
++   */
++  class Func_void_std__exception_ptr_Wrapper final {
++  public:
++    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
++    inline void call(std::exception_ptr error) const noexcept {
++      _function->operator()(error);
++    }
++  private:
++    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
++  } SWIFT_NONCOPYABLE;
++  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
++  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
++    return Func_void_std__exception_ptr_Wrapper(std::move(value));
++  }
++  
+   // pragma MARK: std::vector<SearchResult>
+   /**
+    * Specialized version of `std::vector<SearchResult>`.
+@@ -766,28 +822,6 @@ namespace margelo::nitro::readium::bridge::swift {
+     return Func_void_SearchPage_Wrapper(std::move(value));
+   }
+   
+-  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+-  /**
+-   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
+-   */
+-  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
+-  /**
+-   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
+-   */
+-  class Func_void_std__exception_ptr_Wrapper final {
+-  public:
+-    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
+-    inline void call(std::exception_ptr error) const noexcept {
+-      _function->operator()(error);
+-    }
+-  private:
+-    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
+-  } SWIFT_NONCOPYABLE;
+-  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
+-  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
+-    return Func_void_std__exception_ptr_Wrapper(std::move(value));
+-  }
+-  
+   // pragma MARK: std::optional<SearchOptions>
+   /**
+    * Specialized version of `std::optional<SearchOptions>`.
+@@ -824,6 +858,15 @@ namespace margelo::nitro::readium::bridge::swift {
+     return Result<void>::withError(error);
+   }
+   
++  // pragma MARK: Result<std::shared_ptr<Promise<bool>>>
++  using Result_std__shared_ptr_Promise_bool___ = Result<std::shared_ptr<Promise<bool>>>;
++  inline Result_std__shared_ptr_Promise_bool___ create_Result_std__shared_ptr_Promise_bool___(const std::shared_ptr<Promise<bool>>& value) noexcept {
++    return Result<std::shared_ptr<Promise<bool>>>::withValue(value);
++  }
++  inline Result_std__shared_ptr_Promise_bool___ create_Result_std__shared_ptr_Promise_bool___(const std::exception_ptr& error) noexcept {
++    return Result<std::shared_ptr<Promise<bool>>>::withError(error);
++  }
++  
+   // pragma MARK: Result<std::shared_ptr<Promise<SearchPage>>>
+   using Result_std__shared_ptr_Promise_SearchPage___ = Result<std::shared_ptr<Promise<SearchPage>>>;
+   inline Result_std__shared_ptr_Promise_SearchPage___ create_Result_std__shared_ptr_Promise_SearchPage___(const std::shared_ptr<Promise<SearchPage>>& value) noexcept {
 diff --git a/nitrogen/generated/ios/c++/HybridReadiumViewSpecSwift.hpp b/nitrogen/generated/ios/c++/HybridReadiumViewSpecSwift.hpp
-index 1ffb5ef5e83d62be545ec5514987b9d2759e53d7..be6fe18a65cfd27098b1b4dbd4b46f3a6907c2ae 100644
+index 1ffb5ef5e83d62be545ec5514987b9d2759e53d7..40e737a3b1427dae98dac0aefcf04df13d7ec2a6 100644
 --- a/nitrogen/generated/ios/c++/HybridReadiumViewSpecSwift.hpp
 +++ b/nitrogen/generated/ios/c++/HybridReadiumViewSpecSwift.hpp
-@@ -234,6 +234,14 @@ namespace margelo::nitro::readium {
+@@ -93,8 +93,8 @@ namespace margelo::nitro::readium { struct SearchOptions; }
+ #include "Point.hpp"
+ #include "SelectionEvent.hpp"
+ #include "SelectionActionEvent.hpp"
+-#include "SearchPage.hpp"
+ #include <NitroModules/Promise.hpp>
++#include "SearchPage.hpp"
+ #include "SearchResult.hpp"
+ #include "SearchOptions.hpp"
+ 
+@@ -216,6 +216,14 @@ namespace margelo::nitro::readium {
+         std::rethrow_exception(__result.error());
+       }
+     }
++    inline std::shared_ptr<Promise<bool>> restoreTo(const Locator& locator) override {
++      auto __result = _swiftPart.restoreTo(std::forward<decltype(locator)>(locator));
++      if (__result.hasError()) [[unlikely]] {
++        std::rethrow_exception(__result.error());
++      }
++      auto __value = std::move(__result.value());
++      return __value;
++    }
+     inline void goForward() override {
+       auto __result = _swiftPart.goForward();
+       if (__result.hasError()) [[unlikely]] {
+@@ -234,6 +242,14 @@ namespace margelo::nitro::readium {
          std::rethrow_exception(__result.error());
        }
      }
@@ -174,11 +619,70 @@ index 1ffb5ef5e83d62be545ec5514987b9d2759e53d7..be6fe18a65cfd27098b1b4dbd4b46f3a
      inline std::shared_ptr<Promise<SearchPage>> search(const std::string& query, const std::optional<SearchOptions>& options) override {
        auto __result = _swiftPart.search(query, options);
        if (__result.hasError()) [[unlikely]] {
+diff --git a/nitrogen/generated/ios/swift/Func_void_SearchPage.swift b/nitrogen/generated/ios/swift/Func_void_SearchPage.swift
+index 7ba47c9494ec7d349bd97c6504e66e27459d95c1..c7c803d0e382f6253e3dc088815b2e4439da2e29 100644
+--- a/nitrogen/generated/ios/swift/Func_void_SearchPage.swift
++++ b/nitrogen/generated/ios/swift/Func_void_SearchPage.swift
+@@ -44,3 +44,50 @@ public final class Func_void_SearchPage {
+     return Unmanaged<Func_void_SearchPage>.fromOpaque(pointer).takeRetainedValue()
+   }
+ }
++
++///
++/// Func_void_bool.swift
++/// This file was generated by nitrogen. DO NOT MODIFY THIS FILE.
++/// https://github.com/mrousavy/nitro
++/// Copyright © Marc Rousavy @ Margelo
++///
++
++import NitroModules
++
++/**
++ * Wraps a Swift `(_ value: Bool) -> Void` as a class.
++ * This class can be used from C++, e.g. to wrap the Swift closure as a `std::function`.
++ */
++public final class Func_void_bool {
++  public typealias bridge = margelo.nitro.readium.bridge.swift
++
++  private let closure: (_ value: Bool) -> Void
++
++  public init(_ closure: @escaping (_ value: Bool) -> Void) {
++    self.closure = closure
++  }
++
++  @inline(__always)
++  public func call(value: Bool) -> Void {
++    self.closure(value)
++  }
++
++  /**
++   * Casts this instance to a retained unsafe raw pointer.
++   * This acquires one additional strong reference on the object!
++   */
++  @inline(__always)
++  public func toUnsafe() -> UnsafeMutableRawPointer {
++    return Unmanaged.passRetained(self).toOpaque()
++  }
++
++  /**
++   * Casts an unsafe pointer to a `Func_void_bool`.
++   * The pointer has to be a retained opaque `Unmanaged<Func_void_bool>`.
++   * This removes one strong reference from the object!
++   */
++  @inline(__always)
++  public static func fromUnsafe(_ pointer: UnsafeMutableRawPointer) -> Func_void_bool {
++    return Unmanaged<Func_void_bool>.fromOpaque(pointer).takeRetainedValue()
++  }
++}
 diff --git a/nitrogen/generated/ios/swift/HybridReadiumViewSpec.swift b/nitrogen/generated/ios/swift/HybridReadiumViewSpec.swift
-index 21f3dd39b497c4e9f48ca21248069d49a3c70be7..ab6e66fba2072bb7179fe4da53b6835627c7b74a 100644
+index 21f3dd39b497c4e9f48ca21248069d49a3c70be7..555d511567c5e713003d32d234cf0b0eab5745f2 100644
 --- a/nitrogen/generated/ios/swift/HybridReadiumViewSpec.swift
 +++ b/nitrogen/generated/ios/swift/HybridReadiumViewSpec.swift
-@@ -25,6 +25,7 @@ public protocol HybridReadiumViewSpec_protocol: HybridObject, HybridView {
+@@ -22,9 +22,11 @@ public protocol HybridReadiumViewSpec_protocol: HybridObject, HybridView {
+ 
+   // Methods
+   func goTo(locator: Locator) throws -> Void
++  func restoreTo(locator: Locator) throws -> Promise<Bool>
    func goForward() throws -> Void
    func goBackward() throws -> Void
    func destroy() throws -> Void
@@ -187,10 +691,36 @@ index 21f3dd39b497c4e9f48ca21248069d49a3c70be7..ab6e66fba2072bb7179fe4da53b68356
    func loadMoreSearchResults() throws -> Promise<SearchPage>
    func cancelSearch() throws -> Void
 diff --git a/nitrogen/generated/ios/swift/HybridReadiumViewSpec_cxx.swift b/nitrogen/generated/ios/swift/HybridReadiumViewSpec_cxx.swift
-index bb5c31bb1ed2322d35c074885d6125a66c64ded0..11ac07f4a82ca46b669603ee04988a081f983281 100644
+index bb5c31bb1ed2322d35c074885d6125a66c64ded0..4164800dad36ed382c931dc161482411c5057423 100644
 --- a/nitrogen/generated/ios/swift/HybridReadiumViewSpec_cxx.swift
 +++ b/nitrogen/generated/ios/swift/HybridReadiumViewSpec_cxx.swift
-@@ -420,6 +420,25 @@ open class HybridReadiumViewSpec_cxx {
+@@ -387,6 +387,25 @@ open class HybridReadiumViewSpec_cxx {
+     }
+   }
+   
++  @inline(__always)
++  public final func restoreTo(locator: Locator) -> bridge.Result_std__shared_ptr_Promise_bool___ {
++    do {
++      let __result = try self.__implementation.restoreTo(locator: locator)
++      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_bool__ in
++        let __promise = bridge.create_std__shared_ptr_Promise_bool__()
++        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_bool__(__promise)
++        __result
++          .then({ __result in __promiseHolder.resolve(__result) })
++          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
++        return __promise
++      }()
++      return bridge.create_Result_std__shared_ptr_Promise_bool___(__resultCpp)
++    } catch (let __error) {
++      let __exceptionPtr = __error.toCpp()
++      return bridge.create_Result_std__shared_ptr_Promise_bool___(__exceptionPtr)
++    }
++  }
++  
+   @inline(__always)
+   public final func goForward() -> bridge.Result_void_ {
+     do {
+@@ -420,6 +439,25 @@ open class HybridReadiumViewSpec_cxx {
      }
    }
    
@@ -216,11 +746,24 @@ index bb5c31bb1ed2322d35c074885d6125a66c64ded0..11ac07f4a82ca46b669603ee04988a08
    @inline(__always)
    public final func search(query: std.string, options: bridge.std__optional_SearchOptions_) -> bridge.Result_std__shared_ptr_Promise_SearchPage___ {
      do {
+@@ -485,4 +523,8 @@ open class HybridReadiumViewSpec_cxx {
+     guard let recyclable = __implementation as? any RecyclableView else { return }
+     recyclable.prepareForRecycle()
+   }
++  
++  public final func onDropView() {
++    __implementation.onDropView()
++  }
+ }
 diff --git a/nitrogen/generated/shared/c++/HybridReadiumViewSpec.cpp b/nitrogen/generated/shared/c++/HybridReadiumViewSpec.cpp
-index c8984c128247b366846aec4422c9fee165184c79..59d239de077294c1090a4966066c0867e1fa7cff 100644
+index c8984c128247b366846aec4422c9fee165184c79..969bf203e01e72db9ea785bfc0cb42a0bbc98026 100644
 --- a/nitrogen/generated/shared/c++/HybridReadiumViewSpec.cpp
 +++ b/nitrogen/generated/shared/c++/HybridReadiumViewSpec.cpp
-@@ -36,6 +36,7 @@ namespace margelo::nitro::readium {
+@@ -33,9 +33,11 @@ namespace margelo::nitro::readium {
+       prototype.registerHybridGetter("onSelectionAction", &HybridReadiumViewSpec::getOnSelectionAction);
+       prototype.registerHybridSetter("onSelectionAction", &HybridReadiumViewSpec::setOnSelectionAction);
+       prototype.registerHybridMethod("goTo", &HybridReadiumViewSpec::goTo);
++      prototype.registerHybridMethod("restoreTo", &HybridReadiumViewSpec::restoreTo);
        prototype.registerHybridMethod("goForward", &HybridReadiumViewSpec::goForward);
        prototype.registerHybridMethod("goBackward", &HybridReadiumViewSpec::goBackward);
        prototype.registerHybridMethod("destroy", &HybridReadiumViewSpec::destroy);
@@ -229,10 +772,24 @@ index c8984c128247b366846aec4422c9fee165184c79..59d239de077294c1090a4966066c0867
        prototype.registerHybridMethod("loadMoreSearchResults", &HybridReadiumViewSpec::loadMoreSearchResults);
        prototype.registerHybridMethod("cancelSearch", &HybridReadiumViewSpec::cancelSearch);
 diff --git a/nitrogen/generated/shared/c++/HybridReadiumViewSpec.hpp b/nitrogen/generated/shared/c++/HybridReadiumViewSpec.hpp
-index caeba80dc51a9a0ef41c518c27e111dbd89158f8..01332e134c75e4ccbb48ed0a7866bb054a4258ed 100644
+index caeba80dc51a9a0ef41c518c27e111dbd89158f8..2a38a2a1ec7a3c2b7e56a407aff0799494ea1053 100644
 --- a/nitrogen/generated/shared/c++/HybridReadiumViewSpec.hpp
 +++ b/nitrogen/generated/shared/c++/HybridReadiumViewSpec.hpp
-@@ -105,6 +105,7 @@ namespace margelo::nitro::readium {
+@@ -48,8 +48,8 @@ namespace margelo::nitro::readium { struct SearchOptions; }
+ #include "DecorationActivatedEvent.hpp"
+ #include "SelectionEvent.hpp"
+ #include "SelectionActionEvent.hpp"
+-#include "SearchPage.hpp"
+ #include <NitroModules/Promise.hpp>
++#include "SearchPage.hpp"
+ #include <string>
+ #include "SearchOptions.hpp"
+ 
+@@ -102,9 +102,11 @@ namespace margelo::nitro::readium {
+     public:
+       // Methods
+       virtual void goTo(const Locator& locator) = 0;
++      virtual std::shared_ptr<Promise<bool>> restoreTo(const Locator& locator) = 0;
        virtual void goForward() = 0;
        virtual void goBackward() = 0;
        virtual void destroy() = 0;
@@ -241,11 +798,20 @@ index caeba80dc51a9a0ef41c518c27e111dbd89158f8..01332e134c75e4ccbb48ed0a7866bb05
        virtual std::shared_ptr<Promise<SearchPage>> loadMoreSearchResults() = 0;
        virtual void cancelSearch() = 0;
 diff --git a/src/components/ReadiumView.tsx b/src/components/ReadiumView.tsx
-index cc65f4f04ff22b1005e05ce1687d5c04a4e51217..4a8d7f8c4e45acaf3948bbbf7e712190c49858ce 100644
+index cc65f4f04ff22b1005e05ce1687d5c04a4e51217..8834a06bdf3bff224c61dde18ad57d92096f46d5 100644
 --- a/src/components/ReadiumView.tsx
 +++ b/src/components/ReadiumView.tsx
-@@ -70,6 +70,8 @@ export const ReadiumView = forwardRef<ReadiumViewRef, ReadiumProps>(
+@@ -68,8 +68,17 @@ export const ReadiumView = forwardRef<ReadiumViewRef, ReadiumProps>(
+       forwardedRef,
+       () => ({
          goTo: (locator) => hybridRef.current?.goTo(locator),
++        restoreTo: async (locator) => {
++          try {
++            return (await hybridRef.current?.restoreTo?.(locator)) === true;
++          } catch {
++            return false;
++          }
++        },
          goForward: () => hybridRef.current?.goForward(),
          goBackward: () => hybridRef.current?.goBackward(),
 +        currentVisibleLocation: async () =>
@@ -254,11 +820,14 @@ index cc65f4f04ff22b1005e05ce1687d5c04a4e51217..4a8d7f8c4e45acaf3948bbbf7e712190
            hybridRef.current?.search(query, options) ??
            Promise.resolve({
 diff --git a/src/components/ReadiumView.types.ts b/src/components/ReadiumView.types.ts
-index ec9c627e70690dbb0f0bdfde526be1b37b05e114..d282679aeee10fb83ceef34b2ec910445d73ff97 100644
+index ec9c627e70690dbb0f0bdfde526be1b37b05e114..8f6635628ede51338a3dbc9e276c384fef9cb225 100644
 --- a/src/components/ReadiumView.types.ts
 +++ b/src/components/ReadiumView.types.ts
-@@ -16,6 +16,7 @@ export type ReadiumViewRef = {
+@@ -14,8 +14,10 @@ import type {
+ 
+ export type ReadiumViewRef = {
    goTo: (locator: Locator) => void;
++  restoreTo?: (locator: Locator) => Promise<boolean>;
    goForward: () => void;
    goBackward: () => void;
 +  currentVisibleLocation: () => Promise<Locator | undefined>;
@@ -266,10 +835,14 @@ index ec9c627e70690dbb0f0bdfde526be1b37b05e114..d282679aeee10fb83ceef34b2ec91044
    search: (query: string, options?: SearchOptions) => Promise<SearchPage>;
    /** Resolves with the next page of results for the in-flight search. */
 diff --git a/src/specs/ReadiumView.nitro.ts b/src/specs/ReadiumView.nitro.ts
-index 686017e62d224093bc1c27fe76e6db18566e99a4..09007b64b1a86d02d1e1af99bb5b48dd30dd3ddb 100644
+index 686017e62d224093bc1c27fe76e6db18566e99a4..6de7d27850c6283040fd0771f3e1d975b257ebba 100644
 --- a/src/specs/ReadiumView.nitro.ts
 +++ b/src/specs/ReadiumView.nitro.ts
-@@ -276,6 +276,7 @@ export interface ReadiumViewMethods extends HybridViewMethods {
+@@ -273,9 +273,11 @@ export interface ReadiumViewProps extends HybridViewProps {
+ 
+ export interface ReadiumViewMethods extends HybridViewMethods {
+   goTo(locator: Locator): void;
++  restoreTo(locator: Locator): Promise<boolean>;
    goForward(): void;
    goBackward(): void;
    destroy(): void;
