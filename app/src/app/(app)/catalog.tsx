@@ -137,8 +137,9 @@ function CatalogContent() {
       ) : selected ? (
         works.length ? (
           <View>
-            {works.map((work) => (
+            {works.map((work, index) => (
               <WorkRow
+                separator={index > 0}
                 key={work.id}
                 title={work.title}
                 author={work.author}

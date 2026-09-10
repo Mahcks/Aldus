@@ -276,13 +276,14 @@ export default function CollectionDetailScreen() {
             {works.map((work, index) => (
               <View key={work.id}>
                 <WorkRow
+                  separator={index > 0}
                   title={work.title}
                   author={work.author}
                   coverURL={work.cover_url}
                   onPress={() => void openWork(work.id)}
                 />
                 {arranging && (!shared || collection.can_edit) ? (
-                  <View className="flex-row items-center justify-end gap-1 border-b border-line pb-2">
+                  <View className="flex-row items-center justify-end gap-1 pb-2">
                     <IconButton
                       icon="moveUp"
                       label={`Move ${work.title} up`}

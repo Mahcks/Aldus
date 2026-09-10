@@ -96,7 +96,7 @@ export function BookCover({
   title: string;
   author?: string;
   compact?: boolean;
-  size?: 'mini' | 'small' | 'grid' | 'tile' | 'continue' | 'hero';
+  size?: 'mini' | 'small' | 'grid' | 'tile' | 'continue' | 'hero' | 'audio';
   coverURL?: string;
 } & CoverPresentation) {
   const [failedURL, setFailedURL] = useState('');
@@ -109,6 +109,7 @@ export function BookCover({
     tile: 'h-[270px] w-[184px]',
     continue: 'h-[156px] w-[106px]',
     hero: 'h-[300px] w-[204px]',
+    audio: 'aspect-square w-full max-w-[340px]',
   }[resolvedSize];
   const coverToneIndex =
     generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length;
@@ -124,6 +125,7 @@ export function BookCover({
    * titles that fit fine on tile.
    */
   const titleFit = {
+    audio: { threshold: 28, base: 'text-3xl leading-9', long: 'text-2xl leading-7' },
     hero: { threshold: 20, base: 'text-2xl leading-7', long: 'text-xl leading-6' },
     tile: { threshold: 18, base: 'text-xl leading-6', long: 'text-lg leading-5' },
     grid: { threshold: 12, base: 'text-lg leading-5', long: 'text-base leading-4' },
@@ -443,7 +445,8 @@ export function WorkRow({
   progress,
   onPress,
   action,
-}: WorkPresentationProps & { action?: ReactNode }) {
+  separator = false,
+}: WorkPresentationProps & { action?: ReactNode; separator?: boolean }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
 
@@ -453,10 +456,9 @@ export function WorkRow({
   const handlePressOut = () => setPressed(false);
 
   const stateClass = resolvePressStateClass({ focused, pressed });
-  const progressBorderClass = progress ? 'border-l-2 border-l-accent pl-3' : 'pl-3.5';
 
   return (
-    <View className="flex-row items-center gap-2 border-b border-line">
+    <View className={`flex-row items-center gap-2 ${separator ? 'border-t border-line' : ''}`}>
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
@@ -465,7 +467,7 @@ export function WorkRow({
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         onPress={onPress}
-        className={`min-w-0 flex-1 flex-row items-center gap-4 rounded-control py-3 ${progressBorderClass} ${stateClass}`}
+        className={`min-w-0 flex-1 flex-row items-center gap-4 rounded-control py-3 ${stateClass}`}
       >
         <View className="w-14">
           <BookCover

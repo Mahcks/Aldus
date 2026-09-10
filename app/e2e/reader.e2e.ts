@@ -120,7 +120,10 @@ test('saved-page loading shields the book and cannot replace progress with the o
     const started = new Promise<void>((resolve) => {
       requested = resolve;
     });
-    await page.route('**/locators/epub', async (route) => {
+    // Startup resolves the saved canonical position locally, even if conversion is unavailable.
+    await page.route('**/locators/epub', (route) => route.abort('failed'));
+    const alignmentURL = `**/alignments/${job.alignment_id}`;
+    await page.route(alignmentURL, async (route) => {
       requested();
       await held;
       await route.continue();
@@ -143,6 +146,7 @@ test('saved-page loading shields the book and cannot replace progress with the o
     release();
     await expect(page.getByRole('button', { name: 'Open reader settings' })).toBeVisible();
     await expect(page.getByText(/Returning to your saved page…|Opening your book…/)).toHaveCount(0);
+    await page.unroute(alignmentURL);
     await page.unroute('**/locators/epub');
     const after = await (await page.request.get(progressURL)).json();
     expect(after.segment_id).toBe(before.segment_id);

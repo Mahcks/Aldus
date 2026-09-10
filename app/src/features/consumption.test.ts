@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import type { AlignmentJob, Media, Representation } from '@/generated/api';
+import type { Alignment, AlignmentJob, Media, Representation } from '@/generated/api';
 import {
   audioPassage,
   audioChapterAt,
   applyPlaybackRate,
+  canonicalResumeTargets,
   choices,
   clampAudioPosition,
   defaultPair,
@@ -41,6 +42,46 @@ it('loads only the media needed by the active consumption mode', () => {
   expect(shouldLoadConsumptionMedia('read', 'audio')).toBe(false);
   expect(shouldLoadConsumptionMedia('listen', 'epub')).toBe(false);
   expect(shouldLoadConsumptionMedia('listen', 'audio')).toBe(true);
+});
+
+it('restores saved listening progress locally using the exact matching alignment', () => {
+  const alignment = {
+    id: 'alignment',
+    segments: [
+      {
+        id: 'saved-segment',
+        highlightable: true,
+        epub_href: 'chapter-2.xhtml',
+        epub_locator: { type: 'dom-element', dom_path: 'p[4]' },
+        audio_resource: 'book.m4b',
+        audio_start_ms: 10_000,
+        audio_end_ms: 20_000,
+      },
+    ],
+  } as Alignment;
+  const saved = {
+    alignment_id: alignment.id,
+    segment_id: 'saved-segment',
+    offset: 375_000,
+  };
+
+  expect(canonicalResumeTargets(alignment, saved)).toEqual({
+    epub: {
+      href: 'chapter-2.xhtml',
+      locator: alignment.segments[0].epub_locator,
+      offset: 375_000,
+    },
+    audio: { resource: 'book.m4b', timestamp_ms: 13_750 },
+  });
+  expect(() => canonicalResumeTargets(undefined, saved)).toThrow();
+  expect(() => canonicalResumeTargets({ ...alignment, id: 'other-alignment' }, saved)).toThrow();
+  expect(() => canonicalResumeTargets(alignment, { ...saved, segment_id: 'missing' })).toThrow();
+  expect(() =>
+    canonicalResumeTargets(
+      { ...alignment, segments: [{ ...alignment.segments[0], highlightable: false }] },
+      saved,
+    ),
+  ).toThrow();
 });
 
 it('keeps reader controls locked until the restored location is published', () => {
@@ -129,7 +170,7 @@ it('uses exact segment boundaries for read-along and skips unresolved text', () 
   expect(audioPassage(passageSegments, 199)?.next?.id).toBe('two');
   expect(audioPassage(passageSegments, 200)).toMatchObject({
     active: false,
-    current: { id: 'two' },
+    current: { id: 'one' },
   });
   expect(audioPassage(passageSegments, 300)?.current.id).toBe('two');
   expect(audioPassage(passageSegments, 400)).toMatchObject({

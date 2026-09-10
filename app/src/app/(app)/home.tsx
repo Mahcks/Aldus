@@ -4,7 +4,13 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState, type PropsWithChildren } from 'react';
 import Animated from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
-import { BookCover, ContinueCard, coverPresentation, WorkCard } from '@/features/bookshelf';
+import {
+  BookCover,
+  ContinueCard,
+  coverPresentation,
+  WorkCard,
+  WorkRow,
+} from '@/features/bookshelf';
 import { requestNotification } from '@/features/activity-presentation';
 import { collectionCount } from '@/features/collection-presentation';
 import { workProgressLabel } from '@/features/consumption';
@@ -26,12 +32,6 @@ import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineWorkSummaries } from '@/lib/offline-library';
 import { workHref, workQuickActions } from '@/features/work-actions';
 
-/**
- * Horizontal shelf, like books standing side by side — home's sections
- * browse the same way a real shelf does (scan left to right) rather than
- * the vertical scan of a list, which is reserved here for the two
- * notification-shaped sections (Ready for you, Collections).
- */
 function Shelf({ children }: PropsWithChildren) {
   return (
     <ScrollView
@@ -45,38 +45,50 @@ function Shelf({ children }: PropsWithChildren) {
 }
 
 function ContinueShelf({ works }: { works: WorkSummary[] }) {
-  const width = Math.min(350, useWindowDimensions().width - 48);
+  const [work, ...others] = works;
+  const mode = work.last_mode || (work.readable ? 'read' : 'listen');
   return (
-    <Shelf>
-      {works.map((work, index) => {
-        const mode = work.last_mode || (work.readable ? 'read' : 'listen');
+    <View className="w-full max-w-[720px] gap-3">
+      <ContinueCard
+        title={work.title}
+        author={work.author}
+        coverURL={work.cover_url}
+        coverPresentation={coverPresentation(work)}
+        availability={work}
+        progress={workProgressLabel(work.in_progress, work.completion_percent)}
+        continueMode={mode}
+        size="hero"
+        completionPercent={work.completion_percent}
+        onRead={work.readable ? () => router.push(`/consume/${work.id}?mode=read`) : undefined}
+        onListen={
+          work.listenable ? () => router.push(`/consume/${work.id}?mode=listen`) : undefined
+        }
+        onOpen={() => router.push(workHref(work))}
+        onContinue={() => router.push(`/consume/${work.id}?mode=${mode}`)}
+        continueHref={`/consume/${work.id}?mode=${mode}`}
+        actions={workQuickActions(work)}
+      />
+      {others.slice(0, 3).map((item, index) => {
+        const nextMode = item.last_mode || (item.readable ? 'read' : 'listen');
         return (
-          <Animated.View key={work.id} entering={listItemEnter(index)} style={{ width }}>
-            <ContinueCard
-              title={work.title}
-              author={work.author}
-              coverURL={work.cover_url}
-              coverPresentation={coverPresentation(work)}
-              availability={work}
-              progress={workProgressLabel(work.in_progress, work.completion_percent)}
-              continueMode={mode}
-              size="hero"
-              completionPercent={work.completion_percent}
-              onRead={
-                work.readable ? () => router.push(`/consume/${work.id}?mode=read`) : undefined
-              }
-              onListen={
-                work.listenable ? () => router.push(`/consume/${work.id}?mode=listen`) : undefined
-              }
-              onOpen={() => router.push(workHref(work))}
-              onContinue={() => router.push(`/consume/${work.id}?mode=${mode}`)}
-              continueHref={`/consume/${work.id}?mode=${mode}`}
-              actions={workQuickActions(work)}
-            />
-          </Animated.View>
+          <WorkRow
+            separator={index > 0}
+            key={item.id}
+            title={item.title}
+            author={item.author}
+            coverURL={item.cover_url}
+            coverPresentation={coverPresentation(item)}
+            progress={workProgressLabel(item.in_progress, item.completion_percent)}
+            availability={{
+              readable: nextMode === 'read',
+              listenable: nextMode === 'listen',
+              synchronized: false,
+            }}
+            onPress={() => router.push(`/consume/${item.id}?mode=${nextMode}`)}
+          />
         );
       })}
-    </Shelf>
+    </View>
   );
 }
 
@@ -195,7 +207,7 @@ export default function HomeScreen() {
         try {
           const [progressPage, recentPage, wantPage, finishedPage, inbox, savedCollections] =
             await Promise.all([
-              api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 6 }),
+              api.browseWorks({ availability: 'in_progress', sort: 'progress', limit: 4 }),
               api.browseWorks({ sort: 'recent', limit: 8 }),
               api.browseWorks({ status: 'want_to_read', sort: 'updated', limit: 6 }),
               api.browseWorks({ status: 'finished', sort: 'updated', limit: 6 }),
@@ -242,7 +254,7 @@ export default function HomeScreen() {
           }
           const savedWorks = await offlineWorkSummaries();
           if (canceled) return;
-          setContinuing(savedWorks.filter((work) => work.in_progress).slice(0, 6));
+          setContinuing(savedWorks.filter((work) => work.in_progress).slice(0, 4));
           setRecent(savedWorks.slice(0, 8));
           setWantToRead(
             savedWorks.filter((work) => work.reading_status === 'want_to_read').slice(0, 6),
@@ -302,7 +314,16 @@ export default function HomeScreen() {
       ) : (
         <View className="gap-9">
           {continuing.length ? (
-            <Section title="Continue">
+            <Section
+              title="Continue"
+              action={
+                <Button
+                  label="See all"
+                  kind="quiet"
+                  onPress={() => router.push('/books?status=in_progress')}
+                />
+              }
+            >
               <ContinueShelf works={continuing} />
             </Section>
           ) : null}

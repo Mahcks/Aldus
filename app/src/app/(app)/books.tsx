@@ -55,6 +55,7 @@ export default function BooksScreen() {
 }
 
 function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
+  const inProgress = status === 'in_progress';
   const [visit] = useState(() =>
     lastVisit?.scope === scope && lastVisit.status === status ? lastVisit : undefined,
   );
@@ -68,7 +69,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
   const [densityReady, setDensityReady] = useState(false);
   const [preferenceError, setPreferenceError] = useState('');
   const [query, setQuery] = useState(visit?.query ?? '');
-  const [sort, setSort] = useState(visit?.sort ?? 'recent');
+  const [sort, setSort] = useState(visit?.sort ?? (inProgress ? 'progress' : 'recent'));
   const [availability, setAvailability] = useState(visit?.availability ?? 'all');
   const [libraryID, setLibraryID] = useState(visit?.libraryID ?? '');
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -85,8 +86,9 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const [retry, setRetry] = useState(0);
   const q = query.trim();
-  const heading =
-    status === 'want_to_read'
+  const heading = inProgress
+    ? 'In progress'
+    : status === 'want_to_read'
       ? 'Want to read or listen'
       : status === 'finished'
         ? 'Finished'
@@ -151,7 +153,11 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
 
   function openBook(work: WorkSummary) {
     stashVisit();
-    router.push(`/work/${work.id}`);
+    router.push(
+      inProgress
+        ? `/consume/${work.id}?mode=${work.last_mode || (work.readable ? 'read' : 'listen')}`
+        : `/work/${work.id}`,
+    );
   }
 
   useEffect(() => {
@@ -181,9 +187,9 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
           const page = await api.browseWorks({
             q,
             sort,
-            availability,
+            availability: inProgress ? 'in_progress' : availability,
             libraryID,
-            status,
+            status: inProgress ? '' : status,
             limit: 24,
             offset,
           });
@@ -197,8 +203,8 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
             try {
               const saved = offlineBrowseWorks(await offlineWorkSummaries(libraryID || undefined), {
                 sort,
-                availability,
-                status,
+                availability: inProgress ? 'in_progress' : availability,
+                status: inProgress ? '' : status,
               }).filter((work) =>
                 `${work.title} ${work.author || ''} ${work.series || ''}`
                   .toLocaleLowerCase()
@@ -225,9 +231,11 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       canceled = true;
       clearTimeout(timer);
     };
-  }, [q, sort, availability, libraryID, status, offset, retry]);
+  }, [q, sort, availability, libraryID, status, inProgress, offset, retry]);
 
   useEffect(() => {
+    if (inProgress) return;
+
     let canceled = false;
     const timer = setTimeout(
       async () => {
@@ -246,7 +254,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       canceled = true;
       clearTimeout(timer);
     };
-  }, [q, retry]);
+  }, [q, retry, inProgress]);
 
   function resetPage() {
     setRetry((value) => value + 1);
@@ -281,10 +289,10 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       />
       {preferenceError ? <Notice>{preferenceError}</Notice> : null}
       {offline ? <Notice>Offline · showing books downloaded to this device.</Notice> : null}
-      {q && catalogError && !offline ? (
+      {q && catalogError && !offline && !inProgress ? (
         <Notice>Series and narrator search is unavailable. You can still search your books.</Notice>
       ) : null}
-      {q && !offline ? (
+      {q && !offline && !inProgress ? (
         <>
           <CatalogGroupSection kind="series" groups={series} searching />
           <CatalogGroupSection kind="narrators" groups={narrators} searching />
@@ -361,6 +369,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
         <LibraryGrid
           works={loading && offset === 0 ? [] : works}
           density={density}
+          listView={inProgress}
           header={header}
           footer={footer}
           onEndReached={loadMore}
@@ -386,7 +395,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
               label="Reset filters"
               kind="quiet"
               onPress={() => {
-                setSort('recent');
+                setSort(inProgress ? 'progress' : 'recent');
                 setAvailability('all');
                 setLibraryID('');
                 resetPage();
@@ -399,15 +408,17 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
         }
       >
         <View>
-          <BrowseFacet
-            label="Cover size"
-            options={[
-              { value: 'comfortable', label: 'Comfortable' },
-              { value: 'compact', label: 'Compact' },
-            ]}
-            value={density}
-            onChange={(value) => void chooseDensity(value)}
-          />
+          {!inProgress ? (
+            <BrowseFacet
+              label="Cover size"
+              options={[
+                { value: 'comfortable', label: 'Comfortable' },
+                { value: 'compact', label: 'Compact' },
+              ]}
+              value={density}
+              onChange={(value) => void chooseDensity(value)}
+            />
+          ) : null}
           {libraries.length > 1 ? (
             <BrowseFacet
               label="Library"
@@ -422,18 +433,34 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
               }}
             />
           ) : null}
-          <BrowseControls
-            sort={sort}
-            availability={availability}
-            onSortChange={(value) => {
-              setSort(value);
-              resetPage();
-            }}
-            onAvailabilityChange={(value) => {
-              setAvailability(value);
-              resetPage();
-            }}
-          />
+          {inProgress ? (
+            <BrowseFacet
+              label="Sort by"
+              options={[
+                { value: 'progress', label: 'Last opened' },
+                { value: 'title', label: 'Title A–Z' },
+                { value: 'author', label: 'Author A–Z' },
+              ]}
+              value={sort}
+              onChange={(value) => {
+                setSort(value);
+                resetPage();
+              }}
+            />
+          ) : (
+            <BrowseControls
+              sort={sort}
+              availability={availability}
+              onSortChange={(value) => {
+                setSort(value);
+                resetPage();
+              }}
+              onAvailabilityChange={(value) => {
+                setAvailability(value);
+                resetPage();
+              }}
+            />
+          )}
         </View>
       </Dialog>
       <Dialog title="Browse your library" visible={browseOpen} onClose={() => setBrowseOpen(false)}>

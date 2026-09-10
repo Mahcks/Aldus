@@ -1,3 +1,4 @@
+import { ReadAlongPanel } from '@/features/ReadAlongPanel';
 import { activeStorageScope } from '@/lib/storage-scope';
 import type {
   Alignment,
@@ -37,6 +38,7 @@ import {
   applyPlaybackRate,
   audioChapterAt,
   audioPassage,
+  canonicalResumeTargets,
   choices,
   clampAudioPosition,
   defaultPair,
@@ -171,10 +173,17 @@ function PassageHandoff({
 }
 
 export default function ConsumeWorkScreen() {
-  const compact = useWindowDimensions().width < 600;
+  const { width: windowWidth, fontScale } = useWindowDimensions();
+  const compact = windowWidth < 600;
+  const [listeningHeight, setListeningHeight] = useState(0);
   const compactNative = compact && Platform.OS !== 'web';
   const fullScreenSettings = compact || Platform.OS !== 'web';
   const insets = useSafeAreaInsets();
+  // Leave room for the header, home indicator, and large text; short screens can scroll.
+  const listeningContentHeight = Math.max(
+    620 * Math.max(1, fontScale),
+    listeningHeight - insets.bottom - 40,
+  );
   const params = useLocalSearchParams<{ id: string; mode?: Mode; epub?: string; audio?: string }>();
   const [work, setWork] = useState<Work>();
   const [mode, setMode] = useState<Mode>(params.mode === 'listen' ? 'listen' : 'read');
@@ -642,17 +651,27 @@ export default function ConsumeWorkScreen() {
               readerSettingsFromState(stored.epub_state, readerDefaultsRef.current),
             );
           }
-          const storedEPUBTarget =
-            canonical && stored.alignment
-              ? offlineCanonicalToEPUB(stored.alignment, canonical)
-              : stored.epub_state?.epub_locator;
-          const storedAudioTarget =
-            canonical && stored.alignment
-              ? offlineCanonicalToAudio(stored.alignment, canonical)?.timestamp_ms
-              : stored.audio_state?.audio_timestamp_ms;
-          if (loadEPUB) queueReaderRestore(storedEPUBTarget);
-          setInitialAudioMS(loadAudio ? storedAudioTarget : undefined);
-          setSyncAvailable(Boolean(canonical && stored.alignment));
+          try {
+            const targets = canonical
+              ? canonicalResumeTargets(stored.alignment, canonical)
+              : undefined;
+            if (loadEPUB) {
+              queueReaderRestore(targets ? targets.epub : stored.epub_state?.epub_locator);
+            }
+            if (loadAudio) {
+              setInitialAudioMS(
+                targets ? targets.audio.timestamp_ms : stored.audio_state?.audio_timestamp_ms,
+              );
+            }
+            setSyncAvailable(Boolean(targets));
+          } catch (error) {
+            if (loadEPUB) {
+              queueReaderRestore(undefined);
+              setReaderRestoreError(true);
+            }
+            if (loadAudio) setSource(null);
+            setNotice(errorMessage(error));
+          }
         }
         const selectedJob = readyJob(jobs, epubID, audioID);
         const [nextEPUBState, nextAudioState, nextAlignment, blob, audioSource, nextAudioChapters] =
@@ -710,28 +729,26 @@ export default function ConsumeWorkScreen() {
             : null;
         if (canonical && selectedJob?.alignment_id) {
           try {
-            let resumedAudioMS: number | undefined;
-            if (loadEPUB) {
-              const epubTarget = await api.canonicalToEPUB(selectedJob.alignment_id, canonical);
-              if (!canceled) queueReaderRestore(epubTarget);
-            } else {
-              const audioTarget = await api.canonicalToAudio(selectedJob.alignment_id, canonical);
-              resumedAudioMS = audioTarget.timestamp_ms;
-              if (!canceled) setInitialAudioMS(audioTarget.timestamp_ms);
-            }
+            const targets = canonicalResumeTargets(nextAlignment, canonical);
             if (!canceled) {
+              if (loadEPUB) queueReaderRestore(targets.epub);
+              if (loadAudio) setInitialAudioMS(targets.audio.timestamp_ms);
               setSyncAvailable(true);
               setResumeMessage(
                 resumedProgressLabel(
                   canonical.source_device,
-                  resumedAudioMS == null ? undefined : resumedAudioMS / 1000,
+                  loadAudio ? targets.audio.timestamp_ms / 1000 : undefined,
                 ),
               );
             }
-          } catch {
+          } catch (error) {
             if (!canceled) {
-              if (loadEPUB) queueReaderRestore(nextEPUBState?.epub_locator);
-              if (loadAudio) setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
+              if (loadEPUB) {
+                queueReaderRestore(undefined);
+                setReaderRestoreError(true);
+              }
+              if (loadAudio) setSource(null);
+              setNotice(errorMessage(error));
             }
           }
         } else {
@@ -824,6 +841,7 @@ export default function ConsumeWorkScreen() {
   );
 
   useEffect(() => {
+    if (readerRestoreError) return;
     if (mode !== 'read' || mediaLoading || !readerNavigationReady || !readerReady.current) return;
     if (!readerTarget || restoredReaderTarget.current === readerTarget) {
       readerInputBlocked.current = false;
@@ -836,7 +854,7 @@ export default function ConsumeWorkScreen() {
       return;
     }
     void restoreReader(readerTarget);
-  }, [mediaLoading, mode, readerNavigationReady, readerTarget, restoreReader]);
+  }, [mediaLoading, mode, readerNavigationReady, readerRestoreError, readerTarget, restoreReader]);
 
   useEffect(() => {
     if (!work) return;
@@ -2371,29 +2389,52 @@ export default function ConsumeWorkScreen() {
         selectedAudio ? (
           <ScrollView
             className="flex-1"
+            onLayout={(event) => setListeningHeight(event.nativeEvent.layout.height)}
             contentContainerClassName="w-full flex-grow pt-4"
             contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
           >
-            <View className="mx-auto w-full max-w-[560px] px-5">
-              <View className="items-center gap-5 py-2">
-                <BookCover
-                  title={work.title}
-                  author={work.author}
-                  coverURL={work.cover_url}
-                  size="hero"
-                  {...coverPresentation(work)}
-                />
-                <View className="w-full items-center gap-1.5">
+            <View
+              className="mx-auto w-full max-w-[560px] px-5"
+              style={{
+                height: passage ? listeningContentHeight : undefined,
+                minHeight: listeningContentHeight,
+              }}
+            >
+              <View
+                className={
+                  passage ? 'flex-row items-center gap-4 py-2' : 'items-center gap-7 pb-2 pt-6'
+                }
+              >
+                <View
+                  style={
+                    passage
+                      ? undefined
+                      : { width: Math.min(340, windowWidth - 64, listeningContentHeight * 0.4) }
+                  }
+                >
+                  <BookCover
+                    title={work.title}
+                    author={work.author}
+                    coverURL={work.cover_url}
+                    size={passage ? 'mini' : 'audio'}
+                    {...coverPresentation(work)}
+                    coverFit={passage ? work.cover_fit : 'contain'}
+                  />
+                </View>
+                <View className={passage ? 'min-w-0 flex-1 gap-1' : 'w-full gap-2'}>
                   <Text
                     numberOfLines={2}
-                    className="text-center font-editorial text-[22px] leading-7 text-ink"
+                    className={`${passage ? 'text-lg leading-6' : 'text-[28px] leading-9'} font-editorial text-ink`}
                   >
                     {work.title}
                   </Text>
                   <Text numberOfLines={1} className="text-sm text-text-secondary">
                     {work.author || 'Unknown author'}
                   </Text>
-                  <Text numberOfLines={2} className="mt-1 text-center text-xs text-muted">
+                  <Text
+                    numberOfLines={2}
+                    className={passage ? 'mt-1 text-xs text-muted' : 'text-sm text-muted'}
+                  >
                     {selectedAudio.representation.label}
                   </Text>
                   {progressStatus ? (
@@ -2406,6 +2447,7 @@ export default function ConsumeWorkScreen() {
                   ) : null}
                 </View>
               </View>
+              {passage ? <ReadAlongPanel passage={passage} playing={status.playing} /> : null}
               {status.error ? (
                 <View className="mt-5">
                   <Notice danger>The audiobook could not be opened on this device.</Notice>
@@ -2416,7 +2458,7 @@ export default function ConsumeWorkScreen() {
                   <Text className="text-sm text-muted">Loading audiobook…</Text>
                 </View>
               ) : null}
-              <View className="mt-6 w-full gap-1">
+              <View className="mt-auto w-full gap-1 pt-6">
                 <Pressable
                   accessibilityRole="adjustable"
                   accessibilityLabel="Audiobook position"
@@ -2563,28 +2605,6 @@ export default function ConsumeWorkScreen() {
                   Sleep timer · {formatAudioTime(sleepTimerRemaining)} remaining
                 </Text>
               ) : null}
-              <View className="mt-7 w-full gap-3 pb-4">
-                {passage?.active ? (
-                  <Button label="Read along" icon="read" onPress={() => void switchToRead()} />
-                ) : (
-                  <Text className="text-center text-sm leading-5 text-muted">
-                    {passage
-                      ? 'Read along will be available when the narration reaches the text.'
-                      : 'Read along is not available in this section.'}
-                  </Text>
-                )}
-                {passage?.active ? (
-                  <Animated.View entering={passageEntrance}>
-                    <Text
-                      accessibilityLabel={`Current passage: ${passage.current.text}`}
-                      numberOfLines={compact ? 3 : 5}
-                      className="text-center font-reading text-base leading-6 text-muted"
-                    >
-                      {passage.current.text}
-                    </Text>
-                  </Animated.View>
-                ) : null}
-              </View>
             </View>
           </ScrollView>
         ) : (

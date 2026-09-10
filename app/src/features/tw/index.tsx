@@ -61,6 +61,7 @@ export const Text = (props: TextProps): React.ReactElement => {
 Text.displayName = 'CSS(Text)';
 
 export type ScrollViewProps = React.ComponentProps<typeof RNScrollView> & {
+  ref?: React.Ref<RNScrollView>;
   className?: string;
   contentContainerClassName?: string;
 };

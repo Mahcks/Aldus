@@ -1,14 +1,16 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { useWindowDimensions, type FlatList as NativeFlatList } from 'react-native';
 import type { WorkSummary } from '@/generated/api';
-import { WorkCard, coverPresentation } from '@/features/bookshelf';
+import { WorkCard, WorkRow, coverPresentation } from '@/features/bookshelf';
 import { FlatList, View } from '@/features/tw';
+import { workProgressLabel } from './consumption';
 import { workHref, type WorkQuickAction } from './work-actions';
 import { libraryColumns, type LibraryDensity } from './library-layout';
 
 export function LibraryGrid({
   works,
   density,
+  listView = false,
   header,
   footer,
   onEndReached,
@@ -20,6 +22,7 @@ export function LibraryGrid({
 }: {
   works: WorkSummary[];
   density: LibraryDensity;
+  listView?: boolean;
   header: ReactNode;
   footer: ReactNode;
   onEndReached: () => void;
@@ -32,7 +35,7 @@ export function LibraryGrid({
   onScrollOffset: (offset: number) => void;
 }) {
   const { width, fontScale } = useWindowDimensions();
-  const columns = libraryColumns(width, density);
+  const columns = listView ? 1 : libraryColumns(width, density);
   const [headerHeight, setHeaderHeight] = useState(0);
   const available = Math.min(width - (width >= 820 ? 224 : 0), 1240) - 32;
   const rowHeight = ((available / columns - 12) * 218) / 148 + 128 * fontScale;
@@ -52,28 +55,49 @@ export function LibraryGrid({
         <View onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>{header}</View>
       }
       ListFooterComponent={<>{footer}</>}
-      renderItem={({ item }) => (
-        <View style={{ width: `${100 / columns}%`, height: rowHeight }} className="px-1.5 pb-6">
-          <WorkCard
+      renderItem={({ item, index }) =>
+        listView ? (
+          <WorkRow
+            separator={index > 0}
             title={item.title}
             author={item.author}
             coverURL={item.cover_url}
             coverPresentation={coverPresentation(item)}
-            availability={item}
-            narrow
-            dense={density === 'compact'}
-            href={workHref(item)}
-            actions={actions?.(item)}
-            onBeforeOpen={onBeforeOpen}
+            progress={workProgressLabel(item.in_progress, item.completion_percent)}
+            availability={{
+              readable: (item.last_mode || (item.readable ? 'read' : 'listen')) === 'read',
+              listenable: (item.last_mode || (item.readable ? 'read' : 'listen')) === 'listen',
+              synchronized: false,
+            }}
             onPress={() => onOpen(item)}
           />
-        </View>
-      )}
-      getItemLayout={(_, index) => ({
-        length: rowHeight,
-        offset: headerHeight + index * rowHeight,
-        index,
-      })}
+        ) : (
+          <View style={{ width: `${100 / columns}%`, height: rowHeight }} className="px-1.5 pb-6">
+            <WorkCard
+              title={item.title}
+              author={item.author}
+              coverURL={item.cover_url}
+              coverPresentation={coverPresentation(item)}
+              availability={item}
+              narrow
+              dense={density === 'compact'}
+              href={workHref(item)}
+              actions={actions?.(item)}
+              onBeforeOpen={onBeforeOpen}
+              onPress={() => onOpen(item)}
+            />
+          </View>
+        )
+      }
+      getItemLayout={
+        listView
+          ? undefined
+          : (_, index) => ({
+              length: rowHeight,
+              offset: headerHeight + index * rowHeight,
+              index,
+            })
+      }
       initialNumToRender={12}
       maxToRenderPerBatch={12}
       windowSize={5}

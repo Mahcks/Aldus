@@ -1,4 +1,5 @@
 import type {
+  Alignment,
   AlignmentJob,
   AlignmentSegment,
   AudioChapter,
@@ -9,6 +10,7 @@ import type {
   Representation,
   WorkProgressUpdate,
 } from '@/generated/api';
+import { offlineCanonicalToAudio, offlineCanonicalToEPUB } from './offline-position';
 
 export type MediaChoice = Media & { representation: Representation };
 
@@ -17,6 +19,21 @@ export const SLEEP_TIMER_MINUTES = [15, 30, 45, 60] as const;
 
 export function shouldLoadConsumptionMedia(mode: 'read' | 'listen', kind: 'epub' | 'audio') {
   return (mode === 'read' && kind === 'epub') || (mode === 'listen' && kind === 'audio');
+}
+
+export function canonicalResumeTargets(
+  alignment: Alignment | undefined,
+  position: CanonicalPosition,
+) {
+  if (!alignment || alignment.id !== position.alignment_id) {
+    throw new Error('The saved place does not match this edition.');
+  }
+
+  const epub = offlineCanonicalToEPUB(alignment, position);
+  const audio = offlineCanonicalToAudio(alignment, position);
+  if (!epub || !audio) throw new Error('The saved place could not be restored.');
+
+  return { epub, audio };
 }
 
 // A metadata refresh does not remount an already-open publication.
@@ -60,7 +77,10 @@ export function audioPassage(segments: AlignmentSegment[] | undefined, timestamp
     (segment) => segment.audio_start_ms <= timestampMS && timestampMS < segment.audio_end_ms,
   );
   const nextIndex = readable.findIndex((segment) => segment.audio_start_ms > timestampMS);
-  const index = activeIndex >= 0 ? activeIndex : nextIndex >= 0 ? nextIndex : readable.length - 1;
+  // Keep the last passage on screen during narration gaps, including after the final match.
+  let index = readable.length - 1;
+  if (activeIndex >= 0) index = activeIndex;
+  else if (nextIndex >= 0) index = Math.max(0, nextIndex - 1);
   if (index < 0) return undefined;
   return {
     active: activeIndex >= 0,
