@@ -5,6 +5,9 @@ function locatorStartVisible(range, locator) {
   // Readium's quote resolver accepts fuzzy matches. They are useful for moving
   // around a publication, but cannot prove that this saved passage was found.
   const normalize = (text) => text.replace(/\s+/gu, ' ').trim();
+  // Search snippets insert paragraph separators that DOM Range/textContent omit.
+  // Ignore whitespace in context only; the selected quote still matches exactly.
+  const contextText = (text) => text.replace(/\s+/gu, '');
   const text = locator?.text;
   if (text?.highlight) {
     const quote = normalize(text.highlight);
@@ -13,12 +16,12 @@ function locatorStartVisible(range, locator) {
     if (text.before) {
       context.selectNodeContents(document.body);
       context.setEnd(range.startContainer, range.startOffset);
-      if (!normalize(context.toString()).endsWith(normalize(text.before))) return false;
+      if (!contextText(context.toString()).endsWith(contextText(text.before))) return false;
     }
     if (text.after) {
       context.selectNodeContents(document.body);
       context.setStart(range.endContainer, range.endOffset);
-      if (!normalize(context.toString()).startsWith(normalize(text.after))) return false;
+      if (!contextText(context.toString()).startsWith(contextText(text.after))) return false;
     }
 
     // A quote resolver chooses one match even when identical passages repeat.
@@ -33,18 +36,19 @@ function locatorStartVisible(range, locator) {
     if (!scope || !scope.contains(range.startContainer) || !scope.contains(range.endContainer)) {
       return false;
     }
-    const content = normalize(scope.textContent || '');
-    const before = normalize(text.before || '');
-    const after = normalize(text.after || '');
+    const content = contextText(scope.textContent || '');
+    const compactQuote = contextText(quote);
+    const before = contextText(text.before || '');
+    const after = contextText(text.after || '');
     let matches = 0;
     for (
-      let index = content.indexOf(quote);
+      let index = content.indexOf(compactQuote);
       index !== -1;
-      index = content.indexOf(quote, index + 1)
+      index = content.indexOf(compactQuote, index + 1)
     ) {
-      const prefix = content.slice(Math.max(0, index - before.length - 1), index).trim();
-      const end = index + quote.length;
-      const suffix = content.slice(end, end + after.length + 1).trim();
+      const prefix = content.slice(Math.max(0, index - before.length), index).trim();
+      const end = index + compactQuote.length;
+      const suffix = content.slice(end, end + after.length).trim();
       // Context may extend outside a saved element. Compare the available part;
       // the full resolved range context was already checked above.
       if (before && !prefix.endsWith(before) && !before.endsWith(prefix)) continue;

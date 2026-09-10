@@ -11,6 +11,8 @@ export type ReaderCapture = {
   end: RangeBoundary;
 };
 export type ReaderLocation = {
+  /** Display-only whole-book fraction; never a restore target. */
+  totalProgression?: number;
   href: string;
   cfi: string;
   sync?: {

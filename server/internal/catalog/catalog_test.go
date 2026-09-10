@@ -329,6 +329,30 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if err != nil || !detail.InProgress || detail.CompletionPercent != 0 || detail.ProgressUpdatedAt.IsZero() {
 		t.Fatalf("format-only work detail = %#v, %v", detail, err)
 	}
+	// An unaligned ebook reports its whole-book display fraction; chapter-local
+	// progression must never be interpreted as whole-book completion.
+	locator := `{"cfi":"{\"locations\":{\"totalProgression\":0.42,\"progression\":0.9}}"}`
+	if _, err := store.db.ExecContext(ctx, `
+		UPDATE representation_state
+		SET epub_locator = ?
+		WHERE user_id = ? AND representation_id = ?
+	`, locator, reader.ID, wonderlandEPUB.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+		INSERT INTO representation_state (user_id, representation_id, epub_locator, revision, updated_at)
+		VALUES (?, ?, ?, 1, '2026-01-02T00:00:00Z')
+	`, reader.ID, epub.ID, `{"totalProgression":0.9}`); err != nil {
+		t.Fatal(err)
+	}
+	values, _, err = store.BrowseWorks(ctx, reader, BrowseOptions{Availability: "in_progress", Sort: "progress"})
+	if err != nil || len(values) != 2 || values[0].CompletionPercent != 42 || values[1].CompletionPercent != 25 {
+		t.Fatalf("edition completion browse = %#v, %v", values, err)
+	}
+	detail, err = store.WorkDetail(ctx, reader, wonderland.ID)
+	if err != nil || detail.CompletionPercent != 42 {
+		t.Fatalf("edition completion detail = %#v, %v", detail, err)
+	}
 	if err := store.SelectCover(ctx, admin, alice.ID, "open_library", "10521270"); err != nil {
 		t.Fatal(err)
 	}

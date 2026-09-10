@@ -150,3 +150,31 @@ test('saved-page loading shields the book and cannot replace progress with the o
     expect(after.revision).toBe(before.revision);
   }
 });
+
+test('native restore verification accepts search context across paragraph boundaries', async ({
+  page,
+}) => {
+  // Run the native injected predicate against real DOM Ranges. Readium search
+  // inserts spaces between paragraphs; textContent does not insert those spaces.
+  const { locatorStartVisible } = await import('../plugins/readium-restore.cjs');
+  await page.setContent(
+    '<p>Earlier paragraph.</p><p>Previous paragraph.</p><p id="saved">The uniquely saved passage.</p><p>Following paragraph.</p>',
+  );
+  const result = await page.evaluate((source) => {
+    const verify = (0, eval)(`(${source})`);
+    const range = document.createRange();
+    range.selectNodeContents(document.getElementById('saved')!);
+    const locator = {
+      text: {
+        before: 'Earlier paragraph. Previous paragraph. ',
+        highlight: 'The uniquely saved passage.',
+        after: ' Following paragraph.',
+      },
+    };
+    return {
+      correct: verify(range, locator),
+      wrong: verify(range, { text: { ...locator.text, before: 'Different paragraph. ' } }),
+    };
+  }, locatorStartVisible.toString());
+  expect(result).toEqual({ correct: true, wrong: false });
+});

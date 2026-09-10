@@ -35,6 +35,8 @@ export type ReaderCapture = {
   end: RangeBoundary;
 };
 export type ReaderLocation = {
+  /** Display-only whole-book fraction; never a restore target. */
+  totalProgression?: number;
   href: string;
   cfi: string;
   sync?: {
@@ -391,6 +393,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           const location: ReaderLocation = cursor.current
             ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason }
             : { href, cfi: detail.cfi, syncState: state, reason };
+          location.totalProgression = detail.fraction;
           if (__DEV__)
             console.debug('Aldus relocation', {
               href,

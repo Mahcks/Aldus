@@ -11,6 +11,7 @@ import type {
   WorkSummary,
 } from '@/generated/api';
 import type { MediaChoice } from '@/features/consumption';
+import { offlineCompletion } from '@/features/work-completion';
 import { offlineAudioChapters } from '@/features/offline-chapters';
 import { representationStateUpdate } from '@/features/offline-representation';
 import { APIError, api } from './api';
@@ -154,7 +155,12 @@ export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSumm
           item.epub_state?.epub_locator ||
           item.audio_state?.audio_timestamp_ms != null,
         ),
-        completion_percent: item.work.completion_percent ?? 0,
+        completion_percent: offlineCompletion(
+          item.progress,
+          item.alignment,
+          item.epub_state?.epub_locator,
+          item.work.completion_percent ?? 0,
+        ),
         active_seconds: item.work.active_seconds ?? 0,
         reading_seconds: item.work.reading_seconds ?? 0,
         listening_seconds: item.work.listening_seconds ?? 0,

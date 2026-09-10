@@ -92,6 +92,12 @@ test('only an exact, uniquely anchored visible quote confirms restoration', () =
   };
   try {
     expect(probe(locator)).toBe(true);
+    // Readium search inserts paragraph whitespace; DOM text nodes need not.
+    before = 'Earlier,she ';
+    after = ' bythe door.';
+    expect(probe(locator)).toBe(true);
+    before = 'Earlier, she ';
+    after = ' by the door.';
     quote = 'waited silently';
     expect(probe(locator)).toBe(false);
     quote = 'waited\n patiently';

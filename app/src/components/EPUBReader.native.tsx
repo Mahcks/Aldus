@@ -40,6 +40,8 @@ import { IconButton } from '@/features/ui';
 import { ReaderSaveFeedback } from '@/features/reader-save-feedback';
 
 type ReaderLocation = {
+  /** Display-only whole-book fraction; never a restore target. */
+  totalProgression?: number;
   href: string;
   cfi: string;
   sync?: ReturnType<typeof mapReadiumLocator>;
@@ -539,6 +541,7 @@ export const EPUBReader = forwardRef<
     direction.current = disposition.pendingDirection;
     if (sync) lastProgression.current = progression;
     onLocation?.({
+      totalProgression: locator.locations?.totalProgression,
       href: readingLocator.href,
       cfi: JSON.stringify(readingLocator),
       sync,
@@ -566,6 +569,7 @@ export const EPUBReader = forwardRef<
         sync,
       });
     const location: ReaderLocation = {
+      totalProgression: currentPage.current?.locations?.totalProgression,
       href: event.locator.href,
       cfi: JSON.stringify(event.locator),
       sync,

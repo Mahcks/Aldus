@@ -1242,7 +1242,11 @@ export default function ConsumeWorkScreen() {
       .catch(() => {})
       .then(async () => {
         if (saveScope !== activeStorageScope() || saveOrigin !== getAPIBaseURL()) return;
-        result = await saveRepresentation('epub', { href: location.href, cfi: location.cfi });
+        result = await saveRepresentation('epub', {
+          href: location.href,
+          cfi: location.cfi,
+          totalProgression: location.totalProgression,
+        });
         if (attempt === representationSaveAttempt.current) {
           if ((!alignmentID || !progressRef.current?.alignment_id) && !progressConflictRef.current)
             setSaveState(result);

@@ -483,6 +483,22 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	if hasMore {
 		out = out[:limit]
 	}
+	if err := rows.Close(); err != nil {
+		return nil, false, err
+	}
+	ids := make([]string, 0, len(out))
+	for _, work := range out {
+		ids = append(ids, work.ID)
+	}
+	completion, err := s.editionCompletion(ctx, actor, ids)
+	if err != nil {
+		return nil, false, err
+	}
+	for i := range out {
+		if percent, ok := completion[out[i].ID]; ok {
+			out[i].CompletionPercent = percent
+		}
+	}
 	return out, hasMore, nil
 }
 
@@ -555,6 +571,13 @@ func (s *Store) WorkDetail(ctx context.Context, actor auth.User, id string) (Wor
 		return WorkDetail{}, fmt.Errorf("get work progress summary: %w", err)
 	}
 	value.ProgressUpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+	completion, err := s.editionCompletion(ctx, actor, []string{id})
+	if err != nil {
+		return WorkDetail{}, err
+	}
+	if percent, ok := completion[id]; ok {
+		value.CompletionPercent = percent
+	}
 	return value, nil
 }
 
