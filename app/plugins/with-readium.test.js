@@ -1,6 +1,8 @@
 const { describe, expect, test } = require('bun:test');
-const { readFileSync } = require('node:fs');
+const { readFileSync, mkdtempSync, writeFileSync, rmSync } = require('node:fs');
 const { join } = require('node:path');
+const { tmpdir } = require('node:os');
+const { spawnSync } = require('node:child_process');
 const { patchPodfile } = require('./with-readium');
 const {
   patchSelection,
@@ -30,6 +32,29 @@ const navigationHooks = `
 `;
 
 describe('Readium config plugin', () => {
+  test.skipIf(!Bun.which('swiftc'))(
+    'native edge policy keeps middle drags still and bounds page steps',
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), 'aldus-selection-edge-'));
+      try {
+        const main = join(directory, 'main.swift');
+        const executable = join(directory, 'selection-edge');
+        writeFileSync(main, readFileSync(join(__dirname, 'fixtures/selection-edge-main.swift')));
+        const compile = spawnSync(
+          'swiftc',
+          [join(__dirname, 'readium-selection-gesture.swift'), main, '-o', executable],
+          { encoding: 'utf8' },
+        );
+        if (compile.status !== 0) throw new Error(compile.stderr || 'Swift compilation failed');
+        const run = spawnSync(executable, [], { encoding: 'utf8' });
+        expect(run.status).toBe(0);
+        expect(run.stdout).toContain('Selection edge geometry passed');
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test('replaces the old gesture-only patch in existing Pods', () => {
     const source = `    func spreadView(_ spreadView: EPUBSpreadView, selectionDidChange text: Locator.Text?, frame: CGRect) {
         // Aldus: selection handles must not turn pages.
@@ -54,6 +79,12 @@ describe('Readium config plugin', () => {
         webView.clearSelection()
     }`;
     const reflowable = `final class EPUBReflowableSpreadView: EPUBSpreadView {
+    override func setupWebView() {
+        super.setupWebView()
+    }
+    override func registerJSMessages() {
+        super.registerJSMessages()
+    }
     private func updateContentInset() {
     }
     override func go(to direction: EPUBSpreadView.Direction, options: NavigatorGoOptions) async -> Bool {
@@ -72,10 +103,21 @@ describe('Readium config plugin', () => {
     const patchedReflowable = patchReflowableSelection(reflowable);
     expect(patchSpreadSelection(patchedSpread)).toBe(patchedSpread);
     expect(patchReflowableSelection(patchedReflowable)).toBe(patchedReflowable);
+    expect(
+      patchedReflowable.match(/private final class AldusSelectionEdgeGestureRecognizer/g),
+    ).toHaveLength(1);
+    expect(patchedReflowable).toContain('addGestureRecognizer(observer)');
+    expect(patchedReflowable).toContain('cancelsTouchesInView = false');
+    expect(patchedReflowable).toContain('selectionRestorePending == generation');
+    expect(() => patchReflowableSelection('// Aldus: bottom-edge selection preview.')).toThrow();
     expect(patchedSpread).toContain('guard !isSelectingText || viewModel.scroll else');
     expect(patchedReflowable).toContain('if active && !viewModel.scroll');
     expect(patchedReflowable).toContain('if selectionScrollOffset == nil');
-    expect(patchedReflowable.match(/guard selectionScrollOffset == nil else/g)).toHaveLength(2);
+    expect(
+      patchedReflowable.match(
+        /guard selectionScrollOffset == nil, selectionRestorePending == nil else/g,
+      ),
+    ).toHaveLength(2);
     expect(
       patchedReflowable.indexOf('scrollView.setContentOffset(offset, animated: false)'),
     ).toBeLessThan(patchedReflowable.indexOf('super.scrollViewDidScroll(scrollView)'));
