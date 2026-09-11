@@ -211,14 +211,14 @@ func TestCoverStudioSettingsLibraryAndUploadDeletion(t *testing.T) {
 	if err := store.UploadCover(ctx, admin, work.ID, "", bytes.NewReader(png)); err != nil {
 		t.Fatal(err)
 	}
-	assets, err := store.Covers(ctx, admin, work.ID)
+	assets, err := store.Covers(ctx, admin, work.ID, "")
 	if err != nil || len(assets) != 1 || assets[0].Source != "upload" || !assets[0].Selected {
 		t.Fatalf("assets = %#v, %v", assets, err)
 	}
 	if err := store.RestoreCover(ctx, admin, work.ID, ""); err != nil {
 		t.Fatal(err)
 	}
-	assets, err = store.Covers(ctx, admin, work.ID)
+	assets, err = store.Covers(ctx, admin, work.ID, "")
 	if err != nil || len(assets) != 1 || assets[0].Selected {
 		t.Fatalf("restored assets = %#v, %v", assets, err)
 	}

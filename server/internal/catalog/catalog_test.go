@@ -367,14 +367,14 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	detail, err = store.WorkDetail(ctx, reader, alice.ID)
-	if err != nil || detail.CoverURL != "" {
+	if err != nil || detail.CoverURL != "/api/media/browse-epub/cover" {
 		t.Fatalf("restored cover = %q, %v", detail.CoverURL, err)
 	}
 	if _, err := store.db.ExecContext(ctx, `INSERT INTO work_metadata(work_id,cover_url,description,updated_at) VALUES(?,?,?,'2026-01-03T00:00:00Z')`, alice.ID, "https://covers.test/alice.jpg", "A curious adventure."); err != nil {
 		t.Fatal(err)
 	}
 	detail, err = store.WorkDetail(ctx, reader, alice.ID)
-	if err != nil || detail.CoverURL != "" || detail.Description != "A curious adventure." {
+	if err != nil || detail.CoverURL != "/api/media/browse-epub/cover" || detail.Description != "A curious adventure." {
 		t.Fatalf("metadata detail = %#v, %v", detail, err)
 	}
 	if err := store.SelectCover(ctx, admin, alice.ID, "", "open_library", "10521270"); err != nil {

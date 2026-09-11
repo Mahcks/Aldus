@@ -408,7 +408,7 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 }
 
 func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, format, source, sourceID string) error {
-	column, err := coverSelectionColumn(format)
+	column, err := s.coverSelectionColumn(ctx, workID, format)
 	if err != nil {
 		return err
 	}
@@ -485,7 +485,7 @@ func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, format
 }
 
 func (s *Store) RestoreCover(ctx context.Context, actor auth.User, workID, format string) error {
-	column, err := coverSelectionColumn(format)
+	column, err := s.coverSelectionColumn(ctx, workID, format)
 	if err != nil {
 		return err
 	}
@@ -501,11 +501,27 @@ func (s *Store) RestoreCover(ctx context.Context, actor auth.User, workID, forma
 	return err
 }
 
-func (s *Store) Covers(ctx context.Context, actor auth.User, workID string) ([]CoverAsset, error) {
+// Covers lists the images explicitly saved for a work (uploads and Open
+// Library picks) — the "Artwork library" a librarian can reuse for any
+// format. `format` only changes which one shows as already selected: an
+// image is reusable across the library, ebook, and audiobook covers, so the
+// stored list itself is never filtered by format.
+func (s *Store) Covers(ctx context.Context, actor auth.User, workID, format string) ([]CoverAsset, error) {
+	column, err := s.coverSelectionColumn(ctx, workID, format)
+	if err != nil {
+		return nil, err
+	}
+
 	if _, err := s.editableWork(ctx, actor, workID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT c.id,c.source,c.source_id,c.image_url,COALESCE(c.id=w.selected_cover_id,0),c.created_at FROM work_covers c JOIN works w ON w.id=c.work_id WHERE c.work_id=? ORDER BY c.created_at DESC,c.id`, workID)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.source, c.source_id, c.image_url, COALESCE(c.id = w.`+column+`, 0), c.created_at
+		FROM work_covers c
+		JOIN works w ON w.id = c.work_id
+		WHERE c.work_id = ?
+		ORDER BY c.created_at DESC, c.id
+	`, workID)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +566,7 @@ func (s *Store) DeleteCover(ctx context.Context, actor auth.User, workID, coverI
 }
 
 func (s *Store) UploadCover(ctx context.Context, actor auth.User, workID, format string, reader io.Reader) error {
-	column, err := coverSelectionColumn(format)
+	column, err := s.coverSelectionColumn(ctx, workID, format)
 	if err != nil {
 		return err
 	}
@@ -635,12 +651,29 @@ func coverSourceLabel(source string) string {
 }
 
 // Only these fixed identifiers may be interpolated into cover updates.
-func coverSelectionColumn(format string) (string, error) {
-	switch format {
-	case "":
+func (s *Store) coverSelectionColumn(ctx context.Context, workID, format string) (string, error) {
+	if format == "" {
+		var audioOnly bool
+		err := s.db.QueryRowContext(ctx, `
+			SELECT NOT EXISTS (
+				SELECT 1 FROM representations WHERE work_id = ? AND kind = 'epub'
+			) AND EXISTS (
+				SELECT 1 FROM representations WHERE work_id = ? AND kind IN ('audio', 'audiobook')
+			)
+		`, workID, workID).Scan(&audioOnly)
+		if err != nil {
+			return "", fmt.Errorf("resolve default cover format: %w", err)
+		}
+
+		if audioOnly {
+			return "audiobook_cover_id", nil
+		}
 		return "selected_cover_id", nil
+	}
+
+	switch format {
 	case "ebook":
-		return "ebook_cover_id", nil
+		return "selected_cover_id", nil
 	case "audiobook":
 		return "audiobook_cover_id", nil
 	default:

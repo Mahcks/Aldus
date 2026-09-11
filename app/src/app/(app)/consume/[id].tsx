@@ -2351,7 +2351,7 @@ export default function ConsumeWorkScreen() {
               fallbackCoverURL={work.cover_url}
               size="hero"
               {...coverPresentation(work)}
-              coverFit="contain"
+              coverFit="cover"
             />
             {readerRestoreError ? (
               <View className="w-full max-w-sm items-center gap-3">
@@ -2418,7 +2418,7 @@ export default function ConsumeWorkScreen() {
                     size={passage ? 'mini' : 'audio'}
                     square
                     {...coverPresentation(work)}
-                    coverFit="contain"
+                    coverFit="cover"
                   />
                 </View>
                 <View className={passage ? 'min-w-0 flex-1 gap-1' : 'w-full gap-2'}>

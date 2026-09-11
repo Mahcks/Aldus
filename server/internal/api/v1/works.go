@@ -45,7 +45,9 @@ func refreshWorkMetadata(s *catalog.Store, tags *genretag.Store) http.HandlerFun
 func listCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workID := chi.URLParam(r, "workID")
-		stored, err := s.Covers(r.Context(), actor(r), workID)
+		format := r.URL.Query().Get("format")
+
+		stored, err := s.Covers(r.Context(), actor(r), workID, format)
 		if err != nil {
 			writeCatalogResult(w, nil, err)
 			return
@@ -55,6 +57,7 @@ func listCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
 			writeMediaError(w, err)
 			return
 		}
+
 		items := make([]contracts.CoverAsset, 0, len(stored)+len(embedded))
 		seen := make(map[string]bool)
 		for _, value := range stored {
@@ -62,13 +65,39 @@ func listCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
 			items = append(items, contracts.CoverAsset{ID: value.ID, Source: value.Source, SourceID: value.SourceID, ImageURL: value.ImageURL, Label: value.Label, Selected: value.Selected, CreatedAt: value.CreatedAt})
 		}
 		for _, value := range embedded {
-			if seen["embedded\x00"+value.MediaID] {
+			mediaFormat := coverMediaFormat(value.Kind)
+			if seen["embedded\x00"+value.MediaID] || !formatMatches(format, mediaFormat) {
 				continue
 			}
-			items = append(items, contracts.CoverAsset{Source: "embedded", SourceID: value.MediaID, ImageURL: "/api/media/" + value.MediaID + "/cover", Label: value.Label})
+			items = append(items, contracts.CoverAsset{
+				Format:           mediaFormat,
+				Source:           "embedded",
+				SourceID:         value.MediaID,
+				ImageURL:         "/api/media/" + value.MediaID + "/cover",
+				Label:            value.Label,
+				OriginalFilename: value.OriginalFilename,
+			})
 		}
 		writeJSON(w, http.StatusOK, items)
 	}
+}
+
+// coverMediaFormat normalizes a media kind ("epub", "audio", "audiobook")
+// into the format vocabulary the cover endpoints and the works table use.
+func coverMediaFormat(kind string) string {
+	if kind == "epub" {
+		return "ebook"
+	}
+	return "audiobook"
+}
+
+// formatMatches decides whether an embedded cover belongs on a format's
+// artwork tab. The library cover (format "") is format-agnostic and browses
+// every embedded cover; the ebook and audiobook tabs only browse the
+// embedded cover extracted from their own kind of file — otherwise picking
+// "Audiobook cover" would offer the ebook's cover as a candidate.
+func formatMatches(requested, mediaFormat string) bool {
+	return requested == "" || requested == mediaFormat
 }
 
 func updateCoverSettings(s *catalog.Store) http.HandlerFunc {
@@ -176,6 +205,13 @@ func setWorkStatus(s *catalog.Store) http.HandlerFunc {
 func searchCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workID := chi.URLParam(r, "workID")
+		format := r.URL.Query().Get("format")
+
+		if format != "" && format != "ebook" && format != "audiobook" {
+			writeCatalogResult(w, nil, catalog.ErrInvalid)
+			return
+		}
+
 		embedded, err := media.Covers(r.Context(), actor(r), workID)
 		if err != nil {
 			writeMediaError(w, err)
@@ -183,19 +219,45 @@ func searchCovers(s *catalog.Store, media *ingest.Store) http.HandlerFunc {
 		}
 		var values []catalog.CoverCandidate
 		if query := r.URL.Query().Get("q"); query != "" {
-			values, err = s.SearchCovers(r.Context(), actor(r), workID, query)
+			if format == "audiobook" {
+				values, err = s.SearchAudiobookCovers(r.Context(), actor(r), workID, query)
+			} else {
+				values, err = s.SearchCovers(r.Context(), actor(r), workID, query)
+			}
 			if err != nil {
 				writeCatalogResult(w, nil, err)
 				return
 			}
 		}
+
 		items := make([]contracts.CoverCandidate, 0, len(embedded)+len(values))
 		for _, value := range embedded {
-			items = append(items, contracts.CoverCandidate{Source: "embedded", SourceID: value.MediaID, ImageURL: "/api/media/" + value.MediaID + "/cover", Title: value.Label, Publisher: value.Kind})
+			mediaFormat := coverMediaFormat(value.Kind)
+			if !formatMatches(format, mediaFormat) {
+				continue
+			}
+			items = append(items, contracts.CoverCandidate{
+				Format:           mediaFormat,
+				Source:           "embedded",
+				SourceID:         value.MediaID,
+				ImageURL:         "/api/media/" + value.MediaID + "/cover",
+				Title:            value.Label,
+				Publisher:        value.Kind,
+				OriginalFilename: value.OriginalFilename,
+			})
 		}
-		for i, value := range values {
-			_ = i
-			items = append(items, contracts.CoverCandidate{Source: value.Source, SourceID: value.SourceID, ImageURL: value.ImageURL, Title: value.Title, Author: value.Author, Publisher: value.Publisher, ISBN: value.ISBN, FirstPublishYear: value.FirstPublishYear})
+		for _, value := range values {
+			items = append(items, contracts.CoverCandidate{
+				Format:           format,
+				Source:           value.Source,
+				SourceID:         value.SourceID,
+				ImageURL:         value.ImageURL,
+				Title:            value.Title,
+				Author:           value.Author,
+				Publisher:        value.Publisher,
+				ISBN:             value.ISBN,
+				FirstPublishYear: value.FirstPublishYear,
+			})
 		}
 		writeJSON(w, http.StatusOK, items)
 	}

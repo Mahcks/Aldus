@@ -15,20 +15,28 @@ import (
 )
 
 type Cover struct {
-	MediaID string
-	Kind    string
-	Label   string
+	MediaID          string
+	Kind             string
+	Label            string
+	OriginalFilename string
 }
 
 func (s *Store) Covers(ctx context.Context, actor auth.User, workID string) ([]Cover, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.kind,r.label FROM media m JOIN representations r ON r.id=m.representation_id JOIN works w ON w.id=r.work_id WHERE w.id=? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+` ORDER BY m.created_at DESC,m.id`, append([]any{workID}, auth.LibraryAccessArgs(actor)...)...)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.id, m.kind, r.label, m.original_filename
+		FROM media m
+		JOIN representations r ON r.id = m.representation_id
+		JOIN works w ON w.id = r.work_id
+		WHERE w.id = ? AND `+auth.EffectiveLibraryAccessSQL("w.library_id")+`
+		ORDER BY m.created_at DESC, m.id
+	`, append([]any{workID}, auth.LibraryAccessArgs(actor)...)...)
 	if err != nil {
 		return nil, err
 	}
 	var candidates []Cover
 	for rows.Next() {
 		var candidate Cover
-		if err := rows.Scan(&candidate.MediaID, &candidate.Kind, &candidate.Label); err != nil {
+		if err := rows.Scan(&candidate.MediaID, &candidate.Kind, &candidate.Label, &candidate.OriginalFilename); err != nil {
 			rows.Close()
 			return nil, err
 		}

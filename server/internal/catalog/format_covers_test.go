@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func TestFormatCoversRemainIndependent(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if detail.CoverURL != openLibraryCoverURL("10") || detail.EbookCoverURL != ebook || detail.AudiobookCoverURL != audio {
+		if detail.CoverURL != ebook || detail.EbookCoverURL != ebook || detail.AudiobookCoverURL != audio {
 			t.Fatalf("unexpected artwork: library=%q ebook=%q audio=%q", detail.CoverURL, detail.EbookCoverURL, detail.AudiobookCoverURL)
 		}
 		listed, _, err := store.BrowseWorks(ctx, reader, BrowseOptions{})
@@ -63,7 +64,7 @@ func TestFormatCoversRemainIndependent(t *testing.T) {
 	if err := store.UploadCover(ctx, admin, work.ID, "audiobook", bytes.NewReader(png)); err != nil {
 		t.Fatal(err)
 	}
-	assets, err := store.Covers(ctx, admin, work.ID)
+	assets, err := store.Covers(ctx, admin, work.ID, "audiobook")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +76,12 @@ func TestFormatCoversRemainIndependent(t *testing.T) {
 	}
 	if upload.ID == "" {
 		t.Fatal("upload was not stored")
+	}
+	if !upload.Selected {
+		t.Fatalf("upload not marked selected for audiobook format: %#v", upload)
+	}
+	if libraryView, err := store.Covers(ctx, admin, work.ID, ""); err != nil || libraryView[0].Selected {
+		t.Fatalf("upload incorrectly marked selected for the library cover: %#v, %v", libraryView, err)
 	}
 	assertCovers(openLibraryCoverURL("20"), upload.ImageURL)
 
@@ -92,4 +99,83 @@ func TestFormatCoversRemainIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCovers(openLibraryCoverURL("20"), "")
+}
+
+func TestCoverMigrationPreservesOldChoices(t *testing.T) {
+	ctx := context.Background()
+	store, _, admin := testCatalog(t)
+	library, err := store.CreateLibrary(ctx, admin, "Migrated artwork")
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := store.CreateWork(ctx, admin, library.ID, "Book", "Author")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"10", "20"} {
+		if err := store.SelectCover(ctx, admin, work.ID, "", "open_library", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Recreate the old model: separate browsing and ebook choices.
+	_, err = store.db.ExecContext(ctx, `
+  UPDATE works SET
+   selected_cover_id = (SELECT id FROM work_covers WHERE work_id=? AND source_id='10'),
+   ebook_cover_id = (SELECT id FROM work_covers WHERE work_id=? AND source_id='20')
+  WHERE id=?
+ `, work.ID, work.ID, work.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	migration, err := os.ReadFile("../database/migrations/065_unify_book_covers.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, string(migration)); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Work(ctx, admin, work.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.CoverURL != openLibraryCoverURL("20") || saved.EbookCoverURL != saved.CoverURL {
+		t.Fatalf("migrated covers: %#v", saved)
+	}
+	assets, err := store.Covers(ctx, admin, work.ID, "ebook")
+	if err != nil || len(assets) != 2 {
+		t.Fatalf("previous images lost: %#v, %v", assets, err)
+	}
+}
+
+func TestDefaultCoverControlsFollowAudiobookOnlyWork(t *testing.T) {
+	ctx := context.Background()
+	store, _, admin := testCatalog(t)
+	library, err := store.CreateLibrary(ctx, admin, "Audio")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	work, err := store.CreateWork(ctx, admin, library.ID, "Book", "Author")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.CreateRepresentation(ctx, admin, work.ID, "audiobook", "Audio"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SelectCover(ctx, admin, work.ID, "audiobook", "open_library", "10"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SelectCover(ctx, admin, work.ID, "", "open_library", "20"); err != nil {
+		t.Fatal(err)
+	}
+
+	detail, err := store.Work(ctx, admin, work.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.CoverURL != openLibraryCoverURL("20") || detail.AudiobookCoverURL != detail.CoverURL {
+		t.Fatalf("default control did not update audiobook artwork: %+v", detail)
+	}
 }

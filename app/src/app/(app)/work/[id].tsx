@@ -452,35 +452,13 @@ export default function WorkScreen() {
     }
   }
 
-  const hasBothEditions = Boolean(selectedEPUB && selectedAudio);
-  const cover = hasBothEditions ? (
-    <View className="w-full max-w-[440px] flex-row items-end gap-5 sm:max-w-[320px] sm:gap-8 xl:max-w-[440px]">
-      <View className="min-w-0 flex-1 gap-3">
-        <BookCover
-          title={work.title}
-          author={work.author}
-          coverURL={work.ebook_cover_url || `/api/media/${selectedEPUB!.id}/cover`}
-          fallbackCoverURL={work.cover_url}
-          size="grid"
-          {...coverPresentation(work)}
-          coverFit="contain"
-        />
-        <Text className="text-sm font-sans-medium text-muted">Ebook</Text>
-      </View>
-      <View className="min-w-0 flex-1 gap-3">
-        <BookCover
-          title={work.title}
-          author={work.author}
-          coverURL={work.audiobook_cover_url || `/api/media/${selectedAudio!.id}/cover`}
-          fallbackCoverURL={work.cover_url}
-          size="audio"
-          {...coverPresentation(work)}
-          coverFit="contain"
-        />
-        <Text className="text-sm font-sans-medium text-muted">Audiobook</Text>
-      </View>
-    </View>
-  ) : (
+  // One cover represents the book here, full stop — the two-format data
+  // model belongs to Manage → Artwork (where each cover has its own
+  // controls), not to a "here are our two image fields" display on the
+  // book's own page. Ebook art wins when both exist since it reads
+  // naturally at book proportions; audio-only books get the square
+  // treatment that matches Continue listening elsewhere in the app.
+  const cover = (
     <View className={narrow ? 'w-[148px]' : 'w-[204px]'}>
       <BookCover
         title={work.title}
@@ -494,7 +472,7 @@ export default function WorkScreen() {
         fallbackCoverURL={work.cover_url}
         size={selectedAudio && !selectedEPUB ? 'audio' : narrow ? 'small' : 'hero'}
         {...coverPresentation(work)}
-        coverFit="contain"
+        coverFit="cover"
       />
     </View>
   );
@@ -652,9 +630,7 @@ export default function WorkScreen() {
         >
           {narrow ? (
             <>
-              <View
-                className={hasBothEditions ? 'w-full gap-5' : 'w-full flex-row items-start gap-5'}
-              >
+              <View className="w-full flex-row items-start gap-5">
                 {cover}
                 <View className="min-w-0 flex-1 gap-4">
                   {identity}

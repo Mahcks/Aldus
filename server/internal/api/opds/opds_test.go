@@ -45,7 +45,7 @@ func TestCatalogAndDownloadsAreIsolatedByUser(t *testing.T) {
 	if err := store.UploadCover(ctx, admin.User, work.ID, "", bytes.NewReader(png)); err != nil {
 		t.Fatal(err)
 	}
-	covers, err := store.Covers(ctx, admin.User, work.ID)
+	covers, err := store.Covers(ctx, admin.User, work.ID, "")
 	if err != nil || len(covers) != 1 {
 		t.Fatalf("covers = %#v, %v", covers, err)
 	}

@@ -536,10 +536,12 @@ export const api = {
   updateWork: (id: string, body: UpdateWorkRequest) =>
     request<void>(`/works/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteWork: (id: string) => request<void>(`/works/${id}`, { method: 'DELETE' }),
-  searchCovers: (id: string, query: string) =>
-    request<CoverCandidate[]>(`/works/${id}/covers/search?q=${encodeURIComponent(query)}`),
-  embeddedCovers: (id: string) => request<CoverCandidate[]>(`/works/${id}/covers/search`),
-  covers: (id: string) => request<CoverAsset[]>(`/works/${id}/covers`),
+  searchCovers: (id: string, query: string, format: '' | 'ebook' | 'audiobook' = '') =>
+    request<CoverCandidate[]>(
+      `/works/${id}/covers/search?q=${encodeURIComponent(query)}${format ? `&format=${format}` : ''}`,
+    ),
+  covers: (id: string, format: '' | 'ebook' | 'audiobook' = '') =>
+    request<CoverAsset[]>(`/works/${id}/covers${format ? `?format=${format}` : ''}`),
   selectCover: (
     id: string,
     source: string,

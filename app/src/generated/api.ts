@@ -482,6 +482,11 @@ export interface SetWorkStatusRequest {
   status: 'want_to_read' | 'reading' | 'finished' | '';
 }
 export interface CoverCandidate {
+  /**
+   * Which format's file this embedded image was extracted from. Empty for
+   * open_library results, which aren't tied to any one format.
+   */
+  format?: 'ebook' | 'audiobook' | '';
   source: 'open_library' | 'embedded';
   source_id: string;
   image_url: string;
@@ -490,13 +495,24 @@ export interface CoverCandidate {
   publisher?: string;
   isbn?: string;
   first_publish_year?: number /* int */;
+  /**
+   * The file the embedded image came from, e.g. "alice-ch1.mp3". Empty for
+   * non-embedded sources.
+   */
+  original_filename?: string;
 }
 export interface CoverAsset {
+  /**
+   * Which format's file this embedded image was extracted from. Empty for
+   * uploads and open_library picks, which aren't tied to any one format.
+   */
+  format?: 'ebook' | 'audiobook' | '';
   id?: string;
   source: 'open_library' | 'embedded' | 'upload';
   source_id: string;
   image_url: string;
   label: string;
+  original_filename?: string;
   selected: boolean;
   created_at?: string;
 }

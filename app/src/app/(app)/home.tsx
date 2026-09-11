@@ -35,12 +35,19 @@ function greetingForHour(hour: number) {
   return 'Good evening';
 }
 
+/**
+ * `items-end`, not `items-start`: when a row mixes a square audiobook cover
+ * with taller portrait book covers (see `WorkCard`'s `shelfAligned`), the
+ * shared bottom edge is what makes the height difference read as books of
+ * different heights resting on a shelf rather than a broken image. An
+ * all-portrait row (the common case) looks identical either way.
+ */
 function Shelf({ children }: PropsWithChildren) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerClassName="flex-row items-start gap-4 pr-4"
+      contentContainerClassName="flex-row items-end gap-4 pr-4"
     >
       {children}
     </ScrollView>
@@ -64,6 +71,7 @@ function ContinueSpotlight({ work }: { work: WorkSummary }) {
           (mode === 'listen' ? work.audiobook_cover_url : work.ebook_cover_url) || work.cover_url
         }
         fallbackCoverURL={work.cover_url}
+        audioArtwork={mode === 'listen'}
         coverPresentation={coverPresentation(work)}
         availability={work}
         progress={workProgressLabel(work.in_progress, work.completion_percent)}
@@ -88,24 +96,28 @@ function ContinueSpotlight({ work }: { work: WorkSummary }) {
  * below), so this never needs to scroll — a horizontal `Shelf` with only one
  * or two tiles just leaves a dead, scroll-implying gap on the right. A
  * wrapping row sizes itself to however many books there actually are.
+ *
+ * Audiobook-only covers keep their real square shape (`shelfAligned` on
+ * `WorkCard`) instead of being cropped or letterboxed to match the portrait
+ * book covers beside them; `items-end` bottom-aligns the wrapped row so the
+ * shorter square and the taller portrait covers read as books of different
+ * heights resting on a shelf, not a mis-sized image.
  */
 function UpNextShelf({ works }: { works: WorkSummary[] }) {
   const tileWidth = Math.min(184, (useWindowDimensions().width - 48) / 2);
   return (
-    <View className="flex-row flex-wrap items-start gap-4">
+    <View className="flex-row flex-wrap items-end gap-4">
       {works.map((work, index) => {
         const mode = workResumeMode(work);
         return (
           <Animated.View key={work.id} entering={listItemEnter(index)} style={{ width: tileWidth }}>
             <WorkCard
               narrow
+              shelfAligned
               title={work.title}
               author={work.author}
-              coverURL={
-                (mode === 'listen' ? work.audiobook_cover_url : work.ebook_cover_url) ||
-                work.cover_url
-              }
-              fallbackCoverURL={work.cover_url}
+              coverURL={work.cover_url}
+              audioArtwork={!work.readable && work.listenable}
               coverPresentation={coverPresentation(work)}
               availability={{
                 readable: mode === 'read',
@@ -133,9 +145,11 @@ function WorkShelf({ works }: { works: WorkSummary[] }) {
         <Animated.View key={work.id} entering={listItemEnter(index)} style={{ width: tileWidth }}>
           <WorkCard
             narrow
+            shelfAligned
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
+            audioArtwork={!work.readable && work.listenable}
             coverPresentation={coverPresentation(work)}
             availability={work}
             progress={workProgressLabel(work.in_progress, work.completion_percent)}

@@ -170,6 +170,9 @@ type SetWorkStatusRequest struct {
 	Status string `json:"status" tstype:"'want_to_read' | 'reading' | 'finished' | ''"`
 }
 type CoverCandidate struct {
+	// Which format's file this embedded image was extracted from. Empty for
+	// open_library results, which aren't tied to any one format.
+	Format           string `json:"format,omitempty" tstype:"'ebook' | 'audiobook' | ''"`
 	Source           string `json:"source" tstype:"'open_library' | 'embedded'"`
 	SourceID         string `json:"source_id"`
 	ImageURL         string `json:"image_url"`
@@ -178,15 +181,22 @@ type CoverCandidate struct {
 	Publisher        string `json:"publisher,omitempty"`
 	ISBN             string `json:"isbn,omitempty"`
 	FirstPublishYear int    `json:"first_publish_year,omitempty"`
+	// The file the embedded image came from, e.g. "alice-ch1.mp3". Empty for
+	// non-embedded sources.
+	OriginalFilename string `json:"original_filename,omitempty"`
 }
 type CoverAsset struct {
-	ID        string    `json:"id,omitempty"`
-	Source    string    `json:"source" tstype:"'open_library' | 'embedded' | 'upload'"`
-	SourceID  string    `json:"source_id"`
-	ImageURL  string    `json:"image_url"`
-	Label     string    `json:"label"`
-	Selected  bool      `json:"selected"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
+	// Which format's file this embedded image was extracted from. Empty for
+	// uploads and open_library picks, which aren't tied to any one format.
+	Format           string    `json:"format,omitempty" tstype:"'ebook' | 'audiobook' | ''"`
+	ID               string    `json:"id,omitempty"`
+	Source           string    `json:"source" tstype:"'open_library' | 'embedded' | 'upload'"`
+	SourceID         string    `json:"source_id"`
+	ImageURL         string    `json:"image_url"`
+	Label            string    `json:"label"`
+	OriginalFilename string    `json:"original_filename,omitempty"`
+	Selected         bool      `json:"selected"`
+	CreatedAt        time.Time `json:"created_at,omitempty"`
 }
 type SelectCoverRequest struct {
 	Source   string `json:"source"`

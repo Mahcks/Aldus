@@ -41,7 +41,7 @@ export function coverPresentation(work: {
   generated_cover_layout: 'top' | 'center' | 'bottom';
 }): CoverPresentation {
   return {
-    coverFit: work.cover_fit,
+    coverFit: 'cover',
     coverFocalX: work.cover_focal_x,
     coverFocalY: work.cover_focal_y,
     generatedCoverStyle: work.generated_cover_style,
@@ -86,6 +86,7 @@ export function BookCover({
   compact,
   square = false,
   size,
+  aspectRatio,
   coverURL,
   fallbackCoverURL,
   coverFit = 'cover',
@@ -100,6 +101,8 @@ export function BookCover({
   compact?: boolean;
   square?: boolean;
   size?: 'mini' | 'small' | 'grid' | 'tile' | 'continue' | 'hero' | 'audio';
+  /** `size="grid"` only: overrides the usual square-or-portrait choice with an exact width/height ratio — see `square` on `WorkCard` for why this exists. */
+  aspectRatio?: number;
   coverURL?: string;
   fallbackCoverURL?: string;
 } & CoverPresentation) {
@@ -162,7 +165,11 @@ export function BookCover({
     <View
       accessibilityLabel={`Cover for ${title}`}
       className={`relative shrink-0 overflow-hidden rounded-control shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
-      style={resolvedSize === 'grid' ? { aspectRatio: square ? 1 : 148 / 218 } : undefined}
+      style={
+        resolvedSize === 'grid'
+          ? { aspectRatio: aspectRatio ?? (square ? 1 : 148 / 218) }
+          : undefined
+      }
     >
       {showImage ? (
         <ExpoImage
@@ -294,6 +301,71 @@ type WorkPresentationProps = {
 };
 
 /**
+ * A soft dark scrim over just the bottom edge of a cover, with the progress
+ * label — and, when there's room, the format icon — sitting on it, the same
+ * move streaming apps use for "continue watching" tiles. Replaces the pill
+ * badge this used to be: a badge anchored to a cover's corner sits squarely
+ * on top of whatever real artwork is there (a title, an illustration),
+ * which is fine over our own generated covers but not over a book's or an
+ * audiobook's actual cover. The bottom edge isn't risk-free either — some
+ * covers put a credit line right there — but it's the one edge that's never
+ * the *title*, so it's the safer default everywhere rather than picking a
+ * different treatment per format.
+ *
+ * `icon` folds the format indicator (read/listen/synced) into this same
+ * bar instead of giving it a separate overlay elsewhere on the cover — one
+ * thing sitting on the art, not two. `FormatIconChip` below is the
+ * no-progress equivalent: format info lives on the cover either way, never
+ * duplicated into the caption as text.
+ *
+ * Stacked flat layers, not a real gradient: the smooth version needs
+ * `expo-linear-gradient`, a native module a dev-client build doesn't have
+ * until it's rebuilt from Xcode/Android Studio, not just reloaded from
+ * Metro. Four steps of increasing `bg-ink` opacity reads as a soft fade at
+ * cover scale without needing any native code at all.
+ */
+function ProgressScrim({ progress, icon }: { progress: string; icon?: AppIconName | null }) {
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="absolute inset-x-0 bottom-0 overflow-hidden rounded-b-control"
+    >
+      <View className="h-2 bg-ink/10" />
+      <View className="h-2 bg-ink/30" />
+      <View className="h-2 bg-ink/55" />
+      <View className="flex-row items-center justify-between bg-ink/85 px-2 pb-1.5 pt-1">
+        <Text numberOfLines={1} className="shrink text-[10px] font-sans-bold text-on-accent">
+          {progress}
+        </Text>
+        {icon ? <AppIcon name={icon} size={12} color={colors.onAccent} /> : null}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The no-progress counterpart to `ProgressScrim`: with no progress text to
+ * anchor a whole bar to, format info shrinks to a small icon-only dot in
+ * the same bottom-right corner the scrim's icon would occupy — never a
+ * full bar with nothing else in it, and never a second, separate label
+ * back in the caption (the two used to show the same fact twice).
+ */
+function FormatIconChip({ icon }: { icon: AppIconName }) {
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      className="absolute bottom-1.5 right-1.5 h-5 w-5 items-center justify-center rounded-pill bg-ink/75"
+    >
+      <AppIcon name={icon} size={11} color={colors.onAccent} />
+    </View>
+  );
+}
+
+/**
  * Card-shaped presentation of a Work, for grids. `actions`, when given, turns
  * on a press-and-hold quick menu — the same affordance `ContinueCard` offers
  * on Home. With `href` also given, iOS gets the real native context menu
@@ -315,6 +387,7 @@ export function WorkCard({
   coverURL,
   fallbackCoverURL,
   audioArtwork = false,
+  shelfAligned = false,
   coverPresentation,
   availability,
   progress,
@@ -327,6 +400,18 @@ export function WorkCard({
 }: WorkPresentationProps & {
   href?: Href;
   audioArtwork?: boolean;
+  /**
+   * Opts a narrow, `audioArtwork` tile into "resting on a shelf": the cover
+   * renders at its true, uncropped shape (square for audio, portrait for a
+   * book) instead of being forced into a shared portrait footprint. Only
+   * makes sense inside a row/wrap container the caller has bottom-aligned
+   * (`items-end`) — a shorter square cover next to a taller portrait one,
+   * both sitting on the row's bottom edge, reads like books of different
+   * heights standing on a shelf rather than a mis-sized image. Home's
+   * shelves opt in; Library's virtualized grid (fixed per-row cell height,
+   * no shared bottom edge to rest on) keeps the reserved-footprint default.
+   */
+  shelfAligned?: boolean;
   actions?: WorkQuickAction[];
   onBeforeOpen?: () => void;
 }) {
@@ -351,6 +436,10 @@ export function WorkCard({
 
   const widthClass = narrow ? 'w-full' : 'w-[184px]';
   const stateClass = resolvePressStateClass({ focused, pressed });
+  // Computed once — decides which of `ProgressScrim` or `FormatIconChip`
+  // the cover renders below. Format info lives only on the cover, never
+  // duplicated as text in the caption.
+  const formatIcon = availability ? availabilityIcon(availability) : null;
 
   const card = (
     <Pressable
@@ -365,35 +454,96 @@ export function WorkCard({
       onLongPress={hasActions && !useNativeMenu ? () => setMenuOpen(true) : undefined}
       className={`gap-1.5 rounded-control ${widthClass} ${stateClass}`}
     >
-      <View className="relative">
-        <BookCover
-          title={title}
-          author={author}
-          coverURL={coverURL}
-          fallbackCoverURL={fallbackCoverURL}
-          square={audioArtwork}
-          {...coverPresentation}
-          coverFit={audioArtwork ? 'contain' : coverPresentation?.coverFit}
-          size={narrow ? 'grid' : 'tile'}
-        />
-        {progress ? (
-          <View
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            className="absolute left-2 top-2 max-w-[85%] rounded-pill bg-accent px-2 py-1 shadow-xs"
-          >
-            <Text numberOfLines={1} className="text-[10px] font-sans-bold text-on-accent">
-              {progress}
-            </Text>
+      {/*
+       * `audioArtwork` never crops: real cover art routinely puts a title
+       * right at the edge (an audiobook's own cover is the one place this
+       * app shows real, non-generated artwork uncropped elsewhere, so this
+       * shouldn't be the exception), and a square source can only be
+       * cropped to portrait by trimming its *sides*, which loses just as
+       * much of the actual art. `shelfAligned` picks how the resulting
+       * shorter square sits next to taller portrait covers — see its prop
+       * doc above for the two treatments.
+       */}
+      {audioArtwork && narrow && shelfAligned ? (
+        <View className="relative w-full">
+          <BookCover
+            title={title}
+            author={author}
+            coverURL={coverURL}
+            fallbackCoverURL={fallbackCoverURL}
+            {...coverPresentation}
+            // Forced, not inherited: `coverPresentation.coverFit` is the
+            // library cover's own crop preference, tuned for a known
+            // portrait shape. The real embedded audiobook art isn't
+            // guaranteed to actually be square — `contain` is what
+            // guarantees nothing gets cropped no matter its real shape.
+            coverFit="contain"
+            size="grid"
+            square
+          />
+          {progress ? (
+            <ProgressScrim progress={progress} icon={formatIcon} />
+          ) : formatIcon ? (
+            <FormatIconChip icon={formatIcon} />
+          ) : null}
+        </View>
+      ) : audioArtwork && narrow ? (
+        // Outer reserves the usual portrait footprint (captions still line
+        // up across the row); inner wraps just the actual, shorter square
+        // image, so the scrim sits on the real cover rather than floating
+        // in the blank gap the outer view leaves beneath it.
+        <View className="w-full" style={{ aspectRatio: 148 / 218 }}>
+          <View className="relative w-full">
+            <BookCover
+              title={title}
+              author={author}
+              coverURL={coverURL}
+              fallbackCoverURL={fallbackCoverURL}
+              {...coverPresentation}
+              coverFit="contain"
+              size="grid"
+              aspectRatio={1}
+            />
+            {progress ? (
+              <ProgressScrim progress={progress} icon={formatIcon} />
+            ) : formatIcon ? (
+              <FormatIconChip icon={formatIcon} />
+            ) : null}
           </View>
-        ) : null}
-      </View>
+        </View>
+      ) : (
+        <View className="relative">
+          <BookCover
+            title={title}
+            author={author}
+            coverURL={coverURL}
+            fallbackCoverURL={fallbackCoverURL}
+            {...coverPresentation}
+            coverFit={coverPresentation?.coverFit}
+            size={narrow ? 'grid' : 'tile'}
+          />
+          {progress ? (
+            <ProgressScrim progress={progress} icon={formatIcon} />
+          ) : formatIcon ? (
+            <FormatIconChip icon={formatIcon} />
+          ) : null}
+        </View>
+      )}
+      {/*
+       * `min-h-10` reserves the full 2-line height even when a title only
+       * wraps to 1 line. Tried letting it size naturally instead — a short
+       * title next to a 2-line one staggers every line below it (author,
+       * availability) across the row, which reads worse than the blank gap
+       * a short title leaves here. Same reason Spotify, Apple Books, and
+       * Audible all reserve a fixed title height in their grids instead of
+       * letting rows stagger.
+       */}
       <Text
         numberOfLines={2}
         className={
           dense
-            ? 'mt-1 font-editorial-bold text-sm leading-5 text-ink'
-            : 'mt-1 font-editorial-bold text-base leading-5 text-ink'
+            ? 'mt-1 min-h-10 font-editorial-bold text-sm leading-5 text-ink'
+            : 'mt-1 min-h-10 font-editorial-bold text-base leading-5 text-ink'
         }
       >
         {title}
@@ -406,7 +556,6 @@ export function WorkCard({
       >
         {author || 'Unknown author'}
       </Text>
-      {availability ? <AvailabilityLabel value={availability} /> : null}
     </Pressable>
   );
 
@@ -495,7 +644,7 @@ export function WorkRow({
             size="mini"
             square={audioArtwork}
             {...coverPresentation}
-            coverFit={audioArtwork ? 'contain' : coverPresentation?.coverFit}
+            coverFit={coverPresentation?.coverFit}
           />
         </View>
         <View className="min-w-0 flex-1 gap-1">
@@ -519,6 +668,17 @@ export function WorkRow({
 }
 
 export type WorkAvailability = { readable: boolean; listenable: boolean; synchronized: boolean };
+
+/** Shared by `ProgressScrim` and `FormatIconChip` — one rule for which icon represents a Work's availability, wherever it ends up rendered. */
+function availabilityIcon(value: WorkAvailability): AppIconName | null {
+  return value.synchronized
+    ? 'synced'
+    : value.listenable
+      ? 'listen'
+      : value.readable
+        ? 'read'
+        : null;
+}
 
 /**
  * Synchronized only ever occurs when both an EPUB and audio edition are
@@ -557,35 +717,6 @@ export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
           <Text className="text-[11px] font-sans-semibold text-muted">{item.short}</Text>
         </View>
       ))}
-    </View>
-  );
-}
-
-/**
- * Two boxed-chip treatments were tried here before this (a dark cover-overlay
- * pill, then a `StatusBadge` spine-label) and both read as a generic
- * component slapped onto the card rather than something that belongs to it —
- * the colored corner/spine is the same "AI slop" tell that landed on the
- * auth card earlier in this app's history. This drops the container
- * entirely: just an icon and a word, the same visual weight as the author
- * line above it, not a status widget. Only the synced case gets any color at
- * all (`text-accent`) — it's this app's actual signature feature and earns
- * standing out; read-only and listen-only stay fully muted so the common
- * case doesn't compete with the title/author for attention.
- */
-function AvailabilityLabel({ value }: { value: WorkAvailability }) {
-  const synced = value.synchronized;
-  const icon = synced ? 'synced' : value.listenable ? 'listen' : value.readable ? 'read' : null;
-  if (!icon) return null;
-  const label = synced ? 'Read & Listen' : value.listenable ? 'Listen' : 'Read';
-  const color = synced ? colors.accent : colors.subtle;
-
-  return (
-    <View className="mt-0.5 flex-row items-center gap-1">
-      <AppIcon name={icon} size={13} color={color} />
-      <Text className={`text-[11px] font-sans-semibold ${synced ? 'text-accent' : 'text-subtle'}`}>
-        {label}
-      </Text>
     </View>
   );
 }
@@ -672,7 +803,7 @@ export function ContinueCard({
         size={size === 'hero' ? 'small' : size}
         square={audioArtwork}
         {...coverPresentation}
-        coverFit={audioArtwork ? 'contain' : coverPresentation?.coverFit}
+        coverFit={coverPresentation?.coverFit}
       />
       {progress && size !== 'hero' ? (
         <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">

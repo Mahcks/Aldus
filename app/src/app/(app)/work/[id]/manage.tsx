@@ -18,7 +18,7 @@ import type {
 } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { choices, type MediaChoice } from '@/features/consumption';
 import { BookCover, coverPresentation } from '@/features/bookshelf';
@@ -51,17 +51,7 @@ import { api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
-const focalPoints = [
-  { value: '0:0', label: 'Top left' },
-  { value: '50:0', label: 'Top center' },
-  { value: '100:0', label: 'Top right' },
-  { value: '0:50', label: 'Middle left' },
-  { value: '50:50', label: 'Center' },
-  { value: '100:50', label: 'Middle right' },
-  { value: '0:100', label: 'Bottom left' },
-  { value: '50:100', label: 'Bottom center' },
-  { value: '100:100', label: 'Bottom right' },
-];
+
 const manageTabs = [
   { value: 'details', label: 'Details' },
   { value: 'artwork', label: 'Artwork' },
@@ -99,6 +89,55 @@ function alignmentNoticeTone(state: string): 'info' | 'warning' | 'success' | 'd
   if (state === 'failed') return 'danger';
   if (state === 'stale') return 'warning';
   return 'info';
+}
+
+/**
+ * Explains, honestly, where the cover currently on screen came from — a
+ * deliberate pick, artwork automatically pulled from the format's own file,
+ * or a fallback because that file has no cover of its own. Without this,
+ * "Cover studio" just showed a badge that always said "Format artwork" even
+ * when it was quietly showing the other available cover instead.
+ */
+function coverProvenanceFor(
+  format: 'ebook' | 'audiobook',
+  coverURL: string | undefined,
+  fallbackCoverURL: string | undefined,
+  selectedAsset: CoverAsset | undefined,
+): { tone: 'neutral' | 'success' | 'warning'; label: string; detail: string } {
+  const formatLabel = format === 'audiobook' ? 'audiobook' : 'ebook';
+
+  // `coverURL` alone isn't proof anything usable exists: the backend builds
+  // an automatic media-cover URL for the newest ebook/audiobook file whether
+  // or not that file actually has extractable artwork, and a broken one
+  // fails to load silently. The verified signal is `selectedAsset` — the
+  // "Artwork library" gallery only ever lists covers Aldus actually
+  // confirmed it could extract, so a real automatic cover always appears
+  // there. No match means there's nothing usable, not a chosen cover.
+  if (!coverURL || !selectedAsset) {
+    return {
+      tone: 'warning',
+      label: 'No cover of its own',
+      detail: fallbackCoverURL
+        ? `This ${formatLabel} file has no usable cover art, so Aldus is showing the other available cover instead.`
+        : `This ${formatLabel} file has no usable cover art, and no other cover is available either — Aldus is showing a generated design instead.`,
+    };
+  }
+
+  if (selectedAsset.source === 'embedded') {
+    return {
+      tone: 'success',
+      label: 'Automatic — from the file',
+      detail: selectedAsset.original_filename
+        ? `Embedded artwork from ${selectedAsset.original_filename}.`
+        : 'Embedded artwork from this file.',
+    };
+  }
+
+  return {
+    tone: 'success',
+    label: selectedAsset?.source === 'upload' ? 'Uploaded image' : 'Selected artwork',
+    detail: `Chosen specifically for the ${formatLabel} cover.`,
+  };
 }
 
 export default function ManageWorkScreen() {
@@ -144,7 +183,9 @@ export default function ManageWorkScreen() {
   const [selectedGenreIDs, setSelectedGenreIDs] = useState<string[]>([]);
   const [epubID, setEPUBID] = useState('');
   const [audioID, setAudioID] = useState('');
-  const [coverFormat, setCoverFormat] = useState<'' | 'ebook' | 'audiobook'>('');
+  const [coverFormat, setCoverFormat] = useState<'ebook' | 'audiobook'>('ebook');
+  const coverSearchVersion = useRef(0);
+  const [coverSearched, setCoverSearched] = useState(false);
   const [coverQuery, setCoverQuery] = useState('');
   const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[]>([]);
   const [coverAssets, setCoverAssets] = useState<CoverAsset[]>([]);
@@ -156,8 +197,6 @@ export default function ManageWorkScreen() {
   const [fallbackOpen, setFallbackOpen] = useState(false);
 
   const [savingCover, setSavingCover] = useState('');
-  const [coverFit, setCoverFit] = useState<'cover' | 'contain'>('cover');
-  const [coverFocalPoint, setCoverFocalPoint] = useState('50:50');
   const [generatedStyle, setGeneratedStyle] = useState<'classic' | 'minimal' | 'framed'>('classic');
   const [generatedTone, setGeneratedTone] = useState('-1');
   const [generatedLayout, setGeneratedLayout] = useState<'top' | 'center' | 'bottom'>('center');
@@ -180,14 +219,12 @@ export default function ManageWorkScreen() {
     if (!id) return;
     try {
       const nextWork = await api.work(id);
-      const [nextLibrary, nextRepresentations, nextJobs, nextCovers, nextGenreTags] =
-        await Promise.all([
-          api.library(nextWork.library_id),
-          api.representations(id),
-          api.alignmentJobs(id),
-          api.covers(id),
-          api.genreTags(),
-        ]);
+      const [nextLibrary, nextRepresentations, nextJobs, nextGenreTags] = await Promise.all([
+        api.library(nextWork.library_id),
+        api.representations(id),
+        api.alignmentJobs(id),
+        api.genreTags(),
+      ]);
       const revisions = await loadRevisions(nextWork.library_id, nextRepresentations);
       setWork(nextWork);
       setLibrary(nextLibrary);
@@ -208,9 +245,11 @@ export default function ManageWorkScreen() {
       setRepresentations(nextRepresentations);
       setMedia(revisions);
       setJobs(nextJobs);
-      setCoverAssets(nextCovers);
-      setCoverFit(nextWork.cover_fit);
-      setCoverFocalPoint(`${nextWork.cover_focal_x}:${nextWork.cover_focal_y}`);
+      if (
+        !nextRepresentations.some((item) => item.kind === 'epub') &&
+        nextRepresentations.some((item) => item.kind === 'audio' || item.kind === 'audiobook')
+      )
+        setCoverFormat('audiobook');
       setGeneratedStyle(nextWork.generated_cover_style);
       setGeneratedTone(String(nextWork.generated_cover_tone));
       setGeneratedLayout(nextWork.generated_cover_layout);
@@ -237,6 +276,26 @@ export default function ManageWorkScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Artwork is browsed per format — an ebook-only embedded cover has no
+  // business showing up while choosing the audiobook cover. Re-fetching on
+  // every `coverFormat` switch (not just once on load) is what keeps the
+  // "Artwork library" gallery scoped to the active tab.
+  useEffect(() => {
+    if (!id) return;
+    let canceled = false;
+    void api
+      .covers(id, coverFormat)
+      .then((next) => {
+        if (!canceled) setCoverAssets(next);
+      })
+      .catch((value) => {
+        if (!canceled) setError(errorMessage(value));
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [id, coverFormat]);
+
   const progressUnreachable = useAlignmentPolling(id || '', jobs.some(alignmentRunning), setJobs);
 
   if (loading)
@@ -262,13 +321,19 @@ export default function ManageWorkScreen() {
   const selectedPairJob = jobs.find(
     (job) => job.epub_media_id === epubID && job.audio_media_id === audioID,
   );
-  const coverURL =
-    coverFormat === 'ebook'
-      ? work.ebook_cover_url
-      : coverFormat === 'audiobook'
-        ? work.audiobook_cover_url
-        : work.cover_url;
+  const coverURL = coverFormat === 'ebook' ? work.ebook_cover_url : work.audiobook_cover_url;
   const selectedCoverAsset = coverAssets.find((asset) => asset.image_url === coverURL);
+  const coverFormatLabel = coverFormat === 'ebook' ? 'Ebook cover' : 'Audiobook cover';
+  const coverFormatDescription =
+    coverFormat === 'ebook'
+      ? 'Used for the ebook and while browsing your library. Choosing an image saves immediately.'
+      : 'Used while listening, and for browsing audiobook-only books. Choosing an image saves immediately.';
+  const coverProvenance = coverProvenanceFor(
+    coverFormat,
+    coverURL,
+    work.cover_url,
+    selectedCoverAsset,
+  );
   const syncRunning =
     selectedPairJob?.state === 'pending' || selectedPairJob?.state === 'processing';
   const syncReady = selectedPairJob?.state === 'ready';
@@ -421,18 +486,26 @@ export default function ManageWorkScreen() {
   }
 
   async function searchCovers() {
+    const version = ++coverSearchVersion.current;
     setSearchingCovers(true);
+    setCoverCandidates([]);
+    setCoverSearched(false);
     setError('');
     try {
+      const candidates = await api.searchCovers(id, coverQuery, coverFormat);
+      if (version !== coverSearchVersion.current) return;
       setCoverCandidates(
-        (await api.searchCovers(id, coverQuery)).filter(
-          (candidate) => candidate.source === 'open_library',
+        candidates.filter(
+          (candidate) =>
+            candidate.source === 'open_library' &&
+            (coverFormat !== 'audiobook' || candidate.format === 'audiobook'),
         ),
       );
+      setCoverSearched(true);
     } catch (value) {
-      setError(errorMessage(value));
+      if (version === coverSearchVersion.current) setError(errorMessage(value));
     } finally {
-      setSearchingCovers(false);
+      if (version === coverSearchVersion.current) setSearchingCovers(false);
     }
   }
 
@@ -456,7 +529,7 @@ export default function ManageWorkScreen() {
       setSeriesPosition(nextWork.series_position || '');
       setLanguage(nextWork.language || '');
       setSubjects((nextWork.subject_values ?? []).join('\n'));
-      setCoverAssets(await api.covers(id));
+      setCoverAssets(await api.covers(id, coverFormat));
       setMetadataMessage('Missing details and artwork were refreshed.');
     } catch (cause) {
       setError(errorMessage(cause));
@@ -465,13 +538,18 @@ export default function ManageWorkScreen() {
     }
   }
 
+  /** Re-fetch the artwork gallery for whichever format tab is active — every cover mutation needs this, `load()` alone does not touch it. */
+  async function refreshCoverAssets() {
+    setCoverAssets(await api.covers(id, coverFormat));
+  }
+
   async function chooseCover(candidate: { source: string; source_id: string }) {
     setSavingCover(candidate.source_id);
     setError('');
     setMetadataMessage('');
     try {
       await api.selectCover(id, candidate.source, candidate.source_id, coverFormat);
-      await load();
+      await Promise.all([load(), refreshCoverAssets()]);
       setMetadataMessage('Artwork selected.');
     } catch (value) {
       setError(errorMessage(value));
@@ -486,10 +564,8 @@ export default function ManageWorkScreen() {
     setMetadataMessage('');
     try {
       await api.restoreCover(id, coverFormat);
-      await load();
-      setMetadataMessage(
-        coverFormat ? 'Automatic format artwork restored.' : 'Generated cover restored.',
-      );
+      await Promise.all([load(), refreshCoverAssets()]);
+      setMetadataMessage('Automatic format artwork restored.');
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -498,15 +574,14 @@ export default function ManageWorkScreen() {
   }
 
   async function saveCoverSettings() {
-    const [focalX, focalY] = coverFocalPoint.split(':').map(Number);
     setSavingCover('settings');
     setError('');
     setMetadataMessage('');
     try {
       await api.updateCoverSettings(id, {
-        fit: coverFit,
-        focal_x: focalX,
-        focal_y: focalY,
+        fit: 'contain',
+        focal_x: 50,
+        focal_y: 50,
         style: generatedStyle,
         tone: Number(generatedTone),
         layout: generatedLayout,
@@ -525,7 +600,7 @@ export default function ManageWorkScreen() {
     try {
       await api.deleteCover(id, coverID);
       setDeletingCoverID('');
-      await load();
+      await Promise.all([load(), refreshCoverAssets()]);
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -543,7 +618,7 @@ export default function ManageWorkScreen() {
       const asset = result.assets[0];
       const blob = await fetch(asset.uri).then((response) => response.blob());
       await api.uploadCover(id, blob, asset.name, coverFormat);
-      await load();
+      await Promise.all([load(), refreshCoverAssets()]);
       setMetadataMessage('Artwork uploaded.');
     } catch (value) {
       setError(errorMessage(value));
@@ -618,19 +693,31 @@ export default function ManageWorkScreen() {
 
         {activeTab === 'artwork' ? (
           <View className="gap-8">
-            <Select
-              label="Artwork for"
-              disabled={Boolean(savingCover)}
-              value={coverFormat}
-              options={[
-                { value: '', label: 'Library cover' },
-                { value: 'ebook', label: 'Ebook cover' },
-                { value: 'audiobook', label: 'Audiobook cover' },
-              ]}
-              onChange={(value) => {
-                setCoverFormat(value as '' | 'ebook' | 'audiobook');
-              }}
-            />
+            <View className="gap-4">
+              <Select
+                label="Artwork for"
+                disabled={Boolean(savingCover)}
+                value={coverFormat}
+                options={[
+                  { value: 'ebook', label: 'Ebook cover' },
+                  { value: 'audiobook', label: 'Audiobook cover' },
+                ]}
+                onChange={(value) => {
+                  coverSearchVersion.current += 1;
+                  setCoverCandidates([]);
+                  setCoverAssets([]);
+                  setCoverSearched(false);
+                  setSearchingCovers(false);
+                  setCoverFormat(value as 'ebook' | 'audiobook');
+                }}
+              />
+              <View className="gap-1 rounded-control bg-panel px-4 py-3">
+                <Text className="font-sans-bold text-base text-ink">
+                  Editing: {coverFormatLabel}
+                </Text>
+                <Text className={shared.itemMeta}>{coverFormatDescription}</Text>
+              </View>
+            </View>
             <Section
               title="Cover studio"
               action={
@@ -653,37 +740,21 @@ export default function ManageWorkScreen() {
                     coverURL={coverURL}
                     fallbackCoverURL={coverFormat ? work.cover_url : undefined}
                     size={coverFormat === 'audiobook' ? 'audio' : 'hero'}
-                    coverFit={coverFormat ? 'contain' : coverFit}
-                    coverFocalX={Number(coverFocalPoint.split(':')[0])}
-                    coverFocalY={Number(coverFocalPoint.split(':')[1])}
+                    coverFit="cover"
+                    coverFocalX={50}
+                    coverFocalY={50}
                     generatedCoverStyle={generatedStyle}
                     generatedCoverTone={Number(generatedTone)}
                     generatedCoverLayout={generatedLayout}
                   />
-                  <StatusBadge
-                    tone={coverURL ? 'success' : 'neutral'}
-                    label={
-                      coverFormat
-                        ? 'Format artwork'
-                        : coverURL
-                          ? 'Selected artwork'
-                          : 'Generated cover'
-                    }
-                  />
-                  <Text className="text-center text-xs text-muted">
-                    {selectedCoverAsset?.label ||
-                      (work.cover_url ? 'Custom artwork' : 'Aldus cover design')}
-                  </Text>
+                  <StatusBadge tone={coverProvenance.tone} label={coverProvenance.label} />
+                  <Text className="text-center text-xs text-muted">{coverProvenance.detail}</Text>
                 </View>
-                {coverFormat ? (
+                {coverFormat === 'audiobook' ? (
                   <View className="w-full gap-4 sm:min-w-[280px] sm:max-w-md sm:flex-1">
                     <Text className={shared.itemMeta}>
-                      Choose an image below or upload your own. This changes only the {coverFormat}{' '}
-                      artwork. The original files stay untouched.
-                    </Text>
-                    <Text className={shared.itemMeta}>
-                      Automatic artwork comes from the file. If it has no cover, Aldus uses your
-                      library cover.
+                      Choose an image below or upload your own — saves immediately and changes only
+                      the {coverFormat} cover. Your original {coverFormat} file is never modified.
                     </Text>
                     <Button
                       label="Use automatic artwork"
@@ -695,26 +766,6 @@ export default function ManageWorkScreen() {
                   </View>
                 ) : (
                   <View className="min-w-[280px] max-w-[640px] flex-1 gap-6">
-                    {work.cover_url ? (
-                      <View className="gap-5">
-                        <View className="gap-1">
-                          <Text className="text-base font-sans-bold text-ink">Image display</Text>
-                          <Text className={shared.itemMeta}>
-                            The preview updates immediately. Changes are published when you save.
-                          </Text>
-                        </View>
-                        <Select
-                          label="Fit"
-                          value={coverFit}
-                          options={[
-                            { value: 'cover', label: 'Fill cover' },
-                            { value: 'contain', label: 'Show full image' },
-                          ]}
-                          onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
-                        />
-                        <FocalPointPicker value={coverFocalPoint} onChange={setCoverFocalPoint} />
-                      </View>
-                    ) : null}
                     {work.cover_url ? (
                       <Button
                         label={fallbackOpen ? 'Hide fallback design' : 'Edit fallback design'}
@@ -785,12 +836,12 @@ export default function ManageWorkScreen() {
                     ) : null}
                     <View className="gap-3 border-t border-line pt-5">
                       <Text className={shared.itemMeta}>
-                        This is the cover shown in your library, and the fallback when a format has
-                        no artwork.
+                        The ebook cover is also used while browsing. These settings control the
+                        generated fallback design.
                       </Text>
                       <Row>
                         <Button
-                          label="Save artwork"
+                          label="Save fallback design"
                           kind="primary"
                           loading={savingCover === 'settings'}
                           disabled={Boolean(savingCover)}
@@ -798,7 +849,7 @@ export default function ManageWorkScreen() {
                         />
                         {work.cover_url ? (
                           <Button
-                            label="Use generated cover"
+                            label="Use automatic artwork"
                             kind="secondary"
                             loading={savingCover === 'restore'}
                             disabled={Boolean(savingCover)}
@@ -814,7 +865,9 @@ export default function ManageWorkScreen() {
 
             <Section title="Artwork library">
               <Text className={shared.itemMeta}>
-                Embedded, uploaded, and previously selected images stay available here.
+                {coverFormat
+                  ? `Images embedded in the ${coverFormat} file, plus anything uploaded or chosen before — any of these can become the ${coverFormat} cover.`
+                  : 'Embedded, uploaded, and previously selected images stay available here.'}
               </Text>
               {coverAssets.length ? (
                 <View
@@ -843,19 +896,35 @@ export default function ManageWorkScreen() {
                   ))}
                 </View>
               ) : (
-                <Text className={shared.itemMeta}>No other artwork is saved for this book.</Text>
+                <Text className={shared.itemMeta}>
+                  {coverFormat
+                    ? `No embedded, uploaded, or previously chosen artwork is available for the ${coverFormat} cover yet.`
+                    : 'No other artwork is saved for this book.'}
+                </Text>
               )}
             </Section>
 
-            <Section title="Find another edition">
+            <Section
+              title={
+                coverFormat === 'audiobook' ? 'Find audiobook artwork' : 'Find another book cover'
+              }
+            >
               <Text className={shared.itemMeta}>
-                Search Open Library by title, author, or ISBN.
+                {coverFormat === 'audiobook'
+                  ? 'Search audio editions only. Results use the audiobook edition’s own artwork.'
+                  : 'Search Open Library by title, author, or ISBN.'}
               </Text>
               <View className={shared.form}>
                 <SearchField label="Search terms" value={coverQuery} onChangeText={setCoverQuery} />
                 <View className="self-start">
                   <Button
-                    label={searchingCovers ? 'Searching…' : 'Search Open Library'}
+                    label={
+                      searchingCovers
+                        ? 'Searching…'
+                        : coverFormat === 'audiobook'
+                          ? 'Search audiobook covers'
+                          : 'Search Open Library'
+                    }
                     icon="search"
                     kind="primary"
                     disabled={searchingCovers || !coverQuery.trim()}
@@ -882,7 +951,11 @@ export default function ManageWorkScreen() {
               ) : null}
               {!searchingCovers && coverCandidates.length === 0 ? (
                 <Text className={shared.itemMeta}>
-                  Results include edition details so you can avoid film tie-in artwork.
+                  {coverSearched
+                    ? coverFormat === 'audiobook'
+                      ? 'No audiobook editions with their own cover were found. Try a shorter title or an audiobook ISBN, or upload an image.'
+                      : 'No covers found. Try a shorter title or ISBN.'
+                    : 'Choose the edition that matches your book.'}
                 </Text>
               ) : null}
             </Section>
@@ -1367,7 +1440,7 @@ export default function ManageWorkScreen() {
         onClose={() => setDeletingCoverID('')}
         onConfirm={() => void deleteCover(deletingCoverID)}
         title="Delete uploaded cover?"
-        description="The image will be removed from this book. Any library, ebook, or audiobook cover using it returns to its default. Your original files are unaffected."
+        description="The image will be removed from this book. Any ebook or audiobook cover using it returns to its default. Your original files are unaffected."
         confirmLabel="Delete upload"
         danger
         busy={savingCover === deletingCoverID}
@@ -1418,51 +1491,6 @@ function ManageTabItem({
     >
       <Text className={`text-sm font-sans-bold ${textClass}`}>{label}</Text>
     </Pressable>
-  );
-}
-
-function FocalPointPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const selected = focalPoints.find((point) => point.value === value) ?? focalPoints[4];
-  return (
-    <View className="gap-2">
-      <Text className="text-sm font-sans-semibold text-ink">Focus</Text>
-      <View className="flex-row items-center gap-3">
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel="Image focus"
-          className="self-start overflow-hidden rounded-control border border-line bg-control"
-        >
-          {[0, 3, 6].map((start) => (
-            <View key={start} className="flex-row">
-              {focalPoints.slice(start, start + 3).map((point) => {
-                const checked = point.value === value;
-                return (
-                  <Pressable
-                    key={point.value}
-                    accessibilityRole="radio"
-                    accessibilityLabel={point.label}
-                    accessibilityState={{ checked }}
-                    className={`h-12 w-12 items-center justify-center border border-line ${checked ? 'bg-accent-soft' : 'bg-control'}`}
-                    onPress={() => onChange(point.value)}
-                  >
-                    <View
-                      className={`rounded-full ${checked ? 'h-3 w-3 bg-accent' : 'h-1.5 w-1.5 bg-subtle'}`}
-                    />
-                  </Pressable>
-                );
-              })}
-            </View>
-          ))}
-        </View>
-        <Text className="text-sm text-muted">{selected.label}</Text>
-      </View>
-    </View>
   );
 }
 
@@ -1538,14 +1566,18 @@ function CoverAssetCard({
         coverURL={asset.image_url}
         size={audioArtwork ? 'audio' : 'small'}
         {...coverPresentation(work)}
-        coverFit="contain"
+        coverFit="cover"
       />
       <Text numberOfLines={1} className="text-sm font-sans-bold text-ink">
-        {asset.label}
+        {asset.source === 'embedded'
+          ? `Embedded — ${asset.format === 'audiobook' ? 'Audiobook' : 'Ebook'}`
+          : asset.source === 'upload'
+            ? 'Uploaded image'
+            : 'Open Library'}
       </Text>
       <Text numberOfLines={1} className="text-xs text-muted">
         {asset.source === 'embedded'
-          ? 'From source media'
+          ? asset.original_filename || 'From the source file'
           : asset.source === 'upload'
             ? 'Added to Aldus'
             : 'Open Library'}
@@ -1606,6 +1638,7 @@ function CoverCandidateCard({
         coverURL={candidate.image_url}
         size="small"
         coverFit="cover"
+        square={candidate.format === 'audiobook'}
       />
       <Text numberOfLines={2} className="font-editorial-bold text-sm text-ink">
         {title}

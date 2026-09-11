@@ -380,7 +380,7 @@ func (s *Store) Works(ctx context.Context, actor auth.User, libraryID string, li
 	limit, offset = page(limit, offset)
 	rows, err := s.db.QueryContext(ctx, `
         SELECT w.id, w.library_id, w.title, COALESCE(w.author,''),
-            COALESCE(c.image_url,''), `+formatCoverColumns+`,
+            `+defaultCoverColumn+`, `+formatCoverColumns+`,
             w.cover_fit, w.cover_focal_x, w.cover_focal_y,
             w.generated_cover_style, w.generated_cover_tone, w.generated_cover_layout,
             w.series_name, w.series_order, w.created_at, w.updated_at
@@ -431,7 +431,7 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	pattern := "%" + escapeLike(strings.ToLower(options.Query)) + "%"
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.library_id, l.name, w.title, COALESCE(w.author,''),
-            COALESCE(c.image_url,''), `+formatCoverColumns+`,
+            `+defaultCoverColumn+`, `+formatCoverColumns+`,
             w.cover_fit, w.cover_focal_x, w.cover_focal_y,
             w.generated_cover_style, w.generated_cover_tone, w.generated_cover_layout,
             w.series_name, w.series_order, w.created_at, w.updated_at,
@@ -553,7 +553,7 @@ func (s *Store) Work(ctx context.Context, actor auth.User, id string) (Work, err
 	var c, u string
 	err := s.db.QueryRowContext(ctx, `
         SELECT w.id, w.library_id, w.title, COALESCE(w.author,''),
-            COALESCE(c.image_url,''), `+formatCoverColumns+`,
+            `+defaultCoverColumn+`, `+formatCoverColumns+`,
             w.cover_fit, w.cover_focal_x, w.cover_focal_y,
             w.generated_cover_style, w.generated_cover_tone, w.generated_cover_layout,
             w.series_name, w.series_order, w.created_at, w.updated_at

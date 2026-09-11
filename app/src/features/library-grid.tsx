@@ -68,6 +68,7 @@ export function LibraryGrid({
                 : item.ebook_cover_url) || item.cover_url
             }
             fallbackCoverURL={item.cover_url}
+            audioArtwork={workResumeMode(item) === 'listen'}
             coverPresentation={coverPresentation(item)}
             progress={workProgressLabel(item.in_progress, item.completion_percent)}
             availability={{
@@ -83,6 +84,7 @@ export function LibraryGrid({
               title={item.title}
               author={item.author}
               coverURL={item.cover_url}
+              audioArtwork={!item.readable && item.listenable}
               coverPresentation={coverPresentation(item)}
               availability={item}
               narrow

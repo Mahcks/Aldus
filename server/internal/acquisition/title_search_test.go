@@ -48,7 +48,7 @@ func TestTitleSearchMergesExactStableMatchesAndIsolatesRequests(t *testing.T) {
 		t.Fatalf("results = %#v", results)
 	}
 	alice := results[0]
-	if alice.WorkID != local.ID || alice.ExternalID != "OL1W" || alice.CoverURL != "cover" || !alice.Readable || alice.EbookRequestState != "wanted" || alice.AudiobookRequestState != "pending_approval" {
+	if alice.WorkID != local.ID || alice.ExternalID != "OL1W" || alice.CoverURL != "/api/media/alice-epub/cover" || !alice.Readable || alice.EbookRequestState != "wanted" || alice.AudiobookRequestState != "pending_approval" {
 		t.Fatalf("merged Alice = %#v", alice)
 	}
 	if results[1].ExternalID == results[2].ExternalID || results[1].Title != "Dune" || results[2].Title != "Dune" {
