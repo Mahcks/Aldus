@@ -32,6 +32,8 @@ type Work struct {
 	Title                string    `json:"title"`
 	Author               string    `json:"author,omitempty"`
 	CoverURL             string    `json:"cover_url,omitempty"`
+	EbookCoverURL        string    `json:"ebook_cover_url,omitempty"`
+	AudiobookCoverURL    string    `json:"audiobook_cover_url,omitempty"`
 	CoverFit             string    `json:"cover_fit" tstype:"'cover' | 'contain'"`
 	CoverFocalX          int       `json:"cover_focal_x"`
 	CoverFocalY          int       `json:"cover_focal_y"`
@@ -86,6 +88,8 @@ type WorkSummary struct {
 	Title                string    `json:"title"`
 	Author               string    `json:"author,omitempty"`
 	CoverURL             string    `json:"cover_url,omitempty"`
+	EbookCoverURL        string    `json:"ebook_cover_url,omitempty"`
+	AudiobookCoverURL    string    `json:"audiobook_cover_url,omitempty"`
 	CoverFit             string    `json:"cover_fit" tstype:"'cover' | 'contain'"`
 	CoverFocalX          int       `json:"cover_focal_x"`
 	CoverFocalY          int       `json:"cover_focal_y"`

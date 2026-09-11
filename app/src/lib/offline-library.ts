@@ -44,3 +44,9 @@ export async function reconcileOfflineRepresentationStates(
 }
 
 export async function retryOfflineDownload(_mediaID: string) {}
+
+export async function rememberOfflineAudioDuration(
+  _workID: string,
+  _mediaID: string,
+  _durationMS: number,
+) {}

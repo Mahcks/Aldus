@@ -7,6 +7,18 @@ for (const width of [390, 1024, 1440]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await signInAsTestAdmin(page);
+    await page.addInitScript(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')!;
+      Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
+        ...descriptor,
+        set(value: number) {
+          (window as unknown as { testAudio: HTMLMediaElement }).testAudio = this;
+          const state = window as unknown as { testSeekCount?: number };
+          state.testSeekCount = (state.testSeekCount ?? 0) + 1;
+          descriptor.set!.call(this, value);
+        },
+      });
+    });
     await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await expect(play).toBeEnabled({ timeout: 30_000 });
@@ -21,6 +33,40 @@ for (const width of [390, 1024, 1440]) {
     const track = page.getByLabel('Audiobook position', { exact: true });
     const bounds = await track.boundingBox();
     expect(bounds).not.toBeNull();
+    // Dragging previews locally; the media player seeks only on release.
+    const audio = () => page.evaluate(() => (window as unknown as { testAudio: HTMLMediaElement }).testAudio.currentTime);
+    const seekCount = () => page.evaluate(() => (window as unknown as { testSeekCount: number }).testSeekCount);
+    const initialSeeks = await seekCount();
+    const beforeDrag = await audio();
+    const startX = bounds!.x + bounds!.width * 0.2;
+    const centerY = bounds!.y + 22;
+    await page.mouse.move(startX, centerY);
+    await page.mouse.down();
+    await expect(page.getByTestId('audio-player-scroll')).toHaveCSS('overflow-y', 'hidden');
+    await expect(text).toHaveCSS('overflow-y', 'hidden');
+    await page.mouse.move(startX + bounds!.width * 0.2, centerY, { steps: 15 });
+    const coarse = Number(await track.getAttribute('aria-valuenow'));
+    expect(await audio()).toBeCloseTo(beforeDrag, 1);
+    await page.mouse.move(startX + bounds!.width * 0.2, centerY - 130);
+    await expect(page.getByText('Fine scrubbing · 1/20 speed', { exact: true })).toBeVisible();
+    await page.mouse.move(startX + bounds!.width * 0.4, centerY - 130, { steps: 15 });
+    const fine = Number(await track.getAttribute('aria-valuenow'));
+    const duration = Number(await track.getAttribute('aria-valuemax'));
+    expect(fine - coarse).toBeCloseTo(duration * 0.01, -1);
+    expect(await audio()).toBeCloseTo(beforeDrag, 1);
+    expect(await seekCount()).toBe(initialSeeks);
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
+    await page.screenshot({ path: testInfo.outputPath('fine-scrubbing.png') });
+    await page.mouse.up();
+    await expect(page.getByTestId('audio-player-scroll')).toHaveCSS('overflow-y', 'auto');
+    await expect(text).toHaveCSS('overflow-y', 'auto');
+    await expect.poll(audio).toBeCloseTo(fine, 0);
+    await expect(track).not.toHaveAttribute('aria-disabled', 'true');
+    expect(await seekCount()).toBe(initialSeeks + 1);
+    await track.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(audio).toBeCloseTo(fine + 5, 0);
+    await expect(track).not.toHaveAttribute('aria-disabled', 'true');
     await track.click({ position: { x: 0, y: 22 } });
     await expect(text).toContainText('CHAPTER I.');
     await track.click({ position: { x: bounds!.width * 0.12, y: 22 } });

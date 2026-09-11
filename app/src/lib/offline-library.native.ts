@@ -26,7 +26,7 @@ import {
   stopDownloads,
   stopServerDownloads,
 } from './native-download.native';
-import { pendingProgress, pendingProgressSnapshot } from './progress-outbox.native';
+import { pendingProgress, pendingProgressSnapshot } from './progress-outbox-storage.native';
 import { parseStoredJSON } from './stored-json';
 import { activeStorageScope, scopedMediaFileName, scopedStorageKey } from './storage-scope';
 
@@ -43,6 +43,7 @@ export type OfflineWork = {
   audio_state: RepresentationState | null;
   pending_representation_states?: Partial<Record<'epub' | 'audio', boolean>>;
   audio_chapters: Record<string, AudioChapter[]>;
+  audio_duration_ms?: Record<string, number>;
   downloaded_at: string;
 };
 
@@ -160,6 +161,13 @@ export async function offlineWorkSummaries(libraryID?: string): Promise<WorkSumm
           item.alignment,
           item.epub_state?.epub_locator,
           item.work.completion_percent ?? 0,
+          item.audio_state?.audio_timestamp_ms != null &&
+            item.audio_state.updated_at >= (item.epub_state?.updated_at ?? '')
+            ? {
+                timestamp: item.audio_state.audio_timestamp_ms,
+                duration: item.audio_duration_ms?.[item.audio_id] ?? 0,
+              }
+            : undefined,
         ),
         active_seconds: item.work.active_seconds ?? 0,
         reading_seconds: item.work.reading_seconds ?? 0,
@@ -286,6 +294,7 @@ async function performDownload(owner: {
     check();
     const stored = { ...value, downloaded_at: new Date().toISOString() };
     if (previous) {
+      stored.audio_duration_ms = { ...previous.audio_duration_ms, ...value.audio_duration_ms };
       if (
         (previous.pending_representation_states?.epub ||
           previous.pending_representation_states?.audio ||
@@ -379,6 +388,27 @@ function deleteOfflineFiles(value: Pick<OfflineWork, 'epubs' | 'audio'>, scope: 
     const file = offlineMediaFile(item, scope);
     if (file.exists) file.delete();
   }
+}
+
+export async function rememberOfflineAudioDuration(
+  workID: string,
+  mediaID: string,
+  durationMS: number,
+  scope = activeStorageScope(),
+) {
+  if (!Number.isFinite(durationMS) || durationMS <= 0) return;
+  return serialize(async () => {
+    if (scope !== activeStorageScope()) return;
+    const value = await offlineWork(workID, scope);
+    if (!value || !value.audio.some((item) => item.id === mediaID)) return;
+    await AsyncStorage.setItem(
+      key(scope, workID),
+      JSON.stringify({
+        ...value,
+        audio_duration_ms: { ...value.audio_duration_ms, [mediaID]: durationMS },
+      }),
+    );
+  });
 }
 
 export async function updateOfflineProgress(

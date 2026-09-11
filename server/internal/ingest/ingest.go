@@ -370,6 +370,27 @@ func (s *Store) AudioChapters(ctx context.Context, actor auth.User, id string) (
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
+	var probe struct {
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &probe); err != nil {
+		return nil, fmt.Errorf("read audio duration: %w", err)
+	}
+	duration, err := secondsToMilliseconds(probe.Format.Duration)
+	if err != nil || duration <= 0 {
+		return nil, fmt.Errorf("%w: invalid audio duration", ErrInvalid)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE media
+		SET duration_ms = ?
+		WHERE id = ? AND sha256 = ?
+	`, duration, media.ID, media.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("store audio duration: %w", err)
+	}
+
 	return chapters, nil
 }
 

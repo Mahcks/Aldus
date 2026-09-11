@@ -350,10 +350,10 @@ func TestCookieAuthenticatedLibraryWorkCoverFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
-	if err := catalogStore.UploadCover(ctx, admin.User, work.ID, strings.NewReader(string(png))); err != nil {
+	if err := catalogStore.UploadCover(ctx, admin.User, work.ID, "", strings.NewReader(string(png))); err != nil {
 		t.Fatal(err)
 	}
-	if err := catalogStore.RestoreCover(ctx, admin.User, work.ID); err != nil {
+	if err := catalogStore.RestoreCover(ctx, admin.User, work.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	mediaStore, err := ingest.New(db, ingest.Options{Root: t.TempDir(), MaxBytes: 1 << 20, Probe: func(context.Context, string) error { return nil }})

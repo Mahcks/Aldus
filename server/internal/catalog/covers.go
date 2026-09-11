@@ -407,24 +407,40 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 	return candidates, nil
 }
 
-func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, source, sourceID string) error {
+func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, format, source, sourceID string) error {
+	column, err := coverSelectionColumn(format)
+	if err != nil {
+		return err
+	}
+
 	if _, err := s.editableWork(ctx, actor, workID); err != nil {
 		return err
 	}
+
 	imageURL := ""
 	if source == "upload" {
-		if err := s.db.QueryRowContext(ctx, `SELECT image_url FROM work_covers WHERE work_id=? AND source='upload' AND source_id=?`, workID, sourceID).Scan(&imageURL); err != nil {
+		if err := s.db.QueryRowContext(ctx, `
+            SELECT image_url
+            FROM work_covers
+            WHERE work_id=? AND source='upload' AND source_id=?
+        `, workID, sourceID).Scan(&imageURL); err != nil {
 			return ErrInvalid
 		}
 	} else if source == "embedded" {
 		var count int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media m JOIN representations r ON r.id=m.representation_id WHERE m.id=? AND r.work_id=?`, sourceID, workID).Scan(&count); err != nil || count != 1 {
+		if err := s.db.QueryRowContext(ctx, `
+            SELECT COUNT(*)
+            FROM media m
+            JOIN representations r ON r.id=m.representation_id
+            WHERE m.id=? AND r.work_id=?
+        `, sourceID, workID).Scan(&count); err != nil || count != 1 {
 			return ErrInvalid
 		}
 		imageURL = "/api/media/" + url.PathEscape(sourceID) + "/cover"
 	} else if source != "open_library" {
 		return ErrInvalid
 	}
+
 	if source == "open_library" {
 		coverID, err := strconv.Atoi(sourceID)
 		if err != nil || coverID <= 0 {
@@ -432,32 +448,56 @@ func (s *Store) SelectCover(ctx context.Context, actor auth.User, workID, source
 		}
 		imageURL = openLibraryCoverURL(sourceID)
 	}
+
 	id, err := randomID()
 	if err != nil {
 		return err
 	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
 	if source != "upload" {
-		_, err = tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(work_id,source,source_id) DO NOTHING`, id, workID, source, sourceID, imageURL, time.Now().UTC().Format(time.RFC3339Nano))
+		_, err = tx.ExecContext(ctx, `
+            INSERT INTO work_covers (id, work_id, source, source_id, image_url, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(work_id, source, source_id) DO NOTHING
+        `, id, workID, source, sourceID, imageURL, time.Now().UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return fmt.Errorf("save work cover: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE works SET selected_cover_id=(SELECT id FROM work_covers WHERE work_id=? AND source=? AND source_id=?),updated_at=? WHERE id=?`, workID, source, sourceID, time.Now().UTC().Format(time.RFC3339Nano), workID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+        UPDATE works
+        SET `+column+`=(
+            SELECT id FROM work_covers
+            WHERE work_id=? AND source=? AND source_id=?
+        ), updated_at=?
+        WHERE id=?
+    `, workID, source, sourceID, time.Now().UTC().Format(time.RFC3339Nano), workID); err != nil {
 		return fmt.Errorf("select work cover: %w", err)
 	}
+
 	return tx.Commit()
 }
 
-func (s *Store) RestoreCover(ctx context.Context, actor auth.User, workID string) error {
+func (s *Store) RestoreCover(ctx context.Context, actor auth.User, workID, format string) error {
+	column, err := coverSelectionColumn(format)
+	if err != nil {
+		return err
+	}
+
 	if _, err := s.editableWork(ctx, actor, workID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE works SET selected_cover_id=NULL,updated_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339Nano), workID)
+	_, err = s.db.ExecContext(ctx, `
+        UPDATE works
+        SET `+column+`=NULL, updated_at=?
+        WHERE id=?
+    `, time.Now().UTC().Format(time.RFC3339Nano), workID)
 	return err
 }
 
@@ -509,18 +549,26 @@ func (s *Store) DeleteCover(ctx context.Context, actor auth.User, workID, coverI
 	return nil
 }
 
-func (s *Store) UploadCover(ctx context.Context, actor auth.User, workID string, reader io.Reader) error {
+func (s *Store) UploadCover(ctx context.Context, actor auth.User, workID, format string, reader io.Reader) error {
+	column, err := coverSelectionColumn(format)
+	if err != nil {
+		return err
+	}
+
 	if _, err := s.editableWork(ctx, actor, workID); err != nil {
 		return err
 	}
+
 	data, err := io.ReadAll(io.LimitReader(reader, 10<<20+1))
 	if err != nil || len(data) == 0 || len(data) > 10<<20 {
 		return ErrInvalid
 	}
+
 	config, imageType, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 40_000_000 || (imageType != "jpeg" && imageType != "png") {
 		return ErrInvalid
 	}
+
 	id, err := randomID()
 	if err != nil {
 		return err
@@ -531,13 +579,23 @@ func (s *Store) UploadCover(ctx context.Context, actor auth.User, workID string,
 		return err
 	}
 	defer tx.Rollback()
+
 	contentType := "image/" + imageType
-	if _, err := tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,image_data,image_type,created_at) VALUES(?,?,?,?,?,?,?,?)`, id, workID, "upload", id, "/api/covers/"+id, data, contentType, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+        INSERT INTO work_covers (
+            id, work_id, source, source_id, image_url, image_data, image_type, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, id, workID, "upload", id, "/api/covers/"+id, data, contentType, now); err != nil {
 		return fmt.Errorf("save uploaded cover: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE works SET selected_cover_id=?,updated_at=? WHERE id=?`, id, now, workID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+        UPDATE works
+        SET `+column+`=?, updated_at=?
+        WHERE id=?
+    `, id, now, workID); err != nil {
 		return err
 	}
+
 	return tx.Commit()
 }
 
@@ -573,5 +631,19 @@ func coverSourceLabel(source string) string {
 		return "Uploaded image"
 	default:
 		return "Open Library"
+	}
+}
+
+// Only these fixed identifiers may be interpolated into cover updates.
+func coverSelectionColumn(format string) (string, error) {
+	switch format {
+	case "":
+		return "selected_cover_id", nil
+	case "ebook":
+		return "ebook_cover_id", nil
+	case "audiobook":
+		return "audiobook_cover_id", nil
+	default:
+		return "", ErrInvalid
 	}
 }

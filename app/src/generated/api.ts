@@ -345,6 +345,8 @@ export interface Work {
   title: string;
   author?: string;
   cover_url?: string;
+  ebook_cover_url?: string;
+  audiobook_cover_url?: string;
   cover_fit: 'cover' | 'contain';
   cover_focal_x: number /* int */;
   cover_focal_y: number /* int */;
@@ -398,6 +400,8 @@ export interface WorkSummary {
   title: string;
   author?: string;
   cover_url?: string;
+  ebook_cover_url?: string;
+  audiobook_cover_url?: string;
   cover_fit: 'cover' | 'contain';
   cover_focal_x: number /* int */;
   cover_focal_y: number /* int */;

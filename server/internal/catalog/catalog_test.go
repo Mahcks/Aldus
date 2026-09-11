@@ -353,17 +353,17 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if err != nil || detail.CompletionPercent != 42 {
 		t.Fatalf("edition completion detail = %#v, %v", detail, err)
 	}
-	if err := store.SelectCover(ctx, admin, alice.ID, "open_library", "10521270"); err != nil {
+	if err := store.SelectCover(ctx, admin, alice.ID, "", "open_library", "10521270"); err != nil {
 		t.Fatal(err)
 	}
 	detail, err = store.WorkDetail(ctx, reader, alice.ID)
 	if err != nil || detail.CoverURL != "https://covers.openlibrary.org/b/id/10521270-L.jpg?default=false" {
 		t.Fatalf("selected cover = %q, %v", detail.CoverURL, err)
 	}
-	if err := store.SelectCover(ctx, reader, alice.ID, "open_library", "1"); !errors.Is(err, ErrNotFound) {
+	if err := store.SelectCover(ctx, reader, alice.ID, "", "open_library", "1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reader selected cover: %v", err)
 	}
-	if err := store.RestoreCover(ctx, admin, alice.ID); err != nil {
+	if err := store.RestoreCover(ctx, admin, alice.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	detail, err = store.WorkDetail(ctx, reader, alice.ID)
@@ -377,7 +377,7 @@ func TestBrowseWorksSearchFiltersPaginationAndIsolation(t *testing.T) {
 	if err != nil || detail.CoverURL != "" || detail.Description != "A curious adventure." {
 		t.Fatalf("metadata detail = %#v, %v", detail, err)
 	}
-	if err := store.SelectCover(ctx, admin, alice.ID, "open_library", "10521270"); err != nil {
+	if err := store.SelectCover(ctx, admin, alice.ID, "", "open_library", "10521270"); err != nil {
 		t.Fatal(err)
 	}
 	detail, err = store.WorkDetail(ctx, reader, alice.ID)

@@ -42,7 +42,7 @@ func TestCatalogAndDownloadsAreIsolatedByUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
-	if err := store.UploadCover(ctx, admin.User, work.ID, bytes.NewReader(png)); err != nil {
+	if err := store.UploadCover(ctx, admin.User, work.ID, "", bytes.NewReader(png)); err != nil {
 		t.Fatal(err)
 	}
 	covers, err := store.Covers(ctx, admin.User, work.ID)

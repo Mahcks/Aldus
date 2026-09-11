@@ -1,3 +1,4 @@
+import { AudioScrubber } from '@/features/AudioScrubber';
 import { ReadAlongPanel } from '@/features/ReadAlongPanel';
 import { activeStorageScope } from '@/lib/storage-scope';
 import type {
@@ -13,7 +14,7 @@ import type { AudioSource } from 'expo-audio';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AccessibilityActionEvent, GestureResponderEvent } from 'react-native';
+import type { AccessibilityActionEvent } from 'react-native';
 import { ActivityIndicator, AppState, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,7 +55,6 @@ import {
   resumedProgressLabel,
   readToListen,
   readyJob,
-  scrubberPosition,
   shouldLoadConsumptionMedia,
   sleepTimerDeadline as deadlineForSleepTimer,
   sleepTimerRemainingSeconds,
@@ -90,6 +90,7 @@ import {
   reconcileOfflineRepresentationStates,
   type RepresentationConflict,
   updateOfflineProgress,
+  rememberOfflineAudioDuration,
   updateOfflineRepresentationState,
 } from '@/lib/offline-library';
 import {
@@ -231,9 +232,9 @@ export default function ConsumeWorkScreen() {
   const [initialAudioMS, setInitialAudioMS] = useState<number>();
   const [currentPlaybackRate, setCurrentPlaybackRate] =
     useState<(typeof PLAYBACK_RATES)[number]>(1);
-  const [trackWidth, setTrackWidth] = useState(1);
   const [syncAvailable, setSyncAvailable] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
+  const [audioScrubbing, setAudioScrubbing] = useState(false);
   const [notice, setNotice] = useState('');
   const [acceptanceNetworkState, setAcceptanceNetworkState] =
     useState<keyof typeof ACCEPTANCE_NETWORK_LABELS>('idle');
@@ -294,10 +295,14 @@ export default function ConsumeWorkScreen() {
     ...(alignment?.segments.map((segment) => segment.audio_end_ms / 1000) ?? []),
   );
   const audioDuration = playableAudioDuration(status.duration, alignedDuration);
-  const audioProgress = audioDuration
-    ? Math.max(0, Math.min(1, status.currentTime / audioDuration))
-    : 0;
-  const audioThumbLeft = Math.max(8, Math.min(trackWidth - 8, audioProgress * trackWidth));
+  useEffect(() => {
+    if (!work?.id || !selectedAudio?.id || !status.isLoaded || status.duration <= 0) return;
+    void rememberOfflineAudioDuration(work.id, selectedAudio.id, status.duration * 1000).catch(
+      () => {
+        // Display metadata is optional; exact progress is saved independently.
+      },
+    );
+  }, [work?.id, selectedAudio?.id, status.isLoaded, status.duration]);
   const canListenFromReader = Boolean(readerLocation?.sync);
   const passage = audioPassage(alignment?.segments, status.currentTime * 1000);
   const chapter = audioChapterAt(audioChapters, status.currentTime * 1000);
@@ -1835,27 +1840,11 @@ export default function ConsumeWorkScreen() {
     setSleepTimerMinutes(minutes);
     setSleepTimerOpen(false);
   }
-  function handleScrubberPress(event: GestureResponderEvent) {
-    const nativeEvent = event.nativeEvent as GestureResponderEvent['nativeEvent'] & {
-      offsetX?: number;
-    };
-    const x = Number.isFinite(nativeEvent.locationX)
-      ? nativeEvent.locationX
-      : (nativeEvent.offsetX ?? NaN);
-    const target = scrubberPosition(x, trackWidth, audioDuration);
-    if (target != null) seekToSeconds(target);
-  }
-  function handleScrubberAccessibilityAction(event: AccessibilityActionEvent) {
-    if (event.nativeEvent.actionName === 'increment') seekToSeconds(status.currentTime + 5);
-    else if (event.nativeEvent.actionName === 'decrement') seekToSeconds(status.currentTime - 5);
-  }
-  function handleScrubberKeyDown(event: { key: string; preventDefault?: () => void }) {
-    if (event.key === 'ArrowRight') {
-      event.preventDefault?.();
-      seekToSeconds(status.currentTime + 5);
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault?.();
-      seekToSeconds(status.currentTime - 5);
+  async function handleScrubberSeek(target: number) {
+    try {
+      await player.seekTo(clampAudioPosition(target, audioDuration), 0, 0);
+    } catch (error) {
+      setNotice(errorMessage(error));
     }
   }
   function handlePlaybackRate(rate: number) {
@@ -1973,7 +1962,6 @@ export default function ConsumeWorkScreen() {
       );
     }
   }
-  const scrubberKeyboardProps = Platform.OS === 'web' ? { onKeyDown: handleScrubberKeyDown } : {};
 
   if (loading || !work)
     return loading ? (
@@ -2356,9 +2344,14 @@ export default function ConsumeWorkScreen() {
             <BookCover
               title={work.title}
               author={work.author}
-              coverURL={work.cover_url}
+              coverURL={
+                work.ebook_cover_url ||
+                (selectedEPUB ? `/api/media/${selectedEPUB.id}/cover` : work.cover_url)
+              }
+              fallbackCoverURL={work.cover_url}
               size="hero"
               {...coverPresentation(work)}
+              coverFit="contain"
             />
             {readerRestoreError ? (
               <View className="w-full max-w-sm items-center gap-3">
@@ -2388,6 +2381,10 @@ export default function ConsumeWorkScreen() {
       {mode === 'listen' ? (
         selectedAudio ? (
           <ScrollView
+            testID="audio-player-scroll"
+            scrollEnabled={!audioScrubbing}
+            bounces={false}
+            alwaysBounceVertical={false}
             className="flex-1"
             onLayout={(event) => setListeningHeight(event.nativeEvent.layout.height)}
             contentContainerClassName="w-full flex-grow pt-4"
@@ -2406,6 +2403,7 @@ export default function ConsumeWorkScreen() {
                 }
               >
                 <View
+                  className={passage ? 'w-14' : undefined}
                   style={
                     passage
                       ? undefined
@@ -2415,10 +2413,12 @@ export default function ConsumeWorkScreen() {
                   <BookCover
                     title={work.title}
                     author={work.author}
-                    coverURL={work.cover_url}
+                    coverURL={work.audiobook_cover_url || `/api/media/${selectedAudio.id}/cover`}
+                    fallbackCoverURL={work.cover_url}
                     size={passage ? 'mini' : 'audio'}
+                    square
                     {...coverPresentation(work)}
-                    coverFit={passage ? work.cover_fit : 'contain'}
+                    coverFit="contain"
                   />
                 </View>
                 <View className={passage ? 'min-w-0 flex-1 gap-1' : 'w-full gap-2'}>
@@ -2447,7 +2447,13 @@ export default function ConsumeWorkScreen() {
                   ) : null}
                 </View>
               </View>
-              {passage ? <ReadAlongPanel passage={passage} playing={status.playing} /> : null}
+              {passage ? (
+                <ReadAlongPanel
+                  passage={passage}
+                  playing={status.playing}
+                  scrollEnabled={!audioScrubbing}
+                />
+              ) : null}
               {status.error ? (
                 <View className="mt-5">
                   <Notice danger>The audiobook could not be opened on this device.</Notice>
@@ -2459,59 +2465,14 @@ export default function ConsumeWorkScreen() {
                 </View>
               ) : null}
               <View className="mt-auto w-full gap-1 pt-6">
-                <Pressable
-                  accessibilityRole="adjustable"
-                  accessibilityLabel="Audiobook position"
-                  accessibilityValue={{
-                    min: 0,
-                    max: Math.round(audioDuration),
-                    now: Math.round(status.currentTime),
-                    text: `${formatAudioTime(status.currentTime)} of ${formatAudioTime(audioDuration)}`,
-                  }}
-                  accessibilityActions={[
-                    { name: 'increment', label: 'Skip ahead 5 seconds' },
-                    { name: 'decrement', label: 'Skip back 5 seconds' },
-                  ]}
-                  accessibilityState={{ disabled: !status.isLoaded }}
-                  disabled={!status.isLoaded}
-                  focusable
-                  onAccessibilityAction={handleScrubberAccessibilityAction}
-                  className={`h-11 w-full justify-center rounded-control focus-visible:border focus-visible:border-focus ${status.isLoaded ? '' : 'opacity-50'}`}
-                  onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-                  onPress={handleScrubberPress}
-                  {...scrubberKeyboardProps}
-                >
-                  <View className="absolute left-0 right-0 h-1.5 rounded-pill bg-panel-strong" />
-                  <View
-                    className="absolute left-0 h-1.5 rounded-pill bg-accent"
-                    style={{
-                      width: `${audioProgress * 100}%`,
-                    }}
-                  />
-                  {status.isLoaded && audioDuration ? (
-                    <View
-                      className="absolute h-4 w-4 rounded-pill bg-accent shadow-xs"
-                      style={{
-                        left: audioThumbLeft,
-                        transform: [{ translateX: -8 }],
-                      }}
-                    />
-                  ) : null}
-                </Pressable>
-                <View className="flex-row justify-between">
-                  <Text
-                    className="text-[13px] font-sans-semibold text-ink"
-                    style={{ fontVariant: ['tabular-nums'] }}
-                  >
-                    {formatAudioTime(status.currentTime)}
-                  </Text>
-                  <Text
-                    className="text-[13px] text-subtle"
-                    style={{ fontVariant: ['tabular-nums'] }}
-                  >
-                    {formatAudioTime(audioDuration)}
-                  </Text>
-                </View>
+                <AudioScrubber
+                  key={audioID}
+                  position={status.currentTime}
+                  duration={audioDuration}
+                  enabled={status.isLoaded}
+                  onSeek={handleScrubberSeek}
+                  onScrubbingChange={setAudioScrubbing}
+                />
               </View>
               {chapter ? (
                 <View className="mt-4 w-full flex-row items-center gap-2 border-y border-line-subtle py-2">

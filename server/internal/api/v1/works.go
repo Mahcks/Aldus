@@ -24,6 +24,9 @@ func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.S
 	router.Get("/works/{workID}/covers", listCovers(store, media))
 	router.Put("/works/{workID}/cover", selectCover(store))
 	router.Post("/works/{workID}/cover", uploadCover(store))
+	router.Put("/works/{workID}/cover/{format}", selectCover(store))
+	router.Post("/works/{workID}/cover/{format}", uploadCover(store))
+	router.Delete("/works/{workID}/cover/{format}", restoreCover(store))
 	router.Patch("/works/{workID}/cover/settings", updateCoverSettings(store))
 	router.Delete("/works/{workID}/covers/{coverID}", deleteCover(store))
 	router.Get("/covers/{coverID}", getCover(store))
@@ -93,7 +96,7 @@ func uploadCover(s *catalog.Store) http.HandlerFunc {
 			return
 		}
 		defer part.Close()
-		writeNoContent(w, s.UploadCover(r.Context(), actor(r), chi.URLParam(r, "workID"), part))
+		writeNoContent(w, s.UploadCover(r.Context(), actor(r), chi.URLParam(r, "workID"), chi.URLParam(r, "format"), part))
 	}
 }
 
@@ -124,7 +127,37 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		}
 		items := make([]contracts.WorkSummary, len(values))
 		for i, value := range values {
-			items[i] = contracts.WorkSummary{Series: value.Series, SeriesPosition: catalog.SeriesPosition(value.SeriesOrder), ID: value.ID, LibraryID: value.LibraryID, LibraryName: value.LibraryName, Title: value.Title, Author: value.Author, CoverURL: value.CoverURL, CoverFit: value.CoverFit, CoverFocalX: value.CoverFocalX, CoverFocalY: value.CoverFocalY, GeneratedCoverStyle: value.GeneratedCoverStyle, GeneratedCoverTone: value.GeneratedCoverTone, GeneratedCoverLayout: value.GeneratedCoverLayout, Readable: value.Readable, Listenable: value.Listenable, Synchronized: value.Synchronized, InProgress: value.InProgress, ProgressUpdatedAt: value.ProgressUpdatedAt, CompletionPercent: value.CompletionPercent, ActiveSeconds: value.ActiveSeconds, ReadingSeconds: value.ReadingSeconds, ListeningSeconds: value.ListeningSeconds, LastMode: value.LastMode, ReadingStatus: value.ReadingStatus, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt}
+			items[i] = contracts.WorkSummary{
+				Series:               value.Series,
+				SeriesPosition:       catalog.SeriesPosition(value.SeriesOrder),
+				ID:                   value.ID,
+				LibraryID:            value.LibraryID,
+				LibraryName:          value.LibraryName,
+				Title:                value.Title,
+				Author:               value.Author,
+				CoverURL:             value.CoverURL,
+				EbookCoverURL:        value.EbookCoverURL,
+				AudiobookCoverURL:    value.AudiobookCoverURL,
+				CoverFit:             value.CoverFit,
+				CoverFocalX:          value.CoverFocalX,
+				CoverFocalY:          value.CoverFocalY,
+				GeneratedCoverStyle:  value.GeneratedCoverStyle,
+				GeneratedCoverTone:   value.GeneratedCoverTone,
+				GeneratedCoverLayout: value.GeneratedCoverLayout,
+				Readable:             value.Readable,
+				Listenable:           value.Listenable,
+				Synchronized:         value.Synchronized,
+				InProgress:           value.InProgress,
+				ProgressUpdatedAt:    value.ProgressUpdatedAt,
+				CompletionPercent:    value.CompletionPercent,
+				ActiveSeconds:        value.ActiveSeconds,
+				ReadingSeconds:       value.ReadingSeconds,
+				ListeningSeconds:     value.ListeningSeconds,
+				LastMode:             value.LastMode,
+				ReadingStatus:        value.ReadingStatus,
+				CreatedAt:            value.CreatedAt,
+				UpdatedAt:            value.UpdatedAt,
+			}
 		}
 		writeJSON(w, http.StatusOK, contracts.WorkBrowsePage{Items: items, Offset: offset, HasMore: hasMore})
 	}
@@ -174,13 +207,13 @@ func selectCover(s *catalog.Store) http.HandlerFunc {
 		if !decode(w, r, &body) {
 			return
 		}
-		writeNoContent(w, s.SelectCover(r.Context(), actor(r), chi.URLParam(r, "workID"), body.Source, body.SourceID))
+		writeNoContent(w, s.SelectCover(r.Context(), actor(r), chi.URLParam(r, "workID"), chi.URLParam(r, "format"), body.Source, body.SourceID))
 	}
 }
 
 func restoreCover(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeNoContent(w, s.RestoreCover(r.Context(), actor(r), chi.URLParam(r, "workID")))
+		writeNoContent(w, s.RestoreCover(r.Context(), actor(r), chi.URLParam(r, "workID"), chi.URLParam(r, "format")))
 	}
 }
 

@@ -540,16 +540,30 @@ export const api = {
     request<CoverCandidate[]>(`/works/${id}/covers/search?q=${encodeURIComponent(query)}`),
   embeddedCovers: (id: string) => request<CoverCandidate[]>(`/works/${id}/covers/search`),
   covers: (id: string) => request<CoverAsset[]>(`/works/${id}/covers`),
-  selectCover: (id: string, source: string, sourceID: string) =>
-    request<void>(`/works/${id}/cover`, {
+  selectCover: (
+    id: string,
+    source: string,
+    sourceID: string,
+    format: '' | 'ebook' | 'audiobook' = '',
+  ) =>
+    request<void>(`/works/${id}/cover${format ? `/${format}` : ''}`, {
       method: 'PUT',
       body: JSON.stringify({ source, source_id: sourceID }),
     }),
-  restoreCover: (id: string) => request<void>(`/works/${id}/cover`, { method: 'DELETE' }),
-  uploadCover: (id: string, file: Blob, filename: string) => {
+  restoreCover: (id: string, format: '' | 'ebook' | 'audiobook' = '') =>
+    request<void>(`/works/${id}/cover${format ? `/${format}` : ''}`, { method: 'DELETE' }),
+  uploadCover: (
+    id: string,
+    file: Blob,
+    filename: string,
+    format: '' | 'ebook' | 'audiobook' = '',
+  ) => {
     const body = new FormData();
     body.append('file', file, filename);
-    return request<void>(`/works/${id}/cover`, { method: 'POST', body });
+    return request<void>(`/works/${id}/cover${format ? `/${format}` : ''}`, {
+      method: 'POST',
+      body,
+    });
   },
   updateCoverSettings: (id: string, body: UpdateCoverSettingsRequest) =>
     request<void>(`/works/${id}/cover/settings`, {

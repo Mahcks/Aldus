@@ -142,7 +142,7 @@ func TestSaveRefreshedMetadataPreservesExistingValues(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `UPDATE work_metadata SET description='Curated'; UPDATE works SET selected_cover_id=NULL WHERE id=?`, work.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SelectCover(ctx, admin, work.ID, "open_library", "99"); err != nil {
+	if err := store.SelectCover(ctx, admin, work.ID, "", "open_library", "99"); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.saveRefreshedMetadata(ctx, work.ID, refreshedMetadata{CoverID: "100", Description: "Replacement"}); err != nil {
@@ -208,14 +208,14 @@ func TestCoverStudioSettingsLibraryAndUploadDeletion(t *testing.T) {
 	library, _ := store.CreateLibrary(ctx, admin, "Library")
 	work, _ := store.CreateWork(ctx, admin, library.ID, "Alice", "Lewis Carroll")
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
-	if err := store.UploadCover(ctx, admin, work.ID, bytes.NewReader(png)); err != nil {
+	if err := store.UploadCover(ctx, admin, work.ID, "", bytes.NewReader(png)); err != nil {
 		t.Fatal(err)
 	}
 	assets, err := store.Covers(ctx, admin, work.ID)
 	if err != nil || len(assets) != 1 || assets[0].Source != "upload" || !assets[0].Selected {
 		t.Fatalf("assets = %#v, %v", assets, err)
 	}
-	if err := store.RestoreCover(ctx, admin, work.ID); err != nil {
+	if err := store.RestoreCover(ctx, admin, work.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	assets, err = store.Covers(ctx, admin, work.ID)

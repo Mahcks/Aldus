@@ -14,7 +14,11 @@ for (const width of [390, 1024, 1440]) {
       title: `Started book ${index + 1}`,
       in_progress: true,
       completion_percent: 20 + index,
-      last_mode: index % 2 === 0 ? 'listen' : 'read',
+      last_mode: index === 1 || index % 2 === 0 ? 'listen' : 'read',
+      readable: true,
+      listenable: index !== 1,
+      cover_url: '/api/covers/continue-fallback',
+      audiobook_cover_url: '/api/media/audio-cover/cover',
     }));
     const requests: URL[] = [];
     await page.route('**/api/v1/works?*', async (route) => {
@@ -31,18 +35,28 @@ for (const width of [390, 1024, 1440]) {
         },
       });
     });
+    await page.route('**/api/media/audio-cover/cover', route => route.fulfill({ status: 404 }));
+    await page.route('**/api/covers/continue-fallback', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="sienna"/></svg>' }));
     await page.goto('/home');
     await expect(
       page.getByRole('button', { name: 'Continue listening', exact: true }),
     ).toBeVisible();
-    const second = page.getByRole('link', { name: /^Started book 2 by / });
+    const second = page.getByRole('button', { name: /^Started book 2 by / });
     await expect(second).toBeVisible();
-    const fourth = page.getByRole('link', { name: /^Started book 4 by / });
+    const fourth = page.getByRole('button', { name: /^Started book 4 by / });
     await expect(fourth).toBeVisible();
-    const secondBounds = await second.boundingBox();
-    const fourthBounds = await fourth.boundingBox();
-    expect(fourthBounds!.y).toBeGreaterThan(secondBounds!.y);
-    expect(fourthBounds!.x).toBe(secondBounds!.x);
+    const featuredCover = page.getByLabel('Cover for Started book 1', { exact: true });
+    const coverBounds = await featuredCover.boundingBox();
+    expect(Math.abs(coverBounds!.width - coverBounds!.height)).toBeLessThan(2);
+    await expect(page.getByText(/\d+ books? in progress/)).toHaveCount(0);
+    const audiobookCover = page.getByLabel('Cover for Started book 3', { exact: true });
+    await expect(audiobookCover.locator('img[src$="/api/covers/continue-fallback"]')).toHaveCount(1);
+    const audiobookBounds = await audiobookCover.boundingBox();
+    expect(Math.abs(audiobookBounds!.width - audiobookBounds!.height)).toBeLessThan(2);
+    await second.click();
+    await expect(page).toHaveURL(/consume\/started-2\?mode=read/);
+    await page.goBack();
+    await expect(page.getByRole('button', { name: 'See all', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('continue-home.png'), fullPage: true });
     await page.getByRole('button', { name: 'See all', exact: true }).click();
     await expect(page).toHaveURL(/books\?status=in_progress/);

@@ -29,7 +29,25 @@ func libraryDTO(v catalog.Library) contracts.Library {
 }
 
 func workDTO(v catalog.Work) contracts.Work {
-	return contracts.Work{Series: v.Series, SeriesPosition: catalog.SeriesPosition(v.SeriesOrder), ID: v.ID, LibraryID: v.LibraryID, Title: v.Title, Author: v.Author, CoverURL: v.CoverURL, CoverFit: v.CoverFit, CoverFocalX: v.CoverFocalX, CoverFocalY: v.CoverFocalY, GeneratedCoverStyle: v.GeneratedCoverStyle, GeneratedCoverTone: v.GeneratedCoverTone, GeneratedCoverLayout: v.GeneratedCoverLayout, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.Work{
+		Series:               v.Series,
+		SeriesPosition:       catalog.SeriesPosition(v.SeriesOrder),
+		ID:                   v.ID,
+		LibraryID:            v.LibraryID,
+		Title:                v.Title,
+		Author:               v.Author,
+		CoverURL:             v.CoverURL,
+		EbookCoverURL:        v.EbookCoverURL,
+		AudiobookCoverURL:    v.AudiobookCoverURL,
+		CoverFit:             v.CoverFit,
+		CoverFocalX:          v.CoverFocalX,
+		CoverFocalY:          v.CoverFocalY,
+		GeneratedCoverStyle:  v.GeneratedCoverStyle,
+		GeneratedCoverTone:   v.GeneratedCoverTone,
+		GeneratedCoverLayout: v.GeneratedCoverLayout,
+		CreatedAt:            v.CreatedAt,
+		UpdatedAt:            v.UpdatedAt,
+	}
 }
 
 func workDetailDTO(v catalog.WorkDetail) contracts.WorkDetail {

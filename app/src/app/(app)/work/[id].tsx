@@ -452,14 +452,51 @@ export default function WorkScreen() {
     }
   }
 
-  const cover = (
-    <BookCover
-      title={work.title}
-      author={work.author}
-      coverURL={work.cover_url}
-      size={narrow ? 'small' : 'hero'}
-      {...coverPresentation(work)}
-    />
+  const hasBothEditions = Boolean(selectedEPUB && selectedAudio);
+  const cover = hasBothEditions ? (
+    <View className="w-full max-w-[440px] flex-row items-end gap-5 sm:max-w-[320px] sm:gap-8 xl:max-w-[440px]">
+      <View className="min-w-0 flex-1 gap-3">
+        <BookCover
+          title={work.title}
+          author={work.author}
+          coverURL={work.ebook_cover_url || `/api/media/${selectedEPUB!.id}/cover`}
+          fallbackCoverURL={work.cover_url}
+          size="grid"
+          {...coverPresentation(work)}
+          coverFit="contain"
+        />
+        <Text className="text-sm font-sans-medium text-muted">Ebook</Text>
+      </View>
+      <View className="min-w-0 flex-1 gap-3">
+        <BookCover
+          title={work.title}
+          author={work.author}
+          coverURL={work.audiobook_cover_url || `/api/media/${selectedAudio!.id}/cover`}
+          fallbackCoverURL={work.cover_url}
+          size="audio"
+          {...coverPresentation(work)}
+          coverFit="contain"
+        />
+        <Text className="text-sm font-sans-medium text-muted">Audiobook</Text>
+      </View>
+    </View>
+  ) : (
+    <View className={narrow ? 'w-[148px]' : 'w-[204px]'}>
+      <BookCover
+        title={work.title}
+        author={work.author}
+        coverURL={
+          (selectedEPUB ? work.ebook_cover_url : work.audiobook_cover_url) ||
+          (selectedEPUB || selectedAudio
+            ? `/api/media/${(selectedEPUB || selectedAudio)!.id}/cover`
+            : work.cover_url)
+        }
+        fallbackCoverURL={work.cover_url}
+        size={selectedAudio && !selectedEPUB ? 'audio' : narrow ? 'small' : 'hero'}
+        {...coverPresentation(work)}
+        coverFit="contain"
+      />
+    </View>
   );
   const identity = (
     <View className={narrow ? 'min-w-0 flex-1 gap-2' : 'gap-3'}>
@@ -615,7 +652,9 @@ export default function WorkScreen() {
         >
           {narrow ? (
             <>
-              <View className="w-full flex-row items-start gap-5">
+              <View
+                className={hasBothEditions ? 'w-full gap-5' : 'w-full flex-row items-start gap-5'}
+              >
                 {cover}
                 <View className="min-w-0 flex-1 gap-4">
                   {identity}

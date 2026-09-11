@@ -32,6 +32,8 @@ const { getAPIBaseURL, setAPIBaseURL } = await import('./api-base');
 const {
   acknowledgeOfflineRepresentationState,
   offlineWork,
+  offlineWorkSummaries,
+  rememberOfflineAudioDuration,
   reconcileOfflineRepresentationStates,
   updateOfflineRepresentationState,
 } = await import('./offline-library.native');
@@ -220,4 +222,19 @@ test('a failed replay keeps its expected revision and local position for retry',
   expect(await reconcileOfflineRepresentationStates()).toEqual([]);
   expect((await offlineWork('work'))?.epub_state).toEqual(local);
   expect((await offlineWork('work'))?.pending_representation_states?.epub).toBe(true);
+});
+
+test('offline audiobook completion uses the cached file duration without changing saved progress', async () => {
+  const state = queueEdition('audio');
+  const key = [...storage.keys()].find((key) => key.endsWith('offline-work:work'))!;
+  const value = JSON.parse(storage.get(key)!);
+  value.audio = [{ id: 'audio', kind: 'audio', size_bytes: 0, representation: { kind: 'audio' } }];
+  value.audio_id = 'audio';
+  storage.set(key, JSON.stringify(value));
+  await rememberOfflineAudioDuration('work', 'audio', 480000);
+  const summaries = await offlineWorkSummaries();
+  expect(summaries[0].completion_percent).toBe(25);
+  expect((await offlineWork('work'))?.audio_state).toEqual(state);
+  await rememberOfflineAudioDuration('work', 'other-media', 1000);
+  expect((await offlineWork('work'))?.audio_duration_ms?.['other-media']).toBeUndefined();
 });

@@ -9,6 +9,7 @@ import { LibraryGrid } from '@/features/library-grid';
 import { libraryDensity, libraryDensityKey, type LibraryDensity } from '@/features/library-layout';
 import { BrowseControls, BrowseFacet } from '@/features/browse';
 import { offlineBrowseWorks } from '@/features/offline-browse';
+import { workResumeMode } from '@/features/work-resume';
 import { workQuickActions } from '@/features/work-actions';
 import { Text, View } from '@/features/tw';
 import {
@@ -153,11 +154,8 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
 
   function openBook(work: WorkSummary) {
     stashVisit();
-    router.push(
-      inProgress
-        ? `/consume/${work.id}?mode=${work.last_mode || (work.readable ? 'read' : 'listen')}`
-        : `/work/${work.id}`,
-    );
+    const mode = workResumeMode(work);
+    router.push(inProgress && mode ? `/consume/${work.id}?mode=${mode}` : `/work/${work.id}`);
   }
 
   useEffect(() => {

@@ -7,9 +7,11 @@ import { ScrollView, Text, View } from './tw';
 export function ReadAlongPanel({
   passage,
   playing,
+  scrollEnabled = true,
 }: {
   passage: NonNullable<ReturnType<typeof audioPassage>>;
   playing: boolean;
+  scrollEnabled?: boolean;
 }) {
   const scroll = useRef<NativeScrollView>(null);
   let label = 'Read along';
@@ -24,6 +26,9 @@ export function ReadAlongPanel({
       <Text className="text-sm font-sans-semibold text-accent">{label}</Text>
       <ScrollView
         ref={scroll}
+        scrollEnabled={scrollEnabled}
+        bounces={false}
+        alwaysBounceVertical={false}
         accessibilityLabel="Read along text"
         className="min-h-[160px] w-full flex-1"
         contentContainerClassName="gap-6 pb-5 pr-3"

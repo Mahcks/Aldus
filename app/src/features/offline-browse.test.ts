@@ -32,3 +32,17 @@ describe('offlineBrowseWorks', () => {
     ).toEqual(['1']);
   });
 });
+
+test('sorts offline Continue by latest progress before limiting the preview', () => {
+  const works = [
+    work({ id: 'old', title: 'Old', in_progress: true, progress_updated_at: '2026-01-01' }),
+    work({ id: 'new', title: 'New', in_progress: true, progress_updated_at: '2026-02-01' }),
+    work({ id: 'unstarted', title: 'Unstarted', progress_updated_at: '2026-03-01' }),
+  ];
+  expect(
+    offlineBrowseWorks(works, { availability: 'in_progress', sort: 'progress', status: '' })
+      .slice(0, 1)
+      .map((item) => item.id),
+  ).toEqual(['new']);
+  expect(works[0].id).toBe('old');
+});

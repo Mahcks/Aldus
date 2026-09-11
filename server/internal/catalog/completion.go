@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -24,12 +25,22 @@ func (s *Store) editionCompletion(ctx context.Context, actor auth.User, workIDs 
 	args = append(args, auth.LibraryAccessArgs(actor)...)
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT r.work_id, rs.epub_locator
+		SELECT
+		  r.work_id,
+		  COALESCE(rs.epub_locator, ''),
+		  rs.audio_timestamp_ms,
+		  (
+		    SELECT m.duration_ms
+		    FROM media m
+		    WHERE m.representation_id = r.id
+		    ORDER BY m.created_at DESC, m.id DESC
+		    LIMIT 1
+		  )
 		FROM representation_state rs
 		JOIN representations r ON r.id = rs.representation_id
 		JOIN works w ON w.id = r.work_id
 		WHERE rs.user_id = ?
-		  AND rs.epub_locator IS NOT NULL
+		  AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL)
 		  AND NOT EXISTS (
 		    SELECT 1 FROM progress p
 		    JOIN alignment_segments s ON s.alignment_id = p.alignment_id AND s.id = p.segment_id
@@ -45,13 +56,17 @@ func (s *Store) editionCompletion(ctx context.Context, actor auth.User, workIDs 
 
 	for rows.Next() {
 		var id, locator string
-		if err := rows.Scan(&id, &locator); err != nil {
+		var timestamp, duration sql.NullInt64
+		if err := rows.Scan(&id, &locator, &timestamp, &duration); err != nil {
 			return nil, fmt.Errorf("scan edition completion: %w", err)
 		}
 		if _, exists := result[id]; exists {
 			continue
 		}
-		if percent, ok := locatorCompletion([]byte(locator)); ok {
+		if timestamp.Valid && duration.Valid && duration.Int64 > 0 {
+			position := min(max(timestamp.Int64, 0), duration.Int64)
+			result[id] = int(float64(position) * 100 / float64(duration.Int64))
+		} else if percent, ok := locatorCompletion([]byte(locator)); ok {
 			result[id] = percent
 		}
 	}

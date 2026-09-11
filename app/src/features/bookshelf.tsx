@@ -84,8 +84,10 @@ export function BookCover({
   title,
   author,
   compact,
+  square = false,
   size,
   coverURL,
+  fallbackCoverURL,
   coverFit = 'cover',
   coverFocalX = 50,
   coverFocalY = 50,
@@ -96,25 +98,29 @@ export function BookCover({
   title: string;
   author?: string;
   compact?: boolean;
+  square?: boolean;
   size?: 'mini' | 'small' | 'grid' | 'tile' | 'continue' | 'hero' | 'audio';
   coverURL?: string;
+  fallbackCoverURL?: string;
 } & CoverPresentation) {
-  const [failedURL, setFailedURL] = useState('');
-  const showImage = Boolean(coverURL && failedURL !== coverURL);
+  const [failedURLs, setFailedURLs] = useState<string[]>([]);
+  const imageURL = [coverURL, fallbackCoverURL].find((url) => url && !failedURLs.includes(url));
+  const showImage = Boolean(imageURL);
   const resolvedSize = size ?? (compact ? 'hero' : 'tile');
   const sizeClass = {
-    mini: 'h-20 w-14',
-    small: 'h-[218px] w-[148px]',
+    mini: square ? 'h-14 w-14' : 'h-20 w-14',
+    small: square ? 'h-[148px] w-[148px]' : 'h-[218px] w-[148px]',
     grid: 'w-full',
-    tile: 'h-[270px] w-[184px]',
-    continue: 'h-[156px] w-[106px]',
-    hero: 'h-[300px] w-[204px]',
+    tile: square ? 'h-[184px] w-[184px]' : 'h-[270px] w-[184px]',
+    continue: square ? 'h-[106px] w-[106px]' : 'h-[156px] w-[106px]',
+    hero: square ? 'h-[204px] w-[204px]' : 'h-[300px] w-[204px]',
     audio: 'aspect-square w-full max-w-[340px]',
   }[resolvedSize];
   const coverToneIndex =
     generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length;
   const coverTone = coverTones[coverToneIndex];
-  const thumbnail = resolvedSize === 'mini' || resolvedSize === 'continue';
+  const thumbnail =
+    resolvedSize === 'mini' || resolvedSize === 'continue' || (square && resolvedSize === 'small');
   const outerPaddingClass = thumbnail ? 'p-1.5' : 'p-2.5';
   const innerPaddingClass = thumbnail ? 'px-1.5 py-2' : 'px-2 py-4';
   const displayTitle = coverDisplayTitle(title);
@@ -156,14 +162,14 @@ export function BookCover({
     <View
       accessibilityLabel={`Cover for ${title}`}
       className={`relative shrink-0 overflow-hidden rounded-control shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
-      style={resolvedSize === 'grid' ? { aspectRatio: 148 / 218 } : undefined}
+      style={resolvedSize === 'grid' ? { aspectRatio: square ? 1 : 148 / 218 } : undefined}
     >
       {showImage ? (
         <ExpoImage
           source={{
-            uri: coverURL?.startsWith('/')
-              ? `${apiBaseURL}${coverURL}`
-              : resolveCoverSrc(coverURL || ''),
+            uri: imageURL?.startsWith('/')
+              ? `${apiBaseURL}${imageURL}`
+              : resolveCoverSrc(imageURL || ''),
           }}
           contentFit={coverFit}
           contentPosition={{ left: `${coverFocalX}%`, top: `${coverFocalY}%` }}
@@ -176,7 +182,9 @@ export function BookCover({
             bottom: 0,
             backgroundColor: coverFit === 'contain' ? coverToneHex[coverToneIndex] : colors.panel,
           }}
-          onError={() => setFailedURL(coverURL || '')}
+          onError={() => {
+            if (imageURL) setFailedURLs((urls) => [...urls, imageURL]);
+          }}
         />
       ) : null}
       {showImage ? null : (
@@ -277,6 +285,7 @@ type WorkPresentationProps = {
   author?: string;
   coverURL?: string;
   coverPresentation?: CoverPresentation;
+  fallbackCoverURL?: string;
   availability?: WorkAvailability;
   progress?: string;
   narrow?: boolean;
@@ -304,6 +313,8 @@ export function WorkCard({
   title,
   author,
   coverURL,
+  fallbackCoverURL,
+  audioArtwork = false,
   coverPresentation,
   availability,
   progress,
@@ -315,6 +326,7 @@ export function WorkCard({
   onPress,
 }: WorkPresentationProps & {
   href?: Href;
+  audioArtwork?: boolean;
   actions?: WorkQuickAction[];
   onBeforeOpen?: () => void;
 }) {
@@ -358,7 +370,10 @@ export function WorkCard({
           title={title}
           author={author}
           coverURL={coverURL}
+          fallbackCoverURL={fallbackCoverURL}
+          square={audioArtwork}
           {...coverPresentation}
+          coverFit={audioArtwork ? 'contain' : coverPresentation?.coverFit}
           size={narrow ? 'grid' : 'tile'}
         />
         {progress ? (
@@ -440,13 +455,15 @@ export function WorkRow({
   title,
   author,
   coverURL,
+  fallbackCoverURL,
   coverPresentation,
   availability,
   progress,
   onPress,
   action,
   separator = false,
-}: WorkPresentationProps & { action?: ReactNode; separator?: boolean }) {
+  audioArtwork = false,
+}: WorkPresentationProps & { action?: ReactNode; separator?: boolean; audioArtwork?: boolean }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
 
@@ -474,8 +491,11 @@ export function WorkRow({
             title={title}
             author={author}
             coverURL={coverURL}
+            fallbackCoverURL={fallbackCoverURL}
             size="mini"
+            square={audioArtwork}
             {...coverPresentation}
+            coverFit={audioArtwork ? 'contain' : coverPresentation?.coverFit}
           />
         </View>
         <View className="min-w-0 flex-1 gap-1">
@@ -587,9 +607,11 @@ export function ContinueCard({
   title,
   author,
   coverURL,
+  fallbackCoverURL,
   coverPresentation,
   progress,
   continueMode,
+  audioArtwork = false,
   onRead,
   onListen,
   completionPercent,
@@ -602,11 +624,14 @@ export function ContinueCard({
   title: string;
   author?: string;
   coverURL?: string;
+  fallbackCoverURL?: string;
   coverPresentation?: CoverPresentation;
   context?: string;
   availability: WorkAvailability;
   progress?: string;
   continueMode: 'read' | 'listen';
+  /** Square-crop the cover, same as `WorkRow`'s prop of the same name — pass this only when `coverURL` is genuine album-style audiobook art, not just because the mode is "listen". A portrait book cover forced square gets letterboxed. */
+  audioArtwork?: boolean;
   completionPercent?: number;
   /** `hero` gives the cover and title room to breathe — use it where Continue is the star of the screen (Home). */
   size?: keyof typeof continueSizeClass;
@@ -637,14 +662,17 @@ export function ContinueCard({
       accessibilityHint="Press and hold for book actions"
       onPress={Platform.OS === 'ios' ? undefined : onContinue}
       onLongPress={Platform.OS === 'ios' ? undefined : () => setMenuOpen(true)}
-      className={`relative rounded-control ${coverStateClass}`}
+      className={`relative rounded-control ${audioArtwork ? (size === 'hero' ? 'w-[148px]' : 'w-[106px]') : ''} ${coverStateClass}`}
     >
       <BookCover
         title={title}
         author={author}
         coverURL={coverURL}
+        fallbackCoverURL={fallbackCoverURL}
         size={size === 'hero' ? 'small' : size}
+        square={audioArtwork}
         {...coverPresentation}
+        coverFit={audioArtwork ? 'contain' : coverPresentation?.coverFit}
       />
       {progress && size !== 'hero' ? (
         <View className="absolute left-1.5 top-1.5 max-w-[85%] rounded-pill bg-ink/80 px-1.5 py-0.5 shadow-xs">

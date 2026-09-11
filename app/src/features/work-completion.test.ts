@@ -33,8 +33,17 @@ test('offline completion follows the saved canonical position instead of the dow
       alignment,
       { totalProgression: 0.1 },
       0,
+      { timestamp: 1000, duration: 10000 },
     ),
   ).toBe(75);
   expect(offlineCompletion(null, undefined, { totalProgression: 0.42 }, 0)).toBe(42);
   expect(offlineCompletion(null, undefined, {}, 20)).toBe(20);
+});
+
+test('standalone audio completion uses full duration and retains canonical precedence', () => {
+  expect(offlineCompletion(null, undefined, {}, 0, { timestamp: 2500, duration: 10000 })).toBe(25);
+  expect(offlineCompletion(null, undefined, {}, 8, { timestamp: 2500, duration: 0 })).toBe(8);
+  expect(offlineCompletion(null, undefined, {}, 0, { timestamp: 12000, duration: 10000 })).toBe(
+    100,
+  );
 });

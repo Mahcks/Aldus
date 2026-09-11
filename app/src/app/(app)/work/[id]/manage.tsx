@@ -144,6 +144,7 @@ export default function ManageWorkScreen() {
   const [selectedGenreIDs, setSelectedGenreIDs] = useState<string[]>([]);
   const [epubID, setEPUBID] = useState('');
   const [audioID, setAudioID] = useState('');
+  const [coverFormat, setCoverFormat] = useState<'' | 'ebook' | 'audiobook'>('');
   const [coverQuery, setCoverQuery] = useState('');
   const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[]>([]);
   const [coverAssets, setCoverAssets] = useState<CoverAsset[]>([]);
@@ -261,7 +262,13 @@ export default function ManageWorkScreen() {
   const selectedPairJob = jobs.find(
     (job) => job.epub_media_id === epubID && job.audio_media_id === audioID,
   );
-  const selectedCoverAsset = coverAssets.find((asset) => asset.selected);
+  const coverURL =
+    coverFormat === 'ebook'
+      ? work.ebook_cover_url
+      : coverFormat === 'audiobook'
+        ? work.audiobook_cover_url
+        : work.cover_url;
+  const selectedCoverAsset = coverAssets.find((asset) => asset.image_url === coverURL);
   const syncRunning =
     selectedPairJob?.state === 'pending' || selectedPairJob?.state === 'processing';
   const syncReady = selectedPairJob?.state === 'ready';
@@ -463,7 +470,7 @@ export default function ManageWorkScreen() {
     setError('');
     setMetadataMessage('');
     try {
-      await api.selectCover(id, candidate.source, candidate.source_id);
+      await api.selectCover(id, candidate.source, candidate.source_id, coverFormat);
       await load();
       setMetadataMessage('Artwork selected.');
     } catch (value) {
@@ -478,9 +485,11 @@ export default function ManageWorkScreen() {
     setError('');
     setMetadataMessage('');
     try {
-      await api.restoreCover(id);
+      await api.restoreCover(id, coverFormat);
       await load();
-      setMetadataMessage('Generated cover restored.');
+      setMetadataMessage(
+        coverFormat ? 'Automatic format artwork restored.' : 'Generated cover restored.',
+      );
     } catch (value) {
       setError(errorMessage(value));
     } finally {
@@ -533,7 +542,7 @@ export default function ManageWorkScreen() {
     try {
       const asset = result.assets[0];
       const blob = await fetch(asset.uri).then((response) => response.blob());
-      await api.uploadCover(id, blob, asset.name);
+      await api.uploadCover(id, blob, asset.name, coverFormat);
       await load();
       setMetadataMessage('Artwork uploaded.');
     } catch (value) {
@@ -609,6 +618,19 @@ export default function ManageWorkScreen() {
 
         {activeTab === 'artwork' ? (
           <View className="gap-8">
+            <Select
+              label="Artwork for"
+              disabled={Boolean(savingCover)}
+              value={coverFormat}
+              options={[
+                { value: '', label: 'Library cover' },
+                { value: 'ebook', label: 'Ebook cover' },
+                { value: 'audiobook', label: 'Audiobook cover' },
+              ]}
+              onChange={(value) => {
+                setCoverFormat(value as '' | 'ebook' | 'audiobook');
+              }}
+            />
             <Section
               title="Cover studio"
               action={
@@ -628,9 +650,10 @@ export default function ManageWorkScreen() {
                   <BookCover
                     title={work.title}
                     author={work.author}
-                    coverURL={work.cover_url}
-                    size="hero"
-                    coverFit={coverFit}
+                    coverURL={coverURL}
+                    fallbackCoverURL={coverFormat ? work.cover_url : undefined}
+                    size={coverFormat === 'audiobook' ? 'audio' : 'hero'}
+                    coverFit={coverFormat ? 'contain' : coverFit}
                     coverFocalX={Number(coverFocalPoint.split(':')[0])}
                     coverFocalY={Number(coverFocalPoint.split(':')[1])}
                     generatedCoverStyle={generatedStyle}
@@ -638,128 +661,154 @@ export default function ManageWorkScreen() {
                     generatedCoverLayout={generatedLayout}
                   />
                   <StatusBadge
-                    tone={work.cover_url ? 'success' : 'neutral'}
-                    label={work.cover_url ? 'Selected artwork' : 'Generated cover'}
+                    tone={coverURL ? 'success' : 'neutral'}
+                    label={
+                      coverFormat
+                        ? 'Format artwork'
+                        : coverURL
+                          ? 'Selected artwork'
+                          : 'Generated cover'
+                    }
                   />
                   <Text className="text-center text-xs text-muted">
                     {selectedCoverAsset?.label ||
                       (work.cover_url ? 'Custom artwork' : 'Aldus cover design')}
                   </Text>
                 </View>
-                <View className="min-w-[280px] max-w-[640px] flex-1 gap-6">
-                  {work.cover_url ? (
-                    <View className="gap-5">
-                      <View className="gap-1">
-                        <Text className="text-base font-sans-bold text-ink">Image display</Text>
-                        <Text className={shared.itemMeta}>
-                          The preview updates immediately. Changes are published when you save.
-                        </Text>
-                      </View>
-                      <Select
-                        label="Fit"
-                        value={coverFit}
-                        options={[
-                          { value: 'cover', label: 'Fill cover' },
-                          { value: 'contain', label: 'Show full image' },
-                        ]}
-                        onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
-                      />
-                      <FocalPointPicker value={coverFocalPoint} onChange={setCoverFocalPoint} />
-                    </View>
-                  ) : null}
-                  {work.cover_url ? (
-                    <Button
-                      label={fallbackOpen ? 'Hide fallback design' : 'Edit fallback design'}
-                      kind="quiet"
-                      onPress={() => setFallbackOpen((value) => !value)}
-                    />
-                  ) : null}
-                  {!work.cover_url || fallbackOpen ? (
-                    <View className="gap-5 border-t border-line pt-5">
-                      <View className="gap-1">
-                        <Text className="text-base font-sans-bold text-ink">
-                          {work.cover_url ? 'Fallback cover' : 'Generated cover'}
-                        </Text>
-                        <Text className={shared.itemMeta}>
-                          {work.cover_url
-                            ? 'Used if the selected artwork is removed.'
-                            : 'Used now because no custom artwork is selected.'}
-                        </Text>
-                      </View>
-                      {work.cover_url ? (
-                        <BookCover
-                          title={work.title}
-                          author={work.author}
-                          size="small"
-                          generatedCoverStyle={generatedStyle}
-                          generatedCoverTone={Number(generatedTone)}
-                          generatedCoverLayout={generatedLayout}
-                        />
-                      ) : null}
-                      <Select
-                        label="Design"
-                        value={generatedStyle}
-                        options={[
-                          { value: 'classic', label: 'Classic' },
-                          { value: 'minimal', label: 'Minimal' },
-                          { value: 'framed', label: 'Framed' },
-                        ]}
-                        onChange={(value) =>
-                          setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')
-                        }
-                      />
-                      <Select
-                        label="Title position"
-                        value={generatedLayout}
-                        options={[
-                          { value: 'top', label: 'Top' },
-                          { value: 'center', label: 'Center' },
-                          { value: 'bottom', label: 'Bottom' },
-                        ]}
-                        onChange={(value) =>
-                          setGeneratedLayout(value as 'top' | 'center' | 'bottom')
-                        }
-                      />
-                      <Select
-                        label="Cloth color"
-                        value={generatedTone}
-                        options={[
-                          { value: '-1', label: 'Automatic' },
-                          { value: '0', label: 'Ink' },
-                          { value: '1', label: 'Umber' },
-                          { value: '2', label: 'Terracotta' },
-                          { value: '3', label: 'Slate' },
-                          { value: '4', label: 'Sage' },
-                        ]}
-                        onChange={setGeneratedTone}
-                      />
-                    </View>
-                  ) : null}
-                  <View className="gap-3 border-t border-line pt-5">
+                {coverFormat ? (
+                  <View className="w-full gap-4 sm:min-w-[280px] sm:max-w-md sm:flex-1">
                     <Text className={shared.itemMeta}>
-                      This cover is shared by reading and listening. Aldus never modifies the source
-                      ebook or audiobook.
+                      Choose an image below or upload your own. This changes only the {coverFormat}{' '}
+                      artwork. The original files stay untouched.
                     </Text>
-                    <Row>
-                      <Button
-                        label="Save artwork"
-                        kind="primary"
-                        loading={savingCover === 'settings'}
-                        disabled={Boolean(savingCover)}
-                        onPress={() => void saveCoverSettings()}
-                      />
-                      {work.cover_url ? (
-                        <Button
-                          label="Use generated cover"
-                          kind="secondary"
-                          loading={savingCover === 'restore'}
-                          disabled={Boolean(savingCover)}
-                          onPress={() => void restoreCover()}
-                        />
-                      ) : null}
-                    </Row>
+                    <Text className={shared.itemMeta}>
+                      Automatic artwork comes from the file. If it has no cover, Aldus uses your
+                      library cover.
+                    </Text>
+                    <Button
+                      label="Use automatic artwork"
+                      kind="secondary"
+                      loading={savingCover === 'restore'}
+                      disabled={Boolean(savingCover)}
+                      onPress={() => void restoreCover()}
+                    />
                   </View>
-                </View>
+                ) : (
+                  <View className="min-w-[280px] max-w-[640px] flex-1 gap-6">
+                    {work.cover_url ? (
+                      <View className="gap-5">
+                        <View className="gap-1">
+                          <Text className="text-base font-sans-bold text-ink">Image display</Text>
+                          <Text className={shared.itemMeta}>
+                            The preview updates immediately. Changes are published when you save.
+                          </Text>
+                        </View>
+                        <Select
+                          label="Fit"
+                          value={coverFit}
+                          options={[
+                            { value: 'cover', label: 'Fill cover' },
+                            { value: 'contain', label: 'Show full image' },
+                          ]}
+                          onChange={(value) => setCoverFit(value as 'cover' | 'contain')}
+                        />
+                        <FocalPointPicker value={coverFocalPoint} onChange={setCoverFocalPoint} />
+                      </View>
+                    ) : null}
+                    {work.cover_url ? (
+                      <Button
+                        label={fallbackOpen ? 'Hide fallback design' : 'Edit fallback design'}
+                        kind="quiet"
+                        onPress={() => setFallbackOpen((value) => !value)}
+                      />
+                    ) : null}
+                    {!work.cover_url || fallbackOpen ? (
+                      <View className="gap-5 border-t border-line pt-5">
+                        <View className="gap-1">
+                          <Text className="text-base font-sans-bold text-ink">
+                            {work.cover_url ? 'Fallback cover' : 'Generated cover'}
+                          </Text>
+                          <Text className={shared.itemMeta}>
+                            {work.cover_url
+                              ? 'Used if the selected artwork is removed.'
+                              : 'Used now because no custom artwork is selected.'}
+                          </Text>
+                        </View>
+                        {work.cover_url ? (
+                          <BookCover
+                            title={work.title}
+                            author={work.author}
+                            size="small"
+                            generatedCoverStyle={generatedStyle}
+                            generatedCoverTone={Number(generatedTone)}
+                            generatedCoverLayout={generatedLayout}
+                          />
+                        ) : null}
+                        <Select
+                          label="Design"
+                          value={generatedStyle}
+                          options={[
+                            { value: 'classic', label: 'Classic' },
+                            { value: 'minimal', label: 'Minimal' },
+                            { value: 'framed', label: 'Framed' },
+                          ]}
+                          onChange={(value) =>
+                            setGeneratedStyle(value as 'classic' | 'minimal' | 'framed')
+                          }
+                        />
+                        <Select
+                          label="Title position"
+                          value={generatedLayout}
+                          options={[
+                            { value: 'top', label: 'Top' },
+                            { value: 'center', label: 'Center' },
+                            { value: 'bottom', label: 'Bottom' },
+                          ]}
+                          onChange={(value) =>
+                            setGeneratedLayout(value as 'top' | 'center' | 'bottom')
+                          }
+                        />
+                        <Select
+                          label="Cloth color"
+                          value={generatedTone}
+                          options={[
+                            { value: '-1', label: 'Automatic' },
+                            { value: '0', label: 'Ink' },
+                            { value: '1', label: 'Umber' },
+                            { value: '2', label: 'Terracotta' },
+                            { value: '3', label: 'Slate' },
+                            { value: '4', label: 'Sage' },
+                          ]}
+                          onChange={setGeneratedTone}
+                        />
+                      </View>
+                    ) : null}
+                    <View className="gap-3 border-t border-line pt-5">
+                      <Text className={shared.itemMeta}>
+                        This is the cover shown in your library, and the fallback when a format has
+                        no artwork.
+                      </Text>
+                      <Row>
+                        <Button
+                          label="Save artwork"
+                          kind="primary"
+                          loading={savingCover === 'settings'}
+                          disabled={Boolean(savingCover)}
+                          onPress={() => void saveCoverSettings()}
+                        />
+                        {work.cover_url ? (
+                          <Button
+                            label="Use generated cover"
+                            kind="secondary"
+                            loading={savingCover === 'restore'}
+                            disabled={Boolean(savingCover)}
+                            onPress={() => void restoreCover()}
+                          />
+                        ) : null}
+                      </Row>
+                    </View>
+                  </View>
+                )}
               </View>
             </Section>
 
@@ -774,7 +823,8 @@ export default function ManageWorkScreen() {
                   {coverAssets.map((asset) => (
                     <CoverAssetCard
                       key={`${asset.source}-${asset.source_id}`}
-                      asset={asset}
+                      asset={{ ...asset, selected: asset.image_url === coverURL }}
+                      audioArtwork={coverFormat === 'audiobook'}
                       work={work}
                       disabled={Boolean(savingCover)}
                       selecting={savingCover === asset.source_id}
@@ -1317,7 +1367,7 @@ export default function ManageWorkScreen() {
         onClose={() => setDeletingCoverID('')}
         onConfirm={() => void deleteCover(deletingCoverID)}
         title="Delete uploaded cover?"
-        description="The image will be removed from Aldus. Your EPUB and audiobook files are unaffected."
+        description="The image will be removed from this book. Any library, ebook, or audiobook cover using it returns to its default. Your original files are unaffected."
         confirmLabel="Delete upload"
         danger
         busy={savingCover === deletingCoverID}
@@ -1465,6 +1515,7 @@ function RepresentationGroup({
 /** One tappable cover search result — the whole card is the target, not a bordered button underneath it. */
 function CoverAssetCard({
   asset,
+  audioArtwork,
   work,
   disabled,
   selecting,
@@ -1472,6 +1523,7 @@ function CoverAssetCard({
   onDelete,
 }: {
   asset: CoverAsset;
+  audioArtwork: boolean;
   work: Work;
   disabled: boolean;
   selecting: boolean;
@@ -1484,8 +1536,9 @@ function CoverAssetCard({
         title={work.title}
         author={work.author}
         coverURL={asset.image_url}
-        size="small"
+        size={audioArtwork ? 'audio' : 'small'}
         {...coverPresentation(work)}
+        coverFit="contain"
       />
       <Text numberOfLines={1} className="text-sm font-sans-bold text-ink">
         {asset.label}

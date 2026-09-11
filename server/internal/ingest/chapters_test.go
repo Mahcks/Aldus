@@ -1,6 +1,12 @@
 package ingest
 
-import "testing"
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestParseAudioChapters(t *testing.T) {
 	chapters, err := parseAudioChapters([]byte(`{"chapters":[{"start_time":"0.000000","end_time":"12.345000","tags":{"title":"Opening"}},{"start_time":"12.345000","end_time":"60.000000","tags":{}}],"format":{"duration":"60.000000"}}`), "book.m4b")
@@ -37,5 +43,33 @@ func TestBoundedBufferCapsProbeOutput(t *testing.T) {
 	}
 	if !buffer.truncated || buffer.String() != "over" {
 		t.Fatalf("buffer = %q truncated=%v", buffer.String(), buffer.truncated)
+	}
+}
+
+func TestAudioChaptersStoresFullFileDuration(t *testing.T) {
+	s := testSetup(t)
+	ctx := context.Background()
+	media, err := s.store.Upload(ctx, s.admin, s.libraryID, s.audioID, "book.mp3", strings.NewReader("ID3audio"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	script := `#!/bin/sh
+printf '%s' '{"chapters":[{"start_time":"0","end_time":"50"}],"format":{"duration":"60"}}'
+`
+	if err := os.WriteFile(filepath.Join(directory, "ffprobe"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	chapters, err := s.store.AudioChapters(ctx, s.reader, media.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var duration int64
+	if err := s.store.db.QueryRowContext(ctx, "SELECT duration_ms FROM media WHERE id = ?", media.ID).Scan(&duration); err != nil {
+		t.Fatal(err)
+	}
+	if duration != 60000 || chapters[0].EndMS != 50000 {
+		t.Fatalf("duration = %d, chapters = %#v", duration, chapters)
 	}
 }

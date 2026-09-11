@@ -26,6 +26,7 @@ export function offlineCompletion(
   alignment: Alignment | undefined,
   locator: unknown,
   fallback: number,
+  audio?: { timestamp: number; duration: number },
 ) {
   if (progress && alignment?.id === progress.alignment_id) {
     const segment = alignment.segments.find((item) => item.id === progress.segment_id);
@@ -41,5 +42,12 @@ export function offlineCompletion(
         ),
       );
   }
+  if (
+    audio &&
+    Number.isFinite(audio.timestamp) &&
+    Number.isFinite(audio.duration) &&
+    audio.duration > 0
+  )
+    return Math.max(0, Math.min(100, Math.floor((audio.timestamp * 100) / audio.duration)));
   return editionCompletion(locator) ?? fallback;
 }

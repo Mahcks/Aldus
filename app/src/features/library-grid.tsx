@@ -3,6 +3,7 @@ import { useWindowDimensions, type FlatList as NativeFlatList } from 'react-nati
 import type { WorkSummary } from '@/generated/api';
 import { WorkCard, WorkRow, coverPresentation } from '@/features/bookshelf';
 import { FlatList, View } from '@/features/tw';
+import { workResumeMode } from './work-resume';
 import { workProgressLabel } from './consumption';
 import { workHref, type WorkQuickAction } from './work-actions';
 import { libraryColumns, type LibraryDensity } from './library-layout';
@@ -61,12 +62,17 @@ export function LibraryGrid({
             separator={index > 0}
             title={item.title}
             author={item.author}
-            coverURL={item.cover_url}
+            coverURL={
+              (workResumeMode(item) === 'listen'
+                ? item.audiobook_cover_url
+                : item.ebook_cover_url) || item.cover_url
+            }
+            fallbackCoverURL={item.cover_url}
             coverPresentation={coverPresentation(item)}
             progress={workProgressLabel(item.in_progress, item.completion_percent)}
             availability={{
-              readable: (item.last_mode || (item.readable ? 'read' : 'listen')) === 'read',
-              listenable: (item.last_mode || (item.readable ? 'read' : 'listen')) === 'listen',
+              readable: workResumeMode(item) === 'read',
+              listenable: workResumeMode(item) === 'listen',
               synchronized: false,
             }}
             onPress={() => onOpen(item)}
