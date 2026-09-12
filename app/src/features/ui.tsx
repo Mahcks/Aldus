@@ -22,6 +22,7 @@ import { router, usePathname } from 'expo-router';
 import { goBackOr, pageBackFallback } from '@/lib/navigation';
 import { AppIcon, isAppIconName, type AppIconName } from './icons';
 import { fadeIn } from './motion';
+import { LoadingState } from './loading-skeleton';
 import { colors } from './theme';
 import { Pressable, ScrollView, Text, TextInput, View, type TextInputProps } from './tw';
 
@@ -961,38 +962,21 @@ export function ErrorState({
   );
 }
 
-export function LoadingState({ label = 'Loading…' }: { label?: string }) {
-  return (
-    <View
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={label}
-      className="min-h-24 flex-row items-center justify-center gap-3 py-6"
-    >
-      <ActivityIndicator color={colors.accent} />
-      <Text className="text-sm text-muted">{label}</Text>
-    </View>
-  );
-}
-
-/**
- * Page-agnostic boot state for the session check that runs before any route
- * is known — `AuthGate` and the root redirect. Deliberately not
- * `LoadingState`: that renders a shelf-of-book-cards skeleton shaped for a
- * library grid, which is wrong for most destinations (Account, Users,
- * Acquisitions, …) and, worse, back-to-back with the destination page's own
- * `LoadingState` reads as two different skeletons flashing in succession.
- * This is a brief brand moment, not a content placeholder.
- */
+/** Session checks show anonymous placeholders, never another account's data. */
 export function AppBootState() {
   return (
-    <View className="min-h-full flex-1 items-center justify-center gap-3 bg-canvas">
-      <Text className="font-editorial-bold text-2xl text-accent">Aldus</Text>
-      <ActivityIndicator color={colors.accent} />
+    <View className="flex-1 bg-canvas">
+      <SafeAreaView>
+        <View className="mx-auto w-full max-w-[1240px] px-6">
+          <Text className="py-5 font-editorial text-2xl text-ink">Aldus</Text>
+          <LoadingState label="Opening your library…" layout="home" />
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
 
-/** `Loading` is kept as an alias of `LoadingState` for existing imports. */
+export { LoadingState };
 export const Loading = LoadingState;
 
 const STATUS_BADGE_TONE_CLASS: Record<StatusTone, { background: string; text: string }> = {

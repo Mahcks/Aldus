@@ -154,7 +154,7 @@ function DiscoverDetailDialog({
           </View>
         </View>
         {descriptionLoading ? (
-          <LoadingState label="Loading description…" />
+          <LoadingState layout="text" label="Loading description…" />
         ) : description ? (
           <Text className="text-sm leading-6 text-muted">{description}</Text>
         ) : null}
@@ -451,7 +451,7 @@ export default function SearchScreen() {
       />
       {!trimmedQuery ? (
         trendingLoading ? (
-          <LoadingState label="Finding what's popular…" />
+          <LoadingState layout="grid" label="Finding what's popular…" />
         ) : trending.length ? (
           <View className="gap-8">
             {trending.map((section) => (
@@ -512,7 +512,7 @@ export default function SearchScreen() {
           {error}
         </ErrorState>
       ) : loading ? (
-        <LoadingState label="Finding books…" />
+        <LoadingState layout="grid" label="Finding books…" />
       ) : results.length === 0 ? (
         <EmptyState icon="search" title="No matching books">
           Try another title, author, or ISBN.

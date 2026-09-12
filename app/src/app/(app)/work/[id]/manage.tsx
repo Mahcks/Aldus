@@ -301,7 +301,7 @@ export default function ManageWorkScreen() {
   if (loading)
     return (
       <Page title="Manage work" editorial={false}>
-        <Loading label="Loading work…" />
+        <Loading layout="details" label="Loading work…" />
       </Page>
     );
   if (!work)

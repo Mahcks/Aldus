@@ -345,7 +345,10 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       {error}
     </ErrorState>
   ) : loading ? (
-    <LoadingState label={works.length ? 'Loading more books…' : 'Loading your library…'} />
+    <LoadingState
+      layout={works.length ? 'text' : inProgress ? 'rows' : 'library-grid'}
+      label={works.length ? 'Loading more books…' : 'Loading your library…'}
+    />
   ) : !works.length ? (
     <EmptyState icon="libraries" title={q ? 'No matching books' : 'No books to show'}>
       Try another search or filter.
@@ -380,7 +383,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
           }}
         />
       ) : (
-        <LoadingState label="Loading your library…" />
+        <LoadingState layout="library-grid" label="Loading your library…" />
       )}
       <Dialog
         title="Filter & sort books"

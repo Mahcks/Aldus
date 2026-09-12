@@ -236,6 +236,7 @@ Choose your own password when you sign in.`;
     setError('');
     try {
       await api.updateUser(selected.id, { disabled: !selected.disabled });
+      setConfirmingDisable(false);
       setSuccess(selected.disabled ? 'Account enabled.' : 'Account disabled and sessions revoked.');
       await loadUsers();
     } catch (value) {
@@ -762,14 +763,12 @@ Choose your own password when you sign in.`;
       <ConfirmDialog
         visible={confirmingDisable}
         onClose={() => setConfirmingDisable(false)}
-        onConfirm={() => {
-          setConfirmingDisable(false);
-          void toggleSelected();
-        }}
+        onConfirm={() => void toggleSelected()}
         title="Disable account?"
-        description={`${
-          selected?.display_name || selected?.username
-        } will lose access and their active sessions will be revoked immediately.`}
+        description={
+          error ||
+          `${selected?.display_name || selected?.username} will lose access and their active sessions will be revoked immediately.`
+        }
         confirmLabel="Disable"
         danger
         busy={busy}

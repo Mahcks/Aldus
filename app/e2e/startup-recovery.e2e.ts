@@ -14,7 +14,11 @@ for (const width of [390, 1024, 1440]) {
       await route.fulfill({ json: { available: false, demo_available: false } });
     });
     await page.goto('/');
-    await expect(page.getByText('Couldn’t open your library', { exact: true })).toBeVisible({ timeout: 22_000 });
+    await expect(page.getByTestId('loading-home')).toBeVisible();
+    await expect(page.getByTestId('loading-home')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByText('Couldn’t open your library', { exact: true })).toBeVisible({
+      timeout: 22_000,
+    });
     await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Retry connection' })).toBeVisible();
     await page.screenshot({ path: `../artifacts/startup-recovery/${width}.png` });

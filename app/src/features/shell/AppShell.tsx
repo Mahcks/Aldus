@@ -1,4 +1,4 @@
-import { router, Slot, usePathname, type Href } from 'expo-router';
+import { router, Stack, usePathname, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -19,8 +19,6 @@ function isActive(path: string, href: string) {
       (path === '/catalog' || path === '/collections' || path.startsWith('/collection/'))) ||
     (href === '/sources' && path.startsWith('/sources')) ||
     (href === '/acquisitions' && path.startsWith('/acquisitions')) ||
-    (href === '/collections' &&
-      (path.startsWith('/collections') || path.startsWith('/collection/'))) ||
     (href === '/activity' && path.startsWith('/activity')) ||
     (href === '/system' && path.startsWith('/system')) ||
     (href === '/genre-tags' && path.startsWith('/genre-tags')) ||
@@ -34,19 +32,30 @@ function noop() {
 }
 
 export function AppShell() {
-  const path = usePathname();
   return (
     <SafeAreaProvider>
-      {path.startsWith('/consume/') ? <Slot /> : <AppShellChrome />}
+      <AppShellChrome />
     </SafeAreaProvider>
   );
 }
 
+/**
+ * `(app)`'s routes (tabs and every drill-down beneath them) all live in
+ * this one `<Stack>` rather than each tab getting its own — they're flat
+ * siblings under `app/(app)/`, not nested per-tab folders, so one shared
+ * navigator is the natural fit. The five tab destinations opt out of the
+ * native push animation and swipe gesture (switching tabs should feel
+ * instant, not like drilling in); everything else — book detail, consume,
+ * collection, manage, … — keeps the Stack's default animated push with
+ * swipe-back. Consume renders through this same Stack (not a separate one)
+ * specifically so swiping back out of it has real history to pop to.
+ */
 function AppShellChrome() {
   const auth = useAuth();
   const path = usePathname();
   const insets = useSafeAreaInsets();
   const desktop = useWindowDimensions().width >= 820;
+  const immersive = path.startsWith('/consume/');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [originPath, setOriginPath] = useState('/books');
@@ -118,7 +127,7 @@ function AppShellChrome() {
 
   return (
     <View className="min-h-full flex-1 flex-row bg-canvas">
-      {desktop ? (
+      {desktop && !immersive ? (
         <DesktopNav
           path={navigationPath}
           consumerLinks={consumerLinks}
@@ -129,11 +138,38 @@ function AppShellChrome() {
         />
       ) : null}
       <View className="min-h-0 min-w-0 flex-1">
-        {/* Keep Slot in the same tree position when the navigation layout changes. */}
+        {/* Keep the Stack in the same tree position when the navigation layout changes. */}
         <View className="min-h-0 flex-1">
-          <Slot />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="home" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="books" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="search" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="activity" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="account" options={{ animation: 'none', gestureEnabled: false }} />
+            {/* Admin nav-rail/sheet links — reached via router.navigate() exactly like the 5 tabs above, so they get the same instant treatment. */}
+            <Stack.Screen name="libraries" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen
+              name="acquisitions"
+              options={{ animation: 'none', gestureEnabled: false }}
+            />
+            <Stack.Screen name="sources" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="users" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen
+              name="genre-tags"
+              options={{ animation: 'none', gestureEnabled: false }}
+            />
+            <Stack.Screen name="system" options={{ animation: 'none', gestureEnabled: false }} />
+            {/*
+             * Keeps the entrance animation but drops the edge-swipe: an
+             * active reading/listening session shouldn't exit from a stray
+             * touch near the edge (turning a page, dragging the scrubber).
+             * The reader's own back button (`goBackOr`) is the deliberate
+             * way out.
+             */}
+            <Stack.Screen name="consume/[id]" options={{ gestureEnabled: false }} />
+          </Stack>
         </View>
-        {!desktop ? (
+        {!desktop && !immersive ? (
           <>
             <MobileTabBar
               path={navigationPath}

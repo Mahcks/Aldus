@@ -328,7 +328,7 @@ export default function AcquisitionsAdministration() {
   if (loading)
     return (
       <Page title="Acquisitions" editorial={false}>
-        <LoadingState label="Loading acquisition settings…" />
+        <LoadingState layout="form" label="Loading acquisition settings…" />
       </Page>
     );
 

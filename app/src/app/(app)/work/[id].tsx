@@ -232,7 +232,7 @@ export default function WorkScreen() {
   if (loading)
     return (
       <Page title="Book details" hideHeader>
-        <LoadingState label="Loading this book…" />
+        <LoadingState layout="details" label="Loading this book…" />
       </Page>
     );
 

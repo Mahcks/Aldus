@@ -1965,7 +1965,13 @@ export default function ConsumeWorkScreen() {
 
   if (loading || !work)
     return loading ? (
-      <Loading label="Opening your book…" />
+      <View className="flex-1 bg-canvas">
+        <SafeAreaView>
+          <View className="mx-auto w-full max-w-xl px-6">
+            <Loading layout={mode === 'listen' ? 'player' : 'details'} label="Opening your book…" />
+          </View>
+        </SafeAreaView>
+      </View>
     ) : (
       <View className="min-h-full flex-1 items-center justify-center bg-canvas p-6">
         <Notice danger>{notice || 'Work unavailable.'}</Notice>
@@ -2459,104 +2465,112 @@ export default function ConsumeWorkScreen() {
                   <Notice danger>The audiobook could not be opened on this device.</Notice>
                 </View>
               ) : !status.isLoaded ? (
-                <View accessibilityLiveRegion="polite" className="mt-5 items-center gap-2">
-                  <ActivityIndicator color={colors.accent} />
-                  <Text className="text-sm text-muted">Loading audiobook…</Text>
+                <View className="mt-auto w-full pt-6">
+                  <Loading layout="controls" label="Loading audiobook…" />
                 </View>
               ) : null}
-              <View className="mt-auto w-full gap-1 pt-6">
-                <AudioScrubber
-                  key={audioID}
-                  position={status.currentTime}
-                  duration={audioDuration}
-                  enabled={status.isLoaded}
-                  onSeek={handleScrubberSeek}
-                  onScrubbingChange={setAudioScrubbing}
-                />
-              </View>
-              {chapter ? (
-                <View className="mt-4 w-full flex-row items-center gap-2 border-y border-line-subtle py-2">
-                  <IconButton
-                    icon="previousPage"
-                    label="Previous chapter"
-                    kind="quiet"
-                    disabled={!chapter.previous}
-                    onPress={handlePreviousChapter}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`View chapters. Current chapter: ${chapter.current.title}`}
-                    onPress={() => setChaptersOpen(true)}
-                    className="min-h-11 min-w-0 flex-1 items-center justify-center gap-0.5 rounded-control px-1 focus-visible:border focus-visible:border-focus"
-                  >
-                    <Text numberOfLines={1} className="text-center text-sm font-sans-bold text-ink">
-                      {chapter.current.title}
-                    </Text>
-                    <Text className="text-center text-[11px] font-sans-semibold uppercase tracking-[1px] text-subtle">
-                      {chapter.index + 1} of {audioChapters.length} · View chapters
-                    </Text>
-                  </Pressable>
-                  <IconButton
-                    icon="nextPage"
-                    label="Next chapter"
-                    kind="quiet"
-                    disabled={!chapter.next}
-                    onPress={handleNextChapter}
-                  />
-                </View>
+              {status.isLoaded || status.error ? (
+                <>
+                  <View className="mt-auto w-full gap-1 pt-6">
+                    <AudioScrubber
+                      key={audioID}
+                      position={status.currentTime}
+                      duration={audioDuration}
+                      enabled={status.isLoaded}
+                      onSeek={handleScrubberSeek}
+                      onScrubbingChange={setAudioScrubbing}
+                    />
+                  </View>
+                  {chapter ? (
+                    <View className="mt-4 w-full flex-row items-center gap-2 border-y border-line-subtle py-2">
+                      <IconButton
+                        icon="previousPage"
+                        label="Previous chapter"
+                        kind="quiet"
+                        disabled={!chapter.previous}
+                        onPress={handlePreviousChapter}
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`View chapters. Current chapter: ${chapter.current.title}`}
+                        onPress={() => setChaptersOpen(true)}
+                        className="min-h-11 min-w-0 flex-1 items-center justify-center gap-0.5 rounded-control px-1 focus-visible:border focus-visible:border-focus"
+                      >
+                        <Text
+                          numberOfLines={1}
+                          className="text-center text-sm font-sans-bold text-ink"
+                        >
+                          {chapter.current.title}
+                        </Text>
+                        <Text className="text-center text-[11px] font-sans-semibold uppercase tracking-[1px] text-subtle">
+                          {chapter.index + 1} of {audioChapters.length} · View chapters
+                        </Text>
+                      </Pressable>
+                      <IconButton
+                        icon="nextPage"
+                        label="Next chapter"
+                        kind="quiet"
+                        disabled={!chapter.next}
+                        onPress={handleNextChapter}
+                      />
+                    </View>
+                  ) : null}
+                  <View className="mt-5 w-full flex-row items-center justify-between">
+                    <Pressable
+                      accessibilityRole="adjustable"
+                      accessibilityLabel="Playback speed"
+                      accessibilityHint="Cycles through playback speeds"
+                      accessibilityValue={{ text: `${currentPlaybackRate} times` }}
+                      accessibilityActions={[
+                        { name: 'increment', label: 'Increase playback speed' },
+                        { name: 'decrement', label: 'Decrease playback speed' },
+                      ]}
+                      accessibilityState={{ disabled: !canAdjustPlaybackRate }}
+                      disabled={!canAdjustPlaybackRate}
+                      onAccessibilityAction={handlePlaybackRateAccessibilityAction}
+                      onPress={cyclePlaybackRate}
+                      className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
+                    >
+                      <Text className="text-sm font-sans-bold text-ink">
+                        {currentPlaybackRate}×
+                      </Text>
+                    </Pressable>
+                    <IconButton
+                      icon="skipBack"
+                      label="Rewind 15 seconds"
+                      kind="quiet"
+                      disabled={!status.isLoaded}
+                      onPress={handleSkipBack}
+                    />
+                    <IconButton
+                      icon={status.playing ? 'pause' : 'play'}
+                      label={status.playing ? 'Pause' : 'Play'}
+                      kind="primary"
+                      size="large"
+                      disabled={!status.isLoaded}
+                      onPress={handlePlayPause}
+                    />
+                    <IconButton
+                      icon="skipForward"
+                      label="Skip forward 15 seconds"
+                      kind="quiet"
+                      disabled={!status.isLoaded}
+                      onPress={handleSkipForward}
+                    />
+                    <IconButton
+                      icon="sleepTimer"
+                      label={
+                        sleepTimerRemaining == null
+                          ? 'Set sleep timer'
+                          : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
+                      }
+                      kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
+                      disabled={!status.isLoaded}
+                      onPress={() => setSleepTimerOpen(true)}
+                    />
+                  </View>
+                </>
               ) : null}
-              <View className="mt-5 w-full flex-row items-center justify-between">
-                <Pressable
-                  accessibilityRole="adjustable"
-                  accessibilityLabel="Playback speed"
-                  accessibilityHint="Cycles through playback speeds"
-                  accessibilityValue={{ text: `${currentPlaybackRate} times` }}
-                  accessibilityActions={[
-                    { name: 'increment', label: 'Increase playback speed' },
-                    { name: 'decrement', label: 'Decrease playback speed' },
-                  ]}
-                  accessibilityState={{ disabled: !canAdjustPlaybackRate }}
-                  disabled={!canAdjustPlaybackRate}
-                  onAccessibilityAction={handlePlaybackRateAccessibilityAction}
-                  onPress={cyclePlaybackRate}
-                  className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
-                >
-                  <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
-                </Pressable>
-                <IconButton
-                  icon="skipBack"
-                  label="Rewind 15 seconds"
-                  kind="quiet"
-                  disabled={!status.isLoaded}
-                  onPress={handleSkipBack}
-                />
-                <IconButton
-                  icon={status.playing ? 'pause' : 'play'}
-                  label={status.playing ? 'Pause' : 'Play'}
-                  kind="primary"
-                  size="large"
-                  disabled={!status.isLoaded}
-                  onPress={handlePlayPause}
-                />
-                <IconButton
-                  icon="skipForward"
-                  label="Skip forward 15 seconds"
-                  kind="quiet"
-                  disabled={!status.isLoaded}
-                  onPress={handleSkipForward}
-                />
-                <IconButton
-                  icon="sleepTimer"
-                  label={
-                    sleepTimerRemaining == null
-                      ? 'Set sleep timer'
-                      : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
-                  }
-                  kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
-                  disabled={!status.isLoaded}
-                  onPress={() => setSleepTimerOpen(true)}
-                />
-              </View>
               {sleepTimerRemaining != null ? (
                 <Text
                   accessibilityLiveRegion="polite"

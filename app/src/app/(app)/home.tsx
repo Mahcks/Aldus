@@ -342,7 +342,7 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <Page title="Home" hideHeader>
-        <LoadingState label="Loading your books…" />
+        <LoadingState layout="home-feed" label="Loading your books…" />
       </Page>
     );
   }
@@ -378,7 +378,7 @@ export default function HomeScreen() {
               label="Search for a book"
               icon="search"
               kind="primary"
-              onPress={() => router.push('/books')}
+              onPress={() => router.push('/search')}
             />
           }
         >
