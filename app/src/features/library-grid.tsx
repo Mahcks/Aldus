@@ -39,7 +39,11 @@ export function LibraryGrid({
   const columns = listView ? 1 : libraryColumns(width, density);
   const [headerHeight, setHeaderHeight] = useState(0);
   const available = Math.min(width - (width >= 820 ? 224 : 0), 1240) - 32;
-  const rowHeight = ((available / columns - 12) * 218) / 148 + 128 * fontScale;
+  // 98 = WorkCard's caption stack below the cover: mt-1 (4) + two gap-1.5
+  // gaps (12) + a 2-line title at leading-5 (40) + a 1-line author at 18px
+  // (18) + the cell wrapper's pb-6 (24). Any looser and every row carries
+  // dead space under the caption, not just the shelf-aligned ones.
+  const rowHeight = ((available / columns - 12) * 218) / 148 + 98 * fontScale;
   const list = useRef<NativeFlatList<WorkSummary>>(null);
   const restored = useRef(false);
   return (
@@ -79,14 +83,20 @@ export function LibraryGrid({
             onPress={() => onOpen(item)}
           />
         ) : (
-          <View style={{ width: `${100 / columns}%`, height: rowHeight }} className="px-1.5 pb-6">
+          <View
+            style={{ width: `${100 / columns}%`, height: rowHeight }}
+            className="justify-end px-1.5 pb-6"
+          >
             <WorkCard
               title={item.title}
               author={item.author}
               coverURL={item.cover_url}
               audioArtwork={!item.readable && item.listenable}
+              shelfAligned
+              uniformTitleHeight
               coverPresentation={coverPresentation(item)}
               availability={item}
+              progress={workProgressLabel(item.in_progress, item.completion_percent)}
               narrow
               dense={density === 'compact'}
               href={workHref(item)}

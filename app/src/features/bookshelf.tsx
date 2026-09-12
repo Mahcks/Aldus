@@ -388,6 +388,7 @@ export function WorkCard({
   fallbackCoverURL,
   audioArtwork = false,
   shelfAligned = false,
+  uniformTitleHeight = false,
   coverPresentation,
   availability,
   progress,
@@ -403,15 +404,24 @@ export function WorkCard({
   /**
    * Opts a narrow, `audioArtwork` tile into "resting on a shelf": the cover
    * renders at its true, uncropped shape (square for audio, portrait for a
-   * book) instead of being forced into a shared portrait footprint. Only
-   * makes sense inside a row/wrap container the caller has bottom-aligned
-   * (`items-end`) — a shorter square cover next to a taller portrait one,
-   * both sitting on the row's bottom edge, reads like books of different
-   * heights standing on a shelf rather than a mis-sized image. Home's
-   * shelves opt in; Library's virtualized grid (fixed per-row cell height,
-   * no shared bottom edge to rest on) keeps the reserved-footprint default.
+   * book) instead of being forced into a shared portrait footprint. Every
+   * `audioArtwork` context wants this now (Home's shelves and Library's
+   * grid alike) — it's the only treatment that doesn't crop or fake a
+   * shape audio art doesn't have.
    */
   shelfAligned?: boolean;
+  /**
+   * Reserves the title's full 2-line height even when it only wraps to 1,
+   * so every card in a row ends up the same total height. Needed anywhere
+   * cards are bottom-aligned within a shared frame — Home's shelves
+   * (`items-end` on the row) and Library's grid (each cell is a fixed-height
+   * box, `justify-end`, so the shelf-aligned audio/book height difference
+   * reads correctly) — without it, a 1-line title's card sits shorter than
+   * a 2-line title's, so bottom-aligning shifts the *cover* up or down
+   * along with the caption instead of only the intentional square-vs-
+   * portrait offset.
+   */
+  uniformTitleHeight?: boolean;
   actions?: WorkQuickAction[];
   onBeforeOpen?: () => void;
 }) {
@@ -530,32 +540,28 @@ export function WorkCard({
         </View>
       )}
       {/*
-       * `min-h-10` reserves the full 2-line height even when a title only
-       * wraps to 1 line. Tried letting it size naturally instead — a short
-       * title next to a 2-line one staggers every line below it (author,
-       * availability) across the row, which reads worse than the blank gap
-       * a short title leaves here. Same reason Spotify, Apple Books, and
-       * Audible all reserve a fixed title height in their grids instead of
-       * letting rows stagger.
+       * `uniformTitleHeight` reserves the full 2-line title height on this
+       * wrapper, not on the title `Text` itself, so a 1-line title's author
+       * still sits directly under it — any reserved slack falls after the
+       * author line instead of prying the two apart. See the prop's doc
+       * above for where that reservation matters.
        */}
-      <Text
-        numberOfLines={2}
-        className={
-          dense
-            ? 'mt-1 min-h-10 font-editorial-bold text-sm leading-5 text-ink'
-            : 'mt-1 min-h-10 font-editorial-bold text-base leading-5 text-ink'
-        }
-      >
-        {title}
-      </Text>
-      <Text
-        numberOfLines={1}
-        className={
-          dense ? 'text-xs leading-[18px] text-muted' : 'text-sm leading-[18px] text-muted'
-        }
-      >
-        {author || 'Unknown author'}
-      </Text>
+      <View className={`mt-1 gap-1.5 ${uniformTitleHeight ? 'min-h-16' : ''}`}>
+        <Text
+          numberOfLines={2}
+          className={`font-editorial-bold ${dense ? 'text-sm' : 'text-base'} leading-5 text-ink`}
+        >
+          {title}
+        </Text>
+        <Text
+          numberOfLines={1}
+          className={
+            dense ? 'text-xs leading-[18px] text-muted' : 'text-sm leading-[18px] text-muted'
+          }
+        >
+          {author || 'Unknown author'}
+        </Text>
+      </View>
     </Pressable>
   );
 

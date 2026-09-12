@@ -114,6 +114,7 @@ function UpNextShelf({ works }: { works: WorkSummary[] }) {
             <WorkCard
               narrow
               shelfAligned
+              uniformTitleHeight
               title={work.title}
               author={work.author}
               coverURL={work.cover_url}
@@ -146,6 +147,7 @@ function WorkShelf({ works }: { works: WorkSummary[] }) {
           <WorkCard
             narrow
             shelfAligned
+            uniformTitleHeight
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
