@@ -1,4 +1,4 @@
-import { useTitleRequests } from '@/features/use-title-requests';
+import { useTitleRequests } from '@/hooks/acquisitions/use-title-requests';
 import type { Href } from 'expo-router';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -10,30 +10,30 @@ import {
   requestGroup,
   type NotificationGroup,
   type RequestFilter,
-} from '@/features/activity-presentation';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { BookCover } from '@/features/bookshelf';
-import { AppIcon } from '@/features/icons';
+} from '@/lib/activity/activity-presentation';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { BookCover } from '@/components/catalog/bookshelf';
+import { AppIcon } from '@/components/ui/icons';
 import {
   notificationHref,
   notificationIcon,
   notificationTime,
-} from '@/features/notification-presentation';
-import { RequestTimeline } from '@/features/request-timeline';
-import { colors } from '@/features/theme';
-import { titleRequestDetail, titleRequestPresentation } from '@/features/title-search';
-import { Pressable, Text, View } from '@/features/tw';
+} from '@/lib/activity/notification-presentation';
+import { RequestTimeline } from '@/components/acquisitions/request-timeline';
+import { colors } from '@/components/ui/theme';
+import { titleRequestDetail, titleRequestPresentation } from '@/lib/acquisitions/title-search';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   ConfirmDialog,
   EmptyState,
   ErrorState,
   LoadingState,
-  Page,
   Notice,
   Section,
   StatusBadge,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 
 function ActivityRow({

@@ -1,24 +1,24 @@
 import type { GenreTag, UnmatchedGenreSubject } from '@/generated/api';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { AppIcon, genreIconOptions, isAppIconName, type AppIconName } from '@/features/icons';
-import { Pressable, Text, View } from '@/features/tw';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { AppIcon, genreIconOptions, isAppIconName, type AppIconName } from '@/components/ui/icons';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   ConfirmDialog,
   Dialog,
   EmptyState,
   Field,
-  GenreTagChip,
   IconButton,
   LoadingState,
   Notice,
-  Page,
   Row,
   SearchField,
   colors,
-} from '@/features/ui';
+} from '@/components/ui';
+import { GenreTagChip } from '@/components/catalog/GenreTagChip';
+import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 
 type TagForm = { label: string; icon: AppIconName; keywords: string[] };

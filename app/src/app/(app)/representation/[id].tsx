@@ -1,12 +1,13 @@
-import { narratorNamesError } from '@/features/catalog-metadata';
+import { formatMediaSize as formatBytes } from '@/lib/format';
+import { narratorNamesError } from '@/lib/catalog/catalog-metadata';
 import type { Library, Media, Representation } from '@/generated/api';
 import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { representationKinds } from '@/features/source-administration';
-import { TechnicalDetails } from '@/features/sources/TechnicalDetails';
-import { Text, View } from '@/features/tw';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { representationKinds } from '@/lib/sources/source-administration';
+import { TechnicalDetails } from '@/components/sources/TechnicalDetails';
+import { Text, View } from '@/components/ui/tw';
 import {
   Button,
   IconButton,
@@ -15,11 +16,11 @@ import {
   Field,
   Loading,
   Notice,
-  Page,
   Section,
   Select,
   shared,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
 
@@ -278,10 +279,4 @@ export default function RepresentationScreen() {
       />
     </Page>
   );
-}
-
-function formatBytes(bytes: number) {
-  return bytes < 1024 * 1024
-    ? `${Math.round(bytes / 1024)} KB`
-    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

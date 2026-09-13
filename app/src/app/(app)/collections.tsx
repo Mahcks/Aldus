@@ -1,10 +1,10 @@
 import type { Collection } from '@/generated/api';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { collectionCount } from '@/features/collection-presentation';
-import { AppIcon } from '@/features/icons';
-import { colors } from '@/features/theme';
-import { Pressable, Text, View } from '@/features/tw';
+import { collectionCount } from '@/lib/collections/collection-presentation';
+import { AppIcon } from '@/components/ui/icons';
+import { colors } from '@/components/ui/theme';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Dialog,
@@ -12,11 +12,11 @@ import {
   ErrorState,
   LoadingState,
   Notice,
-  Page,
   resolvePressStateClass,
   Section,
   TextField,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 
 function CollectionRow({ item, shared = false }: { item: Collection; shared?: boolean }) {

@@ -1,4 +1,4 @@
-import { SearchDiagnostics } from '@/features/acquisitions/SearchDiagnostics';
+import { SearchDiagnostics } from '@/components/acquisitions/SearchDiagnostics';
 import type {
   AcquisitionDestination,
   AcquisitionResult,
@@ -9,13 +9,13 @@ import type {
 } from '@/generated/api';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { groupAcquisitionResults } from '@/features/acquisition';
-import { AppIcon } from '@/features/icons';
-import { BookCover } from '@/features/bookshelf';
-import { AcquisitionGroupRow } from '@/features/browse';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { RequestActions } from '@/features/request-actions';
-import { Pressable, Text, View } from '@/features/tw';
+import { groupAcquisitionResults } from '@/lib/acquisitions/acquisition';
+import { AppIcon } from '@/components/ui/icons';
+import { BookCover } from '@/components/catalog/bookshelf';
+import { AcquisitionGroupRow } from '@/components/catalog/browse';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { RequestActions } from '@/components/acquisitions/request-actions';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   colors,
@@ -24,12 +24,12 @@ import {
   ErrorState,
   LoadingState,
   Notice,
-  Page,
   resolvePressStateClass,
   SearchField,
   Section,
   StatusBadge,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 
 type ReleaseStatus = 'idle' | 'sending' | 'queued' | 'error';

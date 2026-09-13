@@ -4,10 +4,10 @@ import { Platform } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { AuthLayout } from '@/features/auth/AuthLayout';
-import { useServer } from '@/features/auth/ServerProvider';
-import { Text, View } from '@/features/tw';
-import { Button, ConfirmDialog, Field, IconRow, Notice } from '@/features/ui';
+import { AuthLayout } from '@/components/auth/AuthLayout';
+import { useServer } from '@/components/auth/ServerProvider';
+import { Text, View } from '@/components/ui/tw';
+import { Button, ConfirmDialog, Field, IconRow, Notice } from '@/components/ui';
 import type { ServerProfile } from '@/lib/server-profiles';
 
 function LibraryProfileRow({

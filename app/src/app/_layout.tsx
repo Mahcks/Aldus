@@ -10,33 +10,29 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
 import '@/global.css';
-import { AuthProvider } from '@/features/auth/AuthProvider';
-import { ServerProvider, useServer } from '@/features/auth/ServerProvider';
+import { colors } from '@/components/ui/theme';
+import { AuthProvider } from '@/components/auth/AuthProvider';
+import { ServerProvider, useServer } from '@/components/auth/ServerProvider';
 
-/**
- * `(app)` and `(public)` don't render their own Stack navigators — each is
- * just a `_layout` that resolves to a `<Slot/>` internally, so this root
- * `<Stack>` is the only real (animated) navigator above them, and *these
- * two group names* are its actual screens (not `"(app)/home"` etc. — a
- * group with no Navigator of its own doesn't flatten its children up into
- * this one). `index` silently redirects into whichever group auth resolves
- * to on every cold boot, and again on sign-out (`AppShell`'s
- * `router.replace('/')`) — that's never a screen the user navigated to, so
- * it shouldn't play the native push/slide transition a real in-app
- * drill-down gets.
- */
+// Index and the authenticated layout are startup destinations, so neither
+// should animate as a pushed screen. Public routes have no group layout and
+// are registered individually by Expo Router.
 function ServerSession() {
   const server = useServer();
   return (
     <AuthProvider key={server.origin}>
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+          statusBarStyle: 'dark',
+        }}
+      >
         <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Screen name="(app)" options={{ animation: 'none' }} />
-        <Stack.Screen name="(public)" options={{ animation: 'none' }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="dark" />
     </AuthProvider>
   );
 }

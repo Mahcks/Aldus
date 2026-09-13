@@ -1,0 +1,305 @@
+import type {
+  Alignment,
+  AlignmentJob,
+  AlignmentSegment,
+  AudioChapter,
+  AudioLocator,
+  CanonicalPosition,
+  EPUBLocator,
+  Media,
+  Representation,
+  WorkProgressUpdate,
+} from '@/generated/api';
+import { offlineCanonicalToAudio, offlineCanonicalToEPUB } from './offline-position';
+
+export type MediaChoice = Media & { representation: Representation };
+
+export const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+export const SLEEP_TIMER_MINUTES = [15, 30, 45, 60] as const;
+
+export function shouldLoadConsumptionMedia(mode: 'read' | 'listen', kind: 'epub' | 'audio') {
+  return (mode === 'read' && kind === 'epub') || (mode === 'listen' && kind === 'audio');
+}
+
+/** Pending writes retain the revision they were based on, even after a newer server read. */
+export function pendingCanonicalProgress(
+  current: CanonicalPosition | null,
+  pending: WorkProgressUpdate | null,
+): CanonicalPosition | null {
+  if (!pending) return current;
+  return {
+    ...current,
+    alignment_id: pending.alignment_id,
+    segment_id: pending.segment_id,
+    offset: pending.offset,
+    revision: pending.expected_revision,
+  };
+}
+
+export function canonicalResumeTargets(
+  alignment: Alignment | undefined,
+  position: CanonicalPosition,
+) {
+  if (!alignment || alignment.id !== position.alignment_id) {
+    throw new Error('The saved place does not match this edition.');
+  }
+
+  const epub = offlineCanonicalToEPUB(alignment, position);
+  const audio = offlineCanonicalToAudio(alignment, position);
+  if (!epub || !audio) throw new Error('The saved place could not be restored.');
+
+  return { epub, audio };
+}
+
+// A metadata refresh does not remount an already-open publication.
+export function reusesReaderPublication(
+  loadedMediaID: string,
+  selectedMediaID: string | undefined,
+  source: unknown,
+) {
+  return Boolean(source && selectedMediaID && loadedMediaID === selectedMediaID);
+}
+
+export function queueTask(current: Promise<void>, task: () => Promise<void>) {
+  return current.catch(() => {}).then(task);
+}
+
+export function readerControlsReady(
+  navigationReady: boolean,
+  mediaLoading: boolean,
+  restoring: boolean,
+  hasLocation: boolean,
+) {
+  return navigationReady && !mediaLoading && !restoring && hasLocation;
+}
+
+export function sleepTimerDeadline(minutes?: number, nowMS = Date.now()) {
+  if (minutes == null) return undefined;
+  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(nowMS)) return undefined;
+  return nowMS + minutes * 60_000;
+}
+
+export function sleepTimerRemainingSeconds(deadlineMS?: number, nowMS = Date.now()) {
+  if (deadlineMS == null || !Number.isFinite(deadlineMS) || !Number.isFinite(nowMS))
+    return undefined;
+  return Math.max(0, Math.ceil((deadlineMS - nowMS) / 1000));
+}
+
+export function audioPassage(segments: AlignmentSegment[] | undefined, timestampMS: number) {
+  if (!segments || !Number.isFinite(timestampMS)) return undefined;
+  const readable = segments.filter((segment) => segment.highlightable && segment.text.trim());
+  const activeIndex = readable.findIndex(
+    (segment) => segment.audio_start_ms <= timestampMS && timestampMS < segment.audio_end_ms,
+  );
+  const nextIndex = readable.findIndex((segment) => segment.audio_start_ms > timestampMS);
+  // Keep the last passage on screen during narration gaps, including after the final match.
+  let index = readable.length - 1;
+  if (activeIndex >= 0) index = activeIndex;
+  else if (nextIndex >= 0) index = Math.max(0, nextIndex - 1);
+  if (index < 0) return undefined;
+  return {
+    active: activeIndex >= 0,
+    previous: readable[index - 1],
+    current: readable[index],
+    next: readable[index + 1],
+    following: readable[index + 2],
+  };
+}
+
+export function audioChapterAt(chapters: AudioChapter[], timestampMS: number) {
+  if (!Number.isFinite(timestampMS)) return undefined;
+  const index = chapters.findIndex(
+    (chapter) => chapter.start_ms <= timestampMS && timestampMS < chapter.end_ms,
+  );
+  if (index < 0) return undefined;
+  return {
+    index,
+    current: chapters[index],
+    previous: chapters[index - 1],
+    next: chapters[index + 1],
+  };
+}
+
+export function formatAudioTime(seconds: number) {
+  if (!Number.isFinite(seconds)) return '0:00';
+  const whole = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const remainder = String(whole % 60).padStart(2, '0');
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
+    : `${minutes}:${remainder}`;
+}
+
+export function progressSourceLabel(source?: string) {
+  if (source?.startsWith('koreader')) return 'KOReader';
+  if (source === 'web') return 'Aldus web';
+  if (source?.startsWith('ios')) return 'Aldus on iOS';
+  if (source === 'android') return 'Aldus on Android';
+  return 'another device';
+}
+
+export function resumedProgressLabel(source?: string, audioSeconds?: number) {
+  const position = audioSeconds == null ? '' : ` at ${formatAudioTime(audioSeconds)}`;
+  return `Resumed from ${progressSourceLabel(source)}${position}`;
+}
+
+export function progressSaveLabel(
+  state: 'idle' | 'saving' | 'saved' | 'offline' | 'error',
+  mode: 'read' | 'listen',
+) {
+  if (state === 'offline') return 'Saved on this device';
+  if (state === 'error') return 'Couldn’t save';
+  if (mode === 'listen' && (state === 'saving' || state === 'saved'))
+    return 'Progress saves automatically';
+  if (state === 'saving') return 'Saving…';
+  if (state !== 'saved') return '';
+  return 'Reading place saved';
+}
+
+export function playbackRate(rate?: number) {
+  return PLAYBACK_RATES.find((candidate) => candidate === rate) ?? 1;
+}
+
+export function applyPlaybackRate(
+  player: { setPlaybackRate: (rate: number, quality?: 'low' | 'medium' | 'high') => void },
+  rate?: number,
+) {
+  const next = playbackRate(rate);
+  player.setPlaybackRate(next, 'high');
+  return next;
+}
+
+export function clampAudioPosition(seconds: number, duration: number) {
+  if (!Number.isFinite(seconds) || !Number.isFinite(duration) || duration < 0) return 0;
+  return Math.max(0, Math.min(duration, seconds));
+}
+
+export function playableAudioDuration(duration: number, alignedDuration: number) {
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  return Number.isFinite(alignedDuration) && alignedDuration > 0 ? alignedDuration : 0;
+}
+
+export function scrubberPosition(locationX: number, width: number, duration: number) {
+  if (![locationX, width, duration].every(Number.isFinite) || width <= 0 || duration <= 0)
+    return undefined;
+  return clampAudioPosition((locationX / width) * duration, duration);
+}
+
+export function choices(representations: Representation[], media: Media[], kinds: string[]) {
+  return representations.flatMap((representation) =>
+    kinds.includes(representation.kind)
+      ? media
+          .filter((item) => item.representation_id === representation.id)
+          .map((item) => ({ ...item, representation }))
+      : [],
+  );
+}
+
+export function readyJob(jobs: AlignmentJob[], epubID?: string, audioID?: string) {
+  return jobs.find(
+    (job) =>
+      job.state === 'ready' &&
+      Boolean(job.alignment_id) &&
+      job.epub_media_id === epubID &&
+      job.audio_media_id === audioID,
+  );
+}
+
+export function defaultPair(
+  jobs: AlignmentJob[],
+  epubs: MediaChoice[],
+  audio: MediaChoice[],
+  alignmentID?: string,
+) {
+  const preferred =
+    jobs.find((job) => job.state === 'ready' && job.alignment_id === alignmentID) ??
+    jobs.find(
+      (job) =>
+        job.state === 'ready' &&
+        epubs.some((item) => item.id === job.epub_media_id) &&
+        audio.some((item) => item.id === job.audio_media_id),
+    );
+  return {
+    epub: epubs.find((item) => item.id === preferred?.epub_media_id) ?? epubs[0],
+    audio: audio.find((item) => item.id === preferred?.audio_media_id) ?? audio[0],
+  };
+}
+
+export function synchronizationLabel(jobs: AlignmentJob[], epubID?: string, audioID?: string) {
+  if (!epubID || !audioID)
+    return epubID
+      ? 'Reading available'
+      : audioID
+        ? 'Listening available'
+        : 'No readable or listenable media';
+  if (readyJob(jobs, epubID, audioID)) return 'Read + Listen available';
+  if (
+    jobs.some(
+      (job) =>
+        job.epub_media_id === epubID &&
+        job.audio_media_id === audioID &&
+        (job.state === 'pending' || job.state === 'processing'),
+    )
+  )
+    return 'Synchronization processing';
+  if (
+    jobs.some(
+      (job) =>
+        job.epub_media_id === epubID && job.audio_media_id === audioID && job.state === 'stale',
+    )
+  )
+    return 'Read and Listen available separately';
+  return 'Synchronization unavailable for this pairing';
+}
+
+export function workProgressLabel(inProgress: boolean, completionPercent: number) {
+  if (!inProgress) return undefined;
+  return completionPercent > 0 ? `${completionPercent}% complete` : 'In progress';
+}
+
+type SyncClient = {
+  epubToCanonical: (alignmentID: string, locator: EPUBLocator) => Promise<CanonicalPosition>;
+  audioToCanonical: (alignmentID: string, locator: AudioLocator) => Promise<CanonicalPosition>;
+  canonicalToEPUB: (alignmentID: string, position: CanonicalPosition) => Promise<EPUBLocator>;
+  canonicalToAudio: (alignmentID: string, position: CanonicalPosition) => Promise<AudioLocator>;
+  updateWorkProgress: (workID: string, update: WorkProgressUpdate) => Promise<CanonicalPosition>;
+};
+
+export async function readToListen(
+  client: SyncClient,
+  workID: string,
+  alignmentID: string,
+  locator: EPUBLocator,
+  expectedRevision: number,
+  sourceDevice: string,
+) {
+  const canonical = await client.epubToCanonical(alignmentID, locator);
+  const progress = await client.updateWorkProgress(workID, {
+    alignment_id: alignmentID,
+    segment_id: canonical.segment_id,
+    offset: canonical.offset,
+    expected_revision: expectedRevision,
+    source_device: sourceDevice,
+  });
+  return { progress, target: await client.canonicalToAudio(alignmentID, canonical) };
+}
+
+export async function listenToRead(
+  client: SyncClient,
+  workID: string,
+  alignmentID: string,
+  locator: AudioLocator,
+  expectedRevision: number,
+  sourceDevice: string,
+) {
+  const canonical = await client.audioToCanonical(alignmentID, locator);
+  const progress = await client.updateWorkProgress(workID, {
+    alignment_id: alignmentID,
+    segment_id: canonical.segment_id,
+    offset: canonical.offset,
+    expected_revision: expectedRevision,
+    source_device: sourceDevice,
+  });
+  return { progress, target: await client.canonicalToEPUB(alignmentID, canonical) };
+}

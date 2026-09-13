@@ -4,29 +4,34 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState, type PropsWithChildren } from 'react';
 import Animated from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
-import { BookCover, ContinueCard, coverPresentation, WorkCard } from '@/features/bookshelf';
-import { requestNotification } from '@/features/activity-presentation';
-import { collectionCount } from '@/features/collection-presentation';
-import { workProgressLabel } from '@/features/consumption';
-import { AppIcon } from '@/features/icons';
-import { listItemEnter } from '@/features/motion';
-import { notificationHref } from '@/features/notification-presentation';
-import { colors } from '@/features/theme';
-import { Pressable, ScrollView, Text, View } from '@/features/tw';
+import {
+  BookCover,
+  ContinueCard,
+  coverPresentation,
+  WorkCard,
+} from '@/components/catalog/bookshelf';
+import { requestNotification } from '@/lib/activity/activity-presentation';
+import { collectionCount } from '@/lib/collections/collection-presentation';
+import { workProgressLabel } from '@/lib/consumption/consumption';
+import { AppIcon } from '@/components/ui/icons';
+import { listItemEnter } from '@/components/ui/motion';
+import { notificationHref } from '@/lib/activity/notification-presentation';
+import { colors } from '@/components/ui/theme';
+import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 import {
   Button,
   EmptyState,
   LoadingState,
   Notice,
-  Page,
   resolvePressStateClass,
   Section,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineWorkSummaries } from '@/lib/offline-library';
-import { offlineBrowseWorks } from '@/features/offline-browse';
-import { workResumeMode } from '@/features/work-resume';
-import { workHref, workQuickActions } from '@/features/work-actions';
+import { offlineBrowseWorks } from '@/lib/catalog/offline-browse';
+import { workResumeMode } from '@/lib/catalog/work-resume';
+import { workHref, workQuickActions } from '@/lib/catalog/work-actions';
 
 function greetingForHour(hour: number) {
   if (hour < 5) return 'Good evening';

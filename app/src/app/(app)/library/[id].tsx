@@ -1,4 +1,4 @@
-import { LibraryAccessEditor } from '@/features/LibraryAccessEditor';
+import { LibraryAccessEditor } from '@/components/administration/LibraryAccessEditor';
 import type {
   AcquisitionPolicy,
   Library,
@@ -10,18 +10,18 @@ import type {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { BrowseControls, WorkGrid } from '@/features/browse';
-import { offlineBrowseWorks } from '@/features/offline-browse';
+import { BrowseControls, WorkGrid } from '@/components/catalog/browse';
+import { offlineBrowseWorks } from '@/lib/catalog/offline-browse';
 import {
   formatSizeLimit,
   parseFormats,
   parseSizeLimit,
   validFormats,
   validPolicyToken,
-} from '@/features/acquisition-policy-form';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { AppIcon, type AppIconName } from '@/features/icons';
-import { Pressable, Text, View } from '@/features/tw';
+} from '@/lib/acquisitions/acquisition-policy-form';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { AppIcon, type AppIconName } from '@/components/ui/icons';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Checkbox,
@@ -33,14 +33,14 @@ import {
   IconButton,
   Loading,
   Notice,
-  Page,
   Radio,
   resolvePressStateClass,
   Row,
   SearchField,
   Select,
   shared,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
 import {

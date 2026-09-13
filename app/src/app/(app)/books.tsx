@@ -1,17 +1,21 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import type { CatalogGroup, Library, WorkSummary } from '@/generated/api';
-import { CatalogGroupSection } from '@/features/catalog-groups';
+import { CatalogGroupSection } from '@/components/catalog/catalog-groups';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from '@/features/auth/AuthProvider';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { getAPIBaseURL } from '@/lib/api-base';
-import { LibraryGrid } from '@/features/library-grid';
-import { libraryDensity, libraryDensityKey, type LibraryDensity } from '@/features/library-layout';
-import { BrowseControls, BrowseFacet } from '@/features/browse';
-import { offlineBrowseWorks } from '@/features/offline-browse';
-import { workResumeMode } from '@/features/work-resume';
-import { workQuickActions } from '@/features/work-actions';
-import { Text, View } from '@/features/tw';
+import { LibraryGrid } from '@/components/catalog/library-grid';
+import {
+  libraryDensity,
+  libraryDensityKey,
+  type LibraryDensity,
+} from '@/lib/catalog/library-layout';
+import { BrowseControls, BrowseFacet } from '@/components/catalog/browse';
+import { offlineBrowseWorks } from '@/lib/catalog/offline-browse';
+import { workResumeMode } from '@/lib/catalog/work-resume';
+import { workQuickActions } from '@/lib/catalog/work-actions';
+import { Text, View } from '@/components/ui/tw';
 import {
   Button,
   Dialog,
@@ -21,9 +25,9 @@ import {
   IconRow,
   LoadingState,
   Notice,
-  Page,
   SearchField,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineWorkSummaries } from '@/lib/offline-library';
 import { goBackOr } from '@/lib/navigation';

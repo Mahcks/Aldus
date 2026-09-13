@@ -1,18 +1,18 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import type { CatalogGroup, WorkSummary } from '@/generated/api';
-import { CatalogGroupRow } from '@/features/catalog-groups';
-import { WorkRow, coverPresentation } from '@/features/bookshelf';
-import { Text, View } from '@/features/tw';
+import { CatalogGroupRow } from '@/components/catalog/catalog-groups';
+import { WorkRow, coverPresentation } from '@/components/catalog/bookshelf';
+import { Text, View } from '@/components/ui/tw';
 import {
   IconButton,
   Button,
   EmptyState,
   ErrorState,
   LoadingState,
-  Page,
   SearchField,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { goBackOr } from '@/lib/navigation';
 import { APIError, api, errorMessage } from '@/lib/api';
 

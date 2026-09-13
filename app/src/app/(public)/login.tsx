@@ -2,11 +2,12 @@ import { Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { rememberedAccounts, rememberAccount, forgetAccount } from '@/lib/remembered-accounts';
 import { Platform } from 'react-native';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { AuthLayout } from '@/features/auth/AuthLayout';
-import { useServer } from '@/features/auth/ServerProvider';
-import { AppBootState, Button, Checkbox, ErrorState, Field, Notice } from '@/features/ui';
-import { Text, View } from '@/features/tw';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { AuthLayout } from '@/components/auth/AuthLayout';
+import { useServer } from '@/components/auth/ServerProvider';
+import { AppBootState } from '@/components/auth/AppBootState';
+import { Button, Checkbox, ErrorState, Field, Notice } from '@/components/ui';
+import { Text, View } from '@/components/ui/tw';
 import { api, errorMessage } from '@/lib/api';
 
 export default function Login() {

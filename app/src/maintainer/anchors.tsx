@@ -11,10 +11,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-import { EPUBReader, type EPUBReaderHandle, type ReaderCapture } from '@/components/EPUBReader';
+import {
+  EPUBReader,
+  type EPUBReaderHandle,
+  type ReaderCapture,
+} from '@/components/consumption/reader/EPUBReader';
 import { mediaURL } from '@/lib/media';
-import type { Anchor, AnchorFixture, SeekDiagnostic } from '@/maintainer/anchors.types';
+import type { Anchor, AnchorFixture, SeekDiagnostic } from './anchors.types';
 
 const oldStorageKeys = ['aldus:alice:anchors:v1', 'aldus:alice:anchors:v2'];
 const storageKey = 'aldus:alice:anchors:v3';

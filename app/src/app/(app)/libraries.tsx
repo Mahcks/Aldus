@@ -2,20 +2,12 @@ import type { Library } from '@/generated/api';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import Animated from 'react-native-reanimated';
-import { LibraryCard } from '@/features/bookshelf';
-import { AppIcon } from '@/features/icons';
-import { listItemEnter } from '@/features/motion';
-import { Text, View } from '@/features/tw';
-import {
-  Button,
-  colors,
-  Dialog,
-  Loading,
-  Notice,
-  Page,
-  SectionHeader,
-  TextField,
-} from '@/features/ui';
+import { LibraryCard } from '@/components/catalog/bookshelf';
+import { AppIcon } from '@/components/ui/icons';
+import { listItemEnter } from '@/components/ui/motion';
+import { Text, View } from '@/components/ui/tw';
+import { Button, colors, Dialog, Loading, Notice, SectionHeader, TextField } from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineLibraries, rememberOfflineLibraries } from '@/lib/offline-library';
 

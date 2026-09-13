@@ -10,10 +10,10 @@ import type {
   WorkDetail,
   WorkSummary,
 } from '@/generated/api';
-import type { MediaChoice } from '@/features/consumption';
-import { offlineCompletion } from '@/features/work-completion';
-import { offlineAudioChapters } from '@/features/offline-chapters';
-import { representationStateUpdate } from '@/features/offline-representation';
+import type { MediaChoice } from './consumption/consumption';
+import { offlineCompletion } from './catalog/work-completion';
+import { offlineAudioChapters } from './consumption/offline-chapters';
+import { representationStateUpdate } from './consumption/offline-representation';
 import { APIError, api } from './api';
 import { DownloadInterrupted } from './download-interrupted';
 import { getAPIBaseURL } from './api-base';

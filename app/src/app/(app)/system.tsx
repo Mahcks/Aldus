@@ -1,117 +1,33 @@
-import type { BackupArchive, SystemDiagnostics } from '@/generated/api';
+import { useServerMaintenance } from '@/hooks/administration/useServerMaintenance';
+import { DiagnosticRow, DiagnosticMeta } from '@/components/administration/SystemDiagnostics';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { AppIcon, type AppIconName } from '@/features/icons';
-import { colors } from '@/features/theme';
-import {
-  Button,
-  ConfirmDialog,
-  ErrorState,
-  LoadingState,
-  Notice,
-  Page,
-  Section,
-} from '@/features/ui';
-import { Text, View } from '@/features/tw';
-import { api, errorMessage } from '@/lib/api';
-import { formatBytes } from '@/features/system-presentation';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { Button, ConfirmDialog, ErrorState, LoadingState, Notice, Section } from '@/components/ui';
+import { Page } from '@/components/shell/Page';
+import { Text, View } from '@/components/ui/tw';
+import { formatBytes } from '@/lib/administration/system-presentation';
 
 export default function SystemAdministration() {
   const auth = useAuth();
-  const [report, setReport] = useState<SystemDiagnostics>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [backups, setBackups] = useState<BackupArchive[]>([]);
-  const [backupError, setBackupError] = useState('');
-  const [backupMessage, setBackupMessage] = useState('');
-  const [backupsLoading, setBackupsLoading] = useState(true);
-  const [creatingBackup, setCreatingBackup] = useState(false);
-  const [deletingBackup, setDeletingBackup] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<BackupArchive>();
-
-  async function refresh() {
-    setLoading(true);
-    setError('');
-    try {
-      const [nextReport, nextBackups] = await Promise.all([api.systemDiagnostics(), api.backups()]);
-      setReport(nextReport);
-      setBackups(nextBackups);
-      setBackupError('');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setLoading(false);
-      setBackupsLoading(false);
-    }
-  }
-
-  async function createBackup() {
-    setCreatingBackup(true);
-    setBackupError('');
-    setBackupMessage('');
-    try {
-      const archive = await api.createBackup();
-      setBackups((current) => [archive, ...current]);
-      setBackupMessage('Backup created and verified.');
-    } catch (value) {
-      setBackupError(errorMessage(value));
-    } finally {
-      setCreatingBackup(false);
-    }
-  }
-
-  async function downloadBackup(archive: BackupArchive) {
-    setBackupError('');
-    try {
-      saveBlob(await api.downloadBackup(archive.name), archive.name);
-    } catch (value) {
-      setBackupError(errorMessage(value));
-    }
-  }
-
-  async function deleteBackup() {
-    if (!deleteTarget) return;
-    setDeletingBackup(true);
-    setBackupError('');
-    try {
-      await api.deleteBackup(deleteTarget.name);
-      setBackups((current) => current.filter((archive) => archive.name !== deleteTarget.name));
-      setDeleteTarget(undefined);
-    } catch (value) {
-      setBackupError(errorMessage(value));
-    } finally {
-      setDeletingBackup(false);
-    }
-  }
-
-  function downloadDiagnostics() {
-    if (!report || Platform.OS !== 'web') return;
-    const date = new Date().toISOString().slice(0, 10);
-    saveBlob(
-      new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }),
-      `aldus-diagnostics-${date}.json`,
-    );
-  }
-
-  useEffect(() => {
-    let active = true;
-    void api
-      .systemDiagnostics()
-      .then((value) => active && setReport(value))
-      .catch((value) => active && setError(errorMessage(value)))
-      .finally(() => active && setLoading(false));
-    void api
-      .backups()
-      .then((value) => active && setBackups(value))
-      .catch((value) => active && setBackupError(errorMessage(value)))
-      .finally(() => active && setBackupsLoading(false));
-    return () => {
-      active = false;
-    };
-  }, []);
-
+  const {
+    report,
+    loading,
+    error,
+    backups,
+    backupError,
+    backupMessage,
+    backupsLoading,
+    creatingBackup,
+    deletingBackup,
+    deleteTarget,
+    setDeleteTarget,
+    refresh,
+    createBackup,
+    downloadBackup,
+    deleteBackup,
+    downloadDiagnostics,
+  } = useServerMaintenance();
   if (!auth.user?.admin)
     return (
       <Page title="System" editorial={false}>
@@ -175,8 +91,8 @@ export default function SystemAdministration() {
             healthy={report.storage_status === 'ok'}
           />
           <View className="flex-row flex-wrap gap-x-8 gap-y-2 pt-1">
-            <Meta label="Version" value={report.version} />
-            <Meta label="Environment" value={report.environment} />
+            <DiagnosticMeta label="Version" value={report.version} />
+            <DiagnosticMeta label="Environment" value={report.environment} />
           </View>
           {Platform.OS === 'web' ? (
             <View className="flex-row pt-1">
@@ -314,74 +230,5 @@ export default function SystemAdministration() {
         onConfirm={() => void deleteBackup()}
       />
     </Page>
-  );
-}
-
-function saveBlob(blob: Blob, filename: string) {
-  if (Platform.OS !== 'web') return;
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function DiagnosticRow({
-  label,
-  detail,
-  healthy,
-  optional = false,
-}: {
-  label: string;
-  detail: string;
-  healthy: boolean;
-  optional?: boolean;
-}) {
-  let status: { label: string; icon: AppIconName; color: string; textClass: string } = {
-    label: 'Needs attention',
-    icon: 'warning',
-    color: colors.danger,
-    textClass: 'text-danger',
-  };
-  if (optional) {
-    status = {
-      label: 'Not configured',
-      icon: 'disabled',
-      color: colors.muted,
-      textClass: 'text-muted',
-    };
-  }
-  if (healthy) {
-    status = {
-      label: 'Healthy',
-      icon: 'enabled',
-      color: colors.success,
-      textClass: 'text-success',
-    };
-  }
-
-  return (
-    <View className="min-h-14 flex-row flex-wrap items-center justify-between gap-3 border-b border-line-subtle py-3">
-      <View className="min-w-0 flex-1 gap-1">
-        <Text className="font-sans-semibold text-ink">{label}</Text>
-        <Text className="text-sm text-muted">{detail}</Text>
-      </View>
-      <View className="flex-row items-center gap-1.5">
-        <AppIcon name={status.icon} size={15} color={status.color} />
-        <Text className={`text-xs font-sans-semibold ${status.textClass}`}>{status.label}</Text>
-      </View>
-    </View>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <View className="gap-1">
-      <Text className="text-xs font-sans-bold uppercase tracking-wide text-subtle">{label}</Text>
-      <Text selectable className="text-sm text-ink">
-        {value}
-      </Text>
-    </View>
   );
 }

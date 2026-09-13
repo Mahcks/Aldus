@@ -1,9 +1,9 @@
 import type { Collection, CollectionWork, Library } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { WorkRow } from '@/features/bookshelf';
-import { moveCollectionWork } from '@/features/collection-presentation';
-import { Text, View } from '@/features/tw';
+import { WorkRow } from '@/components/catalog/bookshelf';
+import { moveCollectionWork } from '@/lib/collections/collection-presentation';
+import { Text, View } from '@/components/ui/tw';
 import {
   Button,
   ConfirmDialog,
@@ -13,12 +13,12 @@ import {
   IconButton,
   LoadingState,
   Notice,
-  Page,
   Row,
   Section,
   Radio,
   TextField,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
 

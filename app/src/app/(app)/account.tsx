@@ -5,14 +5,14 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { useServer } from '@/features/auth/ServerProvider';
-import { LibraryCard } from '@/features/bookshelf';
-import { DownloadStatus } from '@/features/download-status';
-import { formatDuration } from '@/features/format';
-import { AppIcon } from '@/features/icons';
-import { listItemEnter } from '@/features/motion';
-import { Text, View } from '@/features/tw';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { useServer } from '@/components/auth/ServerProvider';
+import { LibraryCard } from '@/components/catalog/bookshelf';
+import { DownloadStatus } from '@/components/catalog/download-status';
+import { formatDuration } from '@/lib/format';
+import { AppIcon } from '@/components/ui/icons';
+import { listItemEnter } from '@/components/ui/motion';
+import { Text, View } from '@/components/ui/tw';
 import {
   Button,
   colors,
@@ -23,11 +23,11 @@ import {
   IconRow,
   Loading,
   Notice,
-  Page,
   Row,
   Section,
   StatusBadge,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 import { apiBaseURL, isLoopbackURL } from '@/lib/api-base';
 

@@ -144,7 +144,7 @@ for (const width of [390, 1024, 1440]) {
     await page.screenshot({
       path: `../artifacts/design-redesign/${width}-custom-artwork-preview.png`,
     });
-    await page.getByRole('button', { name: 'Save artwork', exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Save fallback design', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-custom-artwork.png` });
     await page.getByRole('button', { name: 'Edit fallback design', exact: true }).click();
     await expect(page.getByText('Fallback cover', { exact: true })).toBeVisible();

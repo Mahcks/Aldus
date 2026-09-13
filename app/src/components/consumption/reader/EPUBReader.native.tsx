@@ -1,0 +1,687 @@
+import { File, Paths } from 'expo-file-system';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { ActivityIndicator, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  ReadiumView,
+  type DecorationGroup,
+  type Link,
+  type Locator,
+  type Preferences,
+  type PublicationReadyEvent,
+  type ReadiumViewRef,
+  type SearchResult,
+  type SelectionActionEvent,
+} from 'react-native-readium';
+import type { AlignmentSegment, EPUBLocator } from '@/generated/api';
+import {
+  mapReadiumLocator,
+  mapReadiumSelection,
+  parseReadiumLocator,
+  preferredReadiumLocator,
+  readiumLocationReason,
+  readiumResumeDecorations,
+  readiumRestoreDisposition,
+  readiumSearchQueries,
+  segmentForEPUBLocator,
+} from './readium-locator';
+import { colors } from '@/components/ui/theme';
+import { flattenReaderContents } from '@/lib/consumption/reader-navigation';
+import { Text, View } from '@/components/ui/tw';
+import { IconButton } from '@/components/ui';
+import { ReaderSaveFeedback } from '@/components/consumption/reader-save-feedback';
+
+type ReaderLocation = {
+  /** Display-only whole-book fraction; never a restore target. */
+  totalProgression?: number;
+  href: string;
+  cfi: string;
+  sync?: ReturnType<typeof mapReadiumLocator>;
+  syncState?: 'full' | 'partial' | 'none';
+  reason?: 'relocate' | 'forward' | 'explicit' | 'restore';
+};
+type ReaderPreferences = {
+  layout: 'paginated' | 'scrolled';
+  zoom: number;
+  lineHeight: number;
+  margin: number;
+  theme: 'paper' | 'sepia' | 'night';
+  fontFamily: 'publisher' | 'serif' | 'sans' | 'dyslexic';
+};
+export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
+  layout: 'paginated',
+  zoom: 1,
+  lineHeight: 1.72,
+  margin: 2,
+  theme: 'paper',
+  fontFamily: 'serif',
+};
+export type ReaderNavigationItem = { title: string; location: unknown; depth: number };
+export type ReaderSearchResult = { title: string; excerpt: string; location: unknown };
+export type EPUBReaderHandle = {
+  revealRestoredPlace?: () => void;
+  confirmSavedPlace?: (location: { cfi: string }, result: 'saved' | 'offline') => void;
+  captureSelection: () => null;
+  restoreSelection: () => Promise<string>;
+  restoreLocation: (location: unknown, highlight?: boolean) => Promise<boolean>;
+  navigate: (location: unknown) => Promise<boolean>;
+  search: (query: string) => Promise<ReaderSearchResult[]>;
+};
+
+function savedLocator(value: unknown) {
+  if (!value || typeof value !== 'object') return undefined;
+  const stored = value as { cfi?: unknown };
+  if (typeof stored.cfi !== 'string') return parseReadiumLocator(value);
+  try {
+    return parseReadiumLocator(JSON.parse(stored.cfi));
+  } catch {
+    return undefined;
+  }
+}
+
+export const EPUBReader = forwardRef<
+  EPUBReaderHandle,
+  {
+    source?: string | Blob;
+    product?: boolean;
+    segments?: unknown[];
+    preferences?: ReaderPreferences;
+    compactChrome?: boolean;
+    statusLabel?: string;
+    onLocation?: (location: ReaderLocation) => void;
+    onListenFromLocation?: (location: ReaderLocation) => void;
+    onReady?: (contents: ReaderNavigationItem[]) => void;
+    onError?: (error: Error) => void;
+  }
+>(function EPUBReader(
+  {
+    source,
+    segments = [],
+    preferences = DEFAULT_READER_PREFERENCES,
+    compactChrome,
+    statusLabel,
+    onLocation,
+    onListenFromLocation,
+    onReady,
+    onError,
+  },
+  ref,
+) {
+  const insets = useSafeAreaInsets();
+  const reader = useRef<ReadiumViewRef>(null);
+  const onErrorRef = useRef(onError);
+  const segmentsRef = useRef(segments);
+  const lastProgression = useRef<number | undefined>(undefined);
+  const direction = useRef<'forward' | 'backward' | undefined>(undefined);
+  const locationRequest = useRef(0);
+  const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
+  const selectedPage = useRef<Locator | undefined>(undefined);
+  const currentPage = useRef<Locator | undefined>(undefined);
+  const selectedTextLocation = useRef<string | undefined>(undefined);
+  const pendingHighlight = useRef<Locator | undefined>(undefined);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const restoring = useRef(false);
+  const pendingNavigation = useRef<
+    { href: string; locator: Locator; finish: (success: boolean) => void } | undefined
+  >(undefined);
+
+  const [fileURL, setFileURL] = useState('');
+  const [resumeDecorations, setResumeDecorations] = useState<DecorationGroup[]>([]);
+  const [saveFeedback, setSaveFeedback] = useState<'saved' | 'offline'>();
+  const clearFeedback = useCallback(() => {
+    clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = undefined;
+    setSaveFeedback(undefined);
+  }, []);
+  const clearHighlight = useCallback(() => {
+    clearTimeout(highlightTimer.current);
+    highlightTimer.current = undefined;
+    pendingHighlight.current = undefined;
+    setResumeDecorations([]);
+  }, []);
+
+  const highlightPlace = useCallback(
+    (locator: Locator) => {
+      clearHighlight();
+      setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+      highlightTimer.current = setTimeout(clearHighlight, 4000);
+    },
+    [clearHighlight],
+  );
+
+  const readiumPreferences = useMemo<Preferences>(
+    () => ({
+      backgroundColor: preferences.theme === 'night' ? colors.readerNightPaper : colors.paper,
+      textColor: preferences.theme === 'night' ? colors.readerNightInk : colors.ink,
+      scroll: preferences.layout === 'scrolled',
+      fontSize: preferences.zoom,
+      fontFamily:
+        preferences.fontFamily === 'publisher'
+          ? undefined
+          : preferences.fontFamily === 'sans'
+            ? 'sans-serif'
+            : preferences.fontFamily === 'dyslexic'
+              ? 'OpenDyslexic'
+              : 'serif',
+      lineHeight: preferences.lineHeight,
+      pageMargins: preferences.margin,
+      theme:
+        preferences.theme === 'night'
+          ? ('dark' as const)
+          : preferences.theme === 'sepia'
+            ? ('sepia' as const)
+            : ('light' as const),
+    }),
+    [
+      preferences.fontFamily,
+      preferences.layout,
+      preferences.lineHeight,
+      preferences.margin,
+      preferences.theme,
+      preferences.zoom,
+    ],
+  );
+  onErrorRef.current = onError;
+  segmentsRef.current = segments;
+
+  useEffect(() => {
+    let active = true;
+    locationRequest.current += 1;
+    pendingNavigation.current?.finish(false);
+    restoring.current = false;
+    pendingRestore.current = undefined;
+    selectedPage.current = undefined;
+    currentPage.current = undefined;
+    selectedTextLocation.current = undefined;
+    clearFeedback();
+    clearHighlight();
+    direction.current = undefined;
+    lastProgression.current = undefined;
+    async function prepare() {
+      try {
+        if (!source) return;
+        if (typeof source === 'string') {
+          setFileURL(source);
+          return;
+        }
+        const file = new File(Paths.cache, 'aldus-current.epub');
+        file.create({ overwrite: true });
+        file.write(new Uint8Array(await source.arrayBuffer()));
+        if (active) setFileURL(file.uri);
+      } catch (cause) {
+        if (active)
+          onErrorRef.current?.(cause instanceof Error ? cause : new Error('Unable to open EPUB.'));
+      }
+    }
+    setFileURL('');
+    void prepare();
+    return () => {
+      active = false;
+      locationRequest.current += 1;
+      pendingNavigation.current?.finish(false);
+      clearHighlight();
+      clearFeedback();
+    };
+  }, [source, clearHighlight, clearFeedback]);
+
+  useImperativeHandle(ref, () => ({
+    revealRestoredPlace: () => {
+      const locator = pendingHighlight.current;
+      if (locator) highlightPlace(locator);
+    },
+    confirmSavedPlace: (location, result) => {
+      if (selectedTextLocation.current !== location.cfi || !selectedPage.current) return;
+      clearHighlight();
+      clearFeedback();
+      const locator = savedLocator(location);
+      if (locator) {
+        setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+      }
+      setSaveFeedback(result);
+      feedbackTimer.current = setTimeout(() => {
+        clearFeedback();
+        clearHighlight();
+      }, 3500);
+    },
+    captureSelection: () => null,
+    restoreSelection: async () => '',
+    navigate: async (location) => {
+      const view = reader.current;
+      if (restoring.current || !view || !location || typeof location !== 'object') return false;
+      pendingRestore.current = undefined;
+      setResumeDecorations([]);
+      direction.current = 'backward';
+      view.goTo(location as Locator);
+      return true;
+    },
+    search: async (query) => {
+      const view = reader.current;
+      if (!view || !query.trim()) return [];
+      try {
+        let page = await view.search(query.trim(), {
+          caseSensitive: false,
+          diacriticSensitive: false,
+        });
+        if (!page.isSupported) return [];
+        const results: SearchResult[] = [];
+        for (let pageCount = 0; pageCount < 100 && results.length < 100; pageCount += 1) {
+          results.push(...page.results.slice(0, 100 - results.length));
+          if (!page.hasMore) break;
+          page = await view.loadMoreSearchResults();
+        }
+        return results.map((result) => ({
+          title: result.locator.title?.trim() || 'Search result',
+          excerpt: [result.before, result.highlight, result.after].filter(Boolean).join(''),
+          location: result.locator,
+        }));
+      } finally {
+        try {
+          view.cancelSearch();
+        } catch {
+          // Older native reader binaries may not implement search cleanup yet.
+        }
+      }
+    },
+    restoreLocation: async (location, highlight = false) => {
+      const view = reader.current;
+      if (!view) {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
+        return false;
+      }
+      const saved = savedLocator(location);
+      if (saved) {
+        if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
+        clearHighlight();
+        restoring.current = true;
+        try {
+          const success = await navigateAndWait(view, saved);
+          if (success && saved.text?.highlight) pendingHighlight.current = saved;
+          return success;
+        } finally {
+          restoring.current = false;
+        }
+      }
+      if (!location || typeof location !== 'object') {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: invalid target', location);
+        return false;
+      }
+      const target = location as EPUBLocator;
+      const segment = segmentForEPUBLocator(target, segmentsRef.current as AlignmentSegment[]);
+      if (!segment) {
+        if (__DEV__)
+          console.debug('Aldus native EPUB restore skipped: alignment segment not found', target);
+        return false;
+      }
+      const queries = readiumSearchQueries(
+        segment,
+        target.offset,
+        segmentsRef.current as AlignmentSegment[],
+      );
+      if (!queries[0]) {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: empty search query', target);
+        return false;
+      }
+      if (
+        typeof view.search !== 'function' ||
+        typeof view.loadMoreSearchResults !== 'function' ||
+        typeof view.cancelSearch !== 'function'
+      ) {
+        if (__DEV__) console.warn('Aldus native EPUB search bridge is unavailable.');
+        onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
+        return false;
+      }
+      restoring.current = true;
+      locationRequest.current += 1;
+      try {
+        let matches: SearchResult[] = [];
+        let matchedQuery = '';
+        for (const query of queries) {
+          let page = await view.search(query, {
+            caseSensitive: false,
+            diacriticSensitive: false,
+            wholeWord: !query.includes(' '),
+          });
+          if (!page.isSupported) {
+            if (__DEV__) console.debug('Aldus native EPUB restore skipped: search is unsupported');
+            pendingRestore.current = undefined;
+            return false;
+          }
+          matches = [];
+          for (let pageCount = 0; pageCount < 100; pageCount += 1) {
+            matches.push(
+              ...page.results.filter(
+                (result) => readiumRestoreDisposition(target, result.locator.href) === 'restore',
+              ),
+            );
+            if (!page.hasMore || matches.length > 1) break;
+            page = await view.loadMoreSearchResults();
+          }
+          if (page.hasMore && matches.length <= 1) matches = [];
+          if (matches.length === 1) {
+            matchedQuery = query;
+            break;
+          }
+        }
+        if (matches.length !== 1) {
+          if (__DEV__)
+            console.debug('Aldus native EPUB restore search was not unique', {
+              href: target.href,
+              queries,
+              matches: matches.length,
+            });
+          pendingRestore.current = undefined;
+          return false;
+        }
+        if (__DEV__)
+          console.debug('Aldus native EPUB restoring canonical target', {
+            segment_id: segment.id,
+            offset: target.offset,
+            href: target.href,
+            query: matchedQuery,
+          });
+        pendingRestore.current = target;
+        clearHighlight();
+        const success = await navigateAndWait(view, matches[0].locator);
+        if (success && highlight) pendingHighlight.current = matches[0].locator;
+        return success;
+      } catch (cause) {
+        pendingRestore.current = undefined;
+        if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
+        onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
+        return false;
+      } finally {
+        restoring.current = false;
+        pendingRestore.current = undefined;
+        try {
+          view.cancelSearch();
+        } catch {
+          // An older native binary has no search iterator to cancel.
+        }
+      }
+    },
+  }));
+
+  // Only the native anchor-visibility check can confirm restoration. Location
+  // events may arrive from an earlier page in the same chapter.
+  function navigateAndWait(view: ReadiumViewRef, locator: Locator) {
+    locationRequest.current += 1;
+    pendingNavigation.current?.finish(false);
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => finish(false), 10000);
+      function finish(success: boolean) {
+        clearTimeout(timer);
+        if (pendingNavigation.current?.finish === finish) pendingNavigation.current = undefined;
+        resolve(success);
+      }
+      const navigation = { href: locator.href, locator, finish };
+      pendingNavigation.current = navigation;
+      async function restore() {
+        try {
+          // Android retains its existing bridge until it supports anchor verification.
+          if (Platform.OS !== 'ios') {
+            view.goTo(locator);
+            return;
+          }
+          if (typeof view.restoreTo !== 'function') {
+            onErrorRef.current?.(new Error('Update Aldus to restore your saved reading place.'));
+            finish(false);
+            return;
+          }
+          const restored = await view.restoreTo(locator);
+          if (pendingNavigation.current !== navigation) return;
+          if (!restored) {
+            finish(false);
+            return;
+          }
+          const visible = await view.currentVisibleLocation();
+          if (pendingNavigation.current !== navigation) return;
+          if (!visible) {
+            finish(false);
+            return;
+          }
+          await handleLocation(visible, navigation);
+        } catch {
+          finish(false);
+        }
+      }
+      void restore();
+    });
+  }
+
+  async function handleLocation(
+    locator: Locator,
+    confirmedNavigation?: NonNullable<typeof pendingNavigation.current>,
+  ) {
+    const navigation = pendingNavigation.current;
+    if (navigation && Platform.OS === 'ios' && confirmedNavigation !== navigation) return;
+    // Dismissing the selection menu can repeat the page location. Keep the
+    // selected sentence until the reader actually navigates to another page.
+    const selected = selectedPage.current;
+    if (
+      selected &&
+      !navigation &&
+      !direction.current &&
+      selected.href === locator.href &&
+      JSON.stringify(selected.locations) === JSON.stringify(locator.locations)
+    )
+      return;
+    selectedPage.current = undefined;
+    selectedTextLocation.current = undefined;
+    clearFeedback();
+    clearHighlight();
+    currentPage.current = locator;
+    if (restoring.current && !navigation) return;
+    if (navigation && locator.href.split('#')[0] !== navigation.href.split('#')[0]) return;
+    const request = ++locationRequest.current;
+    const currentSegments = segmentsRef.current as AlignmentSegment[];
+    const restored = pendingRestore.current;
+    const restoreDisposition = readiumRestoreDisposition(restored, locator.href);
+    if (restoreDisposition === 'suppress') return;
+    let visible: Locator | undefined;
+    try {
+      visible = confirmedNavigation ? locator : await reader.current?.currentVisibleLocation();
+    } catch {
+      // The installed native client predates the visible-location bridge.
+    }
+    if (
+      request !== locationRequest.current ||
+      (navigation && pendingNavigation.current !== navigation)
+    )
+      return;
+    // The visible page can begin before the saved sentence. Preserve the exact
+    // text anchor after restoring instead of immediately saving the page start.
+    const savedSelection = navigation?.locator.text?.highlight ? navigation.locator : undefined;
+    const readingLocator = savedSelection ?? preferredReadiumLocator(locator, visible);
+    if (savedSelection) selectedPage.current = locator;
+    const sync = mapReadiumLocator(readingLocator, currentSegments);
+    if (navigation) {
+      direction.current = undefined;
+      lastProgression.current =
+        locator.locations?.totalProgression ??
+        locator.locations?.position ??
+        locator.locations?.progression;
+    }
+    if (restoreDisposition === 'restore' && restored) {
+      pendingRestore.current = undefined;
+      onLocation?.({
+        href: readingLocator.href,
+        cfi: JSON.stringify(readingLocator),
+        sync: restored,
+        syncState: 'full',
+        reason: 'restore',
+      });
+      navigation?.finish(true);
+      return;
+    }
+    if (__DEV__)
+      console.debug('Aldus native EPUB location', {
+        locator: visible ?? locator,
+        segmentCount: currentSegments.length,
+        sync,
+      });
+    const progression =
+      locator.locations?.totalProgression ??
+      locator.locations?.position ??
+      locator.locations?.progression;
+    const disposition = readiumLocationReason(
+      direction.current,
+      progression,
+      lastProgression.current,
+      Boolean(sync),
+    );
+    direction.current = disposition.pendingDirection;
+    if (sync) lastProgression.current = progression;
+    onLocation?.({
+      totalProgression: locator.locations?.totalProgression,
+      href: readingLocator.href,
+      cfi: JSON.stringify(readingLocator),
+      sync,
+      syncState: sync ? 'full' : 'none',
+      reason: navigation ? 'restore' : disposition.reason,
+    });
+    navigation?.finish(true);
+  }
+
+  function handleSelection(event: SelectionActionEvent) {
+    if (restoring.current) return;
+    if (event.actionId !== 'save-place' && event.actionId !== 'listen-here') return;
+    clearFeedback();
+    clearHighlight();
+    // Choosing a sentence supersedes any page turn still waiting for a mapped location.
+    direction.current = undefined;
+    selectedPage.current = currentPage.current;
+    locationRequest.current += 1;
+    const currentSegments = segmentsRef.current as AlignmentSegment[];
+    const sync = mapReadiumSelection(event.locator, event.selectedText, currentSegments);
+    if (__DEV__)
+      console.debug('Aldus native EPUB selection', {
+        locator: event.locator,
+        segmentCount: currentSegments.length,
+        sync,
+      });
+    const location: ReaderLocation = {
+      totalProgression: currentPage.current?.locations?.totalProgression,
+      href: event.locator.href,
+      cfi: JSON.stringify(event.locator),
+      sync,
+      syncState: sync ? 'full' : 'none',
+      reason: 'explicit',
+    };
+    selectedTextLocation.current = event.actionId === 'save-place' ? location.cfi : undefined;
+    onLocation?.(location);
+    if (event.actionId === 'listen-here') onListenFromLocation?.(location);
+  }
+
+  function handleReady(event?: PublicationReadyEvent) {
+    onReady?.(
+      flattenReaderContents(event?.tableOfContents as Link[] | undefined).map((item) => ({
+        title: item.title,
+        location: { href: item.href, type: 'application/xhtml+xml', title: item.title },
+        depth: item.depth,
+      })),
+    );
+  }
+
+  let displayedStatus = statusLabel;
+  if (resumeDecorations.length) {
+    displayedStatus = 'Your saved place';
+  }
+
+  if (!fileURL)
+    return (
+      <View className="flex-1 items-center justify-center gap-3 bg-paper">
+        <ActivityIndicator color={colors.accent} />
+        <Text className="text-sm text-muted">Opening EPUB…</Text>
+      </View>
+    );
+
+  return (
+    <View className="min-h-0 flex-1 bg-paper">
+      <View className="min-h-0 flex-1">
+        <ReadiumView
+          key={fileURL}
+          ref={reader}
+          file={{ url: fileURL }}
+          preferences={readiumPreferences}
+          decorations={resumeDecorations}
+          selectionActions={[
+            { id: 'save-place', label: 'Save reading place' },
+            { id: 'listen-here', label: 'Listen from here' },
+          ]}
+          onLocationChange={handleLocation}
+          onPublicationReady={handleReady}
+          onSelectionAction={handleSelection}
+        />
+      </View>
+      {compactChrome || preferences?.layout !== 'scrolled' ? (
+        <View
+          className="min-h-12 shrink-0 flex-row items-center justify-between border-t border-line bg-paper px-2"
+          style={compactChrome ? { paddingBottom: insets.bottom } : undefined}
+        >
+          {preferences?.layout !== 'scrolled' ? (
+            <IconButton
+              icon="previousPage"
+              label="Previous page"
+              kind="quiet"
+              onPress={() => {
+                if (restoring.current) return;
+                pendingRestore.current = undefined;
+                clearHighlight();
+                clearFeedback();
+                selectedTextLocation.current = undefined;
+                direction.current = 'backward';
+                reader.current?.goBackward();
+              }}
+            />
+          ) : (
+            <View className="h-11 w-11" />
+          )}
+          <View className="min-h-12 min-w-0 flex-1 items-center justify-center">
+            {saveFeedback || resumeDecorations.length ? (
+              <ReaderSaveFeedback result={saveFeedback ?? 'restored'} />
+            ) : (
+              <Text
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={
+                  displayedStatus ? `Reading status: ${displayedStatus}` : 'Page navigation'
+                }
+                numberOfLines={1}
+                className="text-center text-xs text-muted"
+              >
+                {displayedStatus ?? 'Page navigation'}
+              </Text>
+            )}
+          </View>
+
+          {preferences?.layout !== 'scrolled' ? (
+            <IconButton
+              icon="nextPage"
+              label="Next page"
+              kind="quiet"
+              onPress={() => {
+                if (restoring.current) return;
+                pendingRestore.current = undefined;
+                clearHighlight();
+                clearFeedback();
+                selectedTextLocation.current = undefined;
+                direction.current = 'forward';
+                reader.current?.goForward();
+              }}
+            />
+          ) : (
+            <View className="h-11 w-11" />
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+});

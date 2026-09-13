@@ -1,0 +1,527 @@
+import { router, Stack, usePathname, type Href } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Modal, Platform, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { AppIcon, type AppIconName } from '@/components/ui/icons';
+import { sheetEnter, sheetExit } from '@/components/ui/motion';
+import { colors, IconButton, resolvePressStateClass } from '@/components/ui';
+import { Pressable, Text, View } from '@/components/ui/tw';
+import { api } from '@/lib/api';
+
+type NavItem = { label: string; href: string; icon: AppIconName; badge?: number };
+
+function isActive(path: string, href: string) {
+  return (
+    path === href ||
+    (href === '/books' &&
+      (path === '/catalog' || path === '/collections' || path.startsWith('/collection/'))) ||
+    (href === '/sources' && path.startsWith('/sources')) ||
+    (href === '/acquisitions' && path.startsWith('/acquisitions')) ||
+    (href === '/activity' && path.startsWith('/activity')) ||
+    (href === '/system' && path.startsWith('/system')) ||
+    (href === '/genre-tags' && path.startsWith('/genre-tags')) ||
+    (href === '/libraries' &&
+      ['/library/', '/representation/'].some((prefix) => path.startsWith(prefix)))
+  );
+}
+
+function noop() {
+  // Swallows presses on sheet content so they don't bubble to the backdrop.
+}
+
+export function AppShell() {
+  return (
+    <SafeAreaProvider>
+      <AppShellChrome />
+    </SafeAreaProvider>
+  );
+}
+
+/**
+ * `(app)`'s routes (tabs and every drill-down beneath them) all live in
+ * this one `<Stack>` rather than each tab getting its own — they're flat
+ * siblings under `app/(app)/`, not nested per-tab folders, so one shared
+ * navigator is the natural fit. The five tab destinations opt out of the
+ * native push animation and swipe gesture (switching tabs should feel
+ * instant, not like drilling in); everything else — book detail, consume,
+ * collection, manage, … — keeps the Stack's default animated push with
+ * swipe-back. Consume renders through this same Stack (not a separate one)
+ * specifically so swiping back out of it has real history to pop to.
+ */
+function AppShellChrome() {
+  const auth = useAuth();
+  const path = usePathname();
+  const insets = useSafeAreaInsets();
+  const desktop = useWindowDimensions().width >= 820;
+  const immersive = path.startsWith('/consume/');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [originPath, setOriginPath] = useState('/books');
+  const nestedBook = path.startsWith('/work/');
+  if (!nestedBook && originPath !== path) setOriginPath(path);
+  const navigationPath = nestedBook ? originPath : path;
+
+  const consumerLinks: NavItem[] = [
+    { label: 'Home', href: '/home', icon: 'home' },
+    { label: 'Library', href: '/books', icon: 'libraries' },
+    { label: 'Discover', href: '/search', icon: 'discover' },
+    { label: 'Activity', href: '/activity', icon: 'activity', badge: unreadNotifications },
+    { label: 'Account', href: '/account', icon: 'account' },
+  ];
+  const adminLinks: NavItem[] = auth.user?.admin
+    ? [
+        { label: 'Libraries', href: '/libraries', icon: 'libraries' },
+        { label: 'Acquisitions', href: '/acquisitions', icon: 'acquire' },
+        { label: 'Sources', href: '/sources', icon: 'folder' },
+        { label: 'Users', href: '/users', icon: 'users' },
+        { label: 'Genres', href: '/genre-tags', icon: 'genres' },
+        { label: 'System', href: '/system', icon: 'system' },
+      ]
+    : [];
+  const userLabel = auth.user?.display_name || auth.user?.username || '';
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !sheetOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSheetOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sheetOpen]);
+
+  useEffect(() => {
+    let active = true;
+    async function refresh() {
+      try {
+        const result = await api.notificationUnreadCount();
+        if (!active) return;
+        setUnreadNotifications(result.unread_count);
+      } catch {
+        if (active) setUnreadNotifications(0);
+      }
+    }
+    void refresh();
+    const interval = setInterval(() => void refresh(), 15000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  async function handleSignOut() {
+    setSheetOpen(false);
+    await auth.signOut();
+    router.replace('/');
+  }
+  function handleBrandPress() {
+    router.replace('/home' as Href);
+  }
+  function openSheet() {
+    setSheetOpen(true);
+  }
+  function closeSheet() {
+    setSheetOpen(false);
+  }
+
+  return (
+    <View className="min-h-full flex-1 flex-row bg-canvas">
+      {desktop && !immersive ? (
+        <DesktopNav
+          path={navigationPath}
+          consumerLinks={consumerLinks}
+          adminLinks={adminLinks}
+          userLabel={userLabel}
+          onBrandPress={handleBrandPress}
+          onSignOut={handleSignOut}
+        />
+      ) : null}
+      <View className="min-h-0 min-w-0 flex-1">
+        {/* Keep the Stack in the same tree position when the navigation layout changes. */}
+        <View className="min-h-0 flex-1">
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.canvas },
+              statusBarStyle: 'dark',
+            }}
+          >
+            <Stack.Screen name="home" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="books" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="search" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="activity" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="account" options={{ animation: 'none', gestureEnabled: false }} />
+            {/* Admin nav-rail/sheet links — reached via router.navigate() exactly like the 5 tabs above, so they get the same instant treatment. */}
+            <Stack.Screen name="libraries" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen
+              name="acquisitions"
+              options={{ animation: 'none', gestureEnabled: false }}
+            />
+            <Stack.Screen name="sources" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen name="users" options={{ animation: 'none', gestureEnabled: false }} />
+            <Stack.Screen
+              name="genre-tags"
+              options={{ animation: 'none', gestureEnabled: false }}
+            />
+            <Stack.Screen name="system" options={{ animation: 'none', gestureEnabled: false }} />
+            {/*
+             * Keeps the entrance animation but drops the edge-swipe: an
+             * active reading/listening session shouldn't exit from a stray
+             * touch near the edge (turning a page, dragging the scrubber).
+             * The reader's own back button (`goBackOr`) is the deliberate
+             * way out.
+             */}
+            <Stack.Screen name="consume/[id]" options={{ gestureEnabled: false }} />
+          </Stack>
+        </View>
+        {!desktop && !immersive ? (
+          <>
+            <MobileTabBar
+              path={navigationPath}
+              consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
+              bottomInset={insets.bottom}
+              sheetOpen={sheetOpen}
+              moreSelected={
+                navigationPath.startsWith('/account') ||
+                adminLinks.some((link) => isActive(navigationPath, link.href))
+              }
+              onOpenSheet={openSheet}
+            />
+            <MoreSheet
+              visible={sheetOpen}
+              onClose={closeSheet}
+              path={path}
+              adminLinks={adminLinks}
+              userLabel={userLabel}
+              onSignOut={handleSignOut}
+              bottomInset={insets.bottom}
+            />
+          </>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/** Desktop left rail: brand, consumer links, a visually separated admin group, account footer. */
+function DesktopNav({
+  path,
+  consumerLinks,
+  adminLinks,
+  userLabel,
+  onBrandPress,
+  onSignOut,
+}: {
+  path: string;
+  consumerLinks: NavItem[];
+  adminLinks: NavItem[];
+  userLabel: string;
+  onBrandPress: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <View role="navigation" className="w-56 bg-rail px-[18px] py-[22px]">
+      <Pressable
+        accessibilityRole="link"
+        onPress={onBrandPress}
+        className="min-h-11 justify-center"
+      >
+        <Text className="font-editorial text-3xl text-on-rail">Aldus</Text>
+      </Pressable>
+      <View className="mt-7 gap-1">
+        {consumerLinks
+          .filter((link) => link.href !== '/account')
+          .map((link) => (
+            <NavLink key={link.href} {...link} selected={isActive(path, link.href)} />
+          ))}
+      </View>
+      {adminLinks.length > 0 ? (
+        <View className="mt-7 gap-1 border-t border-on-rail/15 pt-5">
+          <Text className="px-[11px] text-[11px] font-sans-bold text-rail-muted">
+            Administration
+          </Text>
+          {adminLinks.map((link) => (
+            <NavLink key={link.href} {...link} tone="quiet" selected={isActive(path, link.href)} />
+          ))}
+        </View>
+      ) : null}
+      <View className="mt-auto gap-2 border-t border-on-rail/15 pt-[18px]">
+        <NavLink
+          label={userLabel}
+          href="/account"
+          icon="account"
+          selected={isActive(path, '/account')}
+        />
+        <Pressable
+          accessibilityRole="button"
+          onPress={onSignOut}
+          className="min-h-11 flex-row items-center"
+        >
+          <Text className="text-sm font-sans-medium text-rail-muted">Sign out</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Single desktop rail item. Every item — consumer, admin, or the account
+ * footer — renders at the same icon/text size so the rail reads as one
+ * consistent list; `quiet` tone only mutes the resting color, distinguishing
+ * the admin group without making it look like a visually broken mismatch.
+ */
+function NavLink({
+  label,
+  href,
+  icon,
+  badge,
+  selected,
+  tone = 'primary',
+}: NavItem & { selected: boolean; tone?: 'primary' | 'quiet' }) {
+  const inactiveTextClass = 'text-rail-muted';
+  const iconColor = selected ? colors.onRail : colors.railMuted;
+  const backgroundClass = selected ? 'bg-rail-selected' : '';
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
+      accessibilityState={{ selected }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={() => router.navigate(href as Href)}
+      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
+    >
+      <View>
+        <AppIcon name={icon} size={20} color={iconColor} />
+        {badge ? (
+          <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
+            <Text className="text-[10px] font-sans-bold text-on-accent">{Math.min(badge, 9)}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text className={`text-sm font-sans-medium ${selected ? 'text-on-rail' : inactiveTextClass}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Mobile bottom tab bar: consumer destinations only, plus a "More" entry for everything else. */
+function MobileTabBar({
+  path,
+  consumerLinks,
+  bottomInset,
+  sheetOpen,
+  moreSelected,
+  onOpenSheet,
+}: {
+  path: string;
+  consumerLinks: NavItem[];
+  bottomInset: number;
+  sheetOpen: boolean;
+  moreSelected: boolean;
+  onOpenSheet: () => void;
+}) {
+  return (
+    <View
+      accessibilityRole="tablist"
+      className="w-full flex-row justify-around border-t border-line-subtle bg-canvas px-2 pt-1.5"
+      style={{ paddingBottom: bottomInset + 6 }}
+    >
+      {consumerLinks.map((link) => (
+        <MobileTab
+          key={link.href}
+          label={link.label}
+          icon={link.icon}
+          badge={link.badge}
+          selected={isActive(path, link.href)}
+          onPress={() => router.navigate(link.href as Href)}
+        />
+      ))}
+      <MobileTab
+        label="More"
+        icon="more"
+        selected={sheetOpen || moreSelected}
+        expanded={sheetOpen}
+        onPress={onOpenSheet}
+      />
+    </View>
+  );
+}
+
+function MobileTab({
+  label,
+  icon,
+  badge,
+  selected,
+  expanded,
+  onPress,
+}: {
+  label: string;
+  icon: AppIconName;
+  badge?: number;
+  selected: boolean;
+  expanded?: boolean;
+  onPress: () => void;
+}) {
+  const color = selected ? colors.accent : colors.muted;
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
+      accessibilityState={{ selected, expanded }}
+      aria-selected={selected}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-11 min-w-11 flex-1 items-center justify-center gap-1 py-1 ${stateClass}`}
+    >
+      <View>
+        <AppIcon name={icon} size={20} color={color} />
+        {badge ? (
+          <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
+            <Text className="text-[10px] font-sans-bold text-on-accent">{Math.min(badge, 9)}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text className={`text-[11px] font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Slide-up sheet for everything the bottom tab bar doesn't have room for:
+ * admin links (grouped and visually separated, same treatment as the
+ * desktop rail) and the account section. Uses the shared `sheetEnter`/
+ * `sheetExit` motion presets, which already resolve to an instant transition
+ * when the OS/browser reduced-motion setting is on.
+ */
+function MoreSheet({
+  visible,
+  onClose,
+  path,
+  adminLinks,
+  userLabel,
+  onSignOut,
+  bottomInset,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  path: string;
+  adminLinks: NavItem[];
+  userLabel: string;
+  onSignOut: () => void;
+  bottomInset: number;
+}) {
+  if (!visible) return null;
+
+  function handleLinkPress(href: string) {
+    onClose();
+    router.navigate(href as Href);
+  }
+
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <Pressable
+        accessibilityLabel="Dismiss menu"
+        accessibilityRole="button"
+        onPress={onClose}
+        className="flex-1 justify-end bg-ink/40"
+      >
+        <Animated.View entering={sheetEnter} exiting={sheetExit}>
+          <Pressable
+            onPress={noop}
+            accessibilityViewIsModal
+            role="dialog"
+            className="gap-1 rounded-t-card border-x border-t border-line bg-paper px-5 pt-4"
+            style={{ paddingBottom: bottomInset + 16 }}
+          >
+            <View className="mb-1 flex-row items-center justify-between gap-4 border-b border-line pb-3">
+              <Text accessibilityRole="header" className="text-lg font-sans-bold text-ink">
+                More
+              </Text>
+              <IconButton icon="close" label="Close menu" kind="quiet" onPress={onClose} />
+            </View>
+            {adminLinks.length > 0 ? (
+              <View className="gap-1 pb-2">
+                <Text className="px-[11px] pb-1 text-[11px] font-sans-bold text-muted">
+                  Administration
+                </Text>
+                {adminLinks.map((link) => (
+                  <SheetLink
+                    key={link.href}
+                    {...link}
+                    selected={isActive(path, link.href)}
+                    onPress={() => handleLinkPress(link.href)}
+                  />
+                ))}
+              </View>
+            ) : null}
+            <View className="gap-1 border-t border-line pt-3">
+              <SheetLink
+                label={userLabel || 'Account'}
+                href="/account"
+                icon="account"
+                selected={isActive(path, '/account')}
+                onPress={() => handleLinkPress('/account')}
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={onSignOut}
+                className="min-h-11 flex-row items-center px-[11px]"
+              >
+                <Text className="text-sm font-sans-bold text-accent">Sign out</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function SheetLink({
+  label,
+  icon,
+  selected,
+  onPress,
+}: NavItem & { selected: boolean; onPress: () => void }) {
+  const iconColor = selected ? colors.accent : colors.muted;
+  const backgroundClass = selected ? 'bg-accent-soft' : '';
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityState={{ selected }}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
+    >
+      <AppIcon name={icon} size={18} color={iconColor} />
+      <Text className={`text-sm font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}

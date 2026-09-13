@@ -626,15 +626,15 @@ case ${1:-} in
       fail "A failed demo URL must fail verification"
     fi
     classify_paths <<'EOF'
-app/src/features/ui.tsx
+app/src/components/ui/Button.tsx
 EOF
     [[ $RELEASE_CONTAINER == 1 && $RELEASE_IOS == 1 ]]
     classify_paths <<'EOF'
-app/src/components/Reader.native.tsx
+app/src/components/consumption/reader/EPUBReader.native.tsx
 EOF
     [[ $RELEASE_CONTAINER == 0 && $RELEASE_IOS == 1 ]]
     classify_paths <<'EOF'
-app/src/components/Reader.web.tsx
+app/src/components/consumption/reader/EPUBReader.web.tsx
 EOF
     [[ $RELEASE_CONTAINER == 1 && $RELEASE_IOS == 0 ]]
     classify_paths <<'EOF'

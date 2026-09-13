@@ -1,6 +1,6 @@
-import { ConnectionSection, ConnectionEditor } from '@/features/acquisitions/ConnectionSection';
-import { ConnectionDiagnostics } from '@/features/acquisitions/SearchDiagnostics';
-import { useTitleRequests } from '@/features/use-title-requests';
+import { ConnectionSection, ConnectionEditor } from '@/components/acquisitions/ConnectionSection';
+import { ConnectionDiagnostics } from '@/components/acquisitions/SearchDiagnostics';
+import { useTitleRequests } from '@/hooks/acquisitions/use-title-requests';
 import type {
   AcquisitionRequest,
   AcquisitionSettings,
@@ -10,15 +10,15 @@ import type {
   User,
 } from '@/generated/api';
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/features/auth/AuthProvider';
+import { useAuth } from '@/components/auth/AuthProvider';
 import {
   acquisitionFailureMessage,
   acquisitionDate,
   acquisitionFulfillment,
   acquisitionSize,
-} from '@/features/acquisition';
-import { RequestStatusFilter } from '@/features/acquisitions/RequestStatusFilter';
-import { RequestRow } from '@/features/acquisitions/RequestRow';
+} from '@/lib/acquisitions/acquisition';
+import { RequestStatusFilter } from '@/components/acquisitions/RequestStatusFilter';
+import { RequestRow } from '@/components/acquisitions/RequestRow';
 import {
   Button,
   ConfirmDialog,
@@ -27,12 +27,12 @@ import {
   Field,
   LoadingState,
   Notice,
-  Page,
   Section,
   Select,
   StatusBadge,
-} from '@/features/ui';
-import { Pressable, Text, View } from '@/features/tw';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import { api, errorMessage } from '@/lib/api';
 
 export default function AcquisitionsAdministration() {

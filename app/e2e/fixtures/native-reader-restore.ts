@@ -69,13 +69,13 @@ mock.module('react-native', () => ({ ActivityIndicator: 'Spinner', Platform: { O
 mock.module('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 mock.module('react-native-readium', () => ({ ReadiumView: 'ReadiumView' }));
 mock.module('expo-file-system', () => ({ File: class {}, Paths: {} }));
-mock.module('../../src/features/tw', () => ({ Text: 'Text', View: 'View' }));
-mock.module('../../src/features/ui', () => ({ IconButton: 'IconButton' }));
-mock.module('../../src/features/reader-save-feedback', () => ({
+mock.module('../../src/components/ui/tw', () => ({ Text: 'Text', View: 'View' }));
+mock.module('../../src/components/ui/index', () => ({ IconButton: 'IconButton' }));
+mock.module('../../src/components/consumption/reader-save-feedback', () => ({
   ReaderSaveFeedback: 'ReaderSaveFeedback',
 }));
 
-const { EPUBReader } = await import('../../src/components/EPUBReader.native');
+const { EPUBReader } = await import('../../src/components/consumption/reader/EPUBReader.native');
 const events: any[] = [];
 const ref: any = {};
 const target = {

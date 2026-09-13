@@ -44,6 +44,10 @@ The repository has four main parts:
 
 The production image contains the Go server and exported Expo web app together. Do not introduce a second production service or image for ordinary application code.
 
+## Frontend code map
+
+Start with [app/src/README.md](app/src/README.md) to find the route, component, hook, or platform adapter you need. Screen components stay in Expo route files. Supporting code lives outside the route tree, grouped by purpose and product area.
+
 ## Contracts and generated code
 
 Public JSON contracts live in `server/internal/api/contracts` and generate `app/src/generated/api.ts`. Stable SQL queries generate into `server/internal/database/sqlc`. Never edit either generated directory by hand; change its source and run:

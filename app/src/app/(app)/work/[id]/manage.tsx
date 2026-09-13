@@ -1,30 +1,23 @@
-import { alignmentJobHint } from '@/features/alignment-status';
+import { RepresentationGroup } from '@/components/catalog/RepresentationGroup';
+import { CoverAssetCard, CoverCandidateCard } from '@/components/catalog/CoverCards';
+import { RevisionChoiceList, SyncSourceSummary } from '@/components/catalog/AlignmentSources';
 import {
-  AlignmentProgress,
-  alignmentRunning,
-  useAlignmentPolling,
-} from '@/features/alignment-progress';
-import { MetadataReviewDialog } from '@/features/MetadataReviewDialog';
-import { seriesPositionError } from '@/features/catalog-metadata';
-import type {
-  AlignmentJob,
-  CoverAsset,
-  CoverCandidate,
-  GenreTag,
-  Library,
-  Representation,
-  Work,
-  WorkDetail,
-} from '@/generated/api';
+  alignmentJobHint,
+  alignmentJobTone,
+  alignmentJobLabel,
+  alignmentNoticeTone,
+} from '@/lib/catalog/alignment-status';
+import { AlignmentProgress, alignmentRunning } from '@/components/catalog/alignment-progress';
+import { MetadataReviewDialog } from '@/components/catalog/MetadataReviewDialog';
+import { seriesPositionError } from '@/lib/catalog/catalog-metadata';
+import type { CoverAsset, GenreTag, Representation, WorkDetail } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as DocumentPicker from 'expo-document-picker';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { choices, type MediaChoice } from '@/features/consumption';
-import { BookCover, coverPresentation } from '@/features/bookshelf';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { TechnicalDetails } from '@/features/sources/TechnicalDetails';
-import { Pressable, ScrollView, Text, View } from '@/features/tw';
+import { BookCover } from '@/components/catalog/bookshelf';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { TechnicalDetails } from '@/components/sources/TechnicalDetails';
+import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 import {
   Button,
   IconButton,
@@ -32,23 +25,22 @@ import {
   ConfirmDialog,
   Dialog,
   EmptyState,
-  Empty,
   Field,
-  GenreTagChip,
   Loading,
   Notice,
-  Page,
-  resolvePressStateClass,
   Row,
-  Radio,
   Section,
   SearchField,
   Select,
   StatusBadge,
   shared,
-} from '@/features/ui';
-import { api, errorMessage } from '@/lib/api';
+} from '@/components/ui';
+import { GenreTagChip } from '@/components/catalog/GenreTagChip';
+import { Page } from '@/components/shell/Page';
 import { goBackOr } from '@/lib/navigation';
+import { useWorkManagement } from '@/hooks/catalog/useWorkManagement';
+import { useWorkMetadata } from '@/hooks/catalog/useWorkMetadata';
+import { useWorkArtwork } from '@/hooks/catalog/useWorkArtwork';
 
 const terminal = new Set(['ready', 'failed', 'stale']);
 
@@ -66,29 +58,6 @@ function manageTab(value?: string): ManageTab {
   if (value === 'alignment') return 'sync';
   if (value === 'settings') return 'details';
   return manageTabs.some((entry) => entry.value === value) ? (value as ManageTab) : 'details';
-}
-
-function alignmentJobTone(state: string): 'neutral' | 'info' | 'success' | 'warning' | 'danger' {
-  if (state === 'ready') return 'success';
-  if (state === 'failed') return 'danger';
-  if (state === 'stale') return 'warning';
-  if (state === 'processing') return 'info';
-  return 'neutral';
-}
-
-function alignmentJobLabel(state: string) {
-  if (state === 'ready') return 'Ready';
-  if (state === 'failed') return 'Needs attention';
-  if (state === 'stale') return 'Out of date';
-  if (state === 'processing') return 'Aligning';
-  return 'Queued';
-}
-
-function alignmentNoticeTone(state: string): 'info' | 'warning' | 'success' | 'danger' {
-  if (state === 'ready') return 'success';
-  if (state === 'failed') return 'danger';
-  if (state === 'stale') return 'warning';
-  return 'info';
 }
 
 /**
@@ -139,7 +108,6 @@ function coverProvenanceFor(
     detail: `Chosen specifically for the ${formatLabel} cover.`,
   };
 }
-
 export default function ManageWorkScreen() {
   const { id, tab: tabParam } = useLocalSearchParams<{
     id: string;
@@ -149,154 +117,120 @@ export default function ManageWorkScreen() {
   const narrow = useWindowDimensions().width < 600;
   const initialTab = manageTab(tabParam);
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [work, setWork] = useState<WorkDetail>();
-  const [library, setLibrary] = useState<Library>();
-  const [representations, setRepresentations] = useState<Representation[]>([]);
-  const [media, setMedia] = useState<MediaChoice[]>([]);
-  const [jobs, setJobs] = useState<AlignmentJob[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deletingCoverID, setDeletingCoverID] = useState('');
-  const [deletingWork, setDeletingWork] = useState(false);
-  const [addFileOpen, setAddFileOpen] = useState(false);
-  const [addingFile, setAddingFile] = useState(false);
-  const [savingDetails, setSavingDetails] = useState(false);
-  const [savingGenres, setSavingGenres] = useState(false);
-  const [alignmentBusy, setAlignmentBusy] = useState(false);
-  const [cancelingJobID, setCancelingJobID] = useState('');
-  const [kind, setKind] = useState('epub');
-  const [label, setLabel] = useState('');
-  const [title, setTitle] = useState('');
-  const [author, setAuthor] = useState('');
-  const [description, setDescription] = useState('');
-  const [isbn, setISBN] = useState('');
-  const [publishYear, setPublishYear] = useState('');
-  const [series, setSeries] = useState('');
-  const [seriesPosition, setSeriesPosition] = useState('');
-  const [publisher, setPublisher] = useState('');
-  const [language, setLanguage] = useState('');
-  const [subjects, setSubjects] = useState('');
-  const [allGenreTags, setAllGenreTags] = useState<GenreTag[]>([]);
-  const [genreMode, setGenreMode] = useState<'automatic' | 'manual'>('automatic');
-  const [selectedGenreIDs, setSelectedGenreIDs] = useState<string[]>([]);
-  const [epubID, setEPUBID] = useState('');
-  const [audioID, setAudioID] = useState('');
-  const [coverFormat, setCoverFormat] = useState<'ebook' | 'audiobook'>('ebook');
-  const coverSearchVersion = useRef(0);
-  const [coverSearched, setCoverSearched] = useState(false);
-  const [coverQuery, setCoverQuery] = useState('');
-  const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[]>([]);
-  const [coverAssets, setCoverAssets] = useState<CoverAsset[]>([]);
-  const [searchingCovers, setSearchingCovers] = useState(false);
-  const [refreshingMetadata, setRefreshingMetadata] = useState(false);
   const [metadataMessage, setMetadataMessage] = useState('');
   const [metadataReviewOpen, setMetadataReviewOpen] = useState(false);
   const [publicationOpen, setPublicationOpen] = useState(false);
   const [fallbackOpen, setFallbackOpen] = useState(false);
-
-  const [savingCover, setSavingCover] = useState('');
-  const [generatedStyle, setGeneratedStyle] = useState<'classic' | 'minimal' | 'framed'>('classic');
-  const [generatedTone, setGeneratedTone] = useState('-1');
-  const [generatedLayout, setGeneratedLayout] = useState<'top' | 'center' | 'bottom'>('center');
-
-  const detailsDirty = Boolean(
-    work &&
-    (title !== work.title ||
-      author !== (work.author || '') ||
-      description !== (work.description || '') ||
-      isbn !== (work.isbn || '') ||
-      publisher !== (work.publisher || '') ||
-      language !== (work.language || '') ||
-      publishYear !== (work.first_publish_year ? String(work.first_publish_year) : '') ||
-      subjects !== (work.subject_values ?? []).join('\n') ||
-      series !== (work.series || '') ||
-      seriesPosition !== (work.series_position || '')),
-  );
-
-  async function load() {
-    if (!id) return;
-    try {
-      const nextWork = await api.work(id);
-      const [nextLibrary, nextRepresentations, nextJobs, nextGenreTags] = await Promise.all([
-        api.library(nextWork.library_id),
-        api.representations(id),
-        api.alignmentJobs(id),
-        api.genreTags(),
-      ]);
-      const revisions = await loadRevisions(nextWork.library_id, nextRepresentations);
-      setWork(nextWork);
-      setLibrary(nextLibrary);
-      setTitle(nextWork.title);
-      setAuthor(nextWork.author || '');
-      setDescription(nextWork.description || '');
-      setISBN(nextWork.isbn || '');
-      setPublishYear(nextWork.first_publish_year ? String(nextWork.first_publish_year) : '');
-      setPublisher(nextWork.publisher || '');
-      setSeries(nextWork.series || '');
-      setSeriesPosition(nextWork.series_position || '');
-      setLanguage(nextWork.language || '');
-      setSubjects((nextWork.subject_values ?? []).join('\n'));
-      setAllGenreTags(nextGenreTags);
-      setGenreMode(nextWork.genre_tags_manual ? 'manual' : 'automatic');
-      setSelectedGenreIDs(nextWork.genre_tags.map((tag) => tag.id));
-      setCoverQuery((current) => current || `${nextWork.title} ${nextWork.author || ''}`.trim());
-      setRepresentations(nextRepresentations);
-      setMedia(revisions);
-      setJobs(nextJobs);
-      if (
-        !nextRepresentations.some((item) => item.kind === 'epub') &&
-        nextRepresentations.some((item) => item.kind === 'audio' || item.kind === 'audiobook')
-      )
-        setCoverFormat('audiobook');
-      setGeneratedStyle(nextWork.generated_cover_style);
-      setGeneratedTone(String(nextWork.generated_cover_tone));
-      setGeneratedLayout(nextWork.generated_cover_layout);
-      setEPUBID((current) =>
-        revisions.some((item) => item.id === current)
-          ? current
-          : (choices(nextRepresentations, revisions, ['epub'])[0]?.id ?? ''),
-      );
-      setAudioID((current) =>
-        revisions.some((item) => item.id === current)
-          ? current
-          : (choices(nextRepresentations, revisions, ['audio', 'audiobook'])[0]?.id ?? ''),
-      );
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setLoading(false);
-    }
+  const management = useWorkManagement(id, applyLoadedWork);
+  const artwork = useWorkArtwork(id, management, setMetadataMessage);
+  const metadata = useWorkMetadata(id, management, artwork.refreshCoverAssets, setMetadataMessage);
+  const {
+    work,
+    library,
+    representations,
+    media,
+    jobs,
+    loading,
+    error,
+    deletingWork,
+    addFileOpen,
+    setAddFileOpen,
+    addingFile,
+    alignmentBusy,
+    cancelingJobID,
+    kind,
+    setKind,
+    label,
+    setLabel,
+    epubID,
+    setEPUBID,
+    audioID,
+    setAudioID,
+    epubs,
+    audio,
+    selectedEPUB,
+    selectedAudio,
+    progressUnreachable,
+    addFile,
+    enqueue,
+    cancelJob,
+    deleteWork,
+  } = management;
+  const {
+    deletingCoverID,
+    setDeletingCoverID,
+    coverFormat,
+    setCoverFormat,
+    coverSearchVersion: coverSearchVersionRef,
+    coverSearched,
+    setCoverSearched,
+    coverQuery,
+    setCoverQuery,
+    coverCandidates,
+    setCoverCandidates,
+    coverAssets,
+    setCoverAssets,
+    searchingCovers,
+    setSearchingCovers,
+    savingCover,
+    generatedStyle,
+    setGeneratedStyle,
+    generatedTone,
+    setGeneratedTone,
+    generatedLayout,
+    setGeneratedLayout,
+    searchCovers,
+    chooseCover,
+    restoreCover,
+    saveCoverSettings,
+    deleteCover,
+    uploadCover,
+  } = artwork;
+  const {
+    savingDetails,
+    savingGenres,
+    title,
+    setTitle,
+    author,
+    setAuthor,
+    description,
+    setDescription,
+    isbn,
+    setISBN,
+    publishYear,
+    setPublishYear,
+    series,
+    setSeries,
+    seriesPosition,
+    setSeriesPosition,
+    publisher,
+    setPublisher,
+    language,
+    setLanguage,
+    subjects,
+    setSubjects,
+    allGenreTags,
+    genreMode,
+    setGenreMode,
+    selectedGenreIDs,
+    refreshingMetadata,
+    detailsDirty,
+    saveWorkSettings,
+    saveGenres,
+    toggleGenre,
+    metadataApplied,
+    refreshMetadata,
+  } = metadata;
+  function applyLoadedWork(
+    nextWork: WorkDetail,
+    nextRepresentations: Representation[],
+    nextGenreTags: GenreTag[],
+  ) {
+    metadata.applyLoadedWork(nextWork, nextGenreTags);
+    artwork.applyLoadedWork(nextWork, nextRepresentations);
   }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
-  // Artwork is browsed per format — an ebook-only embedded cover has no
-  // business showing up while choosing the audiobook cover. Re-fetching on
-  // every `coverFormat` switch (not just once on load) is what keeps the
-  // "Artwork library" gallery scoped to the active tab.
-  useEffect(() => {
-    if (!id) return;
-    let canceled = false;
-    void api
-      .covers(id, coverFormat)
-      .then((next) => {
-        if (!canceled) setCoverAssets(next);
-      })
-      .catch((value) => {
-        if (!canceled) setError(errorMessage(value));
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [id, coverFormat]);
-
-  const progressUnreachable = useAlignmentPolling(id || '', jobs.some(alignmentRunning), setJobs);
 
   if (loading)
     return (
@@ -314,10 +248,6 @@ export default function ManageWorkScreen() {
   const canEdit = Boolean(
     auth.user?.admin || library?.role === 'owner' || library?.role === 'editor',
   );
-  const epubs = media.filter((item) => item.kind === 'epub');
-  const audio = media.filter((item) => item.kind === 'audio' || item.kind === 'audiobook');
-  const selectedEPUB = epubs.find((item) => item.id === epubID);
-  const selectedAudio = audio.find((item) => item.id === audioID);
   const selectedPairJob = jobs.find(
     (job) => job.epub_media_id === epubID && job.audio_media_id === audioID,
   );
@@ -355,288 +285,6 @@ export default function ManageWorkScreen() {
     if (next === activeTab) return;
     setActiveTab(next);
     router.setParams({ tab: next });
-  }
-
-  async function addFile() {
-    if (addingFile || !label.trim() || !library) return;
-    const result = await DocumentPicker.getDocumentAsync({
-      type: kind === 'epub' ? 'application/epub+zip' : 'audio/*',
-      multiple: false,
-    });
-    if (result.canceled) return;
-    setAddingFile(true);
-    setError('');
-    let representation: Representation | undefined;
-    try {
-      representation = await api.createRepresentation(id, { kind, label: label.trim() });
-      const asset = result.assets[0];
-      const blob = await fetch(asset.uri).then((response) => response.blob());
-      await api.uploadMedia(library.id, representation.id, blob, asset.name);
-      setLabel('');
-      setAddFileOpen(false);
-      await load();
-    } catch (value) {
-      if (representation) {
-        try {
-          await api.deleteRepresentation(representation.id);
-        } catch {
-          // The upload may have succeeded before the response was interrupted; keep its data.
-        }
-      }
-      setError(errorMessage(value));
-    } finally {
-      setAddingFile(false);
-    }
-  }
-
-  async function enqueue() {
-    if (!selectedEPUB || !selectedAudio || alignmentBusy) return;
-    setAlignmentBusy(true);
-    setError('');
-    try {
-      const job = await api.enqueueAlignment({
-        epub_media_id: selectedEPUB.id,
-        epub_sha256: selectedEPUB.sha256,
-        audio_media_id: selectedAudio.id,
-        audio_sha256: selectedAudio.sha256,
-      });
-      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)]);
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setAlignmentBusy(false);
-    }
-  }
-
-  async function cancelJob(jobID: string) {
-    if (cancelingJobID) return;
-    setCancelingJobID(jobID);
-    try {
-      await api.cancelAlignment(jobID);
-      const update = await api.alignmentJob(jobID);
-      setJobs((current) => current.map((item) => (item.id === update.id ? update : item)));
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setCancelingJobID('');
-    }
-  }
-
-  async function saveWorkSettings() {
-    if (savingDetails || !title.trim()) return;
-    const year = publishYear.trim() ? Number(publishYear) : 0;
-    if (!Number.isInteger(year) || year < 0 || year > 9999) {
-      setError('Publication year must be a four-digit year.');
-      return;
-    }
-    if (seriesPositionError(seriesPosition)) return;
-    setSavingDetails(true);
-    setError('');
-    setMetadataMessage('');
-    try {
-      await api.updateWork(id, {
-        title,
-        author,
-        description,
-        isbn,
-        first_publish_year: year,
-        publisher,
-        language,
-        ...(series !== (work?.series || '') || seriesPosition !== (work?.series_position || '')
-          ? { series, series_position: seriesPosition }
-          : {}),
-        subjects: subjects
-          .split('\n')
-          .map((subject) => subject.trim())
-          .filter(Boolean),
-      });
-      await load();
-      setMetadataMessage('Book details saved.');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingDetails(false);
-    }
-  }
-
-  async function saveGenres() {
-    if (savingGenres) return;
-    setSavingGenres(true);
-    setError('');
-    setMetadataMessage('');
-    try {
-      if (genreMode === 'manual') await api.setWorkGenreTags(id, selectedGenreIDs);
-      else await api.resetWorkGenreTags(id);
-      const nextWork = await api.work(id);
-      setWork(nextWork);
-      setGenreMode(nextWork.genre_tags_manual ? 'manual' : 'automatic');
-      setSelectedGenreIDs(nextWork.genre_tags.map((tag) => tag.id));
-      setMetadataMessage('Genres saved.');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingGenres(false);
-    }
-  }
-
-  function toggleGenre(tagID: string) {
-    setSelectedGenreIDs((current) =>
-      current.includes(tagID) ? current.filter((id) => id !== tagID) : [...current, tagID],
-    );
-  }
-
-  async function searchCovers() {
-    const version = ++coverSearchVersion.current;
-    setSearchingCovers(true);
-    setCoverCandidates([]);
-    setCoverSearched(false);
-    setError('');
-    try {
-      const candidates = await api.searchCovers(id, coverQuery, coverFormat);
-      if (version !== coverSearchVersion.current) return;
-      setCoverCandidates(
-        candidates.filter(
-          (candidate) =>
-            candidate.source === 'open_library' &&
-            (coverFormat !== 'audiobook' || candidate.format === 'audiobook'),
-        ),
-      );
-      setCoverSearched(true);
-    } catch (value) {
-      if (version === coverSearchVersion.current) setError(errorMessage(value));
-    } finally {
-      if (version === coverSearchVersion.current) setSearchingCovers(false);
-    }
-  }
-
-  async function metadataApplied() {
-    await load();
-    setMetadataMessage('Selected book details updated.');
-  }
-
-  async function refreshMetadata() {
-    setRefreshingMetadata(true);
-    setMetadataMessage('');
-    setError('');
-    try {
-      const nextWork = await api.refreshWorkMetadata(id);
-      setWork(nextWork);
-      setDescription(nextWork.description || '');
-      setISBN(nextWork.isbn || '');
-      setPublishYear(nextWork.first_publish_year ? String(nextWork.first_publish_year) : '');
-      setPublisher(nextWork.publisher || '');
-      setSeries(nextWork.series || '');
-      setSeriesPosition(nextWork.series_position || '');
-      setLanguage(nextWork.language || '');
-      setSubjects((nextWork.subject_values ?? []).join('\n'));
-      setCoverAssets(await api.covers(id, coverFormat));
-      setMetadataMessage('Missing details and artwork were refreshed.');
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setRefreshingMetadata(false);
-    }
-  }
-
-  /** Re-fetch the artwork gallery for whichever format tab is active — every cover mutation needs this, `load()` alone does not touch it. */
-  async function refreshCoverAssets() {
-    setCoverAssets(await api.covers(id, coverFormat));
-  }
-
-  async function chooseCover(candidate: { source: string; source_id: string }) {
-    setSavingCover(candidate.source_id);
-    setError('');
-    setMetadataMessage('');
-    try {
-      await api.selectCover(id, candidate.source, candidate.source_id, coverFormat);
-      await Promise.all([load(), refreshCoverAssets()]);
-      setMetadataMessage('Artwork selected.');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingCover('');
-    }
-  }
-
-  async function restoreCover() {
-    setSavingCover('restore');
-    setError('');
-    setMetadataMessage('');
-    try {
-      await api.restoreCover(id, coverFormat);
-      await Promise.all([load(), refreshCoverAssets()]);
-      setMetadataMessage('Automatic format artwork restored.');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingCover('');
-    }
-  }
-
-  async function saveCoverSettings() {
-    setSavingCover('settings');
-    setError('');
-    setMetadataMessage('');
-    try {
-      await api.updateCoverSettings(id, {
-        fit: 'contain',
-        focal_x: 50,
-        focal_y: 50,
-        style: generatedStyle,
-        tone: Number(generatedTone),
-        layout: generatedLayout,
-      });
-      await load();
-      setMetadataMessage('Artwork settings saved.');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingCover('');
-    }
-  }
-
-  async function deleteCover(coverID: string) {
-    setSavingCover(coverID);
-    try {
-      await api.deleteCover(id, coverID);
-      setDeletingCoverID('');
-      await Promise.all([load(), refreshCoverAssets()]);
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingCover('');
-    }
-  }
-
-  async function uploadCover() {
-    const result = await DocumentPicker.getDocumentAsync({ type: ['image/jpeg', 'image/png'] });
-    if (result.canceled) return;
-    setSavingCover('upload');
-    setError('');
-    setMetadataMessage('');
-    try {
-      const asset = result.assets[0];
-      const blob = await fetch(asset.uri).then((response) => response.blob());
-      await api.uploadCover(id, blob, asset.name, coverFormat);
-      await Promise.all([load(), refreshCoverAssets()]);
-      setMetadataMessage('Artwork uploaded.');
-    } catch (value) {
-      setError(errorMessage(value));
-    } finally {
-      setSavingCover('');
-    }
-  }
-
-  async function deleteWork() {
-    if (!work) return;
-    setDeletingWork(true);
-    try {
-      await api.deleteWork(id);
-      goBackOr(`/library/${work.library_id}`);
-    } catch (value) {
-      setError(errorMessage(value));
-      setDeletingWork(false);
-    }
   }
 
   if (!canEdit)
@@ -703,7 +351,7 @@ export default function ManageWorkScreen() {
                   { value: 'audiobook', label: 'Audiobook cover' },
                 ]}
                 onChange={(value) => {
-                  coverSearchVersion.current += 1;
+                  coverSearchVersionRef.current += 1;
                   setCoverCandidates([]);
                   setCoverAssets([]);
                   setCoverSearched(false);
@@ -1492,230 +1140,4 @@ function ManageTabItem({
       <Text className={`text-sm font-sans-bold ${textClass}`}>{label}</Text>
     </Pressable>
   );
-}
-
-function RepresentationGroup({
-  title,
-  items,
-  media,
-}: {
-  title: string;
-  items: Representation[];
-  media: MediaChoice[];
-}) {
-  return (
-    <View className="gap-2">
-      <Text className="text-base font-sans-bold text-ink">{title}</Text>
-      {items.length ? (
-        <View className="border-t border-line">
-          {items.map((item) => {
-            const revisions = media.filter((revision) => revision.representation_id === item.id);
-            const newest = revisions[0];
-            const detail = newest
-              ? `${newest.original_filename || 'Unnamed file'} · ${formatBytes(newest.size_bytes)} · ${revisions.length} ${revisions.length === 1 ? 'revision' : 'revisions'}`
-              : 'No uploaded file';
-            return (
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel={`Manage ${item.label}`}
-                key={item.id}
-                className="min-h-14 flex-row items-center gap-4 border-b border-line py-3.5"
-                onPress={() => router.push(`/representation/${item.id}`)}
-              >
-                <View className="min-w-0 flex-1 gap-1">
-                  <Text className={shared.itemTitle}>{item.label}</Text>
-                  <Text numberOfLines={2} className={shared.itemMeta}>
-                    {detail}
-                  </Text>
-                </View>
-                <Text className="text-sm font-sans-bold text-accent">Manage</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <Text className={shared.itemMeta}>None added.</Text>
-      )}
-    </View>
-  );
-}
-
-/** One tappable cover search result — the whole card is the target, not a bordered button underneath it. */
-function CoverAssetCard({
-  asset,
-  audioArtwork,
-  work,
-  disabled,
-  selecting,
-  onSelect,
-  onDelete,
-}: {
-  asset: CoverAsset;
-  audioArtwork: boolean;
-  work: Work;
-  disabled: boolean;
-  selecting: boolean;
-  onSelect: () => void;
-  onDelete?: () => void;
-}) {
-  return (
-    <View className={`w-[148px] gap-2 ${disabled && !selecting ? 'opacity-50' : ''}`}>
-      <BookCover
-        title={work.title}
-        author={work.author}
-        coverURL={asset.image_url}
-        size={audioArtwork ? 'audio' : 'small'}
-        {...coverPresentation(work)}
-        coverFit="cover"
-      />
-      <Text numberOfLines={1} className="text-sm font-sans-bold text-ink">
-        {asset.source === 'embedded'
-          ? `Embedded — ${asset.format === 'audiobook' ? 'Audiobook' : 'Ebook'}`
-          : asset.source === 'upload'
-            ? 'Uploaded image'
-            : 'Open Library'}
-      </Text>
-      <Text numberOfLines={1} className="text-xs text-muted">
-        {asset.source === 'embedded'
-          ? asset.original_filename || 'From the source file'
-          : asset.source === 'upload'
-            ? 'Added to Aldus'
-            : 'Open Library'}
-      </Text>
-      <Button
-        label={asset.selected ? 'Selected' : selecting ? 'Selecting…' : 'Use cover'}
-        kind="secondary"
-        selected={asset.selected}
-        disabled={disabled || asset.selected}
-        onPress={onSelect}
-      />
-      {onDelete ? (
-        <Button label="Delete upload" kind="danger" disabled={disabled} onPress={onDelete} />
-      ) : null}
-    </View>
-  );
-}
-
-function CoverCandidateCard({
-  candidate,
-  fallbackTitle,
-  fallbackAuthor,
-  selecting,
-  disabled,
-  onPress,
-}: {
-  candidate: CoverCandidate;
-  fallbackTitle: string;
-  fallbackAuthor?: string;
-  selecting: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const stateClass = resolvePressStateClass({ focused, pressed });
-  const title = candidate.title || fallbackTitle;
-  const meta =
-    [candidate.publisher, candidate.first_publish_year || undefined].filter(Boolean).join(' · ') ||
-    (candidate.source === 'embedded' ? 'Embedded artwork' : 'Open Library');
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Use this cover: ${title}, ${meta}`}
-      accessibilityState={{ disabled, busy: selecting }}
-      disabled={disabled}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`w-[148px] gap-2 rounded-control ${stateClass} ${disabled && !selecting ? 'opacity-50' : ''}`}
-    >
-      <BookCover
-        title={title}
-        author={candidate.author || fallbackAuthor}
-        coverURL={candidate.image_url}
-        size="small"
-        coverFit="cover"
-        square={candidate.format === 'audiobook'}
-      />
-      <Text numberOfLines={2} className="font-editorial-bold text-sm text-ink">
-        {title}
-      </Text>
-      <Text numberOfLines={1} className="text-xs text-muted">
-        {meta}
-      </Text>
-      <Text className="text-xs font-sans-bold text-accent">
-        {selecting ? 'Selecting…' : 'Use this cover'}
-      </Text>
-    </Pressable>
-  );
-}
-
-async function loadRevisions(libraryId: string, representations: Representation[]) {
-  const grouped = await Promise.all(
-    representations.map(async (representation) =>
-      (await api.media(libraryId, representation.id)).map((item) => ({
-        ...item,
-        representation,
-      })),
-    ),
-  );
-  return grouped.flat();
-}
-
-function RevisionChoiceList({
-  title,
-  items,
-  selected,
-  onSelect,
-}: {
-  title: string;
-  items: MediaChoice[];
-  selected: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <View className={shared.grow}>
-      <Text className={shared.itemTitle}>{title}</Text>
-      {items.length === 0 ? (
-        <Empty>None available.</Empty>
-      ) : (
-        items.map((item) => (
-          <View key={item.id} className="gap-1 border-b border-line py-3">
-            <Radio
-              label={item.original_filename || item.representation.label}
-              selected={selected === item.id}
-              onPress={() => onSelect(item.id)}
-            />
-            <Text className="pl-8 text-sm text-muted">
-              {formatBytes(item.size_bytes)} · {item.representation.label}
-            </Text>
-          </View>
-        ))
-      )}
-    </View>
-  );
-}
-
-function SyncSourceSummary({ title, item }: { title: string; item: MediaChoice }) {
-  return (
-    <View className="min-w-[240px] flex-1 gap-1">
-      <Text className="text-sm font-sans-semibold text-muted">{title}</Text>
-      <Text numberOfLines={2} className={shared.itemTitle}>
-        {item.representation.label || item.original_filename}
-      </Text>
-      <Text className={shared.itemMeta}>
-        {item.representation.narrators?.join(', ') || item.original_filename} ·{' '}
-        {formatBytes(item.size_bytes)}
-      </Text>
-    </View>
-  );
-}
-
-function formatBytes(bytes: number) {
-  return bytes < 1024 * 1024
-    ? `${Math.round(bytes / 1024)} KB`
-    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

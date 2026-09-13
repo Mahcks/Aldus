@@ -1,14 +1,14 @@
-import type { Library, Membership, User } from '@/generated/api';
-import { useEffect, useRef, useState } from 'react';
+import { useUserLibraryAccess } from '@/hooks/administration/useUserLibraryAccess';
+import type { User } from '@/generated/api';
+import { useEffect, useState } from 'react';
 import { Platform, Share, useWindowDimensions } from 'react-native';
 import { getAPIBaseURL } from '@/lib/api-base';
-import { useAuth } from '@/features/auth/AuthProvider';
-import { Text, View } from '@/features/tw';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { Text, View } from '@/components/ui/tw';
 import {
   libraryAccessCountLabel,
   libraryAccessSummary,
-  membershipForUser,
-} from '@/features/user-library-access';
+} from '@/lib/administration/user-library-access';
 import {
   Button,
   Checkbox,
@@ -19,30 +19,39 @@ import {
   IconButton,
   Loading,
   Notice,
-  Page,
   Row,
   SearchField,
   StatusBadge,
-} from '@/features/ui';
+} from '@/components/ui';
+import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
-import { LibraryAccessEditor } from '@/features/LibraryAccessEditor';
+import { LibraryAccessEditor } from '@/components/administration/LibraryAccessEditor';
 
 const emptyForm = { username: '', display_name: '', admin_note: '', admin: false };
 export default function UsersScreen() {
   const auth = useAuth();
   const desktop = useWindowDimensions().width >= 1100;
   const [users, setUsers] = useState<User[]>([]);
-  const [libraries, setLibraries] = useState<Library[]>([]);
-  const [membersByLibrary, setMembersByLibrary] = useState<Record<string, Membership[]>>({});
   const [form, setForm] = useState(emptyForm);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<User>();
+  const {
+    libraries,
+    membersByLibrary,
+    accessLoading,
+    accessBusy,
+    accessError,
+    setAccessError,
+    loadLibraryAccess,
+    selectedMembership,
+    changeLibraryRole,
+    toggleLibraryPermission,
+  } = useUserLibraryAccess(selected?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [createLibraryIDs, setCreateLibraryIDs] = useState<string[]>([]);
   const [allowRequests, setAllowRequests] = useState(false);
   const [grantErrors, setGrantErrors] = useState<string[]>([]);
   const [roleConfirm, setRoleConfirm] = useState(false);
-  const accessLock = useRef(false);
   const [confirmingDisable, setConfirmingDisable] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [temporaryCredential, setTemporaryCredential] = useState<{
@@ -53,9 +62,6 @@ export default function UsersScreen() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [accessLoading, setAccessLoading] = useState(true);
-  const [accessBusy, setAccessBusy] = useState('');
-  const [accessError, setAccessError] = useState('');
   const [adminNote, setAdminNote] = useState('');
   const [noteError, setNoteError] = useState('');
   const [noteSaved, setNoteSaved] = useState(false);
@@ -81,28 +87,6 @@ export default function UsersScreen() {
     }
   }
 
-  async function loadLibraryAccess() {
-    setAccessLoading(true);
-    setAccessError('');
-    try {
-      const items: Library[] = [];
-      for (;;) {
-        const page = await api.libraries(items.length);
-        items.push(...page);
-        if (page.length < 100) break;
-      }
-      const memberPages = await Promise.all(items.map((library) => api.members(library.id)));
-      setLibraries(items);
-      setMembersByLibrary(
-        Object.fromEntries(items.map((library, index) => [library.id, memberPages[index]])),
-      );
-    } catch (value) {
-      setAccessError(errorMessage(value));
-    } finally {
-      setAccessLoading(false);
-    }
-  }
-
   useEffect(() => {
     // Data loading is the external synchronization this effect owns.
     if (auth.user?.admin) {
@@ -110,7 +94,7 @@ export default function UsersScreen() {
       void loadUsers();
       void loadLibraryAccess();
     }
-  }, [auth.user?.admin]);
+  }, [auth.user?.admin, loadLibraryAccess]);
 
   const serverAddress =
     getAPIBaseURL() || (typeof window !== 'undefined' ? window.location.origin : '');
@@ -264,76 +248,6 @@ Choose your own password when you sign in.`;
       setNoteError(errorMessage(value));
     } finally {
       setSavingNote(false);
-    }
-  }
-
-  function selectedMembership(libraryID: string) {
-    return selected ? membershipForUser(membersByLibrary, libraryID, selected.id) : undefined;
-  }
-
-  async function changeLibraryRole(library: Library, role: string) {
-    if (!selected || accessLock.current) return;
-    const membership = selectedMembership(library.id);
-    if (membership?.role === role || (!membership && !role)) return;
-    accessLock.current = true;
-    setAccessBusy(library.id);
-    setAccessError('');
-    try {
-      if (!role) {
-        await api.removeMember(library.id, selected.id);
-      } else {
-        await api.setMember(
-          library.id,
-          selected.id,
-          role,
-          membership?.can_request_acquisitions,
-          membership?.can_bypass_acquisition_approval,
-          membership?.can_advanced_acquisition_request,
-          membership?.exclusive,
-        );
-      }
-      const members = await api.members(library.id);
-      setMembersByLibrary((current) => ({ ...current, [library.id]: members }));
-    } catch (value) {
-      setAccessError(errorMessage(value));
-    } finally {
-      accessLock.current = false;
-      setAccessBusy('');
-    }
-  }
-
-  async function toggleLibraryPermission(
-    library: Library,
-    permission: 'request' | 'bypass' | 'advanced' | 'exclusive',
-  ) {
-    const membership = selectedMembership(library.id);
-    if (!selected || !membership || accessLock.current) return;
-    accessLock.current = true;
-    setAccessBusy(library.id);
-    setAccessError('');
-    try {
-      await api.setMember(
-        library.id,
-        selected.id,
-        membership.role,
-        permission === 'request'
-          ? !membership.can_request_acquisitions
-          : membership.can_request_acquisitions,
-        permission === 'bypass'
-          ? !membership.can_bypass_acquisition_approval
-          : membership.can_bypass_acquisition_approval,
-        permission === 'advanced'
-          ? !membership.can_advanced_acquisition_request
-          : membership.can_advanced_acquisition_request,
-        permission === 'exclusive' ? !membership.exclusive : membership.exclusive,
-      );
-      const members = await api.members(library.id);
-      setMembersByLibrary((current) => ({ ...current, [library.id]: members }));
-    } catch (value) {
-      setAccessError(errorMessage(value));
-    } finally {
-      accessLock.current = false;
-      setAccessBusy('');
     }
   }
 
