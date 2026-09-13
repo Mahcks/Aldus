@@ -202,6 +202,7 @@ export function useConsumptionLoading(
       }
       setMediaLoading(true);
       let stored: Awaited<ReturnType<typeof offlineWork>> = null;
+      let openedEPUB = false;
       try {
         const conflicts = await reconcileOfflineRepresentationStates(params.id);
         if (canceled) return;
@@ -265,6 +266,21 @@ export function useConsumptionLoading(
             setNotice(errorMessage(error));
           }
         }
+        async function loadEPUBSource() {
+          if (!loadEPUB || !selectedEPUB) return undefined;
+          const nextSource =
+            epubSourceIDRef.current === selectedEPUB.id && epubSource
+              ? epubSource
+              : await productEPUBSource(selectedEPUB.id, selectedEPUB.size_bytes);
+          // Open the native publication while alignment and saved state arrive.
+          // mediaLoading still blocks interaction and restoration until both are ready.
+          if (!canceled && Platform.OS !== 'web') {
+            openedEPUB = nextSource !== epubSource;
+            setEPUBSource(nextSource);
+            epubSourceIDRef.current = selectedEPUB.id;
+          }
+          return nextSource;
+        }
         const selectedJob = readyJob(jobs, epubID, audioID);
         const [nextEPUBState, nextAudioState, nextAlignment, blob, audioSource, nextAudioChapters] =
           await Promise.all([
@@ -279,11 +295,7 @@ export function useConsumptionLoading(
                 ? alignment
                 : api.alignment(selectedJob.alignment_id)
               : undefined,
-            loadEPUB && selectedEPUB
-              ? epubSourceIDRef.current === selectedEPUB.id && epubSource
-                ? epubSource
-                : productEPUBSource(selectedEPUB.id, selectedEPUB.size_bytes)
-              : undefined,
+            loadEPUBSource(),
             loadAudio && selectedAudio
               ? audioSourceIDRef.current === selectedAudio.id && source
                 ? source
@@ -347,6 +359,12 @@ export function useConsumptionLoading(
           if (loadAudio) setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
         }
       } catch (error) {
+        // Early publication setup must not expose the opening page when saved-state loading fails.
+        if (!canceled && openedEPUB && !stored) {
+          setEPUBSource(undefined);
+          epubSourceIDRef.current = '';
+          resetReaderPublication();
+        }
         if (!canceled && error instanceof APIError && error.status === 0 && params.id) {
           if (!stored) return setNotice('This download is incomplete. Connect to Aldus and retry.');
           setNotice('Offline mode · changes will sync when Aldus is reachable.');

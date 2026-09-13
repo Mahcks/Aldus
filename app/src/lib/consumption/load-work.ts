@@ -13,20 +13,34 @@ export async function loadConsumptionWork({
   epub?: string;
   audio?: string;
 }) {
-  const [nextWork, representations, nextJobs, nextProgress, preference, nextReaderDefaults] =
-    await Promise.all([
-      api.work(id),
-      api.representations(id),
-      api.alignmentJobs(id),
-      api.workProgress(id),
-      api.workPreference(id),
-      api.readerPreferences(),
-    ]);
-  const revisions = (
-    await Promise.all(
-      representations.map((representation) => api.media(nextWork.library_id, representation.id)),
-    )
-  ).flat();
+  const workRequest = api.work(id);
+  const representationsRequest = api.representations(id);
+  // Media only depends on the work and its editions, not progress or settings.
+  const revisionsRequest = Promise.all([workRequest, representationsRequest]).then(
+    async ([work, representations]) =>
+      (
+        await Promise.all(
+          representations.map((representation) => api.media(work.library_id, representation.id)),
+        )
+      ).flat(),
+  );
+  const [
+    nextWork,
+    representations,
+    nextJobs,
+    nextProgress,
+    preference,
+    nextReaderDefaults,
+    revisions,
+  ] = await Promise.all([
+    workRequest,
+    representationsRequest,
+    api.alignmentJobs(id),
+    api.workProgress(id),
+    api.workPreference(id),
+    api.readerPreferences(),
+    revisionsRequest,
+  ]);
   const nextEPUBs = choices(representations, revisions, ['epub']);
   const nextAudio = choices(representations, revisions, ['audio', 'audiobook']);
   const pair = defaultPair(
