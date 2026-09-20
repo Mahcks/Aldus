@@ -3,7 +3,8 @@ import { useState } from 'react';
 import type { CatalogGroup } from '@/generated/api';
 import { AppIcon } from '@/components/ui/icons';
 import { Pressable, Text, View } from '@/components/ui/tw';
-import { Button, Section, colors, resolvePressStateClass } from '@/components/ui';
+import { Button, Section, resolvePressStateClass } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 
 export function CatalogGroupSection({
   kind,
@@ -49,6 +50,7 @@ export function CatalogGroupSection({
 }
 
 export function CatalogGroupRow({ group, onPress }: { group: CatalogGroup; onPress: () => void }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const state = resolvePressStateClass({ focused, pressed });

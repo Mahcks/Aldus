@@ -3,7 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { collectionCount } from '@/lib/collections/collection-presentation';
 import { AppIcon } from '@/components/ui/icons';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
@@ -20,6 +20,7 @@ import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 
 function CollectionRow({ item, shared = false }: { item: Collection; shared?: boolean }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });

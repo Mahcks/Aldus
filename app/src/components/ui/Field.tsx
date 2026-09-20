@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AppIcon } from './icons';
-import { colors } from './theme';
+import { useThemeColors } from './theme';
 import { Text, TextInput, View, type TextInputProps } from './tw';
 
 function resolveFieldBorderClass({ focused, error }: { focused: boolean; error: boolean }) {
@@ -20,6 +20,7 @@ export function Field({
   error,
   ...props
 }: TextInputProps & { label: string; help?: string; error?: string }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
 
   const handleBlur: TextInputProps['onBlur'] = (event) => {
@@ -89,6 +90,7 @@ export function SearchField({
   onSubmit?: () => void;
   placeholder?: string;
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
 
   const handleFocus = () => setFocused(true);

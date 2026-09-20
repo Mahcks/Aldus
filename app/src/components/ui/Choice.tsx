@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Platform } from 'react-native';
 import { AppIcon } from './icons';
-import { colors } from './theme';
+import { useThemeColors } from './theme';
 import { Pressable, Text, View } from './tw';
 import { Button, resolvePressStateClass } from './Button';
 
@@ -54,6 +54,7 @@ export function Checkbox({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const handleFocus = () => setFocused(true);

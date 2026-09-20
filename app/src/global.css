@@ -86,6 +86,162 @@
     0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
 }
 
+/*
+ * Dark mode — same warm literary character, inverted elevation. Surfaces
+ * step up from a near-black canvas instead of down from parchment; ink
+ * becomes cream; the terracotta accent and every status color are
+ * brightened so they read against near-black instead of near-white
+ * (and `on-accent`/button text flips dark, since a bright accent fill
+ * now needs dark text rather than light). Rail tokens are untouched:
+ * they were already a dark strip in light mode, so they already suit a
+ * dark canvas without modification. Reader night-mode tokens are also
+ * untouched — that's a separate, book-local preference.
+ *
+ * Two ways in, for "system" vs. an explicit user choice:
+ *  - The media query is the automatic default and needs no JS at all.
+ *  - `.theme-dark`/`.theme-light` on <html> are `lib/theme-preference.ts`'s
+ *    manual override on web (a real browser won't let JS fake
+ *    `prefers-color-scheme`, so an explicit choice there has to win via
+ *    a plain class instead) — a class selector on :root outranks the
+ *    media query's bare :root regardless of source order, so it wins in
+ *    both directions. Native ignores these classes entirely and instead
+ *    forces the scheme via `Appearance.setColorScheme`, which the
+ *    `prefers-color-scheme` match above already resolves against (see
+ *    react-native-css's handling of that media feature).
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #171410;
+    --color-panel: #171410;
+    --color-paper: #211c17;
+    --color-raised: #211c17;
+    --color-panel-strong: #3a2f24;
+    --color-control: #1c1712;
+    --color-control-focus: #211c17;
+
+    --color-ink: #eee6d8;
+    --color-text-secondary: #d9cdbb;
+    --color-muted: #a89a86;
+    --color-subtle: #8f8271;
+
+    --color-line: rgb(238 230 216 / 0.14);
+    --color-line-subtle: rgb(238 230 216 / 0.08);
+    --color-line-strong: #5c5040;
+
+    --color-accent: #d97a4c;
+    --color-accent-strong: #c1673f;
+    --color-accent-soft: #3a2418;
+    --color-on-accent: #171410;
+
+    --color-danger: #e26a5d;
+    --color-danger-soft: #3a1f1c;
+    --color-focus: #d97a4c;
+    --color-success: #6bab70;
+    --color-success-soft: #22301f;
+    --color-warning: #c99a3d;
+    --color-warning-soft: #362b16;
+    --color-info: #7fa8c9;
+    --color-info-soft: #1f2b34;
+    --color-neutral: #a89a86;
+    --color-neutral-soft: #2a251f;
+
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-sm:
+      0 2px 6px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-card: 0 8px 20px -6px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
+    --shadow-popover:
+      0 24px 48px -12px rgb(0 0 0 / 0.65), 0 8px 16px -4px rgb(0 0 0 / 0.45);
+  }
+}
+
+/* Explicit "Dark" choice on web — same values as the media query above. */
+:root.theme-dark {
+  --color-canvas: #171410;
+  --color-panel: #171410;
+  --color-paper: #211c17;
+  --color-raised: #211c17;
+  --color-panel-strong: #3a2f24;
+  --color-control: #1c1712;
+  --color-control-focus: #211c17;
+
+  --color-ink: #eee6d8;
+  --color-text-secondary: #d9cdbb;
+  --color-muted: #a89a86;
+  --color-subtle: #8f8271;
+
+  --color-line: rgb(238 230 216 / 0.14);
+  --color-line-subtle: rgb(238 230 216 / 0.08);
+  --color-line-strong: #5c5040;
+
+  --color-accent: #d97a4c;
+  --color-accent-strong: #c1673f;
+  --color-accent-soft: #3a2418;
+  --color-on-accent: #171410;
+
+  --color-danger: #e26a5d;
+  --color-danger-soft: #3a1f1c;
+  --color-focus: #d97a4c;
+  --color-success: #6bab70;
+  --color-success-soft: #22301f;
+  --color-warning: #c99a3d;
+  --color-warning-soft: #362b16;
+  --color-info: #7fa8c9;
+  --color-info-soft: #1f2b34;
+  --color-neutral: #a89a86;
+  --color-neutral-soft: #2a251f;
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-sm:
+    0 2px 6px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-card: 0 8px 20px -6px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-popover:
+    0 24px 48px -12px rgb(0 0 0 / 0.65), 0 8px 16px -4px rgb(0 0 0 / 0.45);
+}
+
+/* Explicit "Light" choice on web — reasserts the base :root values so they win over a dark system preference. */
+:root.theme-light {
+  --color-canvas: #faf7f2;
+  --color-panel: #faf7f2;
+  --color-paper: #fffdf8;
+  --color-raised: #fffdf8;
+  --color-panel-strong: #dfd3c3;
+  --color-control: #f3ede4;
+  --color-control-focus: #fffdf8;
+
+  --color-ink: #27211c;
+  --color-text-secondary: #4a4038;
+  --color-muted: #6c6258;
+  --color-subtle: #75695e;
+
+  --color-line: rgb(39 33 28 / 0.14);
+  --color-line-subtle: rgb(39 33 28 / 0.08);
+  --color-line-strong: #908171;
+
+  --color-accent: #8a3c24;
+  --color-accent-strong: #6f2f1c;
+  --color-accent-soft: #f1ded5;
+  --color-on-accent: #fffdf8;
+
+  --color-danger: #8a3028;
+  --color-danger-soft: #f6dfdb;
+  --color-focus: #8a3c24;
+  --color-success: #3f5c43;
+  --color-success-soft: #e1e9df;
+  --color-warning: #7a5a17;
+  --color-warning-soft: #f3e6c8;
+  --color-info: #3d5a73;
+  --color-info-soft: #dfe7ee;
+  --color-neutral: #6c6258;
+  --color-neutral-soft: #e7e0d4;
+
+  --shadow-xs: 0 1px 2px rgb(39 33 28 / 0.06);
+  --shadow-sm:
+    0 2px 6px rgb(39 33 28 / 0.08), 0 1px 2px rgb(39 33 28 / 0.06);
+  --shadow-card: 0 8px 20px -6px rgb(39 33 28 / 0.18), 0 2px 6px rgb(39 33 28 / 0.08);
+  --shadow-popover:
+    0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
+}
+
 @layer theme {
   @theme {
     --color-canvas: var(--color-canvas);

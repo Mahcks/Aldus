@@ -6,7 +6,8 @@ import { LibraryCard } from '@/components/catalog/bookshelf';
 import { AppIcon } from '@/components/ui/icons';
 import { listItemEnter } from '@/components/ui/motion';
 import { Text, View } from '@/components/ui/tw';
-import { Button, colors, Dialog, Loading, Notice, SectionHeader, TextField } from '@/components/ui';
+import { Button, Dialog, Loading, Notice, SectionHeader, TextField } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineLibraries, rememberOfflineLibraries } from '@/lib/offline-library';
@@ -42,6 +43,7 @@ function CreateLibraryForm({ name, onNameChange, onSubmit, busy, error }: Create
 
 /** Single centered "let's get started" moment — used only when there are no libraries yet. */
 function FirstLibraryHero(props: CreateLibraryFormProps) {
+  const colors = useThemeColors();
   return (
     <View className="mx-auto w-full max-w-[440px] items-center gap-5 py-8">
       <View className="h-14 w-14 items-center justify-center rounded-full bg-accent-soft">

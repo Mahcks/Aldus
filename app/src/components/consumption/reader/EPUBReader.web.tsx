@@ -2,7 +2,7 @@ import { Asset } from 'expo-asset';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
 import { IconButton } from '@/components/ui';
-import { colors } from '@/components/ui/theme';
+import { lightColors, useThemeColors } from '@/components/ui/theme';
 import { flattenReaderContents } from '@/lib/consumption/reader-navigation';
 import { Text, View } from '@/components/ui/tw';
 import {
@@ -109,6 +109,12 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   },
   ref,
 ) {
+  // Reactive: only the loading spinner below sits on app chrome. The book's
+  // own page colors (`applyReaderStyles`, `styles.book`) stay pinned to the
+  // fixed light palette — "Paper"/"Warm" are a book-local light-page choice
+  // independent of the app's dark mode; only "Night" is meant to be dark,
+  // via its own dedicated tokens.
+  const colors = useThemeColors();
   const [ready, setReady] = useState(false);
   const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
@@ -689,12 +695,12 @@ function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
   style.id = 'aldus-reader-style';
   const night = preferences.theme === 'night';
   const background = night
-    ? colors.readerNightPaper
+    ? lightColors.readerNightPaper
     : preferences.theme === 'sepia'
-      ? colors.canvas
-      : colors.paper;
-  const ink = night ? colors.readerNightInk : colors.ink;
-  const selection = night ? colors.readerNightSelection : colors.accentSoft;
+      ? lightColors.canvas
+      : lightColors.paper;
+  const ink = night ? lightColors.readerNightInk : lightColors.ink;
+  const selection = night ? lightColors.readerNightSelection : lightColors.accentSoft;
   const fontFamily =
     preferences.fontFamily === 'publisher'
       ? ''
@@ -771,5 +777,5 @@ function domPath(node: Node): string {
 }
 
 const styles = StyleSheet.create({
-  book: { flex: 1, minHeight: 500, overflow: 'hidden', backgroundColor: colors.paper },
+  book: { flex: 1, minHeight: 500, overflow: 'hidden', backgroundColor: lightColors.paper },
 });

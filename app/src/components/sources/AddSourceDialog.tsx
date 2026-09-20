@@ -7,7 +7,8 @@ import {
 } from '@/lib/sources/source-administration';
 import { findRootForPath } from '@/lib/sources/helpers';
 import { AppIcon } from '@/components/ui/icons';
-import { Button, Checkbox, Dialog, Field, Notice, colors } from '@/components/ui';
+import { Button, Checkbox, Dialog, Field, Notice } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 import { api, errorMessage } from '@/lib/api';
 
@@ -213,6 +214,7 @@ function RootPicker({
   roots: SourceRoot[];
   onChoose: (root: SourceRoot) => void;
 }) {
+  const colors = useThemeColors();
   return (
     <View className="gap-2">
       <Text className="text-sm font-sans-bold text-ink">Choose a starting location</Text>
@@ -251,6 +253,7 @@ function FolderBrowser({
   onNavigate: (path: string) => void;
   onChangeRoot: () => void;
 }) {
+  const colors = useThemeColors();
   const parent = parentDirectory(directory.relative_path);
   const selectedName = directory.relative_path.split('/').filter(Boolean).at(-1) ?? root.label;
 
@@ -354,6 +357,7 @@ function Breadcrumb({
 }
 
 function NoRootsSetup({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const colors = useThemeColors();
   return (
     <View className="gap-3 rounded-card border border-line bg-canvas p-4">
       <View className="flex-row items-center gap-3">

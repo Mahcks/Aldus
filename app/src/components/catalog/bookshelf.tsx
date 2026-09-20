@@ -4,7 +4,8 @@ import { Image as ExpoImage } from 'expo-image';
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
-import { Button, Dialog, IconButton, colors, resolvePressStateClass } from '@/components/ui';
+import { Button, Dialog, IconButton, resolvePressStateClass } from '@/components/ui';
+import { useThemeColors, type ThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import type { WorkQuickAction } from '@/lib/catalog/work-actions';
 
@@ -15,13 +16,9 @@ const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info'
  * rather than a className, so the letterboxed strips around a `contain`-fit
  * cover still pick up the generated tone instead of falling back to white.
  */
-const coverToneHex = [
-  colors.ink,
-  colors.textSecondary,
-  colors.accentStrong,
-  colors.info,
-  colors.success,
-];
+function coverToneHexFor(colors: ThemeColors) {
+  return [colors.ink, colors.textSecondary, colors.accentStrong, colors.info, colors.success];
+}
 
 export type CoverPresentation = {
   coverFit?: 'cover' | 'contain';
@@ -106,6 +103,8 @@ export function BookCover({
   coverURL?: string;
   fallbackCoverURL?: string;
 } & CoverPresentation) {
+  const colors = useThemeColors();
+  const coverToneHex = coverToneHexFor(colors);
   const [failedURLs, setFailedURLs] = useState<string[]>([]);
   const imageURL = [coverURL, fallbackCoverURL].find((url) => url && !failedURLs.includes(url));
   const showImage = Boolean(imageURL);
@@ -258,6 +257,7 @@ export function LibraryCard({
   role?: string;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
@@ -325,6 +325,7 @@ type WorkPresentationProps = {
  * cover scale without needing any native code at all.
  */
 function ProgressScrim({ progress, icon }: { progress: string; icon?: AppIconName | null }) {
+  const colors = useThemeColors();
   return (
     <View
       pointerEvents="none"
@@ -353,6 +354,7 @@ function ProgressScrim({ progress, icon }: { progress: string; icon?: AppIconNam
  * back in the caption (the two used to show the same fact twice).
  */
 function FormatIconChip({ icon }: { icon: AppIconName }) {
+  const colors = useThemeColors();
   return (
     <View
       pointerEvents="none"
@@ -711,6 +713,7 @@ function availabilityItems(value: WorkAvailability) {
 
 /** Icon + label row, for list rows (`WorkRow`) that have the horizontal room for it. */
 export function AvailabilityIcons({ value }: { value: WorkAvailability }) {
+  const colors = useThemeColors();
   const available = availabilityItems(value);
   return (
     <View
@@ -779,6 +782,7 @@ export function ContinueCard({
   onRead?: () => void;
   onListen?: () => void;
 }) {
+  const colors = useThemeColors();
   const [menuOpen, setMenuOpen] = useState(false);
   const [coverFocused, setCoverFocused] = useState(false);
   const [coverPressed, setCoverPressed] = useState(false);

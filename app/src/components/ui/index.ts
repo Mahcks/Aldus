@@ -6,5 +6,5 @@ export { Notice } from './Notice';
 export { Empty, EmptyState, ErrorState } from './EmptyState';
 export { StatusBadge } from './StatusBadge';
 export { shared, Row, IconRow, SectionHeader, Section } from './layout';
-export { colors } from './theme';
+export { useThemeColors, lightColors, darkColors, type ThemeColors } from './theme';
 export { LoadingState, LoadingState as Loading } from './loading-skeleton';

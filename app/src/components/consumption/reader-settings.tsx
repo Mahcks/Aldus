@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { DEFAULT_READER_PREFERENCES, type ReaderPreferences } from './reader/EPUBReader';
-import { colors } from '@/components/ui/theme';
+import { lightColors as colors } from '@/components/ui/theme';
 import { stepPreference } from '@/lib/consumption/reader-settings-values';
 import { Button, IconButton, resolvePressStateClass } from '@/components/ui';
 import { Pressable, Text, View } from '@/components/ui/tw';
@@ -16,6 +16,12 @@ type Props = {
   onCustomizedChange?: (customized: boolean) => void;
 };
 
+/**
+ * Page-color choices for the reader itself — a book-local preference,
+ * independent of the app's own light/dark theme (hence pinned to the fixed
+ * light palette rather than tracking whatever the app chrome is doing, and
+ * "Warm" mapping to `canvas`/`ink` rather than a dedicated sepia token).
+ */
 const themes: {
   label: string;
   value: ReaderPreferences['theme'];

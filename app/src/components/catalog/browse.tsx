@@ -13,15 +13,8 @@ import { workProgressLabel } from '@/lib/consumption/consumption';
 import { AppIcon } from '@/components/ui/icons';
 import { listItemEnter } from '@/components/ui/motion';
 import { Pressable, Text, View } from '@/components/ui/tw';
-import {
-  Button,
-  colors,
-  Notice,
-  Radio,
-  resolvePressStateClass,
-  Select,
-  StatusBadge,
-} from '@/components/ui';
+import { Button, Notice, Radio, resolvePressStateClass, Select, StatusBadge } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { workHref, workQuickActions } from '@/lib/catalog/work-actions';
 
 export const browseSorts = [
@@ -50,6 +43,7 @@ export function BrowseFacet({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const colors = useThemeColors();
   const [expanded, setExpanded] = useState(false);
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -153,6 +147,7 @@ export function AcquisitionGroupRow({
   onAdd: (result: AcquisitionResult) => void;
   onAddPair: (first: AcquisitionResult, second: AcquisitionResult) => void;
 }) {
+  const colors = useThemeColors();
   const [expanded, setExpanded] = useState(false);
   const formats = [...new Set(group.releases.map((release) => releaseLabel(release)))];
   const single = group.releases.length === 1 ? group.releases[0] : undefined;
@@ -332,6 +327,7 @@ export function DestinationPicker({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const colors = useThemeColors();
   if (options.length === 0) return null;
   if (options.length === 1) {
     return (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator } from 'react-native';
 import { AppIcon, type AppIconName } from './icons';
-import { colors } from './theme';
+import { useThemeColors, type ThemeColors } from './theme';
 import { Pressable, Text } from './tw';
 
 type ButtonKind = 'primary' | 'secondary' | 'danger' | 'quiet';
@@ -66,10 +66,12 @@ function resolveButtonIconColor({
   kind,
   selected,
   inactive,
+  colors,
 }: {
   kind: ButtonKind;
   selected: boolean;
   inactive: boolean;
+  colors: ThemeColors;
 }) {
   if (inactive && kind !== 'quiet') return colors.subtle;
   if (selected) return colors.accentStrong;
@@ -148,6 +150,7 @@ export function Button({
   /** Override for use inside a radiogroup or tablist. */
   accessibilityRole?: 'button' | 'radio' | 'tab';
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const handleFocus = () => setFocused(true);
@@ -164,7 +167,7 @@ export function Button({
   });
   const borderClass = resolveButtonBorderClass({ kind, selected, focused, inactive: isInactive });
   const textClass = resolveButtonTextClass({ kind, selected, inactive: isInactive });
-  const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive });
+  const iconColor = resolveButtonIconColor({ kind, selected, inactive: isInactive, colors });
   const shadowClass = resolveButtonShadowClass({
     kind,
     inactive: isInactive,
@@ -236,6 +239,7 @@ export function IconButton({
   nativeID?: string;
   size?: 'default' | 'large';
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const handleFocus = () => setFocused(true);
@@ -255,7 +259,12 @@ export function IconButton({
     focused,
     inactive: Boolean(disabled),
   });
-  const iconColor = resolveButtonIconColor({ kind, selected, inactive: Boolean(disabled) });
+  const iconColor = resolveButtonIconColor({
+    kind,
+    selected,
+    inactive: Boolean(disabled),
+    colors,
+  });
   const shadowClass = resolveButtonShadowClass({
     kind,
     inactive: Boolean(disabled),

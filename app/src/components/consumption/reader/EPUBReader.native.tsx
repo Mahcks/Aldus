@@ -33,7 +33,7 @@ import {
   readiumSearchQueries,
   segmentForEPUBLocator,
 } from './readium-locator';
-import { colors } from '@/components/ui/theme';
+import { lightColors, useThemeColors } from '@/components/ui/theme';
 import { flattenReaderContents } from '@/lib/consumption/reader-navigation';
 import { Text, View } from '@/components/ui/tw';
 import { IconButton } from '@/components/ui';
@@ -115,6 +115,12 @@ export const EPUBReader = forwardRef<
   },
   ref,
 ) {
+  // Reader-page colors (background/ink/selection below) stay pinned to the
+  // fixed light palette — "Paper"/"Warm" are a book-local light-page choice
+  // independent of the app's own dark mode; only "Night" is meant to be
+  // dark, via its own dedicated tokens. `colors` (reactive) is only used
+  // for the loading spinner, which sits on the app-chrome `bg-paper` surface.
+  const colors = useThemeColors();
   const insets = useSafeAreaInsets();
   const reader = useRef<ReadiumViewRef>(null);
   const onErrorRef = useRef(onError);
@@ -152,7 +158,7 @@ export const EPUBReader = forwardRef<
   const highlightPlace = useCallback(
     (locator: Locator) => {
       clearHighlight();
-      setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+      setResumeDecorations(readiumResumeDecorations(locator, true, lightColors.accentSoft));
       highlightTimer.current = setTimeout(clearHighlight, 4000);
     },
     [clearHighlight],
@@ -160,8 +166,9 @@ export const EPUBReader = forwardRef<
 
   const readiumPreferences = useMemo<Preferences>(
     () => ({
-      backgroundColor: preferences.theme === 'night' ? colors.readerNightPaper : colors.paper,
-      textColor: preferences.theme === 'night' ? colors.readerNightInk : colors.ink,
+      backgroundColor:
+        preferences.theme === 'night' ? lightColors.readerNightPaper : lightColors.paper,
+      textColor: preferences.theme === 'night' ? lightColors.readerNightInk : lightColors.ink,
       scroll: preferences.layout === 'scrolled',
       fontSize: preferences.zoom,
       fontFamily:
@@ -244,7 +251,7 @@ export const EPUBReader = forwardRef<
       clearFeedback();
       const locator = savedLocator(location);
       if (locator) {
-        setResumeDecorations(readiumResumeDecorations(locator, true, colors.accentSoft));
+        setResumeDecorations(readiumResumeDecorations(locator, true, lightColors.accentSoft));
       }
       setSaveFeedback(result);
       feedbackTimer.current = setTimeout(() => {

@@ -2,8 +2,8 @@ import { rememberAccount } from '@/lib/remembered-accounts';
 import type { Library, ReaderCredential, WorkSummary } from '@/generated/api';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Linking, Platform } from 'react-native';
+import { useEffect, useState, type PropsWithChildren } from 'react';
+import { Linking, Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useServer } from '@/components/auth/ServerProvider';
@@ -15,7 +15,6 @@ import { listItemEnter } from '@/components/ui/motion';
 import { Text, View } from '@/components/ui/tw';
 import {
   Button,
-  colors,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -25,8 +24,11 @@ import {
   Notice,
   Row,
   Section,
+  Select,
   StatusBadge,
 } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
+import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
 import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 import { apiBaseURL, isLoopbackURL } from '@/lib/api-base';
@@ -38,6 +40,9 @@ const koreaderURL = 'https://aldus.media/ereaders/koreader/';
 export default function AccountScreen() {
   const auth = useAuth();
   const server = useServer();
+  const colors = useThemeColors();
+  const [themePreference, setThemePreference] = useThemePreference();
+  const wide = useWindowDimensions().width >= 1320;
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [activity, setActivity] = useState<WorkSummary[]>([]);
   const [credentials, setCredentials] = useState<ReaderCredential[]>([]);
@@ -239,294 +244,335 @@ export default function AccountScreen() {
     passwordForm.password.length >= 12 &&
     passwordsMatch;
 
+  const serverSection =
+    Platform.OS !== 'web' ? (
+      <Section title="Server">
+        <SettingRow
+          title={server.origin.replace(/^https?:\/\//, '')}
+          description="Offline books and reading progress stay separate for each connected server."
+        >
+          <Button
+            label="Switch server"
+            icon="system"
+            kind="secondary"
+            onPress={() => router.push('/connect')}
+          />
+        </SettingRow>
+      </Section>
+    ) : null;
+
+  const profileSection = (
+    <Section title="Profile">
+      <View className="gap-4">
+        <View className="flex-row items-center gap-4">
+          <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-soft">
+            <AppIcon name="account" size={26} color={colors.accent} />
+          </View>
+          <View className="min-w-0 flex-1 gap-0.5">
+            <Text numberOfLines={1} className="text-lg font-sans-bold text-ink">
+              {auth.user?.display_name || auth.user?.username}
+            </Text>
+            <Text numberOfLines={1} className="text-sm text-muted">
+              @{auth.user?.username}
+            </Text>
+            {auth.user?.admin ? (
+              <View className="pt-1.5">
+                <StatusBadge tone="info" label="Administrator" icon="users" />
+              </View>
+            ) : null}
+          </View>
+        </View>
+        {!isGuest ? (
+          <Row>
+            <Button label="Edit name" kind="secondary" onPress={() => setEditingProfile(true)} />
+            <Button
+              label="Change password"
+              kind="secondary"
+              onPress={() => setChangingPassword(true)}
+            />
+          </Row>
+        ) : null}
+      </View>
+    </Section>
+  );
+
+  const appearanceSection = (
+    <Section title="Appearance">
+      <View className="gap-2">
+        <Select
+          label="Theme"
+          value={themePreference}
+          onChange={(value) => setThemePreference(value as ThemePreference)}
+          options={[
+            { value: 'system', label: 'System' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+          ]}
+        />
+        <Text className="text-sm text-muted">System follows your device setting.</Text>
+      </View>
+    </Section>
+  );
+
+  const securitySection = (
+    <Section title="Security">
+      <View>
+        {!isGuest ? (
+          <SettingRow description="Sign in as someone else. Downloads and progress stay with each account. Requires a connection.">
+            <Button label="Switch reader" kind="secondary" onPress={() => void switchAccount()} />
+          </SettingRow>
+        ) : null}
+        <SettingRow description="Sign out of Aldus on this device.">
+          <Button label="Sign out" kind="secondary" onPress={signOut} />
+        </SettingRow>
+        {!isGuest ? (
+          <SettingRow description="Lost a phone or browser? Sign out every Aldus session, including this one. Your KOReader and OPDS credentials stay connected.">
+            <Button
+              label="Sign out everywhere"
+              kind="secondary"
+              onPress={() => setConfirmingSignOutEverywhere(true)}
+            />
+          </SettingRow>
+        ) : null}
+      </View>
+    </Section>
+  );
+
+  const activitySection = (
+    <Section title="Your activity">
+      {activity.length ? (
+        <View>
+          <View className="flex-row gap-8 border-b border-line-subtle pb-4">
+            <ActivityStat label="Reading" seconds={readingSeconds} />
+            <ActivityStat label="Listening" seconds={listeningSeconds} />
+            <View>
+              <Text className="text-2xl font-sans-bold text-ink">{activity.length}</Text>
+              <Text className="text-xs text-muted">In progress</Text>
+            </View>
+          </View>
+          {activity.map((work, index) => (
+            <Animated.View key={work.id} entering={listItemEnter(index)}>
+              <IconRow
+                icon={work.last_mode === 'listen' ? 'listen' : 'read'}
+                title={work.title}
+                subtitle={`${work.completion_percent}% complete · ${formatDuration(work.active_seconds)}`}
+                onPress={() =>
+                  router.push(
+                    `/consume/${work.id}?mode=${work.last_mode || (work.readable ? 'read' : 'listen')}`,
+                  )
+                }
+              />
+            </Animated.View>
+          ))}
+        </View>
+      ) : loading ? (
+        <Loading label="Loading activity…" />
+      ) : (
+        <EmptyState title="No reading activity yet">
+          Open a book or audiobook to begin tracking your time.
+        </EmptyState>
+      )}
+    </Section>
+  );
+
+  const librariesSection = (
+    <Section title="Your libraries">
+      {loading ? (
+        <Loading label="Loading libraries…" />
+      ) : libraries.length ? (
+        <View>
+          {libraries.map((library, index) => (
+            <Animated.View key={library.id} entering={listItemEnter(index)}>
+              <LibraryCard
+                name={library.name}
+                role={library.role}
+                onPress={() => router.push(`/library/${library.id}`)}
+              />
+            </Animated.View>
+          ))}
+        </View>
+      ) : (
+        <EmptyState title="No library memberships">Ask a library owner to add this account.</EmptyState>
+      )}
+    </Section>
+  );
+
+  const readersSection = (
+    <Section title="Connected e-readers">
+      <View>
+        <SettingRow description="Read with KOReader or browse your books from any OPDS app.">
+          {!createdCredential?.secret ? (
+            <Button
+              label={readerConnectionsOpen ? 'Hide reader connections' : 'Manage reader connections'}
+              kind="secondary"
+              onPress={() => setReaderConnectionsOpen((open) => !open)}
+            />
+          ) : null}
+        </SettingRow>
+        {readerConnectionsOpen || createdCredential?.secret ? (
+          <View className="gap-5 pt-5">
+            <Notice>
+              Create a reader credential for each device. It gives that device access only to your
+              libraries and reading progress.
+            </Notice>
+            {readerAddressIsLocal ? (
+              <Notice tone="warning">
+                This server address points back to this device. KOReader needs your server&apos;s
+                LAN or HTTPS address instead of localhost.
+              </Notice>
+            ) : null}
+            <View className="gap-3 border-b border-line-subtle pb-5">
+              <Field
+                label="Device name"
+                value={credentialLabel}
+                onChangeText={setCredentialLabel}
+                placeholder="My Kobo"
+                help="Use a name you will recognize when revoking access later."
+              />
+              <View className="flex-row">
+                <Button
+                  label="Create reader credential"
+                  icon="add"
+                  loading={savingCredential}
+                  disabled={!credentialLabel.trim() || credentials.length >= 10}
+                  onPress={() => void createCredential()}
+                />
+              </View>
+              {credentials.length >= 10 ? (
+                <Notice tone="warning">Revoke an old credential before creating another.</Notice>
+              ) : null}
+            </View>
+            {createdCredential?.secret ? (
+              <View className="gap-3 border-b border-line-subtle pb-5">
+                <Notice tone="success">
+                  Credential created. Save this password now; Aldus will not show it again.
+                </Notice>
+                <CredentialValue label="Username" value={auth.user?.username || ''} />
+                <CredentialValue label="Password" value={createdCredential.secret} />
+                <CredentialValue label="OPDS catalog" value={opdsURL} />
+                <CredentialValue label="KOReader sync server" value={serverOrigin} />
+                <View className="flex-row flex-wrap gap-2">
+                  <Button
+                    label="I saved it"
+                    kind="secondary"
+                    onPress={() => setCreatedCredential(undefined)}
+                  />
+                  <Button
+                    label="KOReader setup guide"
+                    kind="quiet"
+                    icon="read"
+                    onPress={() => void openExternalURL(koreaderURL)}
+                  />
+                </View>
+              </View>
+            ) : null}
+            {credentials.length ? (
+              <View>
+                {credentials.map((credential) => (
+                  <View
+                    key={credential.id}
+                    className="min-h-14 flex-row items-center gap-4 border-b border-line-subtle py-3"
+                  >
+                    <View className="min-w-0 flex-1">
+                      <Text className="text-base font-sans-bold text-ink">{credential.label}</Text>
+                      <Text className="text-sm text-muted">
+                        {credential.last_used_at
+                          ? `Last used ${new Date(credential.last_used_at).toLocaleDateString()}`
+                          : 'Not used yet'}
+                      </Text>
+                    </View>
+                    <Button
+                      label="Revoke"
+                      kind="quiet"
+                      onPress={() => setDeletingCredential(credential)}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : loading ? (
+              <Loading label="Loading reader credentials…" />
+            ) : (
+              <EmptyState icon="devices" title="No reader devices connected">
+                Create a credential to connect KOReader or an OPDS reader.
+              </EmptyState>
+            )}
+          </View>
+        ) : null}
+      </View>
+    </Section>
+  );
+
+  const helpSection = (
+    <Section title="Help and legal">
+      <View>
+        <IconRow
+          icon="support"
+          title="Support"
+          subtitle="Setup help, troubleshooting, and contact information"
+          onPress={() => void openExternalURL(supportURL)}
+        />
+        <IconRow
+          icon="privacy"
+          title="Privacy policy"
+          subtitle="What stays on your device and what a server operator can access"
+          onPress={() => void openExternalURL(privacyURL)}
+        />
+        <View className="gap-1 pt-4">
+          <Text className="text-sm font-sans-semibold text-ink">{version}</Text>
+          <Text className="text-sm leading-5 text-muted">
+            {'Aldus does not send diagnostics automatically.\nYou choose what to share with support.'}
+          </Text>
+        </View>
+      </View>
+    </Section>
+  );
+
+  const deleteSection = (
+    <Section title="Delete account">
+      <SettingRow description="This permanently removes your account, reading activity, preferences, credentials, collections, and offline data from this device. Shared books, server media, and anonymized request history remain.">
+        <Button
+          label="Delete account"
+          kind="danger"
+          onPress={() => setConfirmingAccountDeletion(true)}
+        />
+      </SettingRow>
+    </Section>
+  );
+
   return (
     <Page title="Account">
       {Platform.OS !== 'web' ? <DownloadStatus /> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
-      {Platform.OS !== 'web' ? (
-        <Section title="Server">
-          <View className="gap-2 border-y border-line py-4">
-            <Text className="font-sans-semibold text-ink">
-              {server.origin.replace(/^https?:\/\//, '')}
-            </Text>
-            <Text className="text-sm leading-5 text-muted">
-              Offline books and reading progress stay separate for each connected server.
-            </Text>
-            <View className="items-start">
-              <Button
-                label="Switch server"
-                icon="system"
-                kind="secondary"
-                onPress={() => router.push('/connect')}
-              />
-            </View>
+      {wide ? (
+        <View className="flex-row items-start gap-12">
+          <View className="min-w-0 flex-1 gap-12">
+            {serverSection}
+            {profileSection}
+            {appearanceSection}
+            {securitySection}
+            {helpSection}
+            {deleteSection}
           </View>
-        </Section>
-      ) : null}
-      <View className="max-w-[680px] gap-8">
-        <Section title="Profile">
-          <View className="gap-3 border-b border-line pb-5">
-            <View className="flex-row items-center gap-4">
-              <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-soft">
-                <AppIcon name="account" size={26} color={colors.accent} />
-              </View>
-              <View className="min-w-0 flex-1">
-                <Text numberOfLines={1} className="text-lg font-sans-bold text-ink">
-                  {auth.user?.display_name || auth.user?.username}
-                </Text>
-                <Text numberOfLines={1} className="text-sm text-muted">
-                  @{auth.user?.username}
-                </Text>
-              </View>
-            </View>
-            {auth.user?.admin ? (
-              <StatusBadge tone="info" label="Administrator" icon="users" />
-            ) : null}
-            {!isGuest ? (
-              <Row>
-                <Button
-                  label="Edit name"
-                  kind="secondary"
-                  onPress={() => setEditingProfile(true)}
-                />
-                <Button
-                  label="Change password"
-                  kind="secondary"
-                  onPress={() => setChangingPassword(true)}
-                />
-              </Row>
-            ) : null}
+          <View className="min-w-0 flex-1 gap-12">
+            {activitySection}
+            {librariesSection}
+            {readersSection}
           </View>
-        </Section>
-        {!isGuest ? (
-          <View className="gap-2 border-b border-line pb-4">
-            <Button label="Switch reader" kind="secondary" onPress={() => void switchAccount()} />
-            <Text className="text-sm text-muted">
-              Sign in as someone else. Your downloads and queued progress stay with your account. A
-              connection is needed to switch readers.
-            </Text>
-          </View>
-        ) : null}
-
-        {!isGuest ? (
-          <Section title="Security">
-            <View className="items-start gap-3 border-y border-line py-5">
-              <Text className="text-sm leading-5 text-muted">
-                If a phone or browser is lost, sign out every Aldus app session. Your KOReader and
-                OPDS credentials stay connected.
-              </Text>
-              <Button
-                label="Sign out everywhere"
-                kind="secondary"
-                onPress={() => setConfirmingSignOutEverywhere(true)}
-              />
-            </View>
-          </Section>
-        ) : null}
-        <Section title="Your activity">
-          {activity.length ? (
-            <View className="gap-4">
-              <View className="flex-row gap-8 border-b border-line pb-4">
-                <ActivityStat label="Reading" seconds={readingSeconds} />
-                <ActivityStat label="Listening" seconds={listeningSeconds} />
-                <View>
-                  <Text className="text-2xl font-sans-bold text-ink">{activity.length}</Text>
-                  <Text className="text-xs text-muted">In progress</Text>
-                </View>
-              </View>
-              <View className="gap-2">
-                {activity.map((work, index) => (
-                  <Animated.View key={work.id} entering={listItemEnter(index)}>
-                    <IconRow
-                      icon={work.last_mode === 'listen' ? 'listen' : 'read'}
-                      title={work.title}
-                      subtitle={`${work.completion_percent}% complete · ${formatDuration(work.active_seconds)}`}
-                      onPress={() =>
-                        router.push(
-                          `/consume/${work.id}?mode=${work.last_mode || (work.readable ? 'read' : 'listen')}`,
-                        )
-                      }
-                    />
-                  </Animated.View>
-                ))}
-              </View>
-            </View>
-          ) : loading ? (
-            <Loading label="Loading activity…" />
-          ) : (
-            <EmptyState title="No reading activity yet">
-              Open a book or audiobook to begin tracking your time.
-            </EmptyState>
-          )}
-        </Section>
-        <Section title="Your libraries">
-          {loading ? (
-            <Loading label="Loading libraries…" />
-          ) : libraries.length ? (
-            <View>
-              {libraries.map((library, index) => (
-                <Animated.View key={library.id} entering={listItemEnter(index)}>
-                  <LibraryCard
-                    name={library.name}
-                    role={library.role}
-                    onPress={() => router.push(`/library/${library.id}`)}
-                  />
-                </Animated.View>
-              ))}
-            </View>
-          ) : (
-            <EmptyState title="No library memberships">
-              Ask a library owner to add this account.
-            </EmptyState>
-          )}
-        </Section>
-        <Section title="Connected e-readers">
-          <Text className="text-sm text-muted">
-            Read with KOReader or browse your books from an OPDS-compatible app.
-          </Text>
-          {!createdCredential?.secret ? (
-            <Button
-              label={
-                readerConnectionsOpen ? 'Hide reader connections' : 'Manage reader connections'
-              }
-              kind="secondary"
-              onPress={() => setReaderConnectionsOpen((open) => !open)}
-            />
-          ) : null}
-          {readerConnectionsOpen || createdCredential?.secret ? (
-            <View className="gap-5">
-              <Notice>
-                Create a reader credential for each device. It gives that device access only to your
-                libraries and reading progress.
-              </Notice>
-              {readerAddressIsLocal ? (
-                <Notice tone="warning">
-                  This server address points back to this device. KOReader needs your server&apos;s
-                  LAN or HTTPS address instead of localhost.
-                </Notice>
-              ) : null}
-              <View className="gap-3 border-b border-line pb-5">
-                <Field
-                  label="Device name"
-                  value={credentialLabel}
-                  onChangeText={setCredentialLabel}
-                  placeholder="My Kobo"
-                  help="Use a name you will recognize when revoking access later."
-                />
-                <View className="flex-row">
-                  <Button
-                    label="Create reader credential"
-                    icon="add"
-                    loading={savingCredential}
-                    disabled={!credentialLabel.trim() || credentials.length >= 10}
-                    onPress={() => void createCredential()}
-                  />
-                </View>
-                {credentials.length >= 10 ? (
-                  <Notice tone="warning">Revoke an old credential before creating another.</Notice>
-                ) : null}
-              </View>
-              {createdCredential?.secret ? (
-                <View className="gap-3 border-b border-line pb-5">
-                  <Notice tone="success">
-                    Credential created. Save this password now; Aldus will not show it again.
-                  </Notice>
-                  <CredentialValue label="Username" value={auth.user?.username || ''} />
-                  <CredentialValue label="Password" value={createdCredential.secret} />
-                  <CredentialValue label="OPDS catalog" value={opdsURL} />
-                  <CredentialValue label="KOReader sync server" value={serverOrigin} />
-                  <View className="flex-row flex-wrap gap-2">
-                    <Button
-                      label="I saved it"
-                      kind="secondary"
-                      onPress={() => setCreatedCredential(undefined)}
-                    />
-                    <Button
-                      label="KOReader setup guide"
-                      kind="quiet"
-                      icon="read"
-                      onPress={() => void openExternalURL(koreaderURL)}
-                    />
-                  </View>
-                </View>
-              ) : null}
-              {credentials.length ? (
-                <View className="gap-3">
-                  {credentials.map((credential) => (
-                    <View
-                      key={credential.id}
-                      className="min-h-14 flex-row items-center gap-4 border-b border-line py-3"
-                    >
-                      <View className="min-w-0 flex-1">
-                        <Text className="text-base font-sans-bold text-ink">
-                          {credential.label}
-                        </Text>
-                        <Text className="text-sm text-muted">
-                          {credential.last_used_at
-                            ? `Last used ${new Date(credential.last_used_at).toLocaleDateString()}`
-                            : 'Not used yet'}
-                        </Text>
-                      </View>
-                      <Button
-                        label="Revoke"
-                        kind="quiet"
-                        onPress={() => setDeletingCredential(credential)}
-                      />
-                    </View>
-                  ))}
-                </View>
-              ) : loading ? (
-                <Loading label="Loading reader credentials…" />
-              ) : (
-                <EmptyState icon="devices" title="No reader devices connected">
-                  Create a credential to connect KOReader or an OPDS reader.
-                </EmptyState>
-              )}
-            </View>
-          ) : null}
-        </Section>
-        <Section title="Help and legal">
-          <View className="gap-3">
-            <IconRow
-              icon="support"
-              title="Support"
-              subtitle="Setup help, troubleshooting, and contact information"
-              onPress={() => void openExternalURL(supportURL)}
-            />
-            <IconRow
-              icon="privacy"
-              title="Privacy policy"
-              subtitle="What stays on your device and what a server operator can access"
-              onPress={() => void openExternalURL(privacyURL)}
-            />
-            <View className="gap-1 border-t border-line pt-4">
-              <Text className="text-sm font-sans-semibold text-ink">{version}</Text>
-              <Text className="text-sm leading-5 text-muted">
-                Aldus does not send diagnostics automatically. You choose what to share with
-                support.
-              </Text>
-            </View>
-          </View>
-        </Section>
-        <View className="self-start">
-          <Button label="Sign out" onPress={signOut} />
         </View>
-        <Section title="Delete account">
-          <View className="items-start gap-4 border-y border-line py-5">
-            <Notice danger>
-              This permanently removes your account, reading activity, preferences, credentials,
-              collections, and offline data from this device. Shared books, server media, and
-              anonymized request history remain.
-            </Notice>
-            <Button
-              label="Delete account"
-              kind="danger"
-              onPress={() => setConfirmingAccountDeletion(true)}
-            />
-          </View>
-        </Section>
-      </View>
+      ) : (
+        <View className="max-w-[680px] gap-12">
+          {serverSection}
+          {profileSection}
+          {appearanceSection}
+          {securitySection}
+          {activitySection}
+          {librariesSection}
+          {readersSection}
+          {helpSection}
+          {deleteSection}
+        </View>
+      )}
       {isGuest ? (
         <ConfirmDialog
           visible={confirmingAccountDeletion}
@@ -706,6 +752,33 @@ function ActivityStat({ label, seconds }: { label: string; seconds: number }) {
     <View>
       <Text className="text-2xl font-sans-bold text-ink">{formatDuration(seconds)}</Text>
       <Text className="text-xs text-muted">{label}</Text>
+    </View>
+  );
+}
+
+/**
+ * One setting per row: a short description on the left and its single action
+ * on the right, stacking on phones. Rows separate with a hairline so a
+ * section reads as a list, not a form.
+ */
+function SettingRow({
+  title,
+  description,
+  children,
+}: PropsWithChildren<{ title?: string; description: string }>) {
+  const stacked = useWindowDimensions().width < 600;
+
+  return (
+    <View
+      className={`border-b border-line-subtle py-4 ${
+        stacked ? 'items-start gap-3' : 'flex-row items-center justify-between gap-6'
+      }`}
+    >
+      <View className={stacked ? 'gap-0.5' : 'min-w-0 flex-1 gap-0.5'}>
+        {title ? <Text className="font-sans-semibold text-ink">{title}</Text> : null}
+        <Text className="text-sm leading-5 text-muted">{description}</Text>
+      </View>
+      {children}
     </View>
   );
 }

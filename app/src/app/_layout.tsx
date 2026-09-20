@@ -11,7 +11,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import '@/global.css';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { ServerProvider, useServer } from '@/components/auth/ServerProvider';
 
@@ -20,19 +20,20 @@ import { ServerProvider, useServer } from '@/components/auth/ServerProvider';
 // are registered individually by Expo Router.
 function ServerSession() {
   const server = useServer();
+  const colors = useThemeColors();
   return (
     <AuthProvider key={server.origin}>
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.canvas },
-          statusBarStyle: 'dark',
+          statusBarStyle: 'auto',
         }}
       >
         <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Screen name="(app)" options={{ animation: 'none' }} />
       </Stack>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
     </AuthProvider>
   );
 }

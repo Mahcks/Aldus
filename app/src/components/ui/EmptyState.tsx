@@ -1,6 +1,6 @@
 import { type PropsWithChildren, type ReactNode } from 'react';
 import { AppIcon, type AppIconName } from './icons';
-import { colors } from './theme';
+import { useThemeColors } from './theme';
 import { Text, View } from './tw';
 
 export function Empty({ children }: PropsWithChildren) {
@@ -56,6 +56,7 @@ export function EmptyState({
   title: string;
   action?: ReactNode;
 }>) {
+  const colors = useThemeColors();
   return (
     <StateBlock
       icon={icon}
@@ -79,6 +80,7 @@ export function ErrorState({
   title?: string;
   action?: ReactNode;
 }>) {
+  const colors = useThemeColors();
   return (
     <StateBlock
       icon="error"

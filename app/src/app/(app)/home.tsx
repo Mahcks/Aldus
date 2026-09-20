@@ -16,7 +16,7 @@ import { workProgressLabel } from '@/lib/consumption/consumption';
 import { AppIcon } from '@/components/ui/icons';
 import { listItemEnter } from '@/components/ui/motion';
 import { notificationHref } from '@/lib/activity/notification-presentation';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 import {
   Button,
@@ -171,6 +171,7 @@ function WorkShelf({ works }: { works: WorkSummary[] }) {
 }
 
 function ReadyRow({ item, work }: { item: Notification; work?: Work }) {
+  const colors = useThemeColors();
   const href = notificationHref(item.action_url);
   const request = requestNotification(item);
   const title = request?.title ?? item.body ?? item.title;
@@ -215,6 +216,7 @@ function ReadyRow({ item, work }: { item: Notification; work?: Work }) {
 
 /** Fixed-scale grid card — a library shelf reads better as tiles than as another stacked list. */
 function CollectionCard({ item }: { item: Collection }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   return (

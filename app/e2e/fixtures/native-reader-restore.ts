@@ -61,11 +61,24 @@ mock.module('react', () => ({
   useImperativeHandle: (ref: any, factory: () => unknown) => {
     ref.current = factory();
   },
+  // Not indexed like useState above: theme-preference's store reads a plain
+  // snapshot rather than tracking its own hook-call position.
+  useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
 }));
 const jsx = (type: unknown, props: unknown) => ({ type, props });
 mock.module('react/jsx-runtime', () => ({ jsx, jsxs: jsx }));
 mock.module('react/jsx-dev-runtime', () => ({ jsxDEV: jsx }));
-mock.module('react-native', () => ({ ActivityIndicator: 'Spinner', Platform: { OS: 'ios' } }));
+mock.module('react-native', () => ({
+  ActivityIndicator: 'Spinner',
+  Platform: { OS: 'ios' },
+  Appearance: {
+    getColorScheme: () => 'light',
+    addChangeListener: () => ({ remove() {} }),
+  },
+}));
+mock.module('@react-native-async-storage/async-storage', () => ({
+  default: { getItem: async () => null, setItem: async () => {} },
+}));
 mock.module('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 mock.module('react-native-readium', () => ({ ReadiumView: 'ReadiumView' }));
 mock.module('expo-file-system', () => ({ File: class {}, Paths: {} }));

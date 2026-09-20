@@ -20,7 +20,7 @@ import {
   notificationTime,
 } from '@/lib/activity/notification-presentation';
 import { RequestTimeline } from '@/components/acquisitions/request-timeline';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { titleRequestDetail, titleRequestPresentation } from '@/lib/acquisitions/title-search';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import {
@@ -45,6 +45,7 @@ function ActivityRow({
   busy: boolean;
   onRead: (group: NotificationGroup) => void;
 }) {
+  const colors = useThemeColors();
   const item = group.latest;
   const href = notificationHref(item.action_url);
   const unread = group.unreadCount > 0;
@@ -100,6 +101,7 @@ function ActivityRow({
 
 export default function ActivityScreen() {
   const auth = useAuth();
+  const colors = useThemeColors();
   const [items, setItems] = useState<Notification[]>([]);
 
   const [requestEvents, setRequestEvents] = useState<Record<string, TitleRequestEvent[]>>({});

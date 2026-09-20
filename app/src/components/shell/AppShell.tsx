@@ -6,7 +6,8 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
 import { sheetEnter, sheetExit } from '@/components/ui/motion';
-import { colors, IconButton, resolvePressStateClass } from '@/components/ui';
+import { IconButton, resolvePressStateClass } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import { api } from '@/lib/api';
 
@@ -52,6 +53,7 @@ export function AppShell() {
  */
 function AppShellChrome() {
   const auth = useAuth();
+  const colors = useThemeColors();
   const path = usePathname();
   const insets = useSafeAreaInsets();
   const desktop = useWindowDimensions().width >= 820;
@@ -144,7 +146,7 @@ function AppShellChrome() {
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colors.canvas },
-              statusBarStyle: 'dark',
+              statusBarStyle: 'auto',
             }}
           >
             <Stack.Screen name="home" options={{ animation: 'none', gestureEnabled: false }} />
@@ -279,6 +281,7 @@ function NavLink({
   selected,
   tone = 'primary',
 }: NavItem & { selected: boolean; tone?: 'primary' | 'quiet' }) {
+  const colors = useThemeColors();
   const inactiveTextClass = 'text-rail-muted';
   const iconColor = selected ? colors.onRail : colors.railMuted;
   const backgroundClass = selected ? 'bg-rail-selected' : '';
@@ -371,6 +374,7 @@ function MobileTab({
   expanded?: boolean;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   const color = selected ? colors.accent : colors.muted;
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -501,6 +505,7 @@ function SheetLink({
   selected,
   onPress,
 }: NavItem & { selected: boolean; onPress: () => void }) {
+  const colors = useThemeColors();
   const iconColor = selected ? colors.accent : colors.muted;
   const backgroundClass = selected ? 'bg-accent-soft' : '';
   const [focused, setFocused] = useState(false);

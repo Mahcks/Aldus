@@ -10,7 +10,8 @@ import {
 } from './reader/EPUBReader';
 import { BookCover, coverPresentation } from '@/components/catalog/bookshelf';
 import { type MediaChoice } from '@/lib/consumption/consumption';
-import { Button, colors, EmptyState } from '@/components/ui';
+import { Button, EmptyState } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { Text, View } from '@/components/ui/tw';
 
 // Keep the web publication mounted during handoff; native releases it while listening.
@@ -73,6 +74,7 @@ export function ReaderView({
   restoreReader,
   leaveReader,
 }: ReaderViewProps) {
+  const colors = useThemeColors();
   return (
     <View className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}>
       {(Platform.OS === 'web' || mode === 'read') && selectedEPUB && epubSource ? (

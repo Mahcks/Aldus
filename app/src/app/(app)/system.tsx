@@ -73,10 +73,6 @@ export default function SystemAdministration() {
       }
     >
       {error ? <Notice tone="danger">{error}</Notice> : null}
-      <Notice tone="info">
-        This page reports Aldus itself. Source and acquisition connection tests remain in their
-        administration pages.
-      </Notice>
 
       <View className="max-w-[760px] gap-10">
         <Section title="Core services">

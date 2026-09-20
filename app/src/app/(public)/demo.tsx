@@ -10,7 +10,8 @@ import { useServer } from '@/components/auth/ServerProvider';
 import { AppIcon } from '@/components/ui/icons';
 import { listItemEnter } from '@/components/ui/motion';
 import { ScrollView, Text, View } from '@/components/ui/tw';
-import { Button, Field, Notice, colors } from '@/components/ui';
+import { Button, Field, Notice } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { api, errorMessage } from '@/lib/api';
 
 const features = [
@@ -71,6 +72,7 @@ function Shelf() {
 export default function DemoWelcome() {
   const auth = useAuth();
   const server = useServer();
+  const colors = useThemeColors();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [access, setAccess] = useState<{

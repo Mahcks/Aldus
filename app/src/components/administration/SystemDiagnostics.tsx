@@ -1,5 +1,5 @@
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { Text, View } from '@/components/ui/tw';
 
 export function DiagnosticRow({
@@ -13,6 +13,7 @@ export function DiagnosticRow({
   healthy: boolean;
   optional?: boolean;
 }) {
+  const colors = useThemeColors();
   let status: { label: string; icon: AppIconName; color: string; textClass: string } = {
     label: 'Needs attention',
     icon: 'warning',

@@ -15,8 +15,8 @@ import {
   Notice,
   Row,
   SearchField,
-  colors,
 } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { GenreTagChip } from '@/components/catalog/GenreTagChip';
 import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
@@ -27,6 +27,7 @@ const emptyForm: TagForm = { label: '', icon: 'genres', keywords: [] };
 
 export default function GenreTagsScreen() {
   const auth = useAuth();
+  const colors = useThemeColors();
   const narrow = useWindowDimensions().width < 600;
   const [tags, setTags] = useState<GenreTag[]>([]);
   const [unmatched, setUnmatched] = useState<UnmatchedGenreSubject[]>([]);
@@ -624,6 +625,7 @@ function GenreIconPicker({
   value: AppIconName;
   onChange: (value: AppIconName) => void;
 }) {
+  const colors = useThemeColors();
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(false);
   const normalizedQuery = query.trim().toLocaleLowerCase();

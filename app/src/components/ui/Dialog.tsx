@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
 import { AppIcon } from './icons';
 import { fadeIn } from './motion';
-import { colors } from './theme';
+import { useThemeColors } from './theme';
 import { Pressable, ScrollView, Text, View } from './tw';
 import { Button, IconButton } from './Button';
 import { Row } from './layout';
@@ -43,6 +43,7 @@ export function Dialog({
   footer?: ReactNode;
   scrollHint?: string;
 }>) {
+  const colors = useThemeColors();
   const closeButtonId = useId();
   const titleId = useId();
   const onCloseRef = useRef(onClose);

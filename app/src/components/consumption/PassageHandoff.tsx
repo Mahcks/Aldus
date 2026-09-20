@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ActivityIndicator } from 'react-native';
-import { colors, resolvePressStateClass } from '@/components/ui';
+import { resolvePressStateClass } from '@/components/ui';
 import { AppIcon } from '@/components/ui/icons';
+import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, View } from '@/components/ui/tw';
 
 type Mode = 'read' | 'listen';
@@ -17,6 +18,7 @@ export function PassageHandoff({
   synchronized: boolean;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const listeningNext = mode === 'read';

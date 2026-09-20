@@ -18,7 +18,6 @@ import { RequestActions } from '@/components/acquisitions/request-actions';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
-  colors,
   Dialog,
   EmptyState,
   ErrorState,
@@ -29,6 +28,7 @@ import {
   Section,
   StatusBadge,
 } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 
@@ -64,6 +64,7 @@ function destinationFor(
  * scannable, the decisions live one tap away.
  */
 function TitleRow({ result, onPress }: { result: TitleSearchResult; onPress: () => void }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });

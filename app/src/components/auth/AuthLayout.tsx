@@ -1,7 +1,8 @@
 import type { PropsWithChildren } from 'react';
 import { KeyboardAvoidingView, Platform, SafeAreaView, useWindowDimensions } from 'react-native';
 import { ScrollView, Text, View } from '@/components/ui/tw';
-import { IconButton, colors } from '@/components/ui';
+import { IconButton } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 
 /** One public shell keeps navigation, form width and keyboard behavior consistent. */
 export function AuthLayout({
@@ -10,6 +11,7 @@ export function AuthLayout({
   wide,
   children,
 }: PropsWithChildren<{ backLabel?: string; onBack?: () => void; wide?: boolean }>) {
+  const colors = useThemeColors();
   const compact = useWindowDimensions().width < 600;
   const contentClass = compact
     ? 'flex-grow px-5 pt-8 pb-10'

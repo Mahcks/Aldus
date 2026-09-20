@@ -25,7 +25,6 @@ import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Checkbox,
-  colors,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -40,6 +39,7 @@ import {
   Select,
   shared,
 } from '@/components/ui';
+import { useThemeColors } from '@/components/ui/theme';
 import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
@@ -70,6 +70,7 @@ function ManagementRow({
   label: string;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });

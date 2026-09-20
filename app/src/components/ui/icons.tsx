@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { ComponentProps } from 'react';
-import { colors } from './theme';
+import { useThemeColors } from './theme';
 
 type MaterialName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -178,19 +178,20 @@ export function isAppIconName(name: string): name is AppIconName {
 export function AppIcon({
   name,
   size = 20,
-  color = colors.ink,
+  color,
 }: {
   name: AppIconName;
   size?: number;
   color?: string;
 }) {
+  const theme = useThemeColors();
   return (
     <MaterialCommunityIcons
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       name={names[name]}
       size={size}
-      color={color}
+      color={color ?? theme.ink}
     />
   );
 }

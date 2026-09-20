@@ -1,6 +1,6 @@
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { AppIcon, type AppIconName } from './icons';
-import { colors } from './theme';
+import { useThemeColors } from './theme';
 import { Pressable, Text, View } from './tw';
 import { resolvePressStateClass } from './Button';
 
@@ -39,6 +39,7 @@ export function IconRow({
   subtitle?: string;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const handleFocus = () => setFocused(true);
@@ -77,9 +78,16 @@ export function IconRow({
   );
 }
 
+/**
+ * The 44px floor exists for an action's tap target; a title on its own would
+ * only gain dead space above and below itself, pushing it away from the
+ * content it introduces.
+ */
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <View className="min-h-11 flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+    <View
+      className={`flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1 ${action ? 'min-h-11' : ''}`}
+    >
       <Text accessibilityRole="header" className="text-lg font-sans-bold text-ink">
         {title}
       </Text>
@@ -94,7 +102,7 @@ export function Section({
   children,
 }: PropsWithChildren<{ title: string; action?: ReactNode }>) {
   return (
-    <View className="gap-3">
+    <View className="gap-2">
       <SectionHeader title={title} action={action} />
       {children}
     </View>

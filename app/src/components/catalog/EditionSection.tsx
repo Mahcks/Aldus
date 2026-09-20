@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { MediaChoice } from '@/lib/consumption/consumption';
 import { formatMediaSize as formatBytes } from '@/lib/format';
 import { AppIcon } from '@/components/ui/icons';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { resolvePressStateClass } from '@/components/ui';
 import { Pressable, Text, View } from '@/components/ui/tw';
 
@@ -61,6 +61,7 @@ function EditionGroup({
   selected: string;
   onSelect: (id: string) => void;
 }) {
+  const colors = useThemeColors();
   return (
     <View className="w-full min-w-0 gap-2 sm:flex-1">
       <View className="flex-row items-center gap-1.5 pb-1">

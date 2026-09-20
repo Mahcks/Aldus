@@ -1,10 +1,11 @@
 import Animated from 'react-native-reanimated';
 import { Text, View } from '@/components/ui/tw';
 import { AppIcon } from '@/components/ui/icons';
-import { colors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { fadeIn } from '@/components/ui/motion';
 
 export function ReaderSaveFeedback({ result }: { result: 'saved' | 'offline' | 'restored' }) {
+  const colors = useThemeColors();
   const restored = result === 'restored';
   const title = restored ? 'Back where you left off' : 'Reading place saved';
   let detail = 'Synced to your server';
