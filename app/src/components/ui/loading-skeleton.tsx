@@ -38,13 +38,18 @@ function Lines() {
 }
 
 function BookGrid() {
-  const { width } = useWindowDimensions();
-  const count = width >= 1280 ? 6 : width >= 820 ? 4 : 2;
-
   return (
     <View className="flex-row gap-4">
-      {Array.from({ length: count }, (_, item) => (
-        <View key={item} className="min-w-0 flex-1 gap-3">
+      {/* Keep server and client markup identical; responsive CSS chooses the visible tiles. */}
+      {[
+        '',
+        '',
+        'hidden min-[820px]:flex',
+        'hidden min-[820px]:flex',
+        'hidden min-[1280px]:flex',
+        'hidden min-[1280px]:flex',
+      ].map((visibility, item) => (
+        <View key={item} className={`min-w-0 flex-1 gap-3 ${visibility}`}>
           <Block className="aspect-[2/3] w-full" />
           <Block className="h-4 w-4/5" />
           <Block className="h-3 w-3/5" />

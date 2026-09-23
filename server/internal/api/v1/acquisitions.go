@@ -303,7 +303,7 @@ func acquisitionRequestDTO(value acquisition.Request) contracts.AcquisitionReque
 		SelectedPublishedAt: value.SelectedPublished,
 		CreatedAt:           value.CreatedAt,
 		UpdatedAt:           value.UpdatedAt,
-		CanRetry:            value.FulfillmentState == "failed",
+		CanRetry:            value.FulfillmentState == "failed" || (value.FulfillmentState == "needs_review" && value.ScanID != ""),
 		CanCancel:           value.FulfillmentState == "submitting" || value.FulfillmentState == "downloading",
 		CanDismiss:          value.FulfillmentState == "failed" || value.FulfillmentState == "available",
 	}

@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { AcquisitionResult, WorkSummary } from '@/generated/api';
 import { useState } from 'react';
 import { useWindowDimensions } from 'react-native';
@@ -13,7 +14,14 @@ import { workProgressLabel } from '@/lib/consumption/consumption';
 import { AppIcon } from '@/components/ui/icons';
 import { listItemEnter } from '@/components/ui/motion';
 import { Pressable, Text, View } from '@/components/ui/tw';
-import { Button, Notice, Radio, resolvePressStateClass, Select, StatusBadge } from '@/components/ui';
+import {
+  Button,
+  Notice,
+  Radio,
+  resolvePressStateClass,
+  Select,
+  StatusBadge,
+} from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
 import { workHref, workQuickActions } from '@/lib/catalog/work-actions';
 
@@ -360,6 +368,7 @@ export function WorkGrid({
               title={work.title}
               author={work.author}
               coverURL={work.cover_url}
+              fallbackCoverURL={fallbackCoverURL(work)}
               coverPresentation={coverPresentation(work)}
               availability={work}
               progress={workProgressLabel(work.in_progress, work.completion_percent)}

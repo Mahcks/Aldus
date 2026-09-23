@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -263,10 +264,18 @@ type summary struct{ files, supported, epub, audio, new, changed, unchanged, mis
 func (s *Store) runScan(ctx context.Context, job Scan) error {
 	var root, requestID, payloadRelative string
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT ls.root_path,ls.enabled,COALESCE(sc.acquisition_request_id,''),COALESCE(ar.completed_relative_path,'') FROM source_scans sc JOIN library_sources ls ON ls.id=sc.source_id LEFT JOIN acquisition_requests ar ON ar.id=sc.acquisition_request_id WHERE sc.id=? AND ls.deleted_at IS NULL`, job.ID).Scan(&root, &enabled, &requestID, &payloadRelative)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT ls.root_path, ls.enabled,
+		       COALESCE(sc.acquisition_request_id,''), COALESCE(ar.completed_relative_path,'')
+		FROM source_scans sc
+		JOIN library_sources ls ON ls.id=sc.source_id
+		LEFT JOIN acquisition_requests ar ON ar.id=sc.acquisition_request_id
+		WHERE sc.id=? AND ls.deleted_at IS NULL
+	`, job.ID).Scan(&root, &enabled, &requestID, &payloadRelative)
 	if err != nil || enabled == 0 {
 		return ErrUnavailable
 	}
+
 	scanRoot := root
 	if requestID != "" {
 		if payloadRelative == "" || filepath.IsAbs(payloadRelative) {
@@ -280,14 +289,17 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 			return validation("acquisition_payload_unavailable", "The completed acquisition payload is no longer visible to Aldus.")
 		}
 	}
+
 	sum := summary{}
 	err = filepath.WalkDir(scanRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if walkErr != nil {
-			sum.problems++
-			return nil
+			return fmt.Errorf("scan source path %q: %w", path, walkErr)
+		}
+		if path == scanRoot && requestID == "" && !d.IsDir() {
+			return fmt.Errorf("source path %q is no longer a directory", path)
 		}
 		if path == scanRoot && d.IsDir() {
 			return nil
@@ -320,7 +332,10 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 			return ErrInvalid
 		}
 		info, err := d.Info()
-		if err != nil || !info.Mode().IsRegular() {
+		if err != nil {
+			return fmt.Errorf("read source file information %q: %w", path, err)
+		}
+		if !info.Mode().IsRegular() {
 			sum.problems++
 			return nil
 		}
@@ -362,7 +377,11 @@ func (s *Store) runScan(ctx context.Context, job Scan) error {
 		return err
 	}
 	if requestID == "" {
-		result, err := s.db.ExecContext(ctx, `UPDATE source_entries SET state='missing',updated_at=? WHERE source_id=? AND state!='missing' AND (last_seen_scan_id IS NULL OR last_seen_scan_id!=?)`, time.Now().UTC().Format(time.RFC3339Nano), job.SourceID, job.ID)
+		result, err := s.db.ExecContext(ctx, `
+			UPDATE source_entries SET state='missing', updated_at=?
+			WHERE source_id=? AND state!='missing'
+			  AND (last_seen_scan_id IS NULL OR last_seen_scan_id!=?)
+		`, time.Now().UTC().Format(time.RFC3339Nano), job.SourceID, job.ID)
 		if err != nil {
 			return err
 		}

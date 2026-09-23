@@ -29,6 +29,7 @@ type Proposal struct {
 	NormalizedAuthor     string
 	ExistingWorkID       string
 	Reasons              []string
+	ReviewReasons        []string
 	Revision             int
 	Items                []ProposalItem
 	CreatedAt            time.Time
@@ -89,7 +90,7 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 			return err
 		}
 		_ = json.Unmarshal([]byte(raw), &e.Metadata)
-		e.Title, e.Author = identityMetadata(e)
+		e.Title, e.Author = proposalIdentityMetadata(e)
 		if e.Title == "" {
 			e.Title = e.AdvisoryTitle
 		}
@@ -285,6 +286,10 @@ func (s *Store) Proposals(ctx context.Context, actor auth.User, libraryID string
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
+		out[i].ReviewReasons, err = s.acquisitionReviewReasons(ctx, libraryID, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
 		out[i].Items, err = s.proposalItems(ctx, out[i].ID)
 		if err != nil {
 			return nil, err
@@ -322,8 +327,22 @@ func (s *Store) autoImportProposals(ctx context.Context, libraryID, sourceID, sc
 		if proposal.Confidence != "high" || proposal.State != "proposed" || proposal.ExistingWorkID != "" {
 			continue
 		}
+		// Acquisition proposals keep their request's identity and review policy,
+		// even when an ordinary scan later sees the same files.
 		var mismatches int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM import_items i JOIN source_entries e ON e.id=i.source_entry_id WHERE i.group_id=? AND (e.source_id!=? OR e.last_seen_scan_id!=?)`, proposal.ID, sourceID, scanID).Scan(&mismatches); err != nil {
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM import_items i
+			JOIN source_entries e ON e.id=i.source_entry_id
+			WHERE i.group_id=? AND (
+			    e.source_id!=? OR e.last_seen_scan_id IS NULL OR e.last_seen_scan_id!=?
+			    OR e.acquisition_scan_id IS NOT NULL
+			    OR EXISTS(
+			        SELECT 1 FROM source_scans sc
+			        WHERE sc.id=e.last_seen_scan_id AND sc.acquisition_request_id IS NOT NULL
+			    )
+			)
+		`, proposal.ID, sourceID, scanID).Scan(&mismatches); err != nil {
 			return imported, err
 		}
 		if mismatches != 0 {
@@ -375,7 +394,20 @@ func normalize(value string) string {
 	}
 	return b.String()
 }
+
+// identityMetadata selects embedded identity for requested-book confirmation.
+// Proposal grouping uses proposalIdentityMetadata to retain edition labels and
+// stable group IDs even when two audio tags corroborate a shorter book title.
 func identityMetadata(e proposalEntry) (string, string) {
+	title, author := proposalIdentityMetadata(e)
+	if e.Kind != "epub" {
+		tags, _ := e.Metadata["tags"].(map[string]any)
+		title = audioIdentityTitle(tags)
+	}
+	return title, author
+}
+
+func proposalIdentityMetadata(e proposalEntry) (string, string) {
 	if e.Kind == "epub" {
 		return metadataString(e.Metadata, "title"), firstString(e.Metadata["creators"])
 	}
@@ -390,6 +422,35 @@ func identityMetadata(e proposalEntry) (string, string) {
 	}
 	return title, author
 }
+
+func audioIdentityTitle(tags map[string]any) string {
+	album, title := metadataString(tags, "album"), metadataString(tags, "title")
+	if album == "" {
+		return title
+	}
+	// Album is the book identity; title may name a chapter. Only use title when
+	// both tags corroborate the same book, with one explicit unabridged marker
+	// added to album. Keep all other edition/narration labels and raw metadata.
+	const suffix = "(Unabridged)"
+	if len(album) <= len(suffix) || !strings.EqualFold(album[len(album)-len(suffix):], suffix) {
+		return album
+	}
+	nt := normalize(title)
+	if nt == "" || normalize(album[:len(album)-len(suffix)]) != nt {
+		return album
+	}
+	for _, word := range strings.Fields(nt) {
+		if word == "abridged" || word == "unabridged" {
+			return album
+		}
+	}
+	albumAuthor, artist := metadataString(tags, "album_artist"), metadataString(tags, "artist")
+	if albumAuthor != "" && artist != "" && normalize(albumAuthor) != normalize(artist) {
+		return album
+	}
+	return title
+}
+
 func metadataString(values map[string]any, key string) string {
 	if v, ok := values[key].(string); ok {
 		return strings.TrimSpace(v)

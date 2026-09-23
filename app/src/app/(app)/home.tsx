@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { Collection, Notification, Work, WorkSummary } from '@/generated/api';
 import type { Href } from 'expo-router';
 import { router, useFocusEffect } from 'expo-router';
@@ -75,7 +76,7 @@ function ContinueSpotlight({ work }: { work: WorkSummary }) {
         coverURL={
           (mode === 'listen' ? work.audiobook_cover_url : work.ebook_cover_url) || work.cover_url
         }
-        fallbackCoverURL={work.cover_url}
+        fallbackCoverURL={fallbackCoverURL(work, mode === 'listen' ? 'audiobook' : 'ebook')}
         audioArtwork={mode === 'listen'}
         coverPresentation={coverPresentation(work)}
         availability={work}
@@ -123,6 +124,7 @@ function UpNextShelf({ works }: { works: WorkSummary[] }) {
               title={work.title}
               author={work.author}
               coverURL={work.cover_url}
+              fallbackCoverURL={fallbackCoverURL(work)}
               audioArtwork={!work.readable && work.listenable}
               coverPresentation={coverPresentation(work)}
               availability={{
@@ -156,6 +158,7 @@ function WorkShelf({ works }: { works: WorkSummary[] }) {
             title={work.title}
             author={work.author}
             coverURL={work.cover_url}
+            fallbackCoverURL={fallbackCoverURL(work)}
             audioArtwork={!work.readable && work.listenable}
             coverPresentation={coverPresentation(work)}
             availability={work}
@@ -188,6 +191,7 @@ function ReadyRow({ item, work }: { item: Notification; work?: Work }) {
       <BookCover
         title={title}
         coverURL={work?.cover_url}
+        fallbackCoverURL={work ? fallbackCoverURL(work) : undefined}
         {...(work ? coverPresentation(work) : {})}
         size="mini"
       />

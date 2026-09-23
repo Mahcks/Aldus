@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseAudioChapters(t *testing.T) {
-	chapters, err := parseAudioChapters([]byte(`{"chapters":[{"start_time":"0.000000","end_time":"12.345000","tags":{"title":"Opening"}},{"start_time":"12.345000","end_time":"60.000000","tags":{}}],"format":{"duration":"60.000000"}}`), "book.m4b")
+	chapters, err := parseAudioChapters([]byte(`{"chapters":[{"start_time":"0.000000","end_time":"12.345000","tags":{"title":"Opening"}},{"start_time":"12.345000","end_time":"60.000000","tags":{}}],"format":{"duration":"60.000000"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,18 +18,18 @@ func TestParseAudioChapters(t *testing.T) {
 	}
 }
 
-func TestParseAudioChaptersFallsBackToFileBoundary(t *testing.T) {
-	chapters, err := parseAudioChapters([]byte(`{"chapters":[],"format":{"duration":"90.25"}}`), "01 - Arrival.mp3")
+func TestParseAudioChaptersFallsBackToGenericFileBoundary(t *testing.T) {
+	chapters, err := parseAudioChapters([]byte(`{"chapters":[],"format":{"duration":"90.25"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chapters) != 1 || chapters[0].Title != "01 - Arrival" || chapters[0].StartMS != 0 || chapters[0].EndMS != 90250 {
+	if len(chapters) != 1 || chapters[0].Title != "Audiobook" || chapters[0].StartMS != 0 || chapters[0].EndMS != 90250 {
 		t.Fatalf("chapters = %#v", chapters)
 	}
 }
 
 func TestParseAudioChaptersRejectsOverlappingBoundaries(t *testing.T) {
-	_, err := parseAudioChapters([]byte(`{"chapters":[{"start_time":"0","end_time":"20"},{"start_time":"10","end_time":"30"}],"format":{"duration":"30"}}`), "book.m4b")
+	_, err := parseAudioChapters([]byte(`{"chapters":[{"start_time":"0","end_time":"20"},{"start_time":"10","end_time":"30"}],"format":{"duration":"30"}}`))
 	if err == nil {
 		t.Fatal("expected overlapping chapters to fail")
 	}

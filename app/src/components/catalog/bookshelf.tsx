@@ -5,21 +5,11 @@ import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
 import { Button, Dialog, IconButton, resolvePressStateClass } from '@/components/ui';
-import { useThemeColors, type ThemeColors } from '@/components/ui/theme';
+import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import type { WorkQuickAction } from '@/lib/catalog/work-actions';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
-/**
- * Hex twin of `coverTones`, same order — the cover image itself is rendered
- * by `expo-image` (see below), which takes a real color for its background
- * rather than a className, so the letterboxed strips around a `contain`-fit
- * cover still pick up the generated tone instead of falling back to white.
- */
-function coverToneHexFor(colors: ThemeColors) {
-  return [colors.ink, colors.textSecondary, colors.accentStrong, colors.info, colors.success];
-}
-
 export type CoverPresentation = {
   coverFit?: 'cover' | 'contain';
   coverFocalX?: number;
@@ -104,8 +94,8 @@ export function BookCover({
   fallbackCoverURL?: string;
 } & CoverPresentation) {
   const colors = useThemeColors();
-  const coverToneHex = coverToneHexFor(colors);
   const [failedURLs, setFailedURLs] = useState<string[]>([]);
+  const [audioWidth, setAudioWidth] = useState(148);
   const imageURL = [coverURL, fallbackCoverURL].find((url) => url && !failedURLs.includes(url));
   const showImage = Boolean(imageURL);
   const resolvedSize = size ?? (compact ? 'hero' : 'tile');
@@ -122,7 +112,10 @@ export function BookCover({
     generatedCoverTone >= 0 ? generatedCoverTone : hash(title + author) % coverTones.length;
   const coverTone = coverTones[coverToneIndex];
   const thumbnail =
-    resolvedSize === 'mini' || resolvedSize === 'continue' || (square && resolvedSize === 'small');
+    resolvedSize === 'mini' ||
+    resolvedSize === 'continue' ||
+    (square && resolvedSize === 'small') ||
+    (resolvedSize === 'audio' && audioWidth < 180);
   const outerPaddingClass = thumbnail ? 'p-1.5' : 'p-2.5';
   const innerPaddingClass = thumbnail ? 'px-1.5 py-2' : 'px-2 py-4';
   const displayTitle = coverDisplayTitle(title);
@@ -132,15 +125,19 @@ export function BookCover({
    * sharing one long-title cutoff between them left small covers truncating
    * titles that fit fine on tile.
    */
+  let titleScale = resolvedSize;
+  if (resolvedSize === 'audio' && audioWidth < 260) {
+    titleScale = audioWidth < 180 ? 'small' : 'hero';
+  }
   const titleFit = {
     audio: { threshold: 28, base: 'text-3xl leading-9', long: 'text-2xl leading-7' },
     hero: { threshold: 20, base: 'text-2xl leading-7', long: 'text-xl leading-6' },
     tile: { threshold: 18, base: 'text-xl leading-6', long: 'text-lg leading-5' },
     grid: { threshold: 12, base: 'text-lg leading-5', long: 'text-base leading-4' },
-    small: { threshold: 10, base: 'text-lg leading-5', long: 'text-base leading-4' },
+    small: { threshold: 10, base: 'text-lg leading-6', long: 'text-base leading-5' },
     continue: { threshold: 12, base: 'text-base leading-5', long: 'text-sm leading-4' },
     mini: { threshold: Infinity, base: 'text-[10px] leading-3', long: 'text-[10px] leading-3' },
-  }[resolvedSize];
+  }[titleScale];
   const isLongTitle = displayTitle.length > titleFit.threshold;
   const coverTitle =
     resolvedSize === 'mini'
@@ -152,6 +149,9 @@ export function BookCover({
           .toUpperCase()
       : displayTitle;
   const titleSizeClass = isLongTitle ? titleFit.long : titleFit.base;
+  let titleLines = isLongTitle ? 4 : 3;
+  if (resolvedSize === 'audio') titleLines = 3;
+  if (resolvedSize === 'mini') titleLines = 2;
 
   const layoutClass = {
     top: 'justify-start',
@@ -163,6 +163,11 @@ export function BookCover({
   return (
     <View
       accessibilityLabel={`Cover for ${title}`}
+      onLayout={
+        resolvedSize === 'audio'
+          ? (event) => setAudioWidth(event.nativeEvent.layout.width)
+          : undefined
+      }
       className={`relative shrink-0 overflow-hidden rounded-control shadow-card ${outerPaddingClass} ${coverTone} ${sizeClass}`}
       style={
         resolvedSize === 'grid'
@@ -186,7 +191,7 @@ export function BookCover({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: coverFit === 'contain' ? coverToneHex[coverToneIndex] : colors.panel,
+            backgroundColor: colors.panel,
           }}
           onError={() => {
             if (imageURL) setFailedURLs((urls) => [...urls, imageURL]);
@@ -199,7 +204,7 @@ export function BookCover({
             <View className="absolute bottom-0 left-0 top-0 w-1 bg-paper/20" />
           ) : null}
           <View
-            className={`flex-1 items-center ${thumbnail ? 'gap-2' : 'gap-4'} ${layoutClass} ${frameClass} ${innerPaddingClass}`}
+            className={`flex-1 items-center ${thumbnail || resolvedSize === 'audio' ? 'gap-2' : 'gap-4'} ${layoutClass} ${frameClass} ${innerPaddingClass}`}
           >
             {!thumbnail && generatedCoverStyle !== 'minimal' ? (
               <Text className="text-center text-[9px] font-sans-bold uppercase tracking-[2px] text-paper/70">
@@ -209,7 +214,7 @@ export function BookCover({
               <View />
             )}
             <Text
-              numberOfLines={resolvedSize === 'mini' ? 2 : isLongTitle ? 4 : 3}
+              numberOfLines={titleLines}
               className={`min-h-0 shrink text-center font-editorial text-paper ${titleSizeClass}`}
             >
               {coverTitle}

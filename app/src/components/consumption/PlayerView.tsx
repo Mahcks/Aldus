@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { AudioScrubber } from './AudioScrubber';
 import { ReadAlongPanel } from './ReadAlongPanel';
 import type { AudioChapter, Work } from '@/generated/api';
@@ -107,7 +108,7 @@ export function PlayerView({
               title={work.title}
               author={work.author}
               coverURL={work.audiobook_cover_url || `/api/media/${selectedAudio.id}/cover`}
-              fallbackCoverURL={work.cover_url}
+              fallbackCoverURL={fallbackCoverURL(work, 'audiobook')}
               size={passage ? 'mini' : 'audio'}
               square
               {...coverPresentation(work)}

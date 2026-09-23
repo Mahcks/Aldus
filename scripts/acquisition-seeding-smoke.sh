@@ -11,7 +11,10 @@ cleanup() {
   rm -rf "$DATA"
 }
 trap cleanup EXIT INT TERM
-mkdir -p "$DATA/config/qBittorrent/config" "$DATA/downloads"
+mkdir -p "$DATA/config/qBittorrent/config" "$DATA/downloads" "$DATA/fixture"
+cp "$ROOT/test-fixtures/alice/media/alice.epub" "$DATA/fixture/alice.epub"
+cp "$ROOT/test-fixtures/alice/media/alice-chapter-01.mp3" "$DATA/fixture/alice.mp3"
+ffmpeg -v error -i "$DATA/fixture/alice.mp3" -t 12 -c:a aac -b:a 48k "$DATA/fixture/alice.m4b"
 python3 - "$DATA/config/qBittorrent/config/qBittorrent.conf" <<'PY'
 import base64, hashlib, sys
 salt = b"aldus-disposable-smoke"
@@ -27,7 +30,7 @@ with open(sys.argv[1], "w") as f:
 PY
 docker build -q -t "$NAME" - <<'DOCKER'
 FROM alpine:3.23
-RUN apk add --no-cache qbittorrent-nox
+RUN apk add --no-cache qbittorrent-nox python3
 ENTRYPOINT ["qbittorrent-nox","--confirm-legal-notice","--profile=/config","--webui-port=8080"]
 DOCKER
 docker network create "$NAME" >/dev/null
@@ -39,11 +42,13 @@ with socket.socket() as listener:
     print(listener.getsockname()[1])
 PORTPY
 )
-docker run -d --user "$(id -u):$(id -g)" --name "$NAME" --network "$NAME" -p "127.0.0.1:$PORT:8080"   -v "$DATA/config:/config" -v "$DATA/downloads:/downloads" "$NAME" >/dev/null
+docker run -d --user "$(id -u):$(id -g)" --name "$NAME" --network "$NAME" -p "127.0.0.1:$PORT:8080"   -v "$DATA/config:/config" -v "$DATA/downloads:/downloads" -v "$DATA/fixture:/fixture:ro" "$NAME" >/dev/null
 PORT=$(docker port "$NAME" 8080/tcp | cut -d: -f2)
 export ALDUS_SEEDING_SMOKE_URL="http://127.0.0.1:$PORT"
 export ALDUS_SEEDING_SMOKE_DATA="$DATA/downloads"
 export ALDUS_SEEDING_SMOKE_CONTAINER="$NAME"
 docker exec "$NAME" apk list --installed qbittorrent-nox
+docker exec -d "$NAME" python3 -m http.server 8082 --bind 127.0.0.1 --directory /fixture
 cd "$ROOT/server"
-go test ./internal/acquisition -run '^TestDisposableSeedingSmoke$' -count=1 -v
+go test ./internal/acquisition -run '^TestDisposableFreshTorrentSmoke$' -count=1 -v -timeout=5m
+go test ./internal/acquisition -run '^TestDisposableSeedingSmoke$' -count=1 -v -timeout=5m

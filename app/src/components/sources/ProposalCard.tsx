@@ -1,23 +1,23 @@
-import type { ImportProposal, Work } from '@/generated/api';
+import type { ImportProposal } from '@/generated/api';
 import { Button, Row, StatusBadge } from '@/components/ui';
 import { Text, View } from '@/components/ui/tw';
 import { proposalStatus } from '@/lib/sources/helpers';
 
 export function ProposalCard({
   proposal,
-  suggestedWork,
   onReview,
   onIgnore,
 }: {
   proposal: ImportProposal;
-  suggestedWork?: Work;
   onReview: () => void;
   onIgnore: () => void;
 }) {
   const kinds = [
     ...new Set(proposal.items.map((item) => (item.kind === 'epub' ? 'Ebook' : 'Audiobook'))),
   ].join(' + ');
-  const status = proposalStatus(proposal.state);
+  const status = proposalStatus(
+    proposal.review_reasons?.length ? 'review_required' : proposal.state,
+  );
 
   return (
     <View className="gap-3 border-b border-line-subtle py-5">
@@ -31,17 +31,22 @@ export function ProposalCard({
         <StatusBadge {...status} />
       </View>
       <Text className="text-sm text-muted">
-        Confidence: {proposal.confidence} · {proposal.items.length}{' '}
+        Grouping confidence: {proposal.confidence} · {proposal.items.length}{' '}
         {proposal.items.length === 1 ? 'file' : 'files'} · {kinds || 'Unknown format'}
       </Text>
+      {proposal.review_reasons?.map((reason) => (
+        <Text className="text-sm font-sans-bold text-ink" key={reason}>
+          Last acquisition review: {reason}
+        </Text>
+      ))}
       {proposal.reasons.slice(0, 2).map((reason) => (
         <Text className="text-sm text-muted" key={reason}>
           • {reason}
         </Text>
       ))}
-      {suggestedWork ? (
+      {proposal.existing_work_id ? (
         <Text className="text-sm font-sans-bold text-success">
-          Suggested book: {suggestedWork.title}
+          An existing book is suggested. Review it before importing.
         </Text>
       ) : null}
       <Row>

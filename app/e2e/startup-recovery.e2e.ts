@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 for (const width of [390, 1024, 1440]) {
   test(`startup timeout and retry at ${width}px`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
     await page.setViewportSize({ width, height: 900 });
     let unavailable = true;
     await page.route('**/api/**', async (route) => {
@@ -16,6 +18,9 @@ for (const width of [390, 1024, 1440]) {
     await page.goto('/');
     await expect(page.getByTestId('loading-home')).toBeVisible();
     await expect(page.getByTestId('loading-home')).toHaveAttribute('aria-busy', 'true');
+    const visibleBooks = page.getByTestId('loading-home').locator('.flex-row.gap-4 > div:visible');
+    await expect(visibleBooks).toHaveCount(width >= 1280 ? 6 : width >= 820 ? 4 : 2);
+    await page.screenshot({ path: `../artifacts/startup-recovery/${width}-opening.png` });
     await expect(page.getByText('Couldn’t open your library', { exact: true })).toBeVisible({
       timeout: 22_000,
     });
@@ -26,5 +31,6 @@ for (const width of [390, 1024, 1440]) {
     await page.getByRole('button', { name: 'Retry connection' }).click();
     await expect(page.getByRole('heading', { name: 'Sign in to your library' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
   });
 }

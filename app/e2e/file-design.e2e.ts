@@ -138,16 +138,15 @@ for (const width of [390, 1024, 1440]) {
     ).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: 'Cancel sync', exact: true })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Artwork', exact: true }).click();
-    await expect(
-      page.getByRole('button', { name: 'Edit fallback design', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cover options', exact: true })).toBeVisible();
     await page.screenshot({
       path: `../artifacts/design-redesign/${width}-custom-artwork-preview.png`,
     });
-    await page.getByRole('button', { name: 'Save fallback design', exact: true }).scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Cover options', exact: true }).click();
+    await page.getByRole('button', { name: 'Save design', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-custom-artwork.png` });
-    await page.getByRole('button', { name: 'Edit fallback design', exact: true }).click();
-    await expect(page.getByText('Fallback cover', { exact: true })).toBeVisible();
+    await expect(page.getByText('Generated design', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     runningJob.state = 'processing';
     runningJob.stage = 'matching_text';
     await page.goto('/work/book');

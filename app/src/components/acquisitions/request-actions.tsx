@@ -30,8 +30,10 @@ function requestReadinessMessage(reason: string, format: BookFormat) {
 export function RequestActions({
   book,
   onLibraryChange,
+  onViewRequest,
 }: {
   book: TitleSearchResult;
+  onViewRequest?: () => void;
   onLibraryChange?: (libraryID: string) => void;
 }) {
   const auth = useAuth();
@@ -139,6 +141,14 @@ export function RequestActions({
     }
   }
 
+  function viewRequest(request: TitleRequest, format: BookFormat) {
+    onViewRequest?.();
+    router.push({
+      pathname: '/activity',
+      params: { request: request.id, library: request.library_id, format },
+    });
+  }
+
   if (loading) return <LoadingState label="Checking request options…" />;
 
   return (
@@ -182,12 +192,7 @@ export function RequestActions({
                 <Button
                   label="View request"
                   kind="quiet"
-                  onPress={() =>
-                    router.push({
-                      pathname: '/activity',
-                      params: { request: request.id, library: request.library_id, format },
-                    })
-                  }
+                  onPress={() => viewRequest(request, format)}
                 />
               </View>
             ) : (

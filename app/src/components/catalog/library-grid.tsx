@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { useRef, useState, type ReactNode } from 'react';
 import { useWindowDimensions, type FlatList as NativeFlatList } from 'react-native';
 import type { WorkSummary } from '@/generated/api';
@@ -71,7 +72,10 @@ export function LibraryGrid({
                 ? item.audiobook_cover_url
                 : item.ebook_cover_url) || item.cover_url
             }
-            fallbackCoverURL={item.cover_url}
+            fallbackCoverURL={fallbackCoverURL(
+              item,
+              workResumeMode(item) === 'listen' ? 'audiobook' : 'ebook',
+            )}
             audioArtwork={workResumeMode(item) === 'listen'}
             coverPresentation={coverPresentation(item)}
             progress={workProgressLabel(item.in_progress, item.completion_percent)}
@@ -91,6 +95,7 @@ export function LibraryGrid({
               title={item.title}
               author={item.author}
               coverURL={item.cover_url}
+              fallbackCoverURL={fallbackCoverURL(item)}
               audioArtwork={!item.readable && item.listenable}
               shelfAligned
               uniformTitleHeight

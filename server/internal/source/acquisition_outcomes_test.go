@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/mahcks/aldus/server/internal/auth"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/database"
 )
 
@@ -136,10 +136,29 @@ func outcomeFixture(t *testing.T, _ string) (*Store, *sql.DB, string) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(`INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('user','user','user','User','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,created_at,updated_at) VALUES('source','library','local','Source',?,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,download_state,fulfillment_state,created_at,updated_at) VALUES('request','library','user','source','Book','queued','ready','scanning','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'); INSERT INTO source_scans(id,source_id,state,created_at,acquisition_request_id) VALUES('scan','source','completed','2026-01-01T00:00:00Z','request'); INSERT INTO acquisition_import_outcomes(acquisition_request_id,scan_id,state,updated_at) VALUES('request','scan','pending','2026-01-01T00:00:00Z')`, root); err != nil {
+	if _, err := db.Exec(`
+		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at)
+		VALUES('user','user','user','User','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO libraries(id,name,created_at,updated_at)
+		VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO library_sources(id,library_id,kind,name,root_path,enabled,auto_import,created_at,updated_at)
+		VALUES('source','library','local','Source',?,1,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO acquisition_requests(id,library_id,requested_by,source_id,query,status,download_state,
+		    fulfillment_state,created_at,updated_at)
+		VALUES('request','library','user','source','Book','queued','ready','scanning','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO source_scans(id,source_id,state,created_at,acquisition_request_id)
+		VALUES('scan','source','completed','2026-01-01T00:00:00Z','request');
+		INSERT INTO acquisition_import_outcomes(acquisition_request_id,scan_id,state,updated_at)
+		VALUES('request','scan','pending','2026-01-01T00:00:00Z')
+	`, root); err != nil {
 		t.Fatal(err)
 	}
-	store, err := New(db, Options{AllowedRoots: []string{root}, ManagedRoot: filepath.Join(base, "managed"), DataRoot: dataRoot, MaxBytes: 1 << 20})
+	store, err := New(db, Options{
+		AllowedRoots: []string{root},
+		ManagedRoot:  filepath.Join(base, "managed"),
+		DataRoot:     dataRoot,
+		MaxBytes:     1 << 20,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +177,8 @@ func addOutcomeProposal(t *testing.T, db *sql.DB, root, _, scanID, proposalID, k
 	name := "book.epub"
 	detected := "epub"
 	if kind == "audiobook" {
-		name, detected = "book.mp3", "audio"
+		name = "book.mp3"
+		detected = "audio"
 	}
 	name = proposalID + "-" + name
 	entryID := proposalID + "-entry"
@@ -173,13 +193,27 @@ func addOutcomeProposal(t *testing.T, db *sql.DB, root, _, scanID, proposalID, k
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256(content))
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := db.Exec(`INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,updated_at,detected_kind,metadata_json,last_seen_scan_id) VALUES(?,'source',?,?,?,?,'registered',?,?,?,'{}',?)`, entryID, name, len(content), info.ModTime().UTC().Format(time.RFC3339Nano), hash, now, now, detected, scanID); err != nil {
+	if _, err := db.Exec(`
+		INSERT INTO source_entries(id,source_id,relative_path,size_bytes,modified_at,sha256,state,created_at,
+		    updated_at,detected_kind,metadata_json,last_seen_scan_id)
+		VALUES(?,'source',?,?,?,?,'registered',?,?,?, ?,?)
+	`,
+		entryID, name, len(content), info.ModTime().UTC().Format(time.RFC3339Nano),
+		hash, now, now, detected, outcomeMetadata(detected), scanID,
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO import_groups(id,library_id,logical_key,content_key,state,confidence,proposed_title,proposed_author,normalized_title,normalized_author,reasons_json,revision,created_at,updated_at) VALUES(?,'library',?,?,'proposed',?,'Book','Author','book','author','[]',1,?,?)`, proposalID, proposalID, proposalID, confidence, now, now); err != nil {
+	if _, err := db.Exec(`
+		INSERT INTO import_groups(id,library_id,logical_key,content_key,state,confidence,proposed_title,
+		    proposed_author,normalized_title,normalized_author,reasons_json,revision,created_at,updated_at)
+		VALUES(?,'library',?,?,'proposed',?,'Book','Author','book','author','[]',1,?,?)
+	`, proposalID, proposalID, proposalID, confidence, now, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json) VALUES(?,?,?,'Imported','{}')`, proposalID, entryID, kind); err != nil {
+	if _, err := db.Exec(`
+		INSERT INTO import_items(group_id,source_entry_id,representation_kind,proposed_label,evidence_json)
+		VALUES(?,?,?,'Imported','{}')
+	`, proposalID, entryID, kind); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -278,4 +312,11 @@ func TestMultiBookReviewExplicitlyFulfillsRequest(t *testing.T) {
 			assertOutcome(t, db, "request", "accepted", "one", true)
 		})
 	}
+}
+
+func outcomeMetadata(kind string) string {
+	if kind == "epub" {
+		return `{"title":"Book","creators":["Author"]}`
+	}
+	return `{"tags":{"album":"Book","artist":"Author"}}`
 }

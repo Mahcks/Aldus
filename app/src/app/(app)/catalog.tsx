@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import type { CatalogGroup, WorkSummary } from '@/generated/api';
@@ -144,6 +145,7 @@ function CatalogContent() {
                 title={work.title}
                 author={work.author}
                 coverURL={work.cover_url}
+                fallbackCoverURL={fallbackCoverURL(work)}
                 coverPresentation={coverPresentation(work)}
                 availability={work}
                 progress={

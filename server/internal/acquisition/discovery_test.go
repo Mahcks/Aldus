@@ -96,6 +96,43 @@ func TestParseDiscoveryResultToleratesMalformedTitles(t *testing.T) {
 	}
 }
 
+func TestGuidedEbookSearchAcceptsEPUBInMultiFormatRelease(t *testing.T) {
+	const title = "Sunrise on the Reaping"
+	const author = "Suzanne Collins"
+	policy := guidedPolicy{
+		maxBytes:          10 << 20,
+		allowedExtensions: map[string]bool{"epub": true},
+		preferredLanguage: "en",
+	}
+	for _, tc := range []struct {
+		release string
+		want    bool
+	}{
+		{"Sunrise on the Reaping by Suzanne Collins [ENG / AZW3 EPUB]", true},
+		{"Sunrise on the Reaping by Suzanne Collins [ENG / EPUB AZW3]", true},
+		{"Sunrise on the Reaping by Suzanne Collins [ENG / MOBI AZW3 EPUB]", true},
+		{"Sunrise on the Reaping by Suzanne Collins [ENG / AZW3]", false},
+		{"Sunrise on the Reaping by Suzanne Collins [ENG / M4B EPUB]", false},
+		{"Sunrise on the Reaping by Another Author [ENG / AZW3 EPUB]", false},
+	} {
+		t.Run(tc.release, func(t *testing.T) {
+			parsed := parseDiscoveryResult(title+" "+author, Result{Title: tc.release, Size: 3 << 20})
+			result := SearchResult{
+				Title:    parsed.Title,
+				Size:     parsed.Size,
+				Kind:     parsed.Kind,
+				Format:   parsed.Format,
+				Language: parsed.Language,
+			}
+			eligible := len(matchingGuidedResults([]SearchResult{result}, title, "ebook", policy)) == 1 &&
+				matchesFallbackBook(result, title, author, "")
+			if eligible != tc.want {
+				t.Fatalf("eligible=%v, want %v (parsed format=%q kind=%q)", eligible, tc.want, parsed.Format, parsed.Kind)
+			}
+		})
+	}
+}
+
 func TestNormalizeSearchResultsPreservesNumericTitles(t *testing.T) {
 	for _, tc := range []struct {
 		release string

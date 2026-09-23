@@ -13,6 +13,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 mkdir -p "$DATA/config" "$DATA/downloads" "$DATA/fixture"
 cp "$ROOT/test-fixtures/alice/media/alice.epub" "$DATA/fixture/alice.epub"
+cp "$ROOT/test-fixtures/alice/media/alice-chapter-01.mp3" "$DATA/fixture/alice.mp3"
+ffmpeg -v error -i "$DATA/fixture/alice.mp3" -t 12 -c:a aac -b:a 48k "$DATA/fixture/alice.m4b"
 cp "$ROOT/scripts/fixtures/local-nntp.py" "$DATA/fixture/server.py"
 cat > "$DATA/config/sabnzbd.ini" <<'INI'
 [misc]
@@ -47,12 +49,13 @@ docker network create "$NAME" >/dev/null
 docker run -d --name "$NAME" --network "$NAME" -p "127.0.0.1:$PORT:8080" \
   -e PUID="$(id -u)" -e PGID="$(id -g)" \
   -v "$DATA/config:/config" -v "$DATA/downloads:/downloads" -v "$DATA/fixture:/fixture:ro" "$IMAGE" >/dev/null
+docker image inspect "$IMAGE" --format '{{ index .Config.Labels "build_version" }}'
 docker exec -d "$NAME" python3 /fixture/server.py
 export ALDUS_USENET_SMOKE_URL="http://127.0.0.1:$PORT"
 export ALDUS_USENET_SMOKE_DATA="$DATA/downloads"
 export ALDUS_USENET_SMOKE_CONTAINER="$NAME"
 cd "$ROOT/server"
-if ! go test ./internal/acquisition -run '^TestDisposableUsenetSmoke$' -count=1 -v; then
+if ! go test ./internal/acquisition -run '^TestDisposableUsenetSmoke$' -count=1 -v -timeout=5m; then
   docker logs --tail 80 "$NAME"
   exit 1
 fi

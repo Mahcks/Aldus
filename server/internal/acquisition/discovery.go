@@ -150,11 +150,22 @@ func parseDiscoveryResult(query string, result Result) discoveryResult {
 	raw := strings.TrimSpace(result.Title)
 	words := releaseWords(raw)
 	format := ""
+	var hasEPUB, hasAudio bool
 	for _, word := range words {
-		if label := releaseFormats[strings.ToLower(word)]; label != "" {
-			format = label
-			break
+		name := strings.ToLower(word)
+		if label := releaseFormats[name]; label != "" {
+			if format == "" {
+				format = label
+			}
+			hasEPUB = hasEPUB || name == "epub"
+			hasAudio = hasAudio || !ebookFormats[name]
 		}
+	}
+
+	// Ebook bundles often list AZW3 or MOBI before EPUB. Prefer the usable
+	// EPUB without reclassifying releases that also advertise audio.
+	if hasEPUB && !hasAudio {
+		format = "EPUB"
 	}
 
 	if format == "" {

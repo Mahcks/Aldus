@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -283,5 +284,147 @@ func copyFile(t *testing.T, from, to string) {
 	}
 	if err := target.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestIncompleteScanPreservesInventory(t *testing.T) {
+	for _, failure := range []string{"missing root", "symlink root", "file root", "unreadable subtree", "acquisition subtree"} {
+		t.Run(failure, func(t *testing.T) {
+			ctx := context.Background()
+			store, db, root := outcomeFixture(t, "")
+			directory := filepath.Join(root, "nested")
+			if err := os.Mkdir(directory, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			bookPath := filepath.Join(directory, "alice.epub")
+			copyFile(t, filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice.epub"), bookPath)
+			initial := runTestScan(t, store, "source", "initial")
+			if initial.AutoImported != 1 {
+				t.Fatalf("initial scan=%+v", initial)
+			}
+			actor := auth.User{Admin: true}
+			before, err := store.Entries(ctx, actor, "library", "source")
+			if err != nil || len(before) != 1 {
+				t.Fatalf("initial entries=%+v, %v", before, err)
+			}
+			var mediaID, mediaHash string
+			if err := db.QueryRow(`SELECT id,sha256 FROM media`).Scan(&mediaID, &mediaHash); err != nil {
+				t.Fatal(err)
+			}
+
+			var restore func() error
+			if failure == "missing root" || failure == "symlink root" || failure == "file root" {
+				moved := root + "-unmounted"
+				if err := os.Rename(root, moved); err != nil {
+					t.Fatal(err)
+				}
+				restore = func() error {
+					if failure != "missing root" {
+						if err := os.Remove(root); err != nil {
+							return err
+						}
+					}
+					return os.Rename(moved, root)
+				}
+				if failure == "symlink root" {
+					if err := os.Symlink(moved, root); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if failure == "file root" {
+					if err := os.WriteFile(root, []byte("not a directory"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			} else {
+				if os.Geteuid() == 0 {
+					t.Skip("requires a user subject to directory permissions")
+				}
+				if err := os.Chmod(directory, 0); err != nil {
+					t.Fatal(err)
+				}
+				restore = func() error { return os.Chmod(directory, 0o755) }
+			}
+			t.Cleanup(func() { _ = restore() })
+
+			if failure == "acquisition subtree" {
+				_, err = db.Exec(`
+					UPDATE acquisition_requests SET completed_relative_path='nested' WHERE id='request';
+					UPDATE source_scans SET state='scanning' WHERE id='scan'
+				`)
+			} else {
+				_, err = db.Exec(`
+					UPDATE source_scans SET state='scanning',acquisition_request_id=NULL WHERE id='scan'
+				`)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = store.runScan(ctx, Scan{ID: "scan", SourceID: "source"})
+			if err == nil {
+				t.Fatal("incomplete traversal completed successfully")
+			}
+			if err := store.finishScan(ctx, "scan", "failed", summary{}, err.Error()); err != nil {
+				t.Fatal(err)
+			}
+			var state, message string
+			var missing, imported int
+			if err := db.QueryRow(`
+				SELECT state,error_summary,missing_count,auto_imported_count FROM source_scans WHERE id='scan'
+			`).Scan(&state, &message, &missing, &imported); err != nil {
+				t.Fatal(err)
+			}
+			if state != "failed" || message == "" || missing != 0 || imported != 0 {
+				t.Fatalf("state=%s error=%s missing=%d imported=%d", state, message, missing, imported)
+			}
+			if failure == "acquisition subtree" {
+				assertOutcome(t, db, "request", "failed", "", false)
+			}
+			after, err := store.Entries(ctx, actor, "library", "source")
+			if err != nil || !reflect.DeepEqual(before, after) {
+				t.Fatalf("inventory changed: before=%+v after=%+v err=%v", before, after, err)
+			}
+			var mediaCount int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM media WHERE id=? AND sha256=?`, mediaID, mediaHash).Scan(&mediaCount); err != nil || mediaCount != 1 {
+				t.Fatalf("media changed: count=%d err=%v", mediaCount, err)
+			}
+			if proposals, err := store.Proposals(ctx, actor, "library"); err != nil || len(proposals) != 0 {
+				t.Fatalf("failed scan regenerated proposals=%+v err=%v", proposals, err)
+			}
+
+			if err := restore(); err != nil {
+				t.Fatal(err)
+			}
+			restore = func() error { return nil }
+			if err := os.Remove(bookPath); err != nil {
+				t.Fatal(err)
+			}
+			completed := runTestScan(t, store, "source", "restored")
+			if completed.Missing != 1 || completed.State != "completed" {
+				t.Fatalf("successful scan did not reconcile deletion=%+v", completed)
+			}
+		})
+	}
+}
+
+func TestAcquisitionScanAcceptsSingleFilePayload(t *testing.T) {
+	store, db, root := outcomeFixture(t, "")
+	copyFile(t, filepath.Join("..", "..", "..", "test-fixtures", "alice", "media", "alice.epub"), filepath.Join(root, "alice.epub"))
+	if _, err := db.Exec(`
+		UPDATE acquisition_requests SET completed_relative_path='alice.epub' WHERE id='request';
+		UPDATE source_scans SET state='scanning' WHERE id='scan'
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.runScan(context.Background(), Scan{ID: "scan", SourceID: "source"}); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	var supported int
+	if err := db.QueryRow(`SELECT state,supported_count FROM source_scans WHERE id='scan'`).Scan(&state, &supported); err != nil {
+		t.Fatal(err)
+	}
+	if state != "completed" || supported != 1 {
+		t.Fatalf("single-file payload: state=%s supported=%d", state, supported)
 	}
 }

@@ -774,6 +774,7 @@ export interface ImportProposal {
   normalized_author: string;
   existing_work_id?: string;
   reasons: string[];
+  review_reasons?: string[];
   revision: number /* int */;
   items: ImportProposalItem[];
   created_at: string;

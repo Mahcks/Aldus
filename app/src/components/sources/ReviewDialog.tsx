@@ -1,6 +1,20 @@
-import type { ImportProposal, Representation, Work } from '@/generated/api';
+import type { ImportProposal, Representation } from '@/generated/api';
 import { representationKinds, type ReviewDraft } from '@/lib/sources/source-administration';
-import { Button, Checkbox, Dialog, Field, Notice, Radio, Row, Select } from '@/components/ui';
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  EmptyState,
+  ErrorState,
+  Field,
+  LoadingState,
+  Notice,
+  Radio,
+  Row,
+  SearchField,
+  Select,
+} from '@/components/ui';
+import type { useImportDestination } from '@/hooks/sources/useImportDestination';
 import { Text, View } from '@/components/ui/tw';
 import { humanState } from '@/lib/sources/helpers';
 import { TechnicalDetails } from './TechnicalDetails';
@@ -8,8 +22,7 @@ import { TechnicalDetails } from './TechnicalDetails';
 export function ReviewDialog({
   proposal,
   draft,
-  works,
-  representations,
+  destination,
   conflict,
   busy,
   onDraftChange,
@@ -21,8 +34,7 @@ export function ReviewDialog({
 }: {
   proposal?: ImportProposal;
   draft?: ReviewDraft;
-  works: Work[];
-  representations: Representation[];
+  destination: ReturnType<typeof useImportDestination>;
   conflict: string;
   busy: boolean;
   onDraftChange: (draft: ReviewDraft) => void;
@@ -48,12 +60,19 @@ export function ReviewDialog({
       footer={
         <View className="gap-3">
           {conflict ? <Notice danger>{conflict}</Notice> : null}
+          {!destination.ready ? (
+            <Text className="text-sm text-muted">
+              {destination.selectionLoading
+                ? 'Checking the selected book before importing…'
+                : 'Choose an available book, retry the selected book, or create a new book.'}
+            </Text>
+          ) : null}
 
           <Row>
             <Button
               label={busy ? 'Importing…' : 'Import book'}
               kind="primary"
-              disabled={busy || (!draft.workID && !draft.title.trim())}
+              disabled={busy || !destination.ready || (!draft.workID && !draft.title.trim())}
               onPress={onAccept}
             />
             <Button label="Ignore proposal" kind="quiet" disabled={busy} onPress={onIgnore} />
@@ -67,9 +86,13 @@ export function ReviewDialog({
             {proposal.title || 'Untitled discovery'}
           </Text>
           <Text className="text-sm text-muted">
-            {proposal.confidence} confidence · {humanState(proposal.state)}
+            {proposal.confidence} grouping confidence · {humanState(proposal.state)}
           </Text>
         </View>
+
+        {proposal.review_reasons?.map((reason) => (
+          <Notice key={reason}>Last acquisition review: {reason}</Notice>
+        ))}
 
         <View className="gap-1.5 rounded-control bg-canvas p-3">
           <Text className="text-sm font-sans-bold text-ink">Why Aldus grouped these files</Text>
@@ -88,18 +111,62 @@ export function ReviewDialog({
             selected={!draft.workID}
             onPress={() => onChooseWork('')}
           />
-          {works.map((work) => (
+          {destination.selectionLoading ? <LoadingState label="Loading selected book…" /> : null}
+          {destination.selectionError ? (
+            <ErrorState
+              title="Selected book unavailable"
+              action={<Button label="Retry selected book" onPress={destination.retrySelection} />}
+            >
+              {destination.selectionError}
+            </ErrorState>
+          ) : null}
+          {destination.selectedWork && draft.workID ? (
             <WorkChoice
-              key={work.id}
-              title={work.title}
+              title={destination.selectedWork.title}
               description={
-                (work.author || 'Unknown author') +
-                (work.id === proposal.existing_work_id ? ' · Suggested match' : '')
+                (destination.selectedWork.author || 'Unknown author') +
+                (draft.workID === proposal.existing_work_id
+                  ? ' · Suggested match'
+                  : ' · Selected book')
               }
-              selected={draft.workID === work.id}
-              onPress={() => onChooseWork(work.id)}
+              selected
+              onPress={() => onChooseWork(draft.workID)}
             />
-          ))}
+          ) : null}
+          <SearchField
+            label="Find an existing book"
+            placeholder="Search this library by title or author"
+            value={destination.query}
+            onChangeText={destination.search}
+          />
+          {destination.searchLoading ? <LoadingState label="Finding books…" /> : null}
+          {destination.searchError ? (
+            <ErrorState
+              title="Could not load books"
+              action={<Button label="Retry book search" onPress={destination.retrySearch} />}
+            >
+              {destination.searchError}
+            </ErrorState>
+          ) : null}
+          {!destination.searchLoading &&
+          !destination.searchError &&
+          destination.works.length === 0 ? (
+            <EmptyState title="No books found">Try another search or create a new book.</EmptyState>
+          ) : null}
+          {destination.works
+            .filter((work) => work.id !== draft.workID)
+            .map((work) => (
+              <WorkChoice
+                key={work.id}
+                title={work.title}
+                description={work.author || 'Unknown author'}
+                selected={false}
+                onPress={() => onChooseWork(work.id)}
+              />
+            ))}
+          {destination.hasMore ? (
+            <Button label="Load more books" kind="secondary" onPress={destination.loadMore} />
+          ) : null}
         </View>
 
         <View className="flex-row flex-wrap gap-3">
@@ -146,7 +213,7 @@ export function ReviewDialog({
               draft={draft}
               item={item}
               key={item.source_entry_id}
-              representations={representations}
+              representations={destination.representations}
               onItemChange={onItemChange}
             />
           ))}

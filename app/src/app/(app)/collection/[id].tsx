@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { Collection, CollectionWork, Library } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -280,6 +281,7 @@ export default function CollectionDetailScreen() {
                   title={work.title}
                   author={work.author}
                   coverURL={work.cover_url}
+                  fallbackCoverURL={fallbackCoverURL(work)}
                   onPress={() => void openWork(work.id)}
                 />
                 {arranging && (!shared || collection.can_edit) ? (

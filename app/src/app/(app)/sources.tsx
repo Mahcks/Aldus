@@ -1,4 +1,4 @@
-import type { ImportProposal, Library, LibrarySource, Representation, Work } from '@/generated/api';
+import type { ImportProposal, Library, LibrarySource } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -11,6 +11,7 @@ import {
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog';
 import { ImportReviewSection } from '@/components/sources/ImportReviewSection';
 import { ReviewDialog } from '@/components/sources/ReviewDialog';
+import { useImportDestination } from '@/hooks/sources/useImportDestination';
 import { SourceCard } from '@/components/sources/SourceCard';
 import type { SourceDetails } from '@/lib/sources/types';
 import { Button, ConfirmDialog, EmptyState, Loading, Notice, Section } from '@/components/ui';
@@ -29,8 +30,6 @@ export default function SourcesAdministration() {
   const [sources, setSources] = useState<LibrarySource[]>([]);
   const [details, setDetails] = useState<Record<string, SourceDetails>>({});
   const [proposals, setProposals] = useState<ImportProposal[]>([]);
-  const [works, setWorks] = useState<Work[]>([]);
-  const [representations, setRepresentations] = useState<Representation[]>([]);
   const [expandedSourceID, setExpandedSourceID] = useState('');
   const [editingSource, setEditingSource] = useState<LibrarySource | 'new' | null>(null);
   const [review, setReview] = useState<ImportProposal>();
@@ -42,6 +41,12 @@ export default function SourcesAdministration() {
   const [removeSourceTarget, setRemoveSourceTarget] = useState<LibrarySource | null>(null);
   const [ignoreProposalTarget, setIgnoreProposalTarget] = useState<ImportProposal | null>(null);
   const openedProposalID = useRef('');
+  const administrationRequest = useRef(0);
+  const destination = useImportDestination(
+    selectedLibraryID,
+    review?.id ?? '',
+    draft?.workID ?? '',
+  );
 
   const selectedLibrary = libraries.find((library) => library.id === selectedLibraryID);
   const canAdminister = canManageSources(Boolean(auth.user?.admin), selectedLibrary);
@@ -69,12 +74,12 @@ export default function SourcesAdministration() {
 
   async function loadAdministration(showLoading = false) {
     if (!selectedLibraryID || !canAdminister) return;
+    const request = ++administrationRequest.current;
     if (showLoading) setLoading(true);
     try {
-      const [nextSources, nextProposals, nextWorks] = await Promise.all([
+      const [nextSources, nextProposals] = await Promise.all([
         api.sources(selectedLibraryID),
         api.importProposals(selectedLibraryID),
-        api.works(selectedLibraryID),
       ]);
       const nextDetails = await Promise.all(
         nextSources.map(async (source) => {
@@ -85,15 +90,15 @@ export default function SourcesAdministration() {
           return [source.id, { scans, entries }] as const;
         }),
       );
+      if (request !== administrationRequest.current) return;
       setSources(nextSources);
       setProposals(nextProposals);
-      setWorks(nextWorks);
       setDetails(Object.fromEntries(nextDetails));
       setError('');
     } catch (value) {
-      setError(errorMessage(value));
+      if (request === administrationRequest.current) setError(errorMessage(value));
     } finally {
-      if (showLoading) setLoading(false);
+      if (showLoading && request === administrationRequest.current) setLoading(false);
     }
   }
 
@@ -120,6 +125,7 @@ export default function SourcesAdministration() {
 
   useEffect(() => {
     if (!activeScan) return;
+    let currentLibrary = true;
     const timer = setInterval(() => {
       void Promise.all(
         sources.map(
@@ -128,6 +134,7 @@ export default function SourcesAdministration() {
         ),
       )
         .then(async (scansBySource) => {
+          if (!currentLibrary) return;
           const stillActive = scansBySource.some(([, scans]) =>
             ['pending', 'scanning'].includes(scans[0]?.state),
           );
@@ -140,9 +147,14 @@ export default function SourcesAdministration() {
           });
           if (!stillActive) await loadAdministration();
         })
-        .catch((value: unknown) => setError(errorMessage(value)));
+        .catch((value: unknown) => {
+          if (currentLibrary) setError(errorMessage(value));
+        });
     }, 2000);
-    return () => clearInterval(timer);
+    return () => {
+      currentLibrary = false;
+      clearInterval(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeScan, selectedLibraryID, sources]);
 
@@ -232,30 +244,39 @@ export default function SourcesAdministration() {
     }
   }
 
-  async function openReview(proposal: ImportProposal) {
+  function selectLibrary(libraryID: string) {
+    if (libraryID === selectedLibraryID) return;
+    administrationRequest.current++;
+    setReview(undefined);
+    setDraft(undefined);
+    setProposals([]);
+    setSources([]);
+    setDetails({});
+    setSelectedLibraryID(libraryID);
+  }
+
+  function openReview(proposal: ImportProposal) {
     setConflict('');
     setReview(proposal);
     setDraft(makeReviewDraft(proposal));
-    try {
-      setRepresentations(
-        proposal.existing_work_id ? await api.representations(proposal.existing_work_id) : [],
-      );
-    } catch (value) {
-      setError(errorMessage(value));
-    }
   }
 
-  async function chooseWork(workID: string) {
-    setDraft((current) => (current ? { ...current, workID } : current));
-    if (!workID) {
-      setRepresentations([]);
-      return;
-    }
-    try {
-      setRepresentations(await api.representations(workID));
-    } catch (value) {
-      setError(errorMessage(value));
-    }
+  function chooseWork(workID: string) {
+    if (workID === draft?.workID) return;
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            workID,
+            items: Object.fromEntries(
+              Object.entries(current.items).map(([id, item]) => [
+                id,
+                { ...item, representationID: '' },
+              ]),
+            ),
+          }
+        : current,
+    );
   }
 
   function updateReviewItem(
@@ -287,7 +308,7 @@ export default function SourcesAdministration() {
   }
 
   async function acceptProposal() {
-    if (!review || !draft) return;
+    if (!review || !draft || !destination.ready) return;
     setBusy(true);
     setConflict('');
     try {
@@ -381,7 +402,7 @@ export default function SourcesAdministration() {
         <LibraryTabs
           libraries={libraries}
           selectedLibraryID={selectedLibraryID}
-          onSelect={setSelectedLibraryID}
+          onSelect={selectLibrary}
         />
       ) : null}
 
@@ -435,7 +456,6 @@ export default function SourcesAdministration() {
 
           <ImportReviewSection
             proposals={proposals}
-            works={works}
             onIgnore={setIgnoreProposalTarget}
             onReview={(proposal) => void openReview(proposal)}
           />
@@ -458,8 +478,7 @@ export default function SourcesAdministration() {
         conflict={conflict}
         draft={draft}
         proposal={review}
-        representations={representations}
-        works={works}
+        destination={destination}
         onAccept={() => void acceptProposal()}
         onChooseWork={(workID) => void chooseWork(workID)}
         onClose={() => setReview(undefined)}

@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { Alignment, Work } from '@/generated/api';
 import { ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -162,7 +163,7 @@ export function ReaderView({
               work.ebook_cover_url ||
               (selectedEPUB ? `/api/media/${selectedEPUB.id}/cover` : work.cover_url)
             }
-            fallbackCoverURL={work.cover_url}
+            fallbackCoverURL={fallbackCoverURL(work, 'ebook')}
             size="hero"
             {...coverPresentation(work)}
             coverFit="cover"

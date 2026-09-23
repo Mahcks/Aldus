@@ -344,20 +344,27 @@ func (s *Store) AudioChapters(ctx context.Context, actor auth.User, id string) (
 		return nil, err
 	}
 	defer file.Close()
+
 	if media.Kind != "audio" && media.Kind != "audiobook" {
 		return nil, ErrInvalid
 	}
+
 	select {
 	case s.probes <- struct{}{}:
 		defer func() { <-s.probes }()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var output boundedBuffer
 	output.remaining = 1 << 20
-	command := exec.CommandContext(probeCtx, "ffprobe", "-v", "error", "-show_entries", "chapter=start_time,end_time:chapter_tags=title:format=duration", "-of", "json", file.Name())
+	command := exec.CommandContext(probeCtx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "chapter=start_time,end_time:chapter_tags=title:format=duration",
+		"-of", "json", file.Name(),
+	)
 	command.Stdout = &output
 	err = command.Run()
 	if err != nil {
@@ -366,10 +373,12 @@ func (s *Store) AudioChapters(ctx context.Context, actor auth.User, id string) (
 	if output.truncated {
 		return nil, fmt.Errorf("%w: chapter metadata too large", ErrInvalid)
 	}
-	chapters, err := parseAudioChapters(output.Bytes(), media.OriginalFilename)
+
+	chapters, err := parseAudioChapters(output.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
+
 	var probe struct {
 		Format struct {
 			Duration string `json:"duration"`
@@ -382,6 +391,7 @@ func (s *Store) AudioChapters(ctx context.Context, actor auth.User, id string) (
 	if err != nil || duration <= 0 {
 		return nil, fmt.Errorf("%w: invalid audio duration", ErrInvalid)
 	}
+
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE media
 		SET duration_ms = ?
@@ -411,7 +421,7 @@ func (b *boundedBuffer) Write(value []byte) (int, error) {
 	return length, nil
 }
 
-func parseAudioChapters(data []byte, filename string) ([]AudioChapter, error) {
+func parseAudioChapters(data []byte) ([]AudioChapter, error) {
 	var result struct {
 		Chapters []struct {
 			Start string `json:"start_time"`
@@ -432,11 +442,7 @@ func parseAudioChapters(data []byte, filename string) ([]AudioChapter, error) {
 		return nil, errors.New("invalid audio duration")
 	}
 	if len(result.Chapters) == 0 {
-		title := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
-		if strings.TrimSpace(title) == "" {
-			title = "Audiobook"
-		}
-		return []AudioChapter{{Title: title, EndMS: duration}}, nil
+		return []AudioChapter{{Title: "Audiobook", EndMS: duration}}, nil
 	}
 	chapters := make([]AudioChapter, 0, len(result.Chapters))
 	for i, value := range result.Chapters {

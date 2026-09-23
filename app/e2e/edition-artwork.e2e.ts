@@ -71,6 +71,7 @@ for (const width of [390, 1024, 1440]) {
     await signInAsTestAdmin(page);
     const { testServer } = await import('./auth');
     const workURL = `${testServer}/api/v1/works/alice-gutenberg-11-work`;
+    expect((await page.request.delete(`${workURL}/cover/ebook`)).ok()).toBe(true);
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
       'base64',
@@ -87,15 +88,18 @@ for (const width of [390, 1024, 1440]) {
     expect(uploaded).toContain('/api/covers/');
     await page.goto('/work/alice-gutenberg-11-work/manage?tab=artwork');
     await expect(page.getByRole('radio', { name: 'Library cover', exact: true })).toHaveCount(0);
-    const ebookPreview = page.locator('img[src*="/api/media/"][src$="/cover"]').nth(1);
+    const ebookPreview = page
+      .getByLabel(`Cover for ${saved.title}`, { exact: true })
+      .nth(1)
+      .locator('img');
     await expect(ebookPreview).toBeVisible();
-    await expect(ebookPreview).toHaveCSS('object-fit', 'cover');
+    await expect(ebookPreview).toHaveCSS('object-fit', 'contain');
     await ebookPreview.scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath('ebook-poster-fill.png') });
-    await page.getByRole('radio', { name: 'Audiobook cover', exact: true }).click();
+    await page.getByRole('radio', { name: 'Audiobook', exact: true }).click();
     const preview = page.locator(`img[src$="${uploaded}"]`).first();
     await expect(preview).toBeVisible();
-    await expect(preview).toHaveCSS('object-fit', 'cover');
+    await expect(preview).toHaveCSS('object-fit', 'contain');
     const bounds = await preview.boundingBox();
     expect(Math.abs(bounds!.width - bounds!.height)).toBeLessThan(2);
     await page.screenshot({
@@ -126,26 +130,30 @@ for (const width of [390, 1024, 1440]) {
     await page.route('**/audio-search.png', (route) =>
       route.fulfill({ contentType: 'image/svg+xml', body: artwork }),
     );
-    await page.getByRole('button', { name: 'Search audiobook covers', exact: true }).click();
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect(page.getByText('Audio edition', { exact: true })).toBeVisible();
     await expect(page.getByText('Wrong ebook edition', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Cover options', exact: true }).click();
     await page.getByRole('button', { name: 'Use automatic artwork', exact: true }).click();
     await expect(
-      page.getByText('Automatic format artwork restored.', { exact: true }),
+      page
+        .getByRole('dialog', { name: 'Cover options' })
+        .getByText('Automatic artwork restored.', { exact: true }),
     ).toBeVisible();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     const reset = await (await page.request.get(workURL)).json();
     expect(reset.cover_url).toBe(saved.cover_url);
     expect(reset.ebook_cover_url).toBe(saved.ebook_cover_url);
     expect(reset.audiobook_cover_url).not.toBe(uploaded);
-    await page.getByRole('radio', { name: 'Ebook cover', exact: true }).click();
+    await page.getByRole('radio', { name: 'Ebook', exact: true }).click();
     await expect(page.getByText('Audio edition', { exact: true })).toHaveCount(0);
-    const uploadedCard = page
-      .locator('div')
+    await page.getByRole('tab', { name: 'Your images', exact: true }).click();
+    await page
+      .getByRole('button', { name: /Preview cover: Uploaded image/ })
       .filter({ has: page.locator(`img[src$="${uploaded}"]`) })
-      .filter({ has: page.getByRole('button', { name: 'Delete upload', exact: true }) })
-      .last();
-    await uploadedCard.getByRole('button', { name: 'Use cover', exact: true }).click();
-    await expect(page.getByText('Artwork selected.', { exact: true })).toBeVisible();
+      .click();
+    await page.getByRole('button', { name: 'Use this cover', exact: true }).click();
+    await expect(page.getByText('Cover updated.', { exact: true })).toBeVisible();
     const selected = await (await page.request.get(workURL)).json();
     expect(selected.ebook_cover_url).toBe(uploaded);
     expect(selected.audiobook_cover_url).toBe(reset.audiobook_cover_url);

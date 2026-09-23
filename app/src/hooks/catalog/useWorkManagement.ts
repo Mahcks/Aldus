@@ -57,6 +57,7 @@ export function useWorkManagement(
           ? current
           : (choices(nextRepresentations, revisions, ['audio', 'audiobook'])[0]?.id ?? ''),
       );
+      return nextWork;
     } catch (value) {
       setError(errorMessage(value));
     } finally {

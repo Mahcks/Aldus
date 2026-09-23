@@ -84,6 +84,7 @@ type ImportProposal struct {
 	NormalizedAuthor     string               `json:"normalized_author"`
 	ExistingWorkID       string               `json:"existing_work_id,omitempty"`
 	Reasons              []string             `json:"reasons"`
+	ReviewReasons        []string             `json:"review_reasons,omitempty"`
 	Revision             int                  `json:"revision"`
 	Items                []ImportProposalItem `json:"items"`
 	CreatedAt            time.Time            `json:"created_at"`

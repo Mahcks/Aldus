@@ -133,7 +133,12 @@ function DiscoverDetailDialog({
       onClose={onClose}
       footer={
         <View className="gap-2">
-          <RequestActions key={resultKey(result)} book={result} onLibraryChange={onLibraryChange} />
+          <RequestActions
+            key={resultKey(result)}
+            book={result}
+            onLibraryChange={onLibraryChange}
+            onViewRequest={onClose}
+          />
           {canChooseRelease ? (
             <Button label="Choose a specific release" kind="quiet" onPress={onChooseRelease} />
           ) : null}

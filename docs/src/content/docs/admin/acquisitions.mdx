@@ -78,11 +78,6 @@ Environment defaults are `ALDUS_SABNZBD_URL`, `ALDUS_SABNZBD_API_KEY`,
 settings take precedence. Connector keys are omitted from redacted backups and
 must be re-entered after restoring one.
 
-For development, `make acquisition-usenet-smoke` starts a disposable SABnzbd
-5.1.2 container and a local NNTP fixture serving the repository's public-domain
-Alice EPUB. It checks download, restart, exact managed-copy contents, library import, and
-the family request becoming ready without an external indexer or Usenet account. The script cleans up its container,
-network, and temporary files.
 
 ## Per-library download rules
 
@@ -106,6 +101,11 @@ Every library has its own acquisition policy, editable by owners, editors, and a
 | Maximum active requests per member | 5 | A whole number from 1–100 capping how many non-finished requests one member can have open at once, across this library. |
 
 Both size limits are internally clamped between 1 KB and 1 TiB regardless of what you type, and formats are normalized to lowercase automatically.
+
+For audiobooks, choose a complete book in one M4B or MP3 file. Folders of separate
+chapter files do not currently play as one continuous audiobook. If a download
+contains separate chapters, do not select just one chapter in **Import review**
+to fulfill the request: it is only part of the book.
 
 ## What happens when someone requests a title
 

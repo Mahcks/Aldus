@@ -309,8 +309,24 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 		return err
 	}
 
-	if state != "failed" {
+	if state != "failed" && state != "needs_review" {
 		return ErrInvalid
+	}
+	if state == "needs_review" {
+		// Recheck only the completed scan that owns this held import. Never turn
+		// a review retry into a new download or restart an already accepted scan.
+		var held bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(
+			SELECT 1 FROM acquisition_requests a
+			JOIN acquisition_import_outcomes o ON o.acquisition_request_id=a.id AND o.scan_id=a.scan_id
+			JOIN source_scans sc ON sc.id=o.scan_id AND sc.source_id=a.source_id AND sc.acquisition_request_id=a.id
+			WHERE a.id=? AND o.state='needs_review' AND sc.state='completed'
+		)`, requestID).Scan(&held); err != nil {
+			return err
+		}
+		if !held {
+			return ErrInvalid
+		}
 	}
 
 	var canceled bool
@@ -343,8 +359,8 @@ func (s *Store) Retry(ctx context.Context, actor auth.User, libraryID, requestID
 			    download_error='',
 			    failure_kind='',dismissed_at='',
 			    updated_at=?
-			WHERE id=? AND fulfillment_state='failed'
-		`, now, requestID)
+			WHERE id=? AND fulfillment_state=?
+		`, now, requestID, state)
 		return err
 	}
 

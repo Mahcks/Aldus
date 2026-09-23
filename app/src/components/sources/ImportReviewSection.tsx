@@ -1,4 +1,4 @@
-import type { ImportProposal, Work } from '@/generated/api';
+import type { ImportProposal } from '@/generated/api';
 import { EmptyState, Section } from '@/components/ui';
 import { View } from '@/components/ui/tw';
 import { ProposalCard } from './ProposalCard';
@@ -10,12 +10,10 @@ import { ProposalCard } from './ProposalCard';
  */
 export function ImportReviewSection({
   proposals,
-  works,
   onIgnore,
   onReview,
 }: {
   proposals: ImportProposal[];
-  works: Work[];
   onIgnore: (proposal: ImportProposal) => void;
   onReview: (proposal: ImportProposal) => void;
 }) {
@@ -31,7 +29,6 @@ export function ImportReviewSection({
             <ProposalCard
               key={proposal.id}
               proposal={proposal}
-              suggestedWork={works.find((work) => work.id === proposal.existing_work_id)}
               onIgnore={() => onIgnore(proposal)}
               onReview={() => onReview(proposal)}
             />

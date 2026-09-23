@@ -15,14 +15,18 @@ import (
 func TestWatchingRequestFallsBackToBookTitle(t *testing.T) {
 	for _, primaryMatches := range []bool{false, true} {
 		t.Run(fmt.Sprintf("primary_matches=%v", primaryMatches), func(t *testing.T) {
-			testWatchingRequestSearch(t, primaryMatches)
+			testWatchingRequestSearch(t, primaryMatches, false)
 		})
 	}
 }
 
-func testWatchingRequestSearch(t *testing.T, primaryMatches bool) {
+func testWatchingRequestSearch(t *testing.T, primaryMatches, unrelatedOnly bool) {
 	t.Helper()
-	const original = "Hunger Games 2 - Catching Fire Suzanne Collins"
+	title, author := "Hunger Games 2 - Catching Fire", "Suzanne Collins"
+	if unrelatedOnly {
+		title, author = "Dune", "Frank Herbert"
+	}
+	original := title + " " + author
 	const fallback = "Catching Fire Suzanne Collins"
 	var mu sync.Mutex
 	var queries []string
@@ -37,7 +41,7 @@ func testWatchingRequestSearch(t *testing.T, primaryMatches bool) {
 			if query == original && primaryMatches {
 				fmt.Fprint(w, `<rss><channel><item><title>Hunger Games 2 - Catching Fire Suzanne Collins English M4B</title><enclosure url="https://download.test/audio" length="334495744"/></item></channel></rss>`)
 			} else if query == original {
-				fmt.Fprint(w, `<rss><channel><item><title>Hunger Games EPUB</title><enclosure url="https://download.test/ebook" length="500"/></item></channel></rss>`)
+				fmt.Fprint(w, `<rss><channel><item><title>Unrelated Someone Else English M4B</title><enclosure url="https://download.test/ebook" length="500"/></item></channel></rss>`)
 			} else if query == fallback {
 				fmt.Fprint(w, `<rss><channel>
      <item><title>Catching Fire Suzanne Collins English M4B</title><enclosure url="https://download.test/audio" length="334495744"/></item>
@@ -65,9 +69,9 @@ func testWatchingRequestSearch(t *testing.T, primaryMatches bool) {
 	}))
 	defer server.Close()
 	db := titleLifecycleFixture(t)
-	_, err := db.Exec(`UPDATE title_requests SET title='Hunger Games 2 - Catching Fire',author='Suzanne Collins' WHERE id='title';
+	_, err := db.Exec(`UPDATE title_requests SET title=?,author=? WHERE id='title';
  UPDATE title_request_formats SET format='audiobook',state='awaiting_release',next_search_at='2026-01-01',legacy_acquisition_request_id=NULL WHERE title_request_id='title';
- INSERT INTO acquisition_policies(library_id,default_audiobook_source_id,updated_at) VALUES('library','source','2026-01-01')`)
+ INSERT INTO acquisition_policies(library_id,default_audiobook_source_id,updated_at) VALUES('library','source','2026-01-01')`, title, author)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,21 +92,29 @@ func testWatchingRequestSearch(t *testing.T, primaryMatches bool) {
 	mu.Lock()
 	defer mu.Unlock()
 	expectedQueries := []string{original, fallback}
-	if primaryMatches {
+	if primaryMatches || unrelatedOnly {
 		expectedQueries = []string{original}
 	}
 	if !slices.Equal(queries, expectedQueries) {
 		t.Fatalf("queries=%v", queries)
 	}
-	if !slices.Equal(downloads, []string{"https://download.test/audio"}) {
+	expectedDownloads := []string{"https://download.test/audio"}
+	if unrelatedOnly {
+		expectedDownloads = nil
+	}
+	if !slices.Equal(downloads, expectedDownloads) {
 		t.Fatalf("downloads=%v", downloads)
 	}
-	var title, state string
-	if err := db.QueryRow(`SELECT t.title,f.state FROM title_requests t JOIN title_request_formats f ON f.title_request_id=t.id WHERE t.id='title'`).Scan(&title, &state); err != nil {
+	var storedTitle, state string
+	if err := db.QueryRow(`SELECT t.title,f.state FROM title_requests t JOIN title_request_formats f ON f.title_request_id=t.id WHERE t.id='title'`).Scan(&storedTitle, &state); err != nil {
 		t.Fatal(err)
 	}
-	if title != "Hunger Games 2 - Catching Fire" || state != "downloading" {
-		t.Fatalf("title=%q state=%q", title, state)
+	expectedState := "downloading"
+	if unrelatedOnly {
+		expectedState = "awaiting_release"
+	}
+	if storedTitle != title || state != expectedState {
+		t.Fatalf("title=%q state=%q", storedTitle, state)
 	}
 }
 
@@ -145,4 +157,33 @@ func TestFallbackBookRejectsUnrelatedReleases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGuidedReleaseRequiresUnambiguousIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		title, author, release string
+		want                   bool
+	}{
+		{"Dune", "Frank Herbert", "Dune Frank Herbert English EPUB", true},
+		{"Dune", "Frank Herbert", "Dune by Frank Herbert English EPUB", true},
+		{"Dune", "Frank Herbert", "Dune Messiah Frank Herbert English EPUB", false},
+		{"Dune", "Frank Herbert", "Children of Dune Frank Herbert EPUB", false},
+		{"Dune", "Frank Herbert", "Dune and Dune Messiah Frank Herbert EPUB", false},
+		{"Dune", "Frank Herbert", "Unrelated Someone Else EPUB", false},
+		{"Dune", "Frank Herbert", "Dune EPUB", false},
+		{"1984", "George Orwell", "George Orwell - 1984 EPUB", true},
+		{"L’étranger", "Albert Camus", "Albert Camus - L'étranger EPUB", true},
+		{"The Book Thief", "Markus Zusak", "The Book Thief Markus Zusak EPUB", true},
+		{"Book", "", "Book EPUB", true},
+	} {
+		t.Run(tc.release, func(t *testing.T) {
+			if got := matchesFallbackBook(SearchResult{Title: tc.release}, tc.title, tc.author, ""); got != tc.want {
+				t.Fatalf("matches=%v want=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWatchingRequestDoesNotDownloadUnrelatedPrimaryRelease(t *testing.T) {
+	testWatchingRequestSearch(t, false, true)
 }

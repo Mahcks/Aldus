@@ -1,3 +1,4 @@
+import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { EditionSection } from '@/components/catalog/EditionSection';
 import {
   AlignmentProgress,
@@ -467,7 +468,7 @@ export default function WorkScreen() {
             ? `/api/media/${(selectedEPUB || selectedAudio)!.id}/cover`
             : work.cover_url)
         }
-        fallbackCoverURL={work.cover_url}
+        fallbackCoverURL={fallbackCoverURL(work, selectedEPUB ? 'ebook' : 'audiobook')}
         size={selectedAudio && !selectedEPUB ? 'audio' : narrow ? 'small' : 'hero'}
         {...coverPresentation(work)}
         coverFit="cover"

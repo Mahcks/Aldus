@@ -85,7 +85,7 @@ async function apiJSON(request: APIRequestContext, path: string, token: string, 
 
 for (const [index, library] of ['family', 'review', 'retry'].entries()) {
   const width = [390, 1024, 1440][index];
-  test(`reader → owner → real import → ebook at ${width}px (${library})`, async ({
+  test(`reader → owner → real import → read and listen at ${width}px (${library})`, async ({
     page,
     browser,
     request,
@@ -142,6 +142,7 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
         .items,
     ).toHaveLength(1);
     await dialog.getByRole('button', { name: 'View request', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
     await expect(page.getByText('Awaiting approval', { exact: true }).first()).toBeVisible();
 
     const ownerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -152,8 +153,6 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
       .getByRole('button', { name: `Approve ebook request for ${book.title}`, exact: true })
       .click();
     await expect(owner.getByText('Requested', { exact: true })).toBeVisible();
-    if (library === 'review')
-      expect((await request.post(`${fixture.url}/payload?review=true`)).ok()).toBe(true);
     if (library === 'retry')
       expect((await request.post(`${fixture.url}/payload?fail=true`)).ok()).toBe(true);
 
@@ -264,12 +263,80 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
     expect(missing.items).toHaveLength(1);
     expect(missing.items[0]).toMatchObject({ work_id: ready.work_id, library_id: library });
     expect(missing.items[0].formats[0].format).toBe('audiobook');
+    const audioRequest: TitleRequest = missing.items[0];
+    expect(
+      (await request.post(`${fixture.url}/payload?audio=${index === 0 ? 'mp3' : 'm4b'}`)).ok(),
+    ).toBe(true);
     await apiJSON(
       request,
-      `/libraries/${library}/title-requests/${missing.items[0].id}/formats/audiobook/cancel`,
-      fixture.reader,
+      `/libraries/${library}/title-requests/${audioRequest.id}/formats/audiobook/approve`,
+      fixture.owner,
       {},
     );
+    async function advanceAudio() {
+      const tick = await request.post(`${fixture.url}/tick`);
+      expect(tick.ok(), await tick.text()).toBe(true);
+      return apiJSON(
+        request,
+        `/libraries/${library}/title-requests/${audioRequest.id}`,
+        fixture.reader,
+      ) as Promise<TitleRequest>;
+    }
+    await expect
+      .poll(async () => (await advanceAudio()).formats[0].state, { timeout: 30_000 })
+      .toBe(library === 'review' ? 'needs_review' : 'available');
+    if (library === 'review') {
+      const proposals: ImportProposal[] = await apiJSON(
+        request,
+        `/libraries/${library}/import-proposals`,
+        fixture.owner,
+      );
+      const proposal = proposals.find((item) =>
+        item.items.some((item) => item.kind === 'audiobook'),
+      )!;
+      expect(proposal).toBeTruthy();
+      await apiJSON(
+        request,
+        `/libraries/${library}/import-proposals/${proposal.id}/accept`,
+        fixture.owner,
+        {
+          expected_revision: proposal.revision,
+          acquisition_request_id: proposal.acquisition_request_id,
+          work_id: ready.work_id,
+          title: proposal.title,
+          author: proposal.author,
+          items: proposal.items.map((item) => ({
+            source_entry_id: item.source_entry_id,
+            kind: item.kind,
+            label: item.label,
+          })),
+        },
+      );
+    }
+    await expect
+      .poll(async () => (await advanceAudio()).formats[0].state, { timeout: 30_000 })
+      .toBe('available');
+    expect((await advanceAudio()).work_id).toBe(ready.work_id);
+    expect((await (await request.get(`${fixture.url}/stats`)).json()).adds).toBe(initialAdds + 2);
+    await page.goto(`/activity?request=${audioRequest.id}&library=${library}&format=audiobook`);
+    // Activity lists the newest request first; the URL assertion binds this action to its work.
+    await page.getByRole('button', { name: 'Listen', exact: true }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/consume/${ready.work_id}.*mode=listen`));
+    const play = page.getByRole('button', { name: 'Play', exact: true });
+    await expect(play).toBeEnabled({ timeout: 30_000 });
+    await expect(
+      page.getByRole('button', { name: 'View chapters. Current chapter: Audiobook', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('file-000001', { exact: true })).toHaveCount(0);
+    const position = page.getByRole('slider', { name: 'Audiobook position', exact: true });
+    const before = Number(await position.getAttribute('aria-valuenow'));
+    await play.click();
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    await expect
+      .poll(async () => Number(await position.getAttribute('aria-valuenow')), { timeout: 10_000 })
+      .toBeGreaterThan(before + 1);
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await page.screenshot({ path: `../artifacts/requests/${width}-audiobook-playing.png` });
     expect(errors).toEqual([]);
     await ownerContext.close();
   });

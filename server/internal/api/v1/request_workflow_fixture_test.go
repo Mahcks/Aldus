@@ -1,15 +1,13 @@
 package v1
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -85,36 +83,26 @@ func TestRequestWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive, err := zip.NewReader(bytes.NewReader(fixture), int64(len(fixture)))
+	audio, err := os.ReadFile("../../../../test-fixtures/alice/media/alice-chapter-01.mp3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var variant bytes.Buffer
-	writer := zip.NewWriter(&variant)
-	for _, item := range archive.File {
-		input, err := item.Open()
-		if err != nil {
-			t.Fatal(err)
-		}
-		content, err := io.ReadAll(input)
-		input.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.HasSuffix(item.Name, ".opf") {
-			content = append(content, '\n')
-		}
-		output, err := writer.CreateHeader(&item.FileHeader)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := output.Write(content); err != nil {
-			t.Fatal(err)
-		}
+	m4bPath := filepath.Join(root, "alice.m4b")
+	command := exec.CommandContext(ctx, "ffmpeg",
+		"-v", "error",
+		"-i", "../../../../test-fixtures/alice/media/alice-chapter-01.mp3",
+		"-t", "12", "-c:a", "aac", "-b:a", "48k", m4bPath,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create M4B fixture: %s: %v", output, err)
 	}
-	if err := writer.Close(); err != nil {
+	m4b, err := os.ReadFile(m4bPath)
+	if err != nil {
 		t.Fatal(err)
 	}
+	payloads := map[string][]byte{"epub": fixture, "mp3": audio, "m4b": m4b}
+	files := map[string]string{}
+	audioFormat := "mp3"
 	ingress := filepath.Join(root, "downloads")
 	if err := os.MkdirAll(ingress, 0o700); err != nil {
 		t.Fatal(err)
@@ -123,13 +111,12 @@ func TestRequestWorkflowFixture(t *testing.T) {
 	var downloads []map[string]any
 	adds := 0
 	failPayload := false
-	manualReview := false
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch r.URL.Path {
 		case "/indexer":
-			fmt.Fprintf(w, `<rss><channel><item><title>Alice's Adventures in Wonderland Lewis Carroll English EPUB</title><enclosure url="magnet:?xt=urn:btih:%040d" length="204800"/></item></channel></rss>`, adds+1)
+			fmt.Fprintf(w, `<rss><channel><item><title>Alice's Adventures in Wonderland Lewis Carroll English EPUB</title><enclosure url="magnet:?xt=urn:btih:%040d" length="204800"/></item><item><title>Alice's Adventures in Wonderland Lewis Carroll English %s</title><enclosure url="magnet:?xt=urn:btih:%040d" length="7000000"/></item></channel></rss>`, adds+1, strings.ToUpper(audioFormat), adds+10001)
 		case "/api/v2/auth/login":
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "fixture"})
 			fmt.Fprint(w, "Ok.")
@@ -139,25 +126,39 @@ func TestRequestWorkflowFixture(t *testing.T) {
 				return
 			}
 			adds++
-			hash := fmt.Sprintf("%040d", adds)
+			hash := strings.TrimPrefix(r.FormValue("urls"), "magnet:?xt=urn:btih:")
+			var number int
+			if _, err := fmt.Sscanf(hash, "%d", &number); err != nil {
+				http.Error(w, "unknown fixture release", http.StatusBadRequest)
+				return
+			}
+			extension := "epub"
+			if number >= 10000 {
+				extension = audioFormat
+			}
+			files[hash] = extension
+			content := payloads[extension]
 			payload := filepath.Join(ingress, hash)
 			if !failPayload {
 				if err := os.MkdirAll(payload, 0o700); err != nil {
 					http.Error(w, err.Error(), 500)
 					return
 				}
-				if err := os.WriteFile(filepath.Join(payload, "book.epub"), fixture, 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(payload, "book."+extension), content, 0o600); err != nil {
 					http.Error(w, err.Error(), 500)
 					return
 				}
 			}
-			if manualReview {
-				if err := os.WriteFile(filepath.Join(payload, "other-edition.epub"), variant.Bytes(), 0o600); err != nil {
-					http.Error(w, err.Error(), 500)
-					return
-				}
-			}
-			downloads = append(downloads, map[string]any{"hash": hash, "name": "Alice", "state": "stoppedUP", "progress": 1, "content_path": "/downloads/" + hash, "tags": r.FormValue("tags"), "size": len(fixture)})
+
+			downloads = append(downloads, map[string]any{
+				"hash":         hash,
+				"name":         "Alice",
+				"state":        "stoppedUP",
+				"progress":     1,
+				"content_path": "/downloads/" + hash,
+				"tags":         r.FormValue("tags"),
+				"size":         len(content),
+			})
 			w.WriteHeader(http.StatusAccepted)
 			json.NewEncoder(w).Encode(map[string]any{"added_torrent_ids": []string{hash}, "failure_count": 0, "success_count": 1, "pending_count": 0})
 		case "/api/v2/torrents/info":
@@ -225,15 +226,19 @@ func TestRequestWorkflowFixture(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		failPayload = r.URL.Query().Get("fail") == "true"
-		manualReview = r.URL.Query().Get("review") == "true"
+		if format := r.URL.Query().Get("audio"); format == "mp3" || format == "m4b" {
+			audioFormat = format
+		}
 		if !failPayload {
 			for _, download := range downloads {
-				payload := filepath.Join(ingress, download["hash"].(string))
+				hash := download["hash"].(string)
+				extension := files[hash]
+				payload := filepath.Join(ingress, hash)
 				if err := os.MkdirAll(payload, 0o700); err != nil {
 					http.Error(w, err.Error(), 500)
 					return
 				}
-				if err := os.WriteFile(filepath.Join(payload, "book.epub"), fixture, 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(payload, "book."+extension), payloads[extension], 0o600); err != nil {
 					http.Error(w, err.Error(), 500)
 					return
 				}

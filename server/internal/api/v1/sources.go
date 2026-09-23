@@ -113,10 +113,38 @@ func listImportProposals(s *source.Store) http.HandlerFunc {
 func proposalDTO(v source.Proposal) contracts.ImportProposal {
 	items := make([]contracts.ImportProposalItem, len(v.Items))
 	for j, item := range v.Items {
-		items[j] = contracts.ImportProposalItem{SourceEntryID: item.EntryID, RelativePath: item.RelativePath, Kind: item.Kind, Label: item.Label, SHA256: item.SHA256, Duplicate: item.DuplicateOf != "", Evidence: item.Evidence}
+		items[j] = contracts.ImportProposalItem{
+			SourceEntryID: item.EntryID,
+			RelativePath:  item.RelativePath,
+			Kind:          item.Kind,
+			Label:         item.Label,
+			SHA256:        item.SHA256,
+			Duplicate:     item.DuplicateOf != "",
+			Evidence:      item.Evidence,
+		}
 	}
-	return contracts.ImportProposal{AcquisitionRequestID: v.AcquisitionRequestID, AcquisitionTitle: v.AcquisitionTitle, ID: v.ID, LibraryID: v.LibraryID, State: v.State, Confidence: v.Confidence, Title: v.Title, Author: v.Author, NormalizedTitle: v.NormalizedTitle, NormalizedAuthor: v.NormalizedAuthor, ExistingWorkID: v.ExistingWorkID, Reasons: v.Reasons, Revision: v.Revision, Items: items, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+
+	return contracts.ImportProposal{
+		AcquisitionRequestID: v.AcquisitionRequestID,
+		AcquisitionTitle:     v.AcquisitionTitle,
+		ID:                   v.ID,
+		LibraryID:            v.LibraryID,
+		State:                v.State,
+		Confidence:           v.Confidence,
+		Title:                v.Title,
+		Author:               v.Author,
+		NormalizedTitle:      v.NormalizedTitle,
+		NormalizedAuthor:     v.NormalizedAuthor,
+		ExistingWorkID:       v.ExistingWorkID,
+		Reasons:              v.Reasons,
+		ReviewReasons:        v.ReviewReasons,
+		Revision:             v.Revision,
+		Items:                items,
+		CreatedAt:            v.CreatedAt,
+		UpdatedAt:            v.UpdatedAt,
+	}
 }
+
 func enqueueSourceScan(s *source.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v, err := s.EnqueueScan(r.Context(), actor(r), chi.URLParam(r, "libraryID"), chi.URLParam(r, "sourceID"))
