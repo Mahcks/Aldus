@@ -1,6 +1,6 @@
 import type { TitleRequestFormat } from '@/generated/api';
 import { acquisitionDate } from './acquisition';
-import { notificationTime } from '@/lib/activity/notification-presentation';
+import { relativeTime } from '@/lib/format';
 
 export type TitleRequestPresentation = {
   label: string;
@@ -55,7 +55,7 @@ export function titleRequestDetail(format: TitleRequestFormat) {
       return 'Looking for an available edition.';
     case 'awaiting_release':
       return format.next_search_at
-        ? `No matching release yet. Next search: ${notificationTime(format.next_search_at)}.`
+        ? `No matching release yet. Next search: ${relativeTime(format.next_search_at)}.`
         : 'No matching release yet. Aldus will keep looking.';
     case 'submitting':
       return 'Preparing to start the download.';

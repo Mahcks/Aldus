@@ -7,93 +7,169 @@ import {
   groupNotifications,
   isCancelableRequestState,
   isTakingLonger,
+  notificationAction,
+  personalGroupKey,
   requestGroup,
   type NotificationGroup,
-  type RequestFilter,
 } from '@/lib/activity/activity-presentation';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { BookCover } from '@/components/catalog/bookshelf';
-import { AppIcon } from '@/components/ui/icons';
+import { AppIcon, type AppIconName } from '@/components/ui/icons';
 import {
   notificationHref,
   notificationIcon,
-  notificationTime,
+  notificationStatus,
 } from '@/lib/activity/notification-presentation';
+import {
+  setUnreadNotificationCount,
+  useUnreadNotificationCount,
+} from '@/lib/activity/unread-notifications';
 import { RequestTimeline } from '@/components/acquisitions/request-timeline';
 import { useThemeColors } from '@/components/ui/theme';
 import { titleRequestDetail, titleRequestPresentation } from '@/lib/acquisitions/title-search';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { relativeTime } from '@/lib/format';
+import { Text, View } from '@/components/ui/tw';
 import {
   Button,
   ConfirmDialog,
+  Dialog,
   EmptyState,
   ErrorState,
+  IconButton,
   LoadingState,
   Notice,
+  Radio,
   Section,
   StatusBadge,
 } from '@/components/ui';
 import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
 
-function ActivityRow({
+const NOTIFICATIONS_PAGE_SIZE = 50;
+
+/**
+ * One dimension, one control. `active`/`ready`/`history` classify the
+ * reader's own requests (unchanged from the old Requests tab); `unread` and
+ * `needs_approval` cut across that by read-state and audience instead of
+ * lifecycle. There's no second, independent facet to combine them with, so
+ * they share a single picker rather than two rows of chips.
+ */
+type ViewFilter = 'all' | 'unread' | 'active' | 'ready' | 'needs_approval' | 'history';
+
+function emptyStateFor(
+  filter: ViewFilter,
+  unreadCount: number,
+): { icon: AppIconName; title: string; body: string } {
+  switch (filter) {
+    case 'unread':
+      return unreadCount > 0
+        ? {
+            icon: 'activity',
+            title: 'More unread updates below',
+            body: 'Load older updates to see the rest.',
+          }
+        : { icon: 'enabled', title: 'You’re all caught up', body: 'New updates will appear here.' };
+    case 'needs_approval':
+      return {
+        icon: 'enabled',
+        title: 'Nothing needs your approval',
+        body: 'Requests waiting on a decision will appear here.',
+      };
+    case 'active':
+      return {
+        icon: 'acquire',
+        title: 'No active requests',
+        body: 'Request a missing ebook or audiobook from Discover.',
+      };
+    case 'ready':
+      return {
+        icon: 'check',
+        title: 'No books ready yet',
+        body: 'Finished downloads will appear here.',
+      };
+    case 'history':
+      return {
+        icon: 'acquire',
+        title: 'No history yet',
+        body: 'Requests will move here as their status changes.',
+      };
+    default:
+      return {
+        icon: 'activity',
+        title: 'Nothing here',
+        body: 'Requests and updates about your books will appear here.',
+      };
+  }
+}
+
+/** A stray notification whose request isn't in the currently loaded page — kept visible rather than silently dropped. */
+function NotificationRow({
   group,
+  coverURL,
   busy,
-  onRead,
+  onMarkRead,
+  onOpen,
 }: {
   group: NotificationGroup;
+  coverURL?: string;
   busy: boolean;
-  onRead: (group: NotificationGroup) => void;
+  onMarkRead: (group: NotificationGroup) => void;
+  onOpen: (group: NotificationGroup) => void;
 }) {
-  const colors = useThemeColors();
   const item = group.latest;
-  const href = notificationHref(item.action_url);
   const unread = group.unreadCount > 0;
-  const actionLabel = group.requestID ? 'View request' : href ? 'Open' : unread ? 'Mark read' : '';
+  const status = notificationStatus(item.kind);
+  const action = notificationAction(group);
 
   return (
-    <View className={`flex-row gap-3 border-b border-line px-2 py-4 ${unread ? 'bg-paper' : ''}`}>
-      <View className="relative h-11 w-9 flex-none items-center justify-center">
-        <AppIcon
-          name={notificationIcon(item.kind)}
-          size={21}
-          color={unread ? colors.accent : colors.muted}
-        />
-        {unread ? (
-          <View
-            accessibilityElementsHidden
-            className="absolute right-0 top-1 h-1.5 w-1.5 rounded-full bg-accent"
-          />
-        ) : null}
-      </View>
-      <View className="min-w-0 flex-1 gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <View className="min-w-0 gap-1 sm:flex-1">
-          <Text className="font-editorial-bold text-base leading-5 text-ink">{group.title}</Text>
-          <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
-            <Text
-              className={`text-sm leading-5 ${unread ? 'font-sans-bold text-ink' : 'text-muted'}`}
-            >
-              {item.title}
-            </Text>
-            {group.format ? (
-              <Text className="text-sm text-muted">· {formatLabel(group.format)}</Text>
+    <View className={`flex-row gap-4 border-b border-line py-5 ${unread ? 'bg-paper' : ''}`}>
+      <BookCover title={group.title} coverURL={coverURL} size="mini" />
+      <View className="min-w-0 flex-1 gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <View className="min-w-0 gap-1.5 sm:flex-1">
+          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+            <Text className="font-editorial-bold text-lg leading-6 text-ink">{group.title}</Text>
+            {unread ? (
+              <View accessibilityElementsHidden className="h-1.5 w-1.5 rounded-full bg-accent" />
             ) : null}
           </View>
-          <Text className="text-xs text-muted">
-            {notificationTime(item.created_at)}
+          <View className="flex-row flex-wrap items-center gap-2">
+            <StatusBadge
+              tone={status.tone}
+              label={status.label}
+              icon={notificationIcon(item.kind)}
+            />
+            {group.format ? (
+              <Text className="text-xs text-subtle">{formatLabel(group.format)}</Text>
+            ) : null}
+            <Text className="text-xs text-subtle">{relativeTime(item.created_at)}</Text>
+          </View>
+          <Text
+            className={`text-sm leading-5 ${unread ? 'font-sans-medium text-ink' : 'text-muted'}`}
+          >
+            {item.title}
             {group.items.length > 1 ? ` · ${group.items.length} updates` : ''}
           </Text>
         </View>
-        {actionLabel ? (
-          <View className="flex-none self-start sm:self-center">
-            <Button
-              label={actionLabel}
+        <View className="flex-none flex-row flex-wrap items-center gap-1.5">
+          {unread ? (
+            <IconButton
+              icon="enabled"
+              label={`Mark "${group.title}" read`}
               kind="quiet"
               disabled={busy}
-              onPress={() => onRead(group)}
+              onPress={() => onMarkRead(group)}
             />
-          </View>
-        ) : null}
+          ) : null}
+          {action ? (
+            <Button
+              label={action.label}
+              icon={action.icon}
+              kind={action.kind}
+              disabled={busy}
+              onPress={() => onOpen(group)}
+            />
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -107,18 +183,25 @@ export default function ActivityScreen() {
   const [requestEvents, setRequestEvents] = useState<Record<string, TitleRequestEvent[]>>({});
   const [expandedFormat, setExpandedFormat] = useState('');
   const [historyLoadingID, setHistoryLoadingID] = useState('');
-  const [tab, setTab] = useState<'requests' | 'updates'>('requests');
-  const [requestFilter, setRequestFilter] = useState<RequestFilter>('active');
+  const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const params = useLocalSearchParams<{ request?: string; library?: string; format?: string }>();
-  const requestPages = useTitleRequests(requestFilter, true, params.request, params.library);
+  // Always load everything the reader owns; the filter narrows what's shown
+  // client-side instead of re-fetching a different server-side page per tab.
+  const requestPages = useTitleRequests('all', true, params.request, params.library);
   const requests = requestPages.items;
   const loadGeneration = useRef(0);
 
-  const [unreadCount, setUnreadCount] = useState(0);
+  const unreadCount = useUnreadNotificationCount();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionError, setActionError] = useState<{ message: string; retry: () => void } | null>(
+    null,
+  );
   const [busyID, setBusyID] = useState('');
   const [markingAll, setMarkingAll] = useState(false);
+  const [hasMoreUpdates, setHasMoreUpdates] = useState(false);
+  const [loadingMoreUpdates, setLoadingMoreUpdates] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<{
     request: TitleRequest;
     format: string;
@@ -131,7 +214,8 @@ export default function ActivityScreen() {
       const result = await api.notifications();
       if (generation !== loadGeneration.current) return;
       setItems(result.items);
-      setUnreadCount(result.unread_count);
+      setUnreadNotificationCount(result.unread_count);
+      setHasMoreUpdates(result.items.length === NOTIFICATIONS_PAGE_SIZE);
       setError('');
     } catch (value) {
       if (generation === loadGeneration.current) setError(errorMessage(value));
@@ -139,6 +223,28 @@ export default function ActivityScreen() {
       if (generation === loadGeneration.current) setLoading(false);
     }
   }, []);
+
+  async function loadMoreUpdates() {
+    const generation = loadGeneration.current;
+    setLoadingMoreUpdates(true);
+    setActionError(null);
+    try {
+      const result = await api.notifications(items.length);
+      if (generation !== loadGeneration.current) return;
+      setItems((current) => {
+        const merged = [...current, ...result.items];
+        return [...new Map(merged.map((item) => [item.id, item])).values()];
+      });
+      setUnreadNotificationCount(result.unread_count);
+      setHasMoreUpdates(result.items.length === NOTIFICATIONS_PAGE_SIZE);
+    } catch (value) {
+      if (generation === loadGeneration.current) {
+        setActionError({ message: errorMessage(value), retry: () => void loadMoreUpdates() });
+      }
+    } finally {
+      if (generation === loadGeneration.current) setLoadingMoreUpdates(false);
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -156,8 +262,7 @@ export default function ActivityScreen() {
       .titleRequest(params.library, params.request)
       .then((request) => {
         if (!current) return;
-        setTab('requests');
-        setRequestFilter(requestGroup(request));
+        setViewFilter(requestGroup(request));
         setExpandedFormat(
           `${request.id}:${params.format || request.formats[0]?.format || 'ebook'}`,
         );
@@ -217,53 +322,67 @@ export default function ActivityScreen() {
     setExpandedFormat(expandedFormat === key && !open ? '' : key);
   }
 
-  async function handleNotification(group: NotificationGroup) {
-    const href = notificationHref(group.latest.action_url);
+  /** Marks a group's remaining unread items read. Never navigates — a separate action from opening a destination. */
+  async function markGroupRead(group: NotificationGroup): Promise<boolean> {
     const unreadIDs = group.items.filter((item) => !item.read_at).map((item) => item.id);
-    if (unreadIDs.length > 0) {
-      setBusyID(group.key);
-      setError('');
-      try {
-        await Promise.all(unreadIDs.map((id) => api.markNotificationRead(id)));
-        const readAt = new Date().toISOString();
-        const ids = new Set(unreadIDs);
-        setItems((current) =>
-          current.map((candidate) =>
-            ids.has(candidate.id) ? { ...candidate, read_at: readAt } : candidate,
-          ),
-        );
-        setUnreadCount((count) => Math.max(0, count - unreadIDs.length));
-      } catch (value) {
-        setError(errorMessage(value));
-        await load();
-        return;
-      } finally {
-        setBusyID('');
-      }
+    if (unreadIDs.length === 0) return true;
+    setBusyID(group.key);
+    setActionError(null);
+    try {
+      await Promise.all(unreadIDs.map((id) => api.markNotificationRead(id)));
+      const readAt = new Date().toISOString();
+      const ids = new Set(unreadIDs);
+      setItems((current) =>
+        current.map((candidate) =>
+          ids.has(candidate.id)
+            ? { ...candidate, read_at: candidate.read_at ?? readAt }
+            : candidate,
+        ),
+      );
+      setUnreadNotificationCount((count) => count - unreadIDs.length);
+      return true;
+    } catch (value) {
+      setActionError({ message: errorMessage(value), retry: () => void markGroupRead(group) });
+      await load();
+      return false;
+    } finally {
+      setBusyID('');
     }
+  }
 
-    if (group.requestID) {
+  /** Real art when the notification's request happens to be in the currently loaded page; `BookCover` renders its generated placeholder otherwise. */
+  function groupCoverURL(group: NotificationGroup): string | undefined {
+    if (!group.requestID) return undefined;
+    return requests.find((candidate) => candidate.id === group.requestID)?.cover_url;
+  }
+
+  function navigateToGroup(group: NotificationGroup) {
+    const href = notificationHref(group.latest.action_url);
+    if (!group.administrative && group.requestID) {
       const request = requests.find((candidate) => candidate.id === group.requestID);
       if (request) {
-        setRequestFilter(requestGroup(request));
-        setTab('requests');
-        if (group.format) await toggleRequestHistory(request, group.format, true);
+        setViewFilter(requestGroup(request));
+        if (group.format) void toggleRequestHistory(request, group.format, true);
         return;
       }
     }
     if (href) router.push(href as Href);
   }
 
+  /** Opening a destination still clears its unread state as a courtesy, but the two are independent: a failed mark-read never blocks navigation, and the explicit "Mark read" control never navigates. */
+  function handleOpenGroup(group: NotificationGroup) {
+    void markGroupRead(group);
+    navigateToGroup(group);
+  }
+
   async function handleMarkAllRead() {
     setMarkingAll(true);
-    setError('');
+    setActionError(null);
     try {
       await api.markAllNotificationsRead();
-      const readAt = new Date().toISOString();
-      setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? readAt })));
-      setUnreadCount(0);
+      await load();
     } catch (value) {
-      setError(errorMessage(value));
+      setActionError({ message: errorMessage(value), retry: () => void handleMarkAllRead() });
     } finally {
       setMarkingAll(false);
     }
@@ -284,11 +403,73 @@ export default function ActivityScreen() {
     );
   }
 
-  const visibleRequests = requests.filter(
-    (request) => requestGroup(request) === requestFilter || request.id === params.request,
-  );
   const notificationGroups = groupNotifications(items);
-  const unreadGroups = notificationGroups.filter((group) => group.unreadCount > 0).length;
+  const notificationGroupsByKey = new Map(notificationGroups.map((group) => [group.key, group]));
+  const administrativeGroups = notificationGroups.filter((group) => group.administrative);
+
+  const matchedGroupKeys = new Set<string>();
+  for (const request of requests) {
+    for (const format of request.formats) {
+      matchedGroupKeys.add(personalGroupKey(request.title, format.format));
+    }
+  }
+  const orphanGroups = notificationGroups.filter(
+    (group) => !group.administrative && !matchedGroupKeys.has(group.key),
+  );
+
+  function requestUnread(request: TitleRequest): boolean {
+    return request.formats.some(
+      (format) =>
+        (notificationGroupsByKey.get(personalGroupKey(request.title, format.format))?.unreadCount ??
+          0) > 0,
+    );
+  }
+
+  function requestVisible(request: TitleRequest): boolean {
+    if (viewFilter === 'needs_approval') return false;
+    if (viewFilter === 'unread') return requestUnread(request);
+    if (viewFilter === 'all') return true;
+    return requestGroup(request) === viewFilter;
+  }
+
+  const visibleRequests = requests.filter(requestVisible);
+
+  const showAdmin =
+    viewFilter === 'all' || viewFilter === 'unread' || viewFilter === 'needs_approval';
+  const visibleAdminGroups = !showAdmin
+    ? []
+    : viewFilter === 'unread'
+      ? administrativeGroups.filter((group) => group.unreadCount > 0)
+      : administrativeGroups;
+
+  const showOrphans = viewFilter === 'all' || viewFilter === 'unread';
+  const visibleOrphanGroups = !showOrphans
+    ? []
+    : viewFilter === 'unread'
+      ? orphanGroups.filter((group) => group.unreadCount > 0)
+      : orphanGroups;
+
+  const viewFilterOptions: { value: ViewFilter; label: string }[] = [
+    { value: 'all', label: 'All' },
+    { value: 'unread', label: unreadCount > 0 ? `Unread (${unreadCount})` : 'Unread' },
+    { value: 'active', label: 'Active' },
+    { value: 'ready', label: 'Ready' },
+    {
+      value: 'needs_approval',
+      label:
+        administrativeGroups.length > 0
+          ? `Needs approval (${administrativeGroups.length})`
+          : 'Needs approval',
+    },
+    { value: 'history', label: 'History' },
+  ];
+  const selectedFilterLabel =
+    viewFilterOptions.find((option) => option.value === viewFilter)?.label ?? 'All';
+
+  const hasAnyData = requests.length > 0 || items.length > 0;
+  const hasVisibleContent =
+    visibleAdminGroups.length > 0 || visibleRequests.length > 0 || visibleOrphanGroups.length > 0;
+  const empty = emptyStateFor(viewFilter, unreadCount);
 
   return (
     <Page title="Activity">
@@ -300,51 +481,65 @@ export default function ActivityScreen() {
           onPress={() => void requestPages.refresh()}
         />
       ) : null}
-      <View
-        accessibilityLabel="Activity sections"
-        accessibilityRole="tablist"
-        className="mb-6 flex-row border-b border-line"
-      >
-        <ActivityTab
-          label="Requests"
-          selected={tab === 'requests'}
-          onPress={() => setTab('requests')}
+      {actionError ? (
+        <View className="gap-2">
+          <Notice danger>{actionError.message}</Notice>
+          <Button label="Retry" kind="secondary" onPress={actionError.retry} />
+        </View>
+      ) : null}
+
+      <View className="flex-row flex-wrap items-center justify-between gap-3">
+        <Button
+          label={`Filter: ${selectedFilterLabel}`}
+          icon="filter"
+          kind="secondary"
+          onPress={() => setFilterDialogOpen(true)}
         />
-        <ActivityTab
-          label={unreadGroups > 0 ? `Updates (${unreadGroups})` : 'Updates'}
-          selected={tab === 'updates'}
-          onPress={() => setTab('updates')}
-        />
+        {unreadCount > 0 ? (
+          <Button
+            label="Mark all read"
+            kind="quiet"
+            icon="enabled"
+            loading={markingAll}
+            onPress={() => void handleMarkAllRead()}
+          />
+        ) : null}
       </View>
-      {tab === 'requests' ? (
-        <Section title={`${requestFilter[0].toUpperCase() + requestFilter.slice(1)} requests`}>
-          <View
-            accessibilityLabel="Filter requests"
-            accessibilityRole="radiogroup"
-            className="flex-row flex-wrap gap-1"
-          >
-            {(['active', 'ready', 'history'] as const).map((filter) => (
-              <FilterTab
-                key={filter}
-                label={filter[0].toUpperCase() + filter.slice(1)}
-                selected={requestFilter === filter}
-                onPress={() => setRequestFilter(filter)}
-              />
-            ))}
-          </View>
-          {requestPages.loading && requests.length === 0 ? (
-            <LoadingState label="Loading requests…" />
-          ) : visibleRequests.length === 0 ? (
-            <EmptyState
-              icon={requestFilter === 'ready' ? 'check' : 'acquire'}
-              title={requestFilter === 'active' ? 'No active requests' : `No ${requestFilter} yet`}
+
+      {requestPages.loading && requests.length === 0 && items.length === 0 ? (
+        <LoadingState label="Loading requests…" />
+      ) : !hasAnyData ? (
+        <EmptyState icon="activity" title="No activity yet">
+          Requests and updates about your books will appear here.
+        </EmptyState>
+      ) : !hasVisibleContent ? (
+        <EmptyState icon={empty.icon} title={empty.title}>
+          {empty.body}
+        </EmptyState>
+      ) : (
+        <View className="gap-2">
+          {visibleAdminGroups.length > 0 ? (
+            <Section title="Needs your approval">
+              <View accessibilityRole="list">
+                {visibleAdminGroups.map((group) => (
+                  <NotificationRow
+                    key={group.key}
+                    group={group}
+                    coverURL={groupCoverURL(group)}
+                    busy={busyID === group.key}
+                    onMarkRead={(value) => void markGroupRead(value)}
+                    onOpen={handleOpenGroup}
+                  />
+                ))}
+              </View>
+            </Section>
+          ) : null}
+
+          {visibleRequests.length > 0 || visibleOrphanGroups.length > 0 ? (
+            <View
+              accessibilityRole="list"
+              className={visibleAdminGroups.length > 0 ? 'border-t border-line pt-2' : ''}
             >
-              {requestFilter === 'active'
-                ? 'Request a missing ebook or audiobook from Discover.'
-                : 'Requests will move here as their status changes.'}
-            </EmptyState>
-          ) : (
-            <View accessibilityRole="list" className="border-t border-line">
               {visibleRequests.map((request) => (
                 <View key={request.id} className="flex-row gap-4 border-b border-line py-5">
                   <BookCover
@@ -374,10 +569,14 @@ export default function ActivityScreen() {
                       };
                       const key = `${request.id}:${format.format}`;
                       const expanded = expandedFormat === key;
+                      const notifGroup = notificationGroupsByKey.get(
+                        personalGroupKey(request.title, format.format),
+                      );
+                      const unread = (notifGroup?.unreadCount ?? 0) > 0;
                       return (
                         <View
                           key={format.format}
-                          className="gap-2 border-t border-line pt-3 first:border-t-0 first:pt-0"
+                          className="gap-2 border-t border-line pt-4 first:border-t-0 first:pt-0"
                         >
                           <View className="gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <View className="min-w-0 gap-1 sm:flex-1">
@@ -385,9 +584,19 @@ export default function ActivityScreen() {
                                 <Text className="text-sm font-sans-bold text-ink">
                                   {formatLabel(format.format)}
                                 </Text>
-                                <StatusBadge tone={status.tone} label={status.label} />
+                                {unread ? (
+                                  <View
+                                    accessibilityElementsHidden
+                                    className="h-1.5 w-1.5 rounded-full bg-accent"
+                                  />
+                                ) : null}
+                                <StatusBadge
+                                  tone={status.tone}
+                                  label={status.label}
+                                  icon={notificationIcon(format.state)}
+                                />
                                 <Text className="text-xs text-subtle">
-                                  {notificationTime(format.updated_at)}
+                                  {relativeTime(format.updated_at)}
                                 </Text>
                               </View>
                               <Text className="text-sm leading-5 text-muted">
@@ -404,10 +613,21 @@ export default function ActivityScreen() {
                               ) : null}
                             </View>
                             <View className="flex-row flex-wrap items-center gap-1">
+                              {unread && notifGroup ? (
+                                <IconButton
+                                  icon="enabled"
+                                  label={`Mark "${request.title} ${formatLabel(format.format).toLowerCase()}" read`}
+                                  kind="quiet"
+                                  disabled={busyID === notifGroup.key}
+                                  onPress={() => void markGroupRead(notifGroup)}
+                                />
+                              ) : null}
                               {format.state === 'available' && request.work_id ? (
                                 <Button
-                                  label={format.format === 'audiobook' ? 'Listen' : 'Read'}
-                                  kind="secondary"
+                                  label={format.format === 'audiobook' ? 'Listen now' : 'Read now'}
+                                  accessibilityLabel={`${format.format === 'audiobook' ? 'Listen to' : 'Read'} ${request.title} now`}
+                                  icon={format.format === 'audiobook' ? 'listen' : 'read'}
+                                  kind="primary"
                                   onPress={() =>
                                     router.push(
                                       `/consume/${request.work_id}?mode=${
@@ -425,6 +645,7 @@ export default function ActivityScreen() {
                               {['failed', 'denied', 'canceled'].includes(format.state) ? (
                                 <Button
                                   label="Find again"
+                                  accessibilityLabel={`Find ${request.title} again`}
                                   kind="secondary"
                                   onPress={() =>
                                     router.push(
@@ -436,6 +657,7 @@ export default function ActivityScreen() {
                               {isCancelableRequestState(format.state) ? (
                                 <Button
                                   label="Cancel"
+                                  accessibilityLabel={`Cancel ${request.title}, ${formatLabel(format.format)}`}
                                   kind="quiet"
                                   onPress={() =>
                                     setCancelTarget({ request, format: format.format })
@@ -444,6 +666,7 @@ export default function ActivityScreen() {
                               ) : null}
                               <Button
                                 label={expanded ? 'Hide updates' : 'View updates'}
+                                accessibilityLabel={`${expanded ? 'Hide' : 'View'} updates for ${request.title}, ${formatLabel(format.format)}`}
                                 kind="quiet"
                                 loading={historyLoadingID === request.id}
                                 onPress={() => void toggleRequestHistory(request, format.format)}
@@ -462,47 +685,59 @@ export default function ActivityScreen() {
                   </View>
                 </View>
               ))}
+              {visibleOrphanGroups.map((group) => (
+                <NotificationRow
+                  key={group.key}
+                  group={group}
+                  coverURL={groupCoverURL(group)}
+                  busy={busyID === group.key}
+                  onMarkRead={(value) => void markGroupRead(value)}
+                  onOpen={handleOpenGroup}
+                />
+              ))}
             </View>
-          )}
-          {requestPages.hasMore ? (
-            <Button
-              label="Show more requests"
-              kind="secondary"
-              loading={requestPages.loading}
-              onPress={() => void requestPages.loadMore()}
-            />
           ) : null}
-        </Section>
-      ) : items.length > 0 ? (
-        <Section
-          title={unreadGroups > 0 ? `${unreadGroups} new` : 'Recent'}
-          action={
-            unreadCount > 0 ? (
-              <Button
-                label="Mark all read"
-                kind="quiet"
-                loading={markingAll}
-                onPress={() => void handleMarkAllRead()}
-              />
-            ) : undefined
-          }
-        >
-          <View accessibilityRole="list">
-            {notificationGroups.map((group) => (
-              <ActivityRow
-                key={group.key}
-                group={group}
-                busy={busyID === group.key}
-                onRead={(value) => void handleNotification(value)}
-              />
-            ))}
-          </View>
-        </Section>
-      ) : (
-        <EmptyState icon="activity" title="No updates yet">
-          Download, approval, and ready updates will appear here.
-        </EmptyState>
+        </View>
       )}
+
+      {requestPages.hasMore ? (
+        <Button
+          label="Show more requests"
+          kind="secondary"
+          loading={requestPages.loading}
+          onPress={() => void requestPages.loadMore()}
+        />
+      ) : null}
+      {hasMoreUpdates ? (
+        <Button
+          label="Load older updates"
+          kind="secondary"
+          loading={loadingMoreUpdates}
+          onPress={() => void loadMoreUpdates()}
+        />
+      ) : null}
+
+      <Dialog
+        title="Filter activity"
+        sheet
+        visible={filterDialogOpen}
+        onClose={() => setFilterDialogOpen(false)}
+      >
+        <View accessibilityRole="radiogroup" accessibilityLabel="Filter activity" className="gap-1">
+          {viewFilterOptions.map((option) => (
+            <Radio
+              key={option.value}
+              label={option.label}
+              selected={viewFilter === option.value}
+              onPress={() => {
+                setViewFilter(option.value);
+                setFilterDialogOpen(false);
+              }}
+            />
+          ))}
+        </View>
+      </Dialog>
+
       <ConfirmDialog
         visible={Boolean(cancelTarget)}
         title={`Cancel ${cancelTarget ? formatLabel(cancelTarget.format).toLowerCase() : ''} request?`}
@@ -519,54 +754,4 @@ export default function ActivityScreen() {
 
 function formatLabel(format: string) {
   return format === 'audiobook' ? 'Audiobook' : 'Ebook';
-}
-
-function ActivityTab({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityState={{ selected }}
-      className={`min-h-11 justify-center border-b-2 px-4 ${
-        selected ? 'border-accent' : 'border-transparent'
-      }`}
-      onPress={onPress}
-    >
-      <Text className={`text-sm font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function FilterTab({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-      className={`min-h-11 justify-center rounded-control border px-3 ${
-        selected ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
-      }`}
-      onPress={onPress}
-    >
-      <Text className={`text-sm font-sans-semibold ${selected ? 'text-accent' : 'text-muted'}`}>
-        {label}
-      </Text>
-    </Pressable>
-  );
 }

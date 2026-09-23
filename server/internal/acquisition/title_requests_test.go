@@ -582,6 +582,53 @@ func TestCancelTitleRequestStopsLinkedDownload(t *testing.T) {
 	}
 }
 
+// Migration 028 only wrote a title_request_formats row for a legacy
+// acquisition when its format was unambiguous; an ambiguous legacy search
+// still got a title_requests row with none. ListPage must exclude those so
+// Activity never renders a request card with no format section, while still
+// returning real requests (Create always writes at least one format row in
+// the same transaction as the title_requests row).
+func TestListPageExcludesFormatlessLegacyRequests(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		INSERT INTO users(id,username,username_normalized,display_name,password_hash,is_admin,disabled,created_at,updated_at) VALUES('reader','reader','reader','Reader','x',0,0,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO libraries(id,name,created_at,updated_at) VALUES('library','Library','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO library_members(library_id,user_id,role,can_request_acquisitions,created_at) VALUES('library','reader','reader',1,'2026-01-01T00:00:00Z');
+		INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES('real','library','reader','Alice','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO title_request_formats(title_request_id,format,state,created_at,updated_at) VALUES('real','ebook','wanted','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO title_requests(id,library_id,requested_by,title,created_at,updated_at) VALUES
+			('legacy-request:search-only','library','reader','Ambiguous search (single)','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
+			('legacy-pair:search-only','library','reader','Ambiguous search (paired)','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewTitleRequestStore(db)
+	page, err := store.ListPage(ctx, auth.User{ID: "reader"}, "library", TitleRequestListOptions{Own: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != "real" {
+		t.Fatalf("expected only the request with format rows, got %#v", page.Items)
+	}
+	for _, item := range page.Items {
+		if len(item.Formats) == 0 {
+			t.Fatalf("Activity page must never carry a formatless (empty) row: %#v", item)
+		}
+	}
+
+	// The legacy rows themselves are untouched, not deleted.
+	var legacyCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM title_requests WHERE id IN ('legacy-request:search-only','legacy-pair:search-only')`).Scan(&legacyCount); err != nil || legacyCount != 2 {
+		t.Fatalf("legacy rows must be preserved, count=%d err=%v", legacyCount, err)
+	}
+}
+
 func applyTestMigration(t *testing.T, db *sql.DB, table, path string) {
 	t.Helper()
 	var exists bool

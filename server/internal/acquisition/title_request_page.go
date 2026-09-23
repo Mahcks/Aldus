@@ -88,8 +88,15 @@ func (s *TitleRequestStore) ListPage(ctx context.Context, actor auth.User, libra
 
 	defer tx.Rollback()
 
+	// Legacy migration only classified an acquisition into a title_request_formats
+	// row when its format was unambiguous (see migration 028); ambiguous legacy
+	// requests still got a title_requests row with none. Excluding those here,
+	// ahead of the cursor/limit, keeps every real request (Create always writes
+	// at least one format row in the same transaction) while never surfacing a
+	// formatless legacy row as an empty Activity entry.
 	rows, err := tx.QueryContext(ctx, titleRequestSelect+` WHERE r.library_id=? AND `+auth.EffectiveLibraryAccessSQL("r.library_id")+`
-		AND (r.requested_by=? OR ? OR m.role IN ('owner','editor'))`+predicate+` ORDER BY r.created_at DESC,r.id LIMIT ?`, args...)
+		AND (r.requested_by=? OR ? OR m.role IN ('owner','editor'))
+		AND EXISTS(SELECT 1 FROM title_request_formats has_format WHERE has_format.title_request_id=r.id)`+predicate+` ORDER BY r.created_at DESC,r.id LIMIT ?`, args...)
 	if err != nil {
 		return result, fmt.Errorf("list title requests: %w", err)
 	}

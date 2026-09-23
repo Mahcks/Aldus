@@ -1,19 +1,55 @@
 import { describe, expect, test } from 'bun:test';
-import { notificationHref, notificationIcon, notificationTime } from './notification-presentation';
+import {
+  isAdministrativeNotification,
+  notificationHref,
+  notificationIcon,
+  notificationStatus,
+} from './notification-presentation';
 
 describe('notification presentation', () => {
+  test('only approval-needed notifications count as administrative', () => {
+    expect(isAdministrativeNotification('acquisition.approval_needed')).toBeTrue();
+    expect(isAdministrativeNotification('acquisition.pending_approval')).toBeFalse();
+    expect(isAdministrativeNotification('acquisition.available')).toBeFalse();
+    expect(isAdministrativeNotification('acquisition.failed')).toBeFalse();
+  });
+
+  test('shares the Requests tab status vocabulary for matching format states', () => {
+    expect(notificationStatus('acquisition.available')).toEqual({
+      label: 'Ready',
+      tone: 'success',
+      requestable: false,
+    });
+    expect(notificationStatus('acquisition.downloading')).toEqual({
+      label: 'Downloading',
+      tone: 'info',
+      requestable: false,
+    });
+    expect(notificationStatus('acquisition.failed')).toEqual({
+      label: 'Could not complete',
+      tone: 'danger',
+      requestable: true,
+    });
+  });
+
+  test('gives notification-only transitions their own status', () => {
+    expect(notificationStatus('acquisition.approval_needed')).toEqual({
+      label: 'Needs approval',
+      tone: 'warning',
+      requestable: false,
+    });
+    expect(notificationStatus('acquisition.approved')).toEqual({
+      label: 'Approved',
+      tone: 'success',
+      requestable: false,
+    });
+  });
+
   test('uses familiar icons without exposing event kinds', () => {
     expect(notificationIcon('acquisition.ready')).toBe('check');
     expect(notificationIcon('acquisition.needs_review')).toBe('warning');
     expect(notificationIcon('acquisition.failed')).toBe('error');
     expect(notificationIcon('request.searching')).toBe('search');
-  });
-
-  test('describes recent dates relative to the reader', () => {
-    const now = new Date(2026, 7, 18, 19, 0);
-    expect(notificationTime('2026-08-18T12:30:00-05:00', now)).toContain('Today');
-    expect(notificationTime('2026-08-17T12:30:00-05:00', now)).toContain('Yesterday');
-    expect(notificationTime('not-a-date', now)).toBe('');
   });
 
   test('only opens paths inside Aldus', () => {

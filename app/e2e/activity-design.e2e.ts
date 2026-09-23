@@ -1,12 +1,32 @@
 import { expect, test } from '@playwright/test';
 
 for (const width of [390, 1024, 1440]) {
-  test(`activity request states and updates at ${width}px`, async ({ page }) => {
+  test(`activity unified feed at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const now = new Date().toISOString();
+    const notifications: Record<string, unknown>[] = [
+      {
+        id: 'title-request:request-0:audiobook:downloading',
+        kind: 'download_started',
+        title: 'Your audiobook is downloading',
+        body: 'Alice’s Adventures in Wonderland · Audiobook',
+        action_url: '/activity',
+        created_at: now,
+      },
+      {
+        id: 'title-request:request-9:ebook:approval-needed',
+        kind: 'acquisition.approval_needed',
+        title: 'Book request needs approval',
+        body: 'The Secret Garden · Ebook',
+        action_url: '/acquisitions',
+        created_at: now,
+      },
+    ];
+    const unreadTotal = () => notifications.filter((item) => !item.read_at).length;
     await page.route('**/api/**', async (route) => {
-      const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
+      const req = route.request();
+      const path = new URL(req.url()).pathname.replace('/api/v1', '');
       let json: unknown = [];
       if (path === '/auth/me') json = { id: 'reader', username: 'alex', admin: false };
       if (path === '/setup/status') json = { available: false };
@@ -47,51 +67,111 @@ for (const width of [390, 1024, 1440]) {
         ];
       }
       if (path === '/me/notifications')
-        json = {
-          unread_count: 1,
-          items: [
-            {
-              id: 'title-request:request-0:audiobook:downloading',
-              kind: 'download_started',
-              title: 'Your audiobook is downloading',
-              body: 'Alice’s Adventures in Wonderland · Audiobook',
-              created_at: now,
-            },
-          ],
-        };
-      if (path === '/me/notifications/unread-count') json = { count: 1 };
+        json = { unread_count: unreadTotal(), items: notifications };
+      if (path === '/me/notifications/unread-count') json = { unread_count: unreadTotal() };
+      if (req.method() === 'POST' && /^\/me\/notifications\/[^/]+\/read$/.test(path)) {
+        const id = path.split('/')[3];
+        const item = notifications.find((candidate) => candidate.id === id);
+        if (item) item.read_at = now;
+        await route.fulfill({ status: 204, body: '' });
+        return;
+      }
+      if (path === '/me/notifications/read-all' && req.method() === 'POST') {
+        for (const item of notifications) item.read_at = now;
+        await route.fulfill({ status: 204, body: '' });
+        return;
+      }
       if (path === '/libraries/family/title-requests/page' && Array.isArray(json))
         json = { items: json };
       await route.fulfill({ json });
     });
     await page.goto('/activity');
-    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
-    await expect(page.getByText('Audiobook', { exact: true })).toBeVisible();
-    await expect(page.getByText('Downloading', { exact: true })).toBeVisible();
+
+    // Default "All" view: needs-approval and personal requests share one page, no tabs.
+    await expect(page.getByRole('button', { name: 'Filter: All', exact: true })).toBeVisible();
+    await expect(page.getByText('Needs your approval', { exact: true })).toBeVisible();
+    await expect(page.getByText('The Secret Garden', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Review', exact: true })).toBeVisible();
+    await expect(page.getByText('Alice’s Adventures in Wonderland', { exact: true })).toBeVisible();
+    await expect(page.getByText('Treasure Island', { exact: true })).toBeVisible();
+    await expect(page.getByText('Through the Looking-Glass', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: 'Cancel Alice’s Adventures in Wonderland, Audiobook',
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(page.getByText('Downloading to your library.', { exact: true })).toBeVisible();
-    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-active.png` });
-    await page.getByRole('button', { name: 'View updates', exact: true }).click();
+    const markAliceRead = page.getByRole('button', {
+      name: 'Mark "Alice’s Adventures in Wonderland audiobook" read',
+      exact: true,
+    });
+    await expect(markAliceRead).toBeVisible();
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-all.png` });
+
+    // The request's own event timeline still works, unchanged.
+    const viewAliceUpdates = page.getByRole('button', {
+      name: 'View updates for Alice’s Adventures in Wonderland, Audiobook',
+      exact: true,
+    });
+    await viewAliceUpdates.click();
     await expect(
       page.getByText(
         width === 1024 ? '40 unsuccessful attempts' : '40 checks for a matching release',
         { exact: true },
       ),
     ).toBeVisible();
-    await expect(page.getByText('Submitted for approval.', { exact: true })).toHaveCount(0);
-    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-watch.png` });
-    await page.getByRole('button', { name: 'Show older updates', exact: true }).click();
-    await expect(page.getByText('Submitted for approval.', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Show fewer updates', exact: true }).click();
-    await expect(page.getByText('Submitted for approval.', { exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Hide updates', exact: true }).click();
-    await page.getByRole('radio', { name: 'History', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Find again', exact: true })).toBeVisible();
-    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-history.png` });
+    await page
+      .getByRole('button', {
+        name: 'Hide updates for Alice’s Adventures in Wonderland, Audiobook',
+        exact: true,
+      })
+      .click();
+
+    // Marking one row read is independent of navigating — stays on Activity, badge drops immediately.
+    await markAliceRead.click();
+    await expect(markAliceRead).toHaveCount(0);
+    await expect(page).toHaveURL(/\/activity/);
+    await expect(page.getByRole('button', { name: 'Filter: All', exact: true })).toBeVisible();
+
+    // One filter control, not a second tab row: open it, switch to Ready.
+    await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Filter activity' })).toBeVisible();
     await page.getByRole('radio', { name: 'Ready', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Listen', exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: 'Updates (1)', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'View request', exact: true })).toBeVisible();
-    await expect(page.getByText('Your audiobook is downloading', { exact: true })).toBeVisible();
-    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-updates.png` });
+    await expect(page.getByRole('button', { name: 'Filter: Ready', exact: true })).toBeVisible();
+    await expect(page.getByText('Through the Looking-Glass', { exact: true })).toBeVisible();
+    await expect(page.getByText('Alice’s Adventures in Wonderland', { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole('button', { name: 'Listen to Through the Looking-Glass now', exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-ready.png` });
+
+    await page.getByRole('button', { name: 'Filter: Ready', exact: true }).click();
+    await page.getByRole('radio', { name: 'History', exact: true }).click();
+    await expect(page.getByText('Treasure Island', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Find Treasure Island again', exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-history.png` });
+
+    await page.getByRole('button', { name: 'Filter: History', exact: true }).click();
+    await page.getByRole('radio', { name: 'Needs approval (1)', exact: true }).click();
+    await expect(page.getByText('The Secret Garden', { exact: true })).toBeVisible();
+    await expect(page.getByText('Treasure Island', { exact: true })).toHaveCount(0);
+    await page.screenshot({
+      path: `../artifacts/design-redesign/${width}-activity-needs-approval.png`,
+    });
+
+    // Mark all read clears the remaining admin item too; badge and filter label agree.
+    await page.getByRole('button', { name: 'Filter: Needs approval (1)', exact: true }).click();
+    await page.getByRole('radio', { name: 'All', exact: true }).click();
+    await page.getByRole('button', { name: 'Mark all read', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Mark all read', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
+    await expect(page.getByRole('radio', { name: 'Unread', exact: true })).toBeVisible();
+    await page.getByRole('radio', { name: 'Unread', exact: true }).click();
+    await expect(page.getByText('You’re all caught up', { exact: true })).toBeVisible();
   });
 }

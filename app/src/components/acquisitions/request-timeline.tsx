@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { TitleRequestEvent } from '@/generated/api';
-import { notificationTime } from '@/lib/activity/notification-presentation';
+import { relativeTime } from '@/lib/format';
 import {
   groupRequestEvents,
   requestEventDetail,
@@ -39,7 +39,7 @@ export function RequestTimeline({
                 <Text className="text-sm font-sans-bold text-ink">{formatLabel(event.format)}</Text>
               ) : null}
               <StatusBadge label={status.label} tone={status.tone} />
-              <Text className="text-xs text-muted">{notificationTime(event.created_at)}</Text>
+              <Text className="text-xs text-muted">{relativeTime(event.created_at)}</Text>
             </View>
             <Text className="text-sm leading-5 text-muted">
               {requestEventDetail(event.state, event.event_type)}

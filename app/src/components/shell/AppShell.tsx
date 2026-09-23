@@ -10,6 +10,10 @@ import { IconButton, resolvePressStateClass } from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import { api } from '@/lib/api';
+import {
+  setUnreadNotificationCount,
+  useUnreadNotificationCount,
+} from '@/lib/activity/unread-notifications';
 
 type NavItem = { label: string; href: string; icon: AppIconName; badge?: number };
 
@@ -59,7 +63,7 @@ function AppShellChrome() {
   const desktop = useWindowDimensions().width >= 820;
   const immersive = path.startsWith('/consume/');
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const unreadNotifications = useUnreadNotificationCount();
   const [originPath, setOriginPath] = useState('/books');
   const nestedBook = path.startsWith('/work/');
   if (!nestedBook && originPath !== path) setOriginPath(path);
@@ -99,9 +103,9 @@ function AppShellChrome() {
       try {
         const result = await api.notificationUnreadCount();
         if (!active) return;
-        setUnreadNotifications(result.unread_count);
+        setUnreadNotificationCount(result.unread_count);
       } catch {
-        if (active) setUnreadNotifications(0);
+        // Keep the last known count; a transient failure shouldn't hide real unread state.
       }
     }
     void refresh();
