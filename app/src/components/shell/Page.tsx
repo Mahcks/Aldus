@@ -1,5 +1,5 @@
-import { useState, type PropsWithChildren, type ReactNode } from 'react';
-import { Platform, useWindowDimensions } from 'react-native';
+import { useState, type PropsWithChildren, type ReactNode, type Ref } from 'react';
+import { Platform, useWindowDimensions, type ScrollView as NativeScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Head from 'expo-router/head';
 import { router, usePathname } from 'expo-router';
@@ -122,6 +122,7 @@ export function Page({
   back,
   hideHeader = false,
   scrollable = true,
+  scrollRef,
   editorial = false,
   onTitlePress,
   titleActionLabel,
@@ -129,6 +130,7 @@ export function Page({
   title: string;
   /** Virtualized screens provide their own scrolling surface. */
   scrollable?: boolean;
+  scrollRef?: Ref<NativeScrollView>;
   actions?: ReactNode;
   /** A single icon action in the mobile bar; other actions stay in the content toolbar. */
   mobileActions?: ReactNode;
@@ -218,6 +220,7 @@ export function Page({
         )}
         {scrollable ? (
           <ScrollView
+            ref={scrollRef}
             role="main"
             className="flex-1"
             contentContainerClassName={`w-full max-w-[1240px] flex-grow self-center ${contentPaddingClass}`}

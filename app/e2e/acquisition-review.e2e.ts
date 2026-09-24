@@ -172,6 +172,10 @@ for (const width of [390, 1024, 1440]) {
     await page.goto('/sources?libraryId=family');
     await expect(page.getByText(/Last acquisition review:.*does not confirm/)).toBeVisible();
     await expect(page.getByText(/Grouping confidence: high/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Remove', exact: true })).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Show details for Family audiobook folder', exact: true })
+      .click();
     await expect(page.getByRole('button', { name: 'Scan now', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Remove', exact: true })).toHaveCount(0);
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-sources.png` });

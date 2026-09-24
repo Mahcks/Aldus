@@ -61,7 +61,7 @@ function DetailRowView({ row }: { row: DetailRow }) {
   );
 }
 
-async function copyToClipboard(value: string) {
+export async function copyToClipboard(value: string) {
   if (Platform.OS !== 'web') return;
   try {
     await navigator.clipboard.writeText(value);

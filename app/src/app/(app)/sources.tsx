@@ -1,4 +1,5 @@
 import type { ImportProposal, Library, LibrarySource } from '@/generated/api';
+import { type ScrollView as NativeScrollView, View as NativeView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -9,11 +10,12 @@ import {
   type ReviewDraft,
 } from '@/lib/sources/source-administration';
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog';
-import { ImportReviewSection } from '@/components/sources/ImportReviewSection';
+import { AttentionSection, type SourceProblem } from '@/components/sources/AttentionSection';
 import { ReviewDialog } from '@/components/sources/ReviewDialog';
 import { useImportDestination } from '@/hooks/sources/useImportDestination';
-import { SourceCard } from '@/components/sources/SourceCard';
+import { SourceRow } from '@/components/sources/SourceRow';
 import type { SourceDetails } from '@/lib/sources/types';
+import { sourceStatus } from '@/lib/sources/helpers';
 import { Button, ConfirmDialog, EmptyState, Loading, Notice, Section } from '@/components/ui';
 import { Page } from '@/components/shell/Page';
 import { Pressable, Text, View } from '@/components/ui/tw';
@@ -41,6 +43,9 @@ export default function SourcesAdministration() {
   const [removeSourceTarget, setRemoveSourceTarget] = useState<LibrarySource | null>(null);
   const [ignoreProposalTarget, setIgnoreProposalTarget] = useState<ImportProposal | null>(null);
   const openedProposalID = useRef('');
+  const scrollRef = useRef<NativeScrollView>(null);
+  const sourceViews = useRef(new Map<string, NativeView>());
+  const pendingSourceScroll = useRef('');
   const administrationRequest = useRef(0);
   const destination = useImportDestination(
     selectedLibraryID,
@@ -55,6 +60,36 @@ export default function SourcesAdministration() {
       Object.values(details).some(({ scans }) => ['pending', 'scanning'].includes(scans[0]?.state)),
     [details],
   );
+  const sourceProblems = useMemo<SourceProblem[]>(
+    () =>
+      sources
+        .map((source) => ({ source, latest: details[source.id]?.scans[0] }))
+        .filter(({ source, latest }) => {
+          const tone = sourceStatus(source, latest).tone;
+          return tone === 'danger' || tone === 'warning';
+        }),
+    [sources, details],
+  );
+
+  function scrollToSource(sourceID: string) {
+    const target = sourceViews.current.get(sourceID);
+    const scroll = scrollRef.current;
+    if (!target || !scroll) return;
+    target.measureLayout(scroll.getInnerViewNode(), (_x, y) => {
+      scroll.scrollTo({ y: Math.max(0, y - 16), animated: false });
+      target.focus();
+      pendingSourceScroll.current = '';
+    });
+  }
+
+  function viewSource(source: LibrarySource) {
+    if (expandedSourceID === source.id) {
+      scrollToSource(source.id);
+      return;
+    }
+    pendingSourceScroll.current = source.id;
+    setExpandedSourceID(source.id);
+  }
 
   async function loadLibraries() {
     try {
@@ -375,7 +410,7 @@ export default function SourcesAdministration() {
 
   if (loading)
     return (
-      <Page title="Sources & imports" editorial={false}>
+      <Page title="Sources & imports" scrollRef={scrollRef} editorial={false}>
         <Loading label="Loading source administration…" />
       </Page>
     );
@@ -383,6 +418,7 @@ export default function SourcesAdministration() {
   return (
     <Page
       title="Sources & imports"
+      scrollRef={scrollRef}
       actions={
         selectedLibrary ? (
           <Button
@@ -419,6 +455,14 @@ export default function SourcesAdministration() {
             </Text>
           </View>
 
+          <AttentionSection
+            problems={sourceProblems}
+            proposals={proposals}
+            onViewProblem={viewSource}
+            onReviewProposal={(proposal) => void openReview(proposal)}
+            onIgnoreProposal={setIgnoreProposalTarget}
+          />
+
           <Section
             title="Library sources"
             action={
@@ -434,31 +478,38 @@ export default function SourcesAdministration() {
             ) : (
               <View className="w-full">
                 {sources.map((source) => (
-                  <SourceCard
-                    admin={Boolean(auth.user?.admin)}
-                    busy={busy}
-                    details={details[source.id]}
-                    expanded={expandedSourceID === source.id}
+                  <NativeView
                     key={source.id}
-                    source={source}
-                    onEdit={() => openEditSource(source)}
-                    onRemove={() => setRemoveSourceTarget(source)}
-                    onScan={() => void scanSource(source)}
-                    onToggle={() => void toggleSource(source)}
-                    onToggleEntries={() =>
-                      setExpandedSourceID((current) => (current === source.id ? '' : source.id))
-                    }
-                  />
+                    collapsable={false}
+                    ref={(node) => {
+                      if (node) sourceViews.current.set(source.id, node);
+                      else sourceViews.current.delete(source.id);
+                    }}
+                    tabIndex={-1}
+                    accessibilityLabel={source.name}
+                    onLayout={() => {
+                      if (pendingSourceScroll.current === source.id) scrollToSource(source.id);
+                    }}
+                  >
+                    <SourceRow
+                      admin={Boolean(auth.user?.admin)}
+                      busy={busy}
+                      details={details[source.id]}
+                      expanded={expandedSourceID === source.id}
+                      source={source}
+                      onEdit={() => openEditSource(source)}
+                      onRemove={() => setRemoveSourceTarget(source)}
+                      onScan={() => void scanSource(source)}
+                      onToggle={() => void toggleSource(source)}
+                      onToggleExpanded={() =>
+                        setExpandedSourceID((current) => (current === source.id ? '' : source.id))
+                      }
+                    />
+                  </NativeView>
                 ))}
               </View>
             )}
           </Section>
-
-          <ImportReviewSection
-            proposals={proposals}
-            onIgnore={setIgnoreProposalTarget}
-            onReview={(proposal) => void openReview(proposal)}
-          />
         </>
       ) : selectedLibrary ? (
         <Notice danger>You do not have permission to manage this Library.</Notice>
