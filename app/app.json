@@ -15,6 +15,7 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
+        "UIViewControllerBasedStatusBarAppearance": true,
         "DEV_CLIENT_TRY_TO_LAUNCH_LAST_BUNDLE": false,
         "NSLocalNetworkUsageDescription": "Aldus connects to libraries hosted on your local network.",
         "NSAppTransportSecurity": {
