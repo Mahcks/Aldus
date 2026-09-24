@@ -67,6 +67,7 @@ import type {
   SetupStatus,
   SetupRequest,
   SystemDiagnostics,
+  AlignmentGpuStatus,
   ResetPasswordResponse,
   TitleRequest,
   TitleRequestEvent,
@@ -271,6 +272,8 @@ export const api = {
   },
   deleteAccount: (body: DeleteAccountRequest = {}) =>
     request<void>('/auth/me', { method: 'DELETE', body: JSON.stringify(body) }),
+  alignmentGpuStatus: () => request<AlignmentGpuStatus>('/system/alignment'),
+  testAlignmentGpu: () => request<AlignmentGpuStatus>('/system/alignment/test', { method: 'POST' }),
   systemDiagnostics: () => request<SystemDiagnostics>('/system/diagnostics'),
   backups: () => request<BackupArchive[]>('/system/backups'),
   createBackup: () => request<BackupArchive>('/system/backups', { method: 'POST' }),

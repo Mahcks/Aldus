@@ -539,7 +539,7 @@ export default function WorkScreen() {
 
       {activeAlignment ? (
         <View className="gap-3 border-t border-line pt-4">
-          <AlignmentProgress job={activeAlignment} unreachable={progressUnreachable} />
+          <AlignmentProgress job={activeAlignment} unreachable={progressUnreachable} compact />
           {canEdit ? (
             <Button
               label="View sync details"

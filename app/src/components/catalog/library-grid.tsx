@@ -79,11 +79,7 @@ export function LibraryGrid({
             audioArtwork={workResumeMode(item) === 'listen'}
             coverPresentation={coverPresentation(item)}
             progress={workProgressLabel(item.in_progress, item.completion_percent)}
-            availability={{
-              readable: workResumeMode(item) === 'read',
-              listenable: workResumeMode(item) === 'listen',
-              synchronized: false,
-            }}
+            availability={item}
             onPress={() => onOpen(item)}
           />
         ) : (

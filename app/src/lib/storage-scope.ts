@@ -17,7 +17,8 @@ export async function clearServerStorage(_origin: string) {}
 
 export function activeStorageScope() {
   const origin = getAPIBaseURL();
-  return origin && activeUserID ? serverStorageScope(origin, activeUserID) : '';
+  // An empty API origin is valid on web: requests use the page's own server.
+  return activeUserID ? serverStorageScope(origin, activeUserID) : '';
 }
 
 export function scopedStorageKey(name: string, scope = activeStorageScope()) {

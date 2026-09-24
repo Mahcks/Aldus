@@ -317,11 +317,13 @@ type WorkPresentationProps = {
  * the *title*, so it's the safer default everywhere rather than picking a
  * different treatment per format.
  *
- * `icon` folds the format indicator (read/listen/synced) into this same
+ * `icons` folds the format indicator (read/listen/synced) into this same
  * bar instead of giving it a separate overlay elsewhere on the cover — one
  * thing sitting on the art, not two. `FormatIconChip` below is the
  * no-progress equivalent: format info lives on the cover either way, never
- * duplicated into the caption as text.
+ * duplicated into the caption as text. Usually one icon; a Work that's both
+ * readable and listenable but not yet synchronized shows both — dropping
+ * either one would silently hide a format the reader actually has.
  *
  * Stacked flat layers, not a real gradient: the smooth version needs
  * `expo-linear-gradient`, a native module a dev-client build doesn't have
@@ -329,7 +331,7 @@ type WorkPresentationProps = {
  * Metro. Four steps of increasing `bg-ink` opacity reads as a soft fade at
  * cover scale without needing any native code at all.
  */
-function ProgressScrim({ progress, icon }: { progress: string; icon?: AppIconName | null }) {
+function ProgressScrim({ progress, icons }: { progress: string; icons: AppIconName[] }) {
   const colors = useThemeColors();
   return (
     <View
@@ -345,7 +347,13 @@ function ProgressScrim({ progress, icon }: { progress: string; icon?: AppIconNam
         <Text numberOfLines={1} className="shrink text-[10px] font-sans-bold text-on-accent">
           {progress}
         </Text>
-        {icon ? <AppIcon name={icon} size={12} color={colors.onAccent} /> : null}
+        {icons.length > 0 ? (
+          <View className="flex-row items-center gap-1">
+            {icons.map((icon) => (
+              <AppIcon key={icon} name={icon} size={12} color={colors.onAccent} />
+            ))}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -356,18 +364,25 @@ function ProgressScrim({ progress, icon }: { progress: string; icon?: AppIconNam
  * anchor a whole bar to, format info shrinks to a small icon-only dot in
  * the same bottom-right corner the scrim's icon would occupy — never a
  * full bar with nothing else in it, and never a second, separate label
- * back in the caption (the two used to show the same fact twice).
+ * back in the caption (the two used to show the same fact twice). Stays a
+ * perfect circle for the common single-icon case; only widens into a pill
+ * when a second icon actually needs the room.
  */
-function FormatIconChip({ icon }: { icon: AppIconName }) {
+function FormatIconChip({ icons }: { icons: AppIconName[] }) {
   const colors = useThemeColors();
+  if (icons.length === 0) return null;
+  const widthClass = icons.length > 1 ? 'px-1.5' : 'w-5 justify-center';
+
   return (
     <View
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      className="absolute bottom-1.5 right-1.5 h-5 w-5 items-center justify-center rounded-pill bg-ink/75"
+      className={`absolute bottom-1.5 right-1.5 h-5 flex-row items-center gap-1 rounded-pill bg-ink/75 ${widthClass}`}
     >
-      <AppIcon name={icon} size={11} color={colors.onAccent} />
+      {icons.map((icon) => (
+        <AppIcon key={icon} name={icon} size={11} color={colors.onAccent} />
+      ))}
     </View>
   );
 }
@@ -455,8 +470,10 @@ export function WorkCard({
   const stateClass = resolvePressStateClass({ focused, pressed });
   // Computed once — decides which of `ProgressScrim` or `FormatIconChip`
   // the cover renders below. Format info lives only on the cover, never
-  // duplicated as text in the caption.
-  const formatIcon = availability ? availabilityIcon(availability) : null;
+  // duplicated as text in the caption. Reuses `availabilityItems`'s rule
+  // (below `AvailabilityIcons`) so the cover badge and the list-row chips
+  // never disagree about what counts as "synced" vs. two separate formats.
+  const formatIcons = availability ? availabilityItems(availability).map((item) => item.icon) : [];
 
   const card = (
     <Pressable
@@ -499,9 +516,9 @@ export function WorkCard({
             square
           />
           {progress ? (
-            <ProgressScrim progress={progress} icon={formatIcon} />
-          ) : formatIcon ? (
-            <FormatIconChip icon={formatIcon} />
+            <ProgressScrim progress={progress} icons={formatIcons} />
+          ) : formatIcons.length > 0 ? (
+            <FormatIconChip icons={formatIcons} />
           ) : null}
         </View>
       ) : audioArtwork && narrow ? (
@@ -522,9 +539,9 @@ export function WorkCard({
               aspectRatio={1}
             />
             {progress ? (
-              <ProgressScrim progress={progress} icon={formatIcon} />
-            ) : formatIcon ? (
-              <FormatIconChip icon={formatIcon} />
+              <ProgressScrim progress={progress} icons={formatIcons} />
+            ) : formatIcons.length > 0 ? (
+              <FormatIconChip icons={formatIcons} />
             ) : null}
           </View>
         </View>
@@ -540,9 +557,9 @@ export function WorkCard({
             size={narrow ? 'grid' : 'tile'}
           />
           {progress ? (
-            <ProgressScrim progress={progress} icon={formatIcon} />
-          ) : formatIcon ? (
-            <FormatIconChip icon={formatIcon} />
+            <ProgressScrim progress={progress} icons={formatIcons} />
+          ) : formatIcons.length > 0 ? (
+            <FormatIconChip icons={formatIcons} />
           ) : null}
         </View>
       )}
@@ -681,17 +698,6 @@ export function WorkRow({
 }
 
 export type WorkAvailability = { readable: boolean; listenable: boolean; synchronized: boolean };
-
-/** Shared by `ProgressScrim` and `FormatIconChip` — one rule for which icon represents a Work's availability, wherever it ends up rendered. */
-function availabilityIcon(value: WorkAvailability): AppIconName | null {
-  return value.synchronized
-    ? 'synced'
-    : value.listenable
-      ? 'listen'
-      : value.readable
-        ? 'read'
-        : null;
-}
 
 /**
  * Synchronized only ever occurs when both an EPUB and audio edition are

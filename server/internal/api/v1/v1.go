@@ -44,6 +44,8 @@ func Handler(deps Dependencies) http.Handler {
 			}
 			if deps.Diagnostics != nil {
 				registerDiagnosticRoutes(router, deps.Diagnostics)
+				router.Get("/system/alignment", alignmentHealth(deps.AlignmentJobs, false))
+				router.Post("/system/alignment/test", alignmentHealth(deps.AlignmentJobs, true))
 			}
 			if deps.Backups != nil {
 				registerBackupRoutes(router, deps.Backups)

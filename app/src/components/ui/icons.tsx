@@ -45,6 +45,8 @@ const names = {
   folder: 'folder-outline',
   scan: 'refresh',
   import: 'tray-arrow-down',
+  gpu: 'memory',
+  alignment: 'waveform',
   acquire: 'download-box-outline',
   bookmark: 'bookmark-outline',
   copy: 'content-copy',

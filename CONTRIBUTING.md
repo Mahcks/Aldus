@@ -21,6 +21,8 @@ cd app && bun install && cd ..
 make dev
 ```
 
+The development server uses `.tools/alignment-venv/bin/python3` when that local Python environment exists, and stores alignment models in `.tools/alignment-models`. You can override the worker with `ALDUS_ALIGNMENT_COMMAND` and the model directory with `ALDUS_ALIGNMENT_MODEL_DIR`. Unlike the production alignment image, `make dev` does not install Python dependencies or download models. CPU alignment also requires PyTorch and WhisperX; their pinned dependencies are in the Dockerfile and `tools/requirements-alignment.txt`.
+
 | Command | Does |
 | --- | --- |
 | `make dev-server` | Run the Go server on port 8080 |

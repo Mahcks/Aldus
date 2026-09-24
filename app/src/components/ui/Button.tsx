@@ -1,8 +1,25 @@
 import { useState } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Platform } from 'react-native';
 import { AppIcon, type AppIconName } from './icons';
 import { useThemeColors, type ThemeColors } from './theme';
 import { Pressable, Text } from './tw';
+
+/**
+ * Web-only: RN Web fires `onFocus` for an ordinary mouse/touch click just as
+ * much as for keyboard Tab navigation, with no way to tell them apart from
+ * the focus event itself — unlike CSS `:focus-visible`, which the browser
+ * resolves for us. Without this, every click left the 2px focus outline
+ * sitting on whatever was clicked (a book cover, a nav link, a button) until
+ * focus moved elsewhere, reading as a stray highlight rather than the
+ * keyboard-navigation aid it's meant to be. Native platforms don't have this
+ * problem — a touch tap there doesn't raise the same "focus" concept — so
+ * this stays a web-only correction and native `focused` state is trusted as-is.
+ */
+let lastInputWasKeyboard = true;
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  document.addEventListener('keydown', () => (lastInputWasKeyboard = true), true);
+  document.addEventListener('pointerdown', () => (lastInputWasKeyboard = false), true);
+}
 
 type ButtonKind = 'primary' | 'secondary' | 'danger' | 'quiet';
 
@@ -36,7 +53,8 @@ function resolveButtonBorderClass({
   focused: boolean;
   inactive: boolean;
 }) {
-  if (focused) return 'border border-focus outline outline-2 outline-focus';
+  if (focused && (Platform.OS !== 'web' || lastInputWasKeyboard))
+    return 'border border-focus outline outline-2 outline-focus';
   if (inactive && kind !== 'quiet') return 'border border-line-strong';
   if (selected) return 'border border-accent';
   if (kind === 'primary') return 'border border-accent';
@@ -119,7 +137,8 @@ export function resolvePressStateClass({
   focused: boolean;
   pressed: boolean;
 }) {
-  if (focused) return 'outline outline-2 outline-focus';
+  if (focused && (Platform.OS !== 'web' || lastInputWasKeyboard))
+    return 'outline outline-2 outline-focus';
   if (pressed) return 'opacity-75';
   return '';
 }

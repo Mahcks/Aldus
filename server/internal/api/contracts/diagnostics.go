@@ -16,3 +16,23 @@ type SystemDiagnostics struct {
 	ManagedAcquisitionFiles int    `json:"managed_acquisition_files"`
 	ExternalMediaExcluded   int    `json:"external_media_excluded"`
 }
+
+type AlignmentGpuStatus struct {
+	Accelerator      string             `json:"accelerator" tstype:"'cpu' | 'cuda' | 'unknown'"`
+	AcceleratorLabel string             `json:"acceleratorLabel"`
+	DetectedGPU      string             `json:"detectedGpu"`
+	GPUTest          GpuTestResult      `json:"gpuTest"`
+	Alignment        AlignmentReadiness `json:"alignment"`
+	LastCheckedAt    *string            `json:"lastCheckedAt" tstype:"string | null"`
+}
+
+type GpuTestResult struct {
+	State  string `json:"state" tstype:"'not_checked' | 'checking' | 'success' | 'failed' | 'not_applicable'"`
+	Detail string `json:"detail,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+type AlignmentReadiness struct {
+	Readiness string   `json:"readiness" tstype:"'unknown' | 'ready' | 'not_ready'"`
+	Issues    []string `json:"issues"`
+}

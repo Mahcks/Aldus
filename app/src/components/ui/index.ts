@@ -4,7 +4,7 @@ export { Select, Checkbox, Radio } from './Choice';
 export { Dialog, ConfirmDialog } from './Dialog';
 export { Notice } from './Notice';
 export { Empty, EmptyState, ErrorState } from './EmptyState';
-export { StatusBadge } from './StatusBadge';
+export { StatusBadge, type StatusTone } from './StatusBadge';
 export { shared, Row, IconRow, ManagementRow, SectionHeader, Section } from './layout';
 export { useThemeColors, lightColors, darkColors, type ThemeColors } from './theme';
 export { LoadingState, LoadingState as Loading } from './loading-skeleton';

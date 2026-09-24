@@ -127,11 +127,7 @@ function UpNextShelf({ works }: { works: WorkSummary[] }) {
               fallbackCoverURL={fallbackCoverURL(work)}
               audioArtwork={!work.readable && work.listenable}
               coverPresentation={coverPresentation(work)}
-              availability={{
-                readable: mode === 'read',
-                listenable: mode === 'listen',
-                synchronized: false,
-              }}
+              availability={work}
               progress={workProgressLabel(work.in_progress, work.completion_percent)}
               onPress={() =>
                 router.push(mode ? `/consume/${work.id}?mode=${mode}` : workHref(work))

@@ -48,14 +48,18 @@ type Options struct {
 }
 
 type Manager struct {
-	db      *sql.DB
-	queries *dbsql.Queries
-	options Options
-	wake    chan struct{}
-	mu      sync.Mutex
-	cancel  map[string]context.CancelFunc
-	done    chan struct{}
-	media   *source.Store
+	runtimeSlot chan struct{}
+	healthMu    sync.Mutex
+	health      *RuntimeHealth
+	stopped     bool
+	db          *sql.DB
+	queries     *dbsql.Queries
+	options     Options
+	wake        chan struct{}
+	mu          sync.Mutex
+	cancel      map[string]context.CancelFunc
+	done        chan struct{}
+	media       *source.Store
 }
 
 type Request struct {
@@ -163,7 +167,16 @@ func New(db *sql.DB, o Options) (*Manager, error) {
 			return nil, err
 		}
 	}
-	return &Manager{db: db, queries: dbsql.New(db), options: o, wake: make(chan struct{}, 1), cancel: map[string]context.CancelFunc{}, done: make(chan struct{}), media: media}, nil
+	return &Manager{
+		runtimeSlot: make(chan struct{}, 1),
+		db:          db,
+		queries:     dbsql.New(db),
+		options:     o,
+		wake:        make(chan struct{}, 1),
+		cancel:      map[string]context.CancelFunc{},
+		done:        make(chan struct{}),
+		media:       media,
+	}, nil
 }
 
 func (m *Manager) Start(ctx context.Context) error {
@@ -285,15 +298,22 @@ func (m *Manager) recover(ctx context.Context) error {
 
 func (m *Manager) loop(ctx context.Context) {
 	defer close(m.done)
+	defer m.stopAll()
 	for {
 		select {
 		case <-ctx.Done():
-			m.stopAll()
 			return
 		case <-m.wake:
 			for {
+				// Wait before claiming so a diagnostic does not consume a job's timeout.
+				select {
+				case m.runtimeSlot <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
 				job, ok, err := m.claim(ctx)
 				if err != nil {
+					<-m.runtimeSlot
 					if ctx.Err() != nil {
 						return
 					}
@@ -306,9 +326,11 @@ func (m *Manager) loop(ctx context.Context) {
 					}
 				}
 				if !ok {
+					<-m.runtimeSlot
 					break
 				}
 				m.run(ctx, job)
+				<-m.runtimeSlot
 			}
 		}
 	}
@@ -324,6 +346,7 @@ func (m *Manager) signal() {
 func (m *Manager) stopAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.stopped = true
 	for _, cancel := range m.cancel {
 		cancel()
 	}

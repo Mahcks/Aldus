@@ -240,7 +240,7 @@ func TestRouteContract(t *testing.T) {
 		"DELETE /works/{workID}/covers/{coverID}",
 	)
 	want = append(want, "GET /media/{mediaID}/chapters")
-	want = append(want, "GET /system/diagnostics")
+	want = append(want, "GET /system/diagnostics", "GET /system/alignment", "POST /system/alignment/test")
 	want = append(want, "GET /system/backups", "POST /system/backups", "GET /system/backups/{name}", "DELETE /system/backups/{name}")
 	want = append(want, "DELETE /auth/me")
 	want = append(want, "GET /me/reader-credentials", "POST /me/reader-credentials", "DELETE /me/reader-credentials/{credentialID}")
@@ -383,7 +383,26 @@ func TestWorkAlignmentJobListing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	handler := Handler(Dependencies{Position: position.New(db), Auth: accounts, Catalog: catalogStore, AlignmentJobs: manager})
+	handler := Handler(Dependencies{Position: position.New(db), Auth: accounts, Catalog: catalogStore, AlignmentJobs: manager, Diagnostics: diagnostics.New(db, t.TempDir(), nil, "test", "test")})
+	for _, endpoint := range []struct{ method, path string }{{http.MethodGet, "/system/alignment"}, {http.MethodPost, "/system/alignment/test"}} {
+		for role, session := range sessions {
+			response := request(t, handler, session.Token, endpoint.method, endpoint.path, "")
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("%s GPU endpoint = %d %s", role, response.Code, response.Body.String())
+			}
+		}
+		anonymous := request(t, handler, "", endpoint.method, endpoint.path, "")
+		if anonymous.Code != http.StatusUnauthorized {
+			t.Fatalf("anonymous GPU endpoint = %d", anonymous.Code)
+		}
+		response := request(t, handler, admin.Token, endpoint.method, endpoint.path, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("admin GPU endpoint = %d %s", response.Code, response.Body.String())
+		}
+		if endpoint.method == http.MethodPost && !strings.Contains(response.Body.String(), `"readiness":"not_ready"`) {
+			t.Fatalf("unsupported worker must not report ready: %s", response.Body.String())
+		}
+	}
 	for role, session := range sessions {
 		response := request(t, handler, session.Token, http.MethodGet, "/works/fixture-work/alignment-jobs?limit=3", "")
 		if response.Code != http.StatusOK {

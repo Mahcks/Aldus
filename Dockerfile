@@ -129,6 +129,7 @@ COPY tools/whisperx_worker.py ./tools/whisperx_worker.py
 COPY tools/whisperx_worker_config.py ./tools/whisperx_worker_config.py
 COPY tools/whisperx_checkpoints.py ./tools/whisperx_checkpoints.py
 COPY tools/whisperx_diagnostics.py ./tools/whisperx_diagnostics.py
+COPY tools/whisperx_health.py ./tools/whisperx_health.py
 COPY --chmod=755 scripts/container-entrypoint.sh /usr/local/bin/aldus-entrypoint
 
 ENV ALDUS_ALIGNMENT_COMMAND="python3 /app/tools/whisperx_worker.py" \
@@ -173,6 +174,7 @@ COPY tools/whisperx_worker.py ./tools/whisperx_worker.py
 COPY tools/whisperx_worker_config.py ./tools/whisperx_worker_config.py
 COPY tools/whisperx_checkpoints.py ./tools/whisperx_checkpoints.py
 COPY tools/whisperx_diagnostics.py ./tools/whisperx_diagnostics.py
+COPY tools/whisperx_health.py ./tools/whisperx_health.py
 COPY --chmod=755 scripts/container-entrypoint.sh /usr/local/bin/aldus-entrypoint
 
 ENV HF_HOME=/data/models \

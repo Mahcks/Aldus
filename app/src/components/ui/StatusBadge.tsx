@@ -2,7 +2,7 @@ import { AppIcon, type AppIconName } from './icons';
 import { useThemeColors, type ThemeColors } from './theme';
 import { Text, View } from './tw';
 
-type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 
 const STATUS_BADGE_TONE_CLASS: Record<StatusTone, { background: string; text: string }> = {
   neutral: { background: 'bg-neutral-soft', text: 'text-neutral' },

@@ -1,5 +1,7 @@
 import { useServerMaintenance } from '@/hooks/administration/useServerMaintenance';
+import { useAlignmentGpuStatus } from '@/hooks/administration/useAlignmentGpuStatus';
 import { DiagnosticRow, DiagnosticMeta } from '@/components/administration/SystemDiagnostics';
+import { AlignmentGpuSection } from '@/components/administration/AlignmentGpuSection';
 import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -28,6 +30,12 @@ export default function SystemAdministration() {
     deleteBackup,
     downloadDiagnostics,
   } = useServerMaintenance();
+  const {
+    status: alignmentGpuStatus,
+    checking: checkingGpu,
+    error: gpuError,
+    testGpu,
+  } = useAlignmentGpuStatus(Boolean(auth.user?.admin));
   if (!auth.user?.admin)
     return (
       <Page title="System" editorial={false}>
@@ -135,6 +143,13 @@ export default function SystemAdministration() {
             </Text>
           ) : null}
         </Section>
+
+        <AlignmentGpuSection
+          status={alignmentGpuStatus}
+          checking={checkingGpu}
+          error={gpuError}
+          onTestGpu={() => void testGpu()}
+        />
 
         <Section title="Optional services">
           <DiagnosticRow

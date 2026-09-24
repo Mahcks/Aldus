@@ -93,13 +93,20 @@ def canonical_words(words):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--audio")
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--output")
+    parser.add_argument("--diagnostics", action="store_true")
     parser.add_argument("--job-input")
     parser.add_argument("--raw-asr")
     parser.add_argument("--known-segments")
     parser.add_argument("--model", default="base.en")
     parser.add_argument("--window-seconds", type=float, default=0)
     args = parser.parse_args()
+    if args.diagnostics:
+        from whisperx_health import main as health_check
+        health_check(args.model)
+        return
+    if not args.output:
+        parser.error("--output is required")
     if not args.job_input and not args.audio:
         parser.error("--audio is required without --job-input")
     with StageDiagnostics(Path(args.output).with_name("stages.json")) as diagnostics:

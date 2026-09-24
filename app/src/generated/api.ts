@@ -608,6 +608,23 @@ export interface SystemDiagnostics {
   managed_acquisition_files: number /* int */;
   external_media_excluded: number /* int */;
 }
+export interface AlignmentGpuStatus {
+  accelerator: 'cpu' | 'cuda' | 'unknown';
+  acceleratorLabel: string;
+  detectedGpu: string;
+  gpuTest: GpuTestResult;
+  alignment: AlignmentReadiness;
+  lastCheckedAt?: string | null;
+}
+export interface GpuTestResult {
+  state: 'not_checked' | 'checking' | 'success' | 'failed' | 'not_applicable';
+  detail?: string;
+  error?: string;
+}
+export interface AlignmentReadiness {
+  readiness: 'unknown' | 'ready' | 'not_ready';
+  issues: string[];
+}
 
 //////////
 // source: media.go
