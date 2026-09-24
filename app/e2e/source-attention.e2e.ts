@@ -41,14 +41,16 @@ for (const width of [390, 1024, 1440]) {
     await page.goto('/sources');
     await expect(page.getByText('Needs your attention · 2', { exact: true })).toBeVisible();
     await expect(page.getByText('Source 0: 4 files are missing', { exact: true })).toBeVisible();
-    await expect(page.getByText(/30 files found/).first()).toBeVisible();
     await expect(page.getByText(/30 books found/)).toHaveCount(0);
     for (let attempt = 0; attempt < 2; attempt++) {
       await page.getByRole('button', { name: 'View source', exact: true }).nth(1).click();
-      const target = page.getByRole('button', { name: 'Hide files (0)', exact: true });
+      const target = page.getByRole('button', { name: 'Inspect files (0)', exact: true });
       await expect(target).toBeInViewport();
+      await expect(page.getByText(/30 files found/).first()).toBeVisible();
       await expect(page.locator(':focus')).toHaveAttribute('aria-label', 'Source 7');
     }
+    await page.getByRole('button', { name: 'Inspect files (0)', exact: true }).click();
+    await expect(page.getByText('No discovered files yet.', { exact: true })).toBeVisible();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-source-attention.png` });
   });
 }

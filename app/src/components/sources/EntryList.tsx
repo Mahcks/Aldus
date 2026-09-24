@@ -51,14 +51,12 @@ function EntryRow({ entry, showDivider }: { entry: SourceEntry; showDivider: boo
           {entry.kind || 'Unknown'} · {formatBytes(entry.size_bytes)}
         </Text>
         <StatusBadge {...status} />
-        {sha256 ? (
-          <IconButton
-            icon={detailsOpen ? 'chevronUp' : 'chevronDown'}
-            label={`${detailsOpen ? 'Hide' : 'Show'} technical details for ${entry.relative_path}`}
-            kind="quiet"
-            onPress={() => setDetailsOpen((open) => !open)}
-          />
-        ) : null}
+        <IconButton
+          icon={detailsOpen ? 'chevronUp' : 'chevronDown'}
+          label={`${detailsOpen ? 'Hide' : 'Show'} technical details for ${entry.relative_path}`}
+          kind="quiet"
+          onPress={() => setDetailsOpen((open) => !open)}
+        />
       </View>
       {metaLine ? (
         <Text numberOfLines={1} className="text-xs text-muted">
@@ -66,17 +64,30 @@ function EntryRow({ entry, showDivider }: { entry: SourceEntry; showDivider: boo
         </Text>
       ) : null}
       {entry.error ? <Notice danger>{entry.error}</Notice> : null}
-      {detailsOpen && sha256 ? (
+      {detailsOpen ? (
         <View className="mt-1 gap-1 rounded-control bg-canvas p-3">
-          <Text className="text-xs font-sans-bold text-muted">SHA-256</Text>
-          <View className="flex-row flex-wrap items-center gap-2">
-            <Text selectable className="flex-shrink font-mono text-xs text-ink">
-              {sha256}
+          <Text className="text-xs font-sans-bold text-muted">File path</Text>
+          <Text selectable className="font-mono text-xs text-ink">
+            {entry.relative_path}
+          </Text>
+          {metaLine ? (
+            <Text selectable className="text-xs text-muted">
+              {metaLine}
             </Text>
-            {canCopy ? (
-              <Button label="Copy" kind="quiet" onPress={() => void copyToClipboard(sha256)} />
-            ) : null}
-          </View>
+          ) : null}
+          {sha256 ? (
+            <>
+              <Text className="text-xs font-sans-bold text-muted">SHA-256</Text>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <Text selectable className="flex-shrink font-mono text-xs text-ink">
+                  {sha256}
+                </Text>
+                {canCopy ? (
+                  <Button label="Copy" kind="quiet" onPress={() => void copyToClipboard(sha256)} />
+                ) : null}
+              </View>
+            </>
+          ) : null}
         </View>
       ) : null}
     </View>
