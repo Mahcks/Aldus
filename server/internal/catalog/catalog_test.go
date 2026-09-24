@@ -248,6 +248,12 @@ func TestPrimaryLibraryDefaultsSwitchesAndClears(t *testing.T) {
 		}
 	}
 
+	// Default selection must work before pagination, not just within a fetched page.
+	page, err := store.Libraries(ctx, admin, 1, 0)
+	if err != nil || len(page) != 1 || page[0].ID != second.ID {
+		t.Fatalf("primary first page = %#v, %v", page, err)
+	}
+
 	// Can't adopt a library you cannot see as your primary.
 	outsider := createUser(t, accounts, admin, "primary-outsider")
 	hidden, err := store.CreateLibrary(ctx, outsider, "Hidden")

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
 let count = 0;
+let revision = 0;
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -23,18 +24,29 @@ function serverSnapshot() {
 /**
  * Shared unread-notification count so the navigation badge and the Activity
  * screen read the same number and never drift apart. Both call
- * `setUnreadNotificationCount` after a successful fetch or mutation instead
+ * `beginUnreadNotificationRefresh` before fetching instead
  * of keeping independent local state.
  */
 export function useUnreadNotificationCount(): number {
   return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 }
 
-export function setUnreadNotificationCount(next: number | ((current: number) => number)) {
-  const resolved = typeof next === 'function' ? next(count) : next;
+function setUnreadNotificationCount(resolved: number) {
   // Malformed input (a failed fetch's undefined body, NaN) keeps the last
   // known-good count rather than displaying a broken badge.
   if (!Number.isFinite(resolved)) return;
   count = Math.max(0, resolved);
   notify();
+}
+
+// A response may publish only if no newer read or mutation has started.
+export function beginUnreadNotificationRefresh() {
+  const startedAt = ++revision;
+  return (next: number) => {
+    if (startedAt === revision) setUnreadNotificationCount(next);
+  };
+}
+
+export function invalidateUnreadNotificationRefresh() {
+  revision++;
 }

@@ -78,6 +78,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
   const [availability, setAvailability] = useState(visit?.availability ?? 'all');
   const [libraryID, setLibraryID] = useState(visit?.libraryID ?? '');
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [librariesReady, setLibrariesReady] = useState(false);
   const [works, setWorks] = useState<WorkSummary[]>(visit?.works ?? []);
   const [series, setSeries] = useState<CatalogGroup[]>(visit?.series ?? []);
   const [narrators, setNarrators] = useState<CatalogGroup[]>(visit?.narrators ?? []);
@@ -167,15 +168,24 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
     void api
       .libraries()
       .then((items) => {
-        if (!canceled) setLibraries(items.filter((item) => item.effective));
+        if (canceled) return;
+        const available = items.filter((item) => item.effective);
+        setLibraries(available);
+        if (!visit && !status) {
+          setLibraryID(available.find((item) => item.primary)?.id ?? '');
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!canceled) setLibrariesReady(true);
+      });
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [visit, status]);
 
   useEffect(() => {
+    if (!librariesReady) return;
     if (restoring.current) {
       restoring.current = false;
       return;
@@ -233,7 +243,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       canceled = true;
       clearTimeout(timer);
     };
-  }, [q, sort, availability, libraryID, status, inProgress, offset, retry]);
+  }, [q, sort, availability, libraryID, status, inProgress, offset, retry, librariesReady]);
 
   useEffect(() => {
     if (inProgress) return;

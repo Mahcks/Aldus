@@ -229,7 +229,7 @@ const librarySelect = `
 		COALESCE(m.can_request_acquisitions,0),
 		COALESCE(m.can_bypass_acquisition_approval,0),
 		COALESCE(m.can_advanced_acquisition_request,0),
-		COALESCE(l.id = (SELECT u.primary_library_id FROM users u WHERE u.id=?),0),
+		COALESCE(l.id = (SELECT u.primary_library_id FROM users u WHERE u.id=?),0) AS is_primary,
 		(SELECT COUNT(*) FROM works w WHERE w.library_id=l.id),
 		(SELECT COUNT(*) FROM library_members lm WHERE lm.library_id=l.id),
 		l.created_at,
@@ -259,7 +259,7 @@ func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset in
 	limit, offset = page(limit, offset)
 	rows, err := s.db.QueryContext(ctx, librarySelect+`
 		WHERE ? OR m.user_id IS NOT NULL
-		ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`,
+		ORDER BY is_primary DESC,l.created_at,l.id LIMIT ? OFFSET ?`,
 		actor.ID, actor.ID, actor.ID, actor.Admin, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list libraries: %w", err)

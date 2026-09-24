@@ -1,6 +1,6 @@
 import type { Library } from '@/generated/api';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppIcon } from '@/components/ui/icons';
@@ -172,6 +172,7 @@ export default function Libraries() {
   const [createError, setCreateError] = useState('');
   const [offline, setOffline] = useState(false);
   const [settingPrimaryID, setSettingPrimaryID] = useState('');
+  const primarySavePending = useRef(false);
   const [manageTarget, setManageTarget] = useState<Library | null>(null);
 
   const load = useCallback(async () => {
@@ -224,6 +225,8 @@ export default function Libraries() {
   }
 
   async function setPrimary(library: Library) {
+    if (primarySavePending.current) return;
+    primarySavePending.current = true;
     setSettingPrimaryID(library.id);
     setError('');
     try {
@@ -232,6 +235,7 @@ export default function Libraries() {
     } catch (value) {
       setError(errorMessage(value));
     } finally {
+      primarySavePending.current = false;
       setSettingPrimaryID('');
     }
   }
@@ -285,8 +289,8 @@ export default function Libraries() {
           <SectionHeader title="Your libraries" />
           {items.length > 1 && primaryLibrary ? (
             <Text className="text-sm text-muted">
-              {primaryLibrary.name} opens first across the app. Star another library below to make
-              it primary instead.
+              {primaryLibrary.name} is the default for Library, Sources, and Acquisitions. Star
+              another library to change it.
             </Text>
           ) : null}
           <View className="mt-2">
@@ -296,7 +300,7 @@ export default function Libraries() {
                   item={item}
                   canSwitchPrimary={items.length > 1}
                   canManage={Boolean(auth.user?.admin || item.role === 'owner')}
-                  settingPrimary={settingPrimaryID === item.id}
+                  settingPrimary={Boolean(settingPrimaryID)}
                   onOpen={() => openLibrary(item)}
                   onManage={() => manageLibrary(item)}
                   onSetPrimary={() => void setPrimary(item)}

@@ -11,7 +11,7 @@ import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import { api } from '@/lib/api';
 import {
-  setUnreadNotificationCount,
+  beginUnreadNotificationRefresh,
   useUnreadNotificationCount,
 } from '@/lib/activity/unread-notifications';
 
@@ -100,10 +100,11 @@ function AppShellChrome() {
   useEffect(() => {
     let active = true;
     async function refresh() {
+      const publishCount = beginUnreadNotificationRefresh();
       try {
         const result = await api.notificationUnreadCount();
         if (!active) return;
-        setUnreadNotificationCount(result.unread_count);
+        publishCount(result.unread_count);
       } catch {
         // Keep the last known count; a transient failure shouldn't hide real unread state.
       }

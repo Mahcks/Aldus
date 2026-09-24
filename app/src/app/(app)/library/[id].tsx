@@ -102,6 +102,7 @@ export default function LibraryScreen() {
   const [libraryCount, setLibraryCount] = useState(1);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [settingPrimaryID, setSettingPrimaryID] = useState('');
+  const primarySavePending = useRef(false);
   const [switcherError, setSwitcherError] = useState('');
   const [openedPanelFromParam, setOpenedPanelFromParam] = useState(false);
   const browseSequence = useRef(0);
@@ -168,7 +169,12 @@ export default function LibraryScreen() {
     if (!allowed) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpenedPanelFromParam(true);
-    if (openParam === 'work' || openParam === 'members' || openParam === 'policy' || openParam === 'settings') {
+    if (
+      openParam === 'work' ||
+      openParam === 'members' ||
+      openParam === 'policy' ||
+      openParam === 'settings'
+    ) {
       setPanel(openParam);
     } else {
       setManageOpen(true);
@@ -522,6 +528,8 @@ export default function LibraryScreen() {
   }
 
   async function setAsPrimary(targetID: string) {
+    if (primarySavePending.current) return;
+    primarySavePending.current = true;
     setSettingPrimaryID(targetID);
     setSwitcherError('');
     try {
@@ -532,6 +540,7 @@ export default function LibraryScreen() {
     } catch (value) {
       setSwitcherError(errorMessage(value));
     } finally {
+      primarySavePending.current = false;
       setSettingPrimaryID('');
     }
   }
@@ -1012,7 +1021,7 @@ export default function LibraryScreen() {
                     : `Make ${item.name} your primary library`
                 }
                 kind="quiet"
-                disabled={settingPrimaryID === item.id}
+                disabled={Boolean(settingPrimaryID)}
                 onPress={() => void setAsPrimary(item.id)}
               />
             </View>

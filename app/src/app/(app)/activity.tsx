@@ -21,7 +21,8 @@ import {
   notificationStatus,
 } from '@/lib/activity/notification-presentation';
 import {
-  setUnreadNotificationCount,
+  beginUnreadNotificationRefresh,
+  invalidateUnreadNotificationRefresh,
   useUnreadNotificationCount,
 } from '@/lib/activity/unread-notifications';
 import { RequestTimeline } from '@/components/acquisitions/request-timeline';
@@ -210,11 +211,13 @@ export default function ActivityScreen() {
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
+    setLoadingMoreUpdates(false);
+    const publishCount = beginUnreadNotificationRefresh();
     try {
       const result = await api.notifications();
       if (generation !== loadGeneration.current) return;
       setItems(result.items);
-      setUnreadNotificationCount(result.unread_count);
+      publishCount(result.unread_count);
       setHasMoreUpdates(result.items.length === NOTIFICATIONS_PAGE_SIZE);
       setError('');
     } catch (value) {
@@ -226,6 +229,7 @@ export default function ActivityScreen() {
 
   async function loadMoreUpdates() {
     const generation = loadGeneration.current;
+    const publishCount = beginUnreadNotificationRefresh();
     setLoadingMoreUpdates(true);
     setActionError(null);
     try {
@@ -235,7 +239,7 @@ export default function ActivityScreen() {
         const merged = [...current, ...result.items];
         return [...new Map(merged.map((item) => [item.id, item])).values()];
       });
-      setUnreadNotificationCount(result.unread_count);
+      publishCount(result.unread_count);
       setHasMoreUpdates(result.items.length === NOTIFICATIONS_PAGE_SIZE);
     } catch (value) {
       if (generation === loadGeneration.current) {
@@ -326,24 +330,20 @@ export default function ActivityScreen() {
   async function markGroupRead(group: NotificationGroup): Promise<boolean> {
     const unreadIDs = group.items.filter((item) => !item.read_at).map((item) => item.id);
     if (unreadIDs.length === 0) return true;
+    loadGeneration.current++;
+    invalidateUnreadNotificationRefresh();
     setBusyID(group.key);
     setActionError(null);
     try {
-      await Promise.all(unreadIDs.map((id) => api.markNotificationRead(id)));
-      const readAt = new Date().toISOString();
-      const ids = new Set(unreadIDs);
-      setItems((current) =>
-        current.map((candidate) =>
-          ids.has(candidate.id)
-            ? { ...candidate, read_at: candidate.read_at ?? readAt }
-            : candidate,
-        ),
-      );
-      setUnreadNotificationCount((count) => count - unreadIDs.length);
+      // Settle every write before reloading, including partial failures.
+      const results = await Promise.allSettled(unreadIDs.map((id) => api.markNotificationRead(id)));
+      invalidateUnreadNotificationRefresh();
+      await load();
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
       return true;
     } catch (value) {
       setActionError({ message: errorMessage(value), retry: () => void markGroupRead(group) });
-      await load();
       return false;
     } finally {
       setBusyID('');
@@ -376,10 +376,13 @@ export default function ActivityScreen() {
   }
 
   async function handleMarkAllRead() {
+    loadGeneration.current++;
+    invalidateUnreadNotificationRefresh();
     setMarkingAll(true);
     setActionError(null);
     try {
       await api.markAllNotificationsRead();
+      invalidateUnreadNotificationRefresh();
       await load();
     } catch (value) {
       setActionError({ message: errorMessage(value), retry: () => void handleMarkAllRead() });
