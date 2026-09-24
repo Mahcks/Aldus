@@ -141,7 +141,6 @@ function AppShellChrome() {
           adminLinks={adminLinks}
           userLabel={userLabel}
           onBrandPress={handleBrandPress}
-          onSignOut={handleSignOut}
         />
       ) : null}
       <View className="min-h-0 min-w-0 flex-1">
@@ -218,14 +217,12 @@ function DesktopNav({
   adminLinks,
   userLabel,
   onBrandPress,
-  onSignOut,
 }: {
   path: string;
   consumerLinks: NavItem[];
   adminLinks: NavItem[];
   userLabel: string;
   onBrandPress: () => void;
-  onSignOut: () => void;
 }) {
   return (
     <View role="navigation" className="w-56 bg-rail px-[18px] py-[22px]">
@@ -260,13 +257,6 @@ function DesktopNav({
           icon="account"
           selected={isActive(path, '/account')}
         />
-        <Pressable
-          accessibilityRole="button"
-          onPress={onSignOut}
-          className="min-h-11 flex-row items-center"
-        >
-          <Text className="text-sm font-sans-medium text-rail-muted">Sign out</Text>
-        </Pressable>
       </View>
     </View>
   );
