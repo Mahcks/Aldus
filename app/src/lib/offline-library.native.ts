@@ -121,6 +121,9 @@ export async function offlineLibraries(scope = activeStorageScope()): Promise<Li
       can_request_acquisitions: false,
       can_bypass_acquisition_approval: false,
       can_advanced_acquisition_request: false,
+      primary: false,
+      work_count: 0,
+      member_count: 0,
       created_at: item.work.created_at,
       updated_at: item.work.updated_at,
     });

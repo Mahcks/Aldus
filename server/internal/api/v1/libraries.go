@@ -19,6 +19,7 @@ func registerLibraryRoutes(router chi.Router, store *catalog.Store) {
 	router.Get("/libraries/{libraryID}/members", listMembers(store))
 	router.Put("/libraries/{libraryID}/members/{userID}", setMember(store))
 	router.Delete("/libraries/{libraryID}/members/{userID}", removeMember(store))
+	router.Put("/libraries/{libraryID}/primary", setPrimaryLibrary(store))
 }
 
 func listLibraries(s *catalog.Store) http.HandlerFunc {
@@ -81,6 +82,12 @@ func setMember(s *catalog.Store) http.HandlerFunc {
 			return
 		}
 		writeCatalogResult(w, nil, e)
+	}
+}
+func setPrimaryLibrary(s *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		e := s.SetPrimaryLibrary(r.Context(), actor(r), chi.URLParam(r, "libraryID"))
+		writeNoContent(w, e)
 	}
 }
 func removeMember(s *catalog.Store) http.HandlerFunc {

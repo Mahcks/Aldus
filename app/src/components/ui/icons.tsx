@@ -58,6 +58,8 @@ const names = {
   warning: 'alert-outline',
   error: 'alert-circle-outline',
   close: 'close',
+  starOutline: 'star-outline',
+  starFilled: 'star',
   shelfLayout: 'view-day-outline',
   gridLayout: 'view-grid-outline',
   genres: 'tag-multiple-outline',

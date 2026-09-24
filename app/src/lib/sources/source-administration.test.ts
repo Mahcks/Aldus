@@ -17,6 +17,9 @@ const library = (role: string): Library => ({
   can_request_acquisitions: role === 'owner' || role === 'editor',
   can_bypass_acquisition_approval: role === 'owner' || role === 'editor',
   can_advanced_acquisition_request: role === 'owner' || role === 'editor',
+  primary: false,
+  work_count: 0,
+  member_count: 0,
   created_at: '',
   updated_at: '',
 });

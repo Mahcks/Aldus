@@ -11,6 +11,9 @@ type Library struct {
 	CanRequestAcquisitions        bool      `json:"can_request_acquisitions"`
 	CanBypassAcquisitionApproval  bool      `json:"can_bypass_acquisition_approval"`
 	CanAdvancedAcquisitionRequest bool      `json:"can_advanced_acquisition_request"`
+	Primary                       bool      `json:"primary"`
+	WorkCount                     int       `json:"work_count"`
+	MemberCount                   int       `json:"member_count"`
 	CreatedAt                     time.Time `json:"created_at"`
 	UpdatedAt                     time.Time `json:"updated_at"`
 }

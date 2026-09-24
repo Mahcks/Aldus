@@ -2,11 +2,21 @@ import type { Library } from '@/generated/api';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import Animated from 'react-native-reanimated';
-import { LibraryCard } from '@/components/catalog/bookshelf';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { AppIcon } from '@/components/ui/icons';
 import { listItemEnter } from '@/components/ui/motion';
-import { Text, View } from '@/components/ui/tw';
-import { Button, Dialog, Loading, Notice, SectionHeader, TextField } from '@/components/ui';
+import { resolvePressStateClass } from '@/components/ui/Button';
+import { Pressable, Text, View } from '@/components/ui/tw';
+import {
+  Button,
+  Dialog,
+  IconButton,
+  Loading,
+  ManagementRow,
+  Notice,
+  SectionHeader,
+  TextField,
+} from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
 import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
@@ -65,7 +75,94 @@ function FirstLibraryHero(props: CreateLibraryFormProps) {
   );
 }
 
+/**
+ * One row per library: identity and access at a glance, book/member counts,
+ * a direct settings shortcut for managers (skips the book catalog most taps
+ * here are headed for), and — only when there's more than one library — a
+ * star to say which one the app should open to by default.
+ */
+function LibraryRow({
+  item,
+  canSwitchPrimary,
+  canManage,
+  settingPrimary,
+  onOpen,
+  onManage,
+  onSetPrimary,
+}: {
+  item: Library;
+  canSwitchPrimary: boolean;
+  canManage: boolean;
+  settingPrimary: boolean;
+  onOpen: () => void;
+  onManage: () => void;
+  onSetPrimary: () => void;
+}) {
+  const colors = useThemeColors();
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+  const workLabel = `${item.work_count} ${item.work_count === 1 ? 'book' : 'books'}`;
+  const memberLabel = `${item.member_count} ${item.member_count === 1 ? 'member' : 'members'}`;
+
+  return (
+    <View className="flex-row items-center gap-3 border-b border-line-subtle py-3.5">
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${item.name}, ${workLabel}, ${memberLabel}`}
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        onPress={onOpen}
+        className={`min-h-11 min-w-0 flex-1 flex-row items-center gap-3 rounded-control ${stateClass}`}
+      >
+        <View className="h-11 w-11 flex-none items-center justify-center rounded-full bg-accent-soft">
+          <AppIcon name="libraries" size={18} color={colors.accent} />
+        </View>
+        <View className="min-w-0 flex-1 gap-1">
+          <View className="flex-row flex-wrap items-center gap-1.5">
+            <Text numberOfLines={1} className="font-sans-semibold text-base text-ink">
+              {item.name}
+            </Text>
+            {item.primary ? <AppIcon name="starFilled" size={14} color={colors.accent} /> : null}
+          </View>
+          <View className="flex-row flex-wrap items-center gap-1.5">
+            <Text className="text-xs font-sans-semibold text-subtle">
+              {item.role || 'Administrator access'}
+            </Text>
+            {item.exclusive ? (
+              <Text className="text-xs text-subtle">· Restricted access</Text>
+            ) : null}
+          </View>
+          <Text className="text-xs text-muted">
+            {workLabel} · {memberLabel}
+          </Text>
+        </View>
+      </Pressable>
+      {canSwitchPrimary ? (
+        <IconButton
+          icon={item.primary ? 'starFilled' : 'starOutline'}
+          label={
+            item.primary
+              ? `${item.name} is your primary library`
+              : `Make ${item.name} your primary library`
+          }
+          kind="quiet"
+          disabled={settingPrimary}
+          onPress={onSetPrimary}
+        />
+      ) : null}
+      {canManage ? (
+        <IconButton icon="settings" label={`Manage ${item.name}`} kind="quiet" onPress={onManage} />
+      ) : null}
+      <AppIcon name="chevron" size={16} color={colors.subtle} />
+    </View>
+  );
+}
+
 export default function Libraries() {
+  const auth = useAuth();
   const [items, setItems] = useState<Library[]>([]);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -74,6 +171,8 @@ export default function Libraries() {
   const [error, setError] = useState('');
   const [createError, setCreateError] = useState('');
   const [offline, setOffline] = useState(false);
+  const [settingPrimaryID, setSettingPrimaryID] = useState('');
+  const [manageTarget, setManageTarget] = useState<Library | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -106,6 +205,37 @@ export default function Libraries() {
     router.push(`/library/${library.id}`);
   }
 
+  function manageLibrary(library: Library) {
+    setManageTarget(library);
+  }
+
+  function openManagePanel(panel: 'work' | 'members' | 'policy' | 'settings') {
+    const target = manageTarget;
+    setManageTarget(null);
+    if (!target) return;
+    router.push(`/library/${target.id}?open=${panel}`);
+  }
+
+  function openManageSources() {
+    const target = manageTarget;
+    setManageTarget(null);
+    if (!target) return;
+    router.push(`/sources?libraryId=${target.id}`);
+  }
+
+  async function setPrimary(library: Library) {
+    setSettingPrimaryID(library.id);
+    setError('');
+    try {
+      await api.setPrimaryLibrary(library.id);
+      setItems((current) => current.map((item) => ({ ...item, primary: item.id === library.id })));
+    } catch (value) {
+      setError(errorMessage(value));
+    } finally {
+      setSettingPrimaryID('');
+    }
+  }
+
   async function handleCreate() {
     if (busy || !name.trim()) return;
     setBusy(true);
@@ -121,6 +251,8 @@ export default function Libraries() {
       setBusy(false);
     }
   }
+
+  const primaryLibrary = items.find((item) => item.primary);
 
   return (
     <Page
@@ -149,12 +281,26 @@ export default function Libraries() {
           error={createError}
         />
       ) : (
-        <View className="gap-3">
+        <View className="max-w-[720px] gap-1">
           <SectionHeader title="Your libraries" />
-          <View>
+          {items.length > 1 && primaryLibrary ? (
+            <Text className="text-sm text-muted">
+              {primaryLibrary.name} opens first across the app. Star another library below to make
+              it primary instead.
+            </Text>
+          ) : null}
+          <View className="mt-2">
             {items.map((item, index) => (
               <Animated.View key={item.id} entering={listItemEnter(index)}>
-                <LibraryCard name={item.name} role={item.role} onPress={() => openLibrary(item)} />
+                <LibraryRow
+                  item={item}
+                  canSwitchPrimary={items.length > 1}
+                  canManage={Boolean(auth.user?.admin || item.role === 'owner')}
+                  settingPrimary={settingPrimaryID === item.id}
+                  onOpen={() => openLibrary(item)}
+                  onManage={() => manageLibrary(item)}
+                  onSetPrimary={() => void setPrimary(item)}
+                />
               </Animated.View>
             ))}
           </View>
@@ -184,6 +330,28 @@ export default function Libraries() {
             value={name}
             onChangeText={setName}
             onSubmitEditing={() => void handleCreate()}
+          />
+        </View>
+      </Dialog>
+      <Dialog
+        sheet
+        visible={Boolean(manageTarget)}
+        title={manageTarget ? `Manage ${manageTarget.name}` : 'Manage library'}
+        onClose={() => setManageTarget(null)}
+      >
+        <View>
+          <ManagementRow icon="add" label="Add work" onPress={() => openManagePanel('work')} />
+          <ManagementRow icon="users" label="Members" onPress={() => openManagePanel('members')} />
+          <ManagementRow icon="folder" label="Sources" onPress={openManageSources} />
+          <ManagementRow
+            icon="acquire"
+            label="Acquisition policy"
+            onPress={() => openManagePanel('policy')}
+          />
+          <ManagementRow
+            icon="settings"
+            label="Library settings"
+            onPress={() => openManagePanel('settings')}
           />
         </View>
       </Dialog>

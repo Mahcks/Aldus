@@ -276,6 +276,7 @@ func TestRouteContract(t *testing.T) {
 		"PUT /me/collections/{collectionID}/works/order", "PUT /me/collections/{collectionID}/sharing",
 		"GET /collections/shared", "GET /collections/shared/{collectionID}",
 	)
+	want = append(want, "PUT /libraries/{libraryID}/primary")
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {

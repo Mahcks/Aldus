@@ -39,6 +39,9 @@ type Library struct {
 	CanRequest         bool      `json:"can_request_acquisitions"`
 	CanBypassApproval  bool      `json:"can_bypass_acquisition_approval"`
 	CanAdvancedRequest bool      `json:"can_advanced_acquisition_request"`
+	Primary            bool      `json:"primary"`
+	WorkCount          int       `json:"work_count"`
+	MemberCount        int       `json:"member_count"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
@@ -191,6 +194,10 @@ func (s *Store) CreateLibrary(ctx context.Context, actor auth.User, name string)
 	); err != nil {
 		return Library{}, fmt.Errorf("create library owner: %w", err)
 	}
+	becamePrimary, err := setPrimaryIfUnsetTx(ctx, tx, actor.ID, id)
+	if err != nil {
+		return Library{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Library{}, fmt.Errorf("commit library creation: %w", err)
 	}
@@ -202,45 +209,125 @@ func (s *Store) CreateLibrary(ctx context.Context, actor auth.User, name string)
 		CanRequest:         true,
 		CanBypassApproval:  true,
 		CanAdvancedRequest: true,
+		Primary:            becamePrimary,
+		MemberCount:        1,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}, nil
 }
 
+const librarySelect = `
+	SELECT
+		l.id,
+		l.name,
+		COALESCE(m.role,''),
+		COALESCE(m.exclusive,0),
+		(COALESCE(m.exclusive,0)=1 OR NOT EXISTS(
+			SELECT 1 FROM library_members exclusive_override
+			WHERE exclusive_override.user_id=? AND exclusive_override.exclusive=1
+		)),
+		COALESCE(m.can_request_acquisitions,0),
+		COALESCE(m.can_bypass_acquisition_approval,0),
+		COALESCE(m.can_advanced_acquisition_request,0),
+		COALESCE(l.id = (SELECT u.primary_library_id FROM users u WHERE u.id=?),0),
+		(SELECT COUNT(*) FROM works w WHERE w.library_id=l.id),
+		(SELECT COUNT(*) FROM library_members lm WHERE lm.library_id=l.id),
+		l.created_at,
+		l.updated_at
+	FROM libraries l
+	LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=?`
+
+// rowScanner is satisfied by both *sql.Row and *sql.Rows, letting scanLibrary
+// serve Library's single-row and multi-row queries with one scan order.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanLibrary(row rowScanner) (Library, error) {
+	var v Library
+	var c, u string
+	err := row.Scan(&v.ID, &v.Name, &v.Role, &v.Exclusive, &v.Effective, &v.CanRequest, &v.CanBypassApproval, &v.CanAdvancedRequest, &v.Primary, &v.WorkCount, &v.MemberCount, &c, &u)
+	if err != nil {
+		return Library{}, err
+	}
+	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
+	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
+	return v, nil
+}
+
 func (s *Store) Libraries(ctx context.Context, actor auth.User, limit, offset int) ([]Library, error) {
 	limit, offset = page(limit, offset)
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.exclusive,0),(COALESCE(m.exclusive,0)=1 OR NOT EXISTS(SELECT 1 FROM library_members exclusive_override WHERE exclusive_override.user_id=? AND exclusive_override.exclusive=1)),COALESCE(m.can_request_acquisitions,0),COALESCE(m.can_bypass_acquisition_approval,0),COALESCE(m.can_advanced_acquisition_request,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE ? OR m.user_id IS NOT NULL ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.Admin, limit, offset)
+	rows, err := s.db.QueryContext(ctx, librarySelect+`
+		WHERE ? OR m.user_id IS NOT NULL
+		ORDER BY l.created_at,l.id LIMIT ? OFFSET ?`,
+		actor.ID, actor.ID, actor.ID, actor.Admin, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list libraries: %w", err)
 	}
 	defer rows.Close()
 	var result []Library
 	for rows.Next() {
-		var v Library
-		var c, u string
-		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &v.Exclusive, &v.Effective, &v.CanRequest, &v.CanBypassApproval, &v.CanAdvancedRequest, &c, &u); err != nil {
+		v, err := scanLibrary(rows)
+		if err != nil {
 			return nil, err
 		}
-		v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
-		v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 		result = append(result, v)
 	}
 	return result, rows.Err()
 }
 
 func (s *Store) Library(ctx context.Context, actor auth.User, id string) (Library, error) {
-	var v Library
-	var c, u string
-	err := s.db.QueryRowContext(ctx, `SELECT l.id,l.name,COALESCE(m.role,''),COALESCE(m.exclusive,0),(COALESCE(m.exclusive,0)=1 OR NOT EXISTS(SELECT 1 FROM library_members exclusive_override WHERE exclusive_override.user_id=? AND exclusive_override.exclusive=1)),COALESCE(m.can_request_acquisitions,0),COALESCE(m.can_bypass_acquisition_approval,0),COALESCE(m.can_advanced_acquisition_request,0),l.created_at,l.updated_at FROM libraries l LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=? WHERE l.id=? AND (? OR m.user_id IS NOT NULL)`, actor.ID, actor.ID, id, actor.Admin).Scan(&v.ID, &v.Name, &v.Role, &v.Exclusive, &v.Effective, &v.CanRequest, &v.CanBypassApproval, &v.CanAdvancedRequest, &c, &u)
+	v, err := scanLibrary(s.db.QueryRowContext(ctx, librarySelect+`
+		WHERE l.id=? AND (? OR m.user_id IS NOT NULL)`,
+		actor.ID, actor.ID, actor.ID, id, actor.Admin))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Library{}, ErrNotFound
 	}
 	if err != nil {
 		return Library{}, fmt.Errorf("get library: %w", err)
 	}
-	v.CreatedAt, _ = time.Parse(time.RFC3339Nano, c)
-	v.UpdatedAt, _ = time.Parse(time.RFC3339Nano, u)
 	return v, nil
+}
+
+// setPrimaryIfUnsetTx gives a user their first library as a sensible default
+// primary, without ever overriding one they already picked.
+func setPrimaryIfUnsetTx(ctx context.Context, tx *sql.Tx, userID, libraryID string) (bool, error) {
+	result, err := tx.ExecContext(ctx, `UPDATE users SET primary_library_id=? WHERE id=? AND primary_library_id IS NULL`, libraryID, userID)
+	if err != nil {
+		return false, fmt.Errorf("default primary library: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return changed > 0, nil
+}
+
+// SetPrimaryLibrary marks id as the library the app opens to by default for
+// actor. Only a library actor can already see qualifies — this is a personal
+// preference over a visible library, not a grant of new access.
+func (s *Store) SetPrimaryLibrary(ctx context.Context, actor auth.User, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var visible bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM libraries l
+			LEFT JOIN library_members m ON m.library_id=l.id AND m.user_id=?
+			WHERE l.id=? AND (? OR m.user_id IS NOT NULL)
+		)`, actor.ID, id, actor.Admin).Scan(&visible); err != nil {
+		return fmt.Errorf("check primary library visibility: %w", err)
+	}
+	if !visible {
+		return ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET primary_library_id=? WHERE id=?`, id, actor.ID); err != nil {
+		return fmt.Errorf("set primary library: %w", err)
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userID, role string, requested ...bool) error {
@@ -291,6 +378,13 @@ func (s *Store) SetMember(ctx context.Context, actor auth.User, libraryID, userI
 	if err != nil {
 		return fmt.Errorf("save membership: %w", err)
 	}
+	if currentRole == "" {
+		// A brand new membership, not a role change — give the member a
+		// default primary library the same way creating one does.
+		if _, err := setPrimaryIfUnsetTx(ctx, tx, userID, libraryID); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -322,6 +416,11 @@ func (s *Store) RemoveMember(ctx context.Context, actor auth.User, libraryID, us
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM library_members WHERE library_id=? AND user_id=?`, libraryID, userID); err != nil {
 		return err
+	}
+	// Losing access to the library that was their default must not leave it
+	// silently pointing at a library the user can no longer open.
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET primary_library_id=NULL WHERE id=? AND primary_library_id=?`, userID, libraryID); err != nil {
+		return fmt.Errorf("clear primary library: %w", err)
 	}
 	return tx.Commit()
 }

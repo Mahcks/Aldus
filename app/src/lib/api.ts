@@ -441,6 +441,8 @@ export const api = {
     }),
   removeMember: (libraryID: string, userID: string) =>
     request<void>(`/libraries/${libraryID}/members/${userID}`, { method: 'DELETE' }),
+  setPrimaryLibrary: (libraryID: string) =>
+    request<void>(`/libraries/${libraryID}/primary`, { method: 'PUT' }),
   sources: (libraryID: string) => request<LibrarySource[]>(`/libraries/${libraryID}/sources`),
   sourceRoots: () => request<SourceRoot[]>('/source-roots'),
   sourceDirectories: (rootID: string, path = '') =>

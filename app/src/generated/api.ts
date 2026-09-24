@@ -324,6 +324,9 @@ export interface Library {
   can_request_acquisitions: boolean;
   can_bypass_acquisition_approval: boolean;
   can_advanced_acquisition_request: boolean;
+  primary: boolean;
+  work_count: number /* int */;
+  member_count: number /* int */;
   created_at: string;
   updated_at: string;
 }

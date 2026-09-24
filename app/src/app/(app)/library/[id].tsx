@@ -9,7 +9,6 @@ import type {
 } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
 import { BrowseControls, WorkGrid } from '@/components/catalog/browse';
 import { offlineBrowseWorks } from '@/lib/catalog/offline-browse';
 import {
@@ -20,7 +19,6 @@ import {
   validPolicyToken,
 } from '@/lib/acquisitions/acquisition-policy-form';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { AppIcon, type AppIconName } from '@/components/ui/icons';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
@@ -31,6 +29,7 @@ import {
   Field,
   IconButton,
   Loading,
+  ManagementRow,
   Notice,
   Radio,
   resolvePressStateClass,
@@ -39,7 +38,6 @@ import {
   Select,
   shared,
 } from '@/components/ui';
-import { useThemeColors } from '@/components/ui/theme';
 import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { goBackOr } from '@/lib/navigation';
@@ -54,51 +52,9 @@ type Role = 'owner' | 'editor' | 'reader';
 
 const roles: Role[] = ['owner', 'editor', 'reader'];
 
-/** Quiet row inside the compact mobile "Library management" sheet. */
-/**
- * A flat divider row, not `IconRow`'s bordered card — this sits inside the
- * "Library management" Dialog, and giving each row its own card border would
- * nest a card inside a card. Uses the same icon-badge treatment as IconRow
- * for visual consistency without the nesting.
- */
-function ManagementRow({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: AppIconName;
-  label: string;
-  onPress: () => void;
-}) {
-  const colors = useThemeColors();
-  const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const stateClass = resolvePressStateClass({ focused, pressed });
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-3 border-b border-line-subtle py-3 ${stateClass}`}
-    >
-      <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
-        <AppIcon name={icon} size={18} color={colors.accent} />
-      </View>
-      <Text className="flex-1 text-base font-sans-semibold text-ink">{label}</Text>
-      <AppIcon name="chevron" size={18} color={colors.subtle} />
-    </Pressable>
-  );
-}
-
 export default function LibraryScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, open: openParam } = useLocalSearchParams<{ id: string; open?: string }>();
   const auth = useAuth();
-  const compact = useWindowDimensions().width < 600;
   const [library, setLibrary] = useState<Library>();
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [members, setMembers] = useState<Membership[]>([]);
@@ -142,7 +98,12 @@ export default function LibraryScreen() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletingLibrary, setDeletingLibrary] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryCount, setLibraryCount] = useState(1);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [settingPrimaryID, setSettingPrimaryID] = useState('');
+  const [switcherError, setSwitcherError] = useState('');
+  const [openedPanelFromParam, setOpenedPanelFromParam] = useState(false);
   const browseSequence = useRef(0);
   const memberLock = useRef(false);
   const [memberBusy, setMemberBusy] = useState(false);
@@ -173,6 +134,7 @@ export default function LibraryScreen() {
       setName(nextLibrary.name);
       setMembers(nextMembers);
       setUsers(nextUsers);
+      setLibraries(nextLibraries);
       setLibraryCount(nextLibraries.length);
       if (nextLibraries.length < 2) setExclusive(false);
     } catch (value) {
@@ -197,6 +159,21 @@ export default function LibraryScreen() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (openedPanelFromParam || !openParam || !library || offline) return;
+    const allowed = Boolean(
+      auth.user?.admin || library.role === 'owner' || library.role === 'editor',
+    );
+    if (!allowed) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpenedPanelFromParam(true);
+    if (openParam === 'work' || openParam === 'members' || openParam === 'policy' || openParam === 'settings') {
+      setPanel(openParam);
+    } else {
+      setManageOpen(true);
+    }
+  }, [openedPanelFromParam, openParam, library, offline, auth.user?.admin]);
 
   useEffect(() => {
     if (
@@ -280,7 +257,12 @@ export default function LibraryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, query, sort, availability]);
 
-  if (loading) return <Loading label="Loading your library…" />;
+  if (loading)
+    return (
+      <Page title="Library">
+        <Loading layout="library-grid" label="Loading your library…" />
+      </Page>
+    );
   if (!library)
     return (
       <Page title="Library">
@@ -534,60 +516,57 @@ export default function LibraryScreen() {
     }
   }
 
+  function switchToLibrary(targetID: string) {
+    setSwitcherOpen(false);
+    if (targetID !== id) router.push(`/library/${targetID}`);
+  }
+
+  async function setAsPrimary(targetID: string) {
+    setSettingPrimaryID(targetID);
+    setSwitcherError('');
+    try {
+      await api.setPrimaryLibrary(targetID);
+      setLibraries((current) =>
+        current.map((item) => ({ ...item, primary: item.id === targetID })),
+      );
+    } catch (value) {
+      setSwitcherError(errorMessage(value));
+    } finally {
+      setSettingPrimaryID('');
+    }
+  }
+
   return (
     <Page
       title={library.name}
+      onTitlePress={libraries.length > 1 ? () => setSwitcherOpen(true) : undefined}
+      titleActionLabel={`Switch library, currently ${library.name}`}
       back={
         <IconButton label="Back" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />
       }
       actions={
-        compact ? undefined : (
-          <Row>
-            {canManage ? (
-              <Button label="Members" kind="quiet" onPress={() => setPanel('members')} />
-            ) : null}
-            {canEdit ? (
-              <Button
-                label="Sources"
-                kind="quiet"
-                onPress={() => router.push(`/sources?libraryId=${id}`)}
-              />
-            ) : null}
-            {canEdit ? (
-              <Button label="Acquisition policy" kind="quiet" onPress={() => setPanel('policy')} />
-            ) : null}
-            {canManage ? (
-              <IconButton
-                icon="settings"
-                label="Library settings"
-                kind="quiet"
-                onPress={() => setPanel('settings')}
-              />
-            ) : null}
-            {canEdit ? (
-              <Button label="Add work" icon="add" kind="primary" onPress={() => setPanel('work')} />
-            ) : null}
-          </Row>
-        )
-      }
-    >
-      {offline ? <Notice>Offline · showing downloads on this device.</Notice> : null}
-      {error ? <Notice danger>{error}</Notice> : null}
-      <View>
-        <View className="flex-row items-center justify-between gap-3">
-          <Text className="flex-1 text-sm text-muted">
-            {works.length} {works.length === 1 ? 'work' : 'works'} shown · {members.length}{' '}
-            {members.length === 1 ? 'member' : 'members'}
-          </Text>
-          {compact && hasManagementActions ? (
+        <Row>
+          {hasManagementActions ? (
             <IconButton
-              icon="more"
+              icon="settings"
               label="Library management"
               kind="quiet"
               onPress={() => setManageOpen(true)}
             />
           ) : null}
-        </View>
+          {canEdit ? (
+            <Button label="Add work" icon="add" kind="primary" onPress={() => setPanel('work')} />
+          ) : null}
+        </Row>
+      }
+    >
+      {offline ? <Notice>Offline · showing downloads on this device.</Notice> : null}
+      {error ? <Notice danger>{error}</Notice> : null}
+      <View>
+        <Text className="text-sm text-muted">
+          {works.length} {works.length === 1 ? 'work' : 'works'} shown · {members.length}{' '}
+          {members.length === 1 ? 'member' : 'members'}
+        </Text>
         <View className="mt-4 gap-3">
           <View className="w-full max-w-[760px]">
             <SearchField label="Search title or author" value={query} onChangeText={setQuery} />
@@ -1005,6 +984,51 @@ export default function LibraryScreen() {
         danger
         busy={deletingLibrary}
       />
+      <Dialog
+        title="Switch library"
+        sheet
+        visible={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+      >
+        <View className="gap-1">
+          {switcherError ? <Notice danger>{switcherError}</Notice> : null}
+          {libraries.map((item) => (
+            <View
+              key={item.id}
+              className="flex-row items-center gap-2 rounded-control border-b border-line-subtle py-1 last:border-b-0"
+            >
+              <View className="flex-1">
+                <ManagementRow
+                  icon="libraries"
+                  label={`${item.name}, ${item.role || 'Administrator access'}`}
+                  onPress={() => switchToLibrary(item.id)}
+                />
+              </View>
+              <IconButton
+                icon={item.primary ? 'starFilled' : 'starOutline'}
+                label={
+                  item.primary
+                    ? `${item.name} is your primary library`
+                    : `Make ${item.name} your primary library`
+                }
+                kind="quiet"
+                disabled={settingPrimaryID === item.id}
+                onPress={() => void setAsPrimary(item.id)}
+              />
+            </View>
+          ))}
+          <View className="border-t border-line pt-1">
+            <ManagementRow
+              icon="gridLayout"
+              label="Manage all libraries"
+              onPress={() => {
+                setSwitcherOpen(false);
+                router.push('/libraries');
+              }}
+            />
+          </View>
+        </View>
+      </Dialog>
     </Page>
   );
 }

@@ -388,7 +388,12 @@ export default function ActivityScreen() {
     }
   }
 
-  if (loading) return <LoadingState label="Loading activity…" />;
+  if (loading)
+    return (
+      <Page title="Activity">
+        <LoadingState label="Loading activity…" />
+      </Page>
+    );
 
   if (error && items.length === 0 && requests.length === 0) {
     return (

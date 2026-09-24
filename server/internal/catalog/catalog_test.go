@@ -214,6 +214,103 @@ func TestLibrariesRolesAndIsolation(t *testing.T) {
 	}
 }
 
+func TestPrimaryLibraryDefaultsSwitchesAndClears(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	reader := createUser(t, accounts, admin, "primary-reader")
+
+	// Creating a first library gives the creator a sensible default with no extra step.
+	first, err := store.CreateLibrary(ctx, admin, "First")
+	if err != nil || !first.Primary {
+		t.Fatalf("first library = %#v, %v", first, err)
+	}
+
+	// A second library never displaces a primary the admin already has.
+	second, err := store.CreateLibrary(ctx, admin, "Second")
+	if err != nil || second.Primary {
+		t.Fatalf("second library = %#v, %v", second, err)
+	}
+	if library, err := store.Library(ctx, admin, first.ID); err != nil || !library.Primary {
+		t.Fatalf("first still primary = %#v, %v", library, err)
+	}
+
+	// Explicitly switching moves it, and only it.
+	if err := store.SetPrimaryLibrary(ctx, admin, second.ID); err != nil {
+		t.Fatal(err)
+	}
+	libraries, err := store.Libraries(ctx, admin, 50, 0)
+	if err != nil || len(libraries) != 2 {
+		t.Fatalf("libraries = %#v, %v", libraries, err)
+	}
+	for _, library := range libraries {
+		if (library.ID == second.ID) != library.Primary {
+			t.Fatalf("primary flag = %#v", libraries)
+		}
+	}
+
+	// Can't adopt a library you cannot see as your primary.
+	outsider := createUser(t, accounts, admin, "primary-outsider")
+	hidden, err := store.CreateLibrary(ctx, outsider, "Hidden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetPrimaryLibrary(ctx, reader, hidden.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("set primary on invisible library = %v", err)
+	}
+
+	// A brand new member with no primary yet gets this membership as one; an
+	// existing member's role change must never reset a primary they already chose.
+	if err := store.SetMember(ctx, admin, first.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if library, err := store.Library(ctx, reader, first.ID); err != nil || !library.Primary {
+		t.Fatalf("new member default primary = %#v, %v", library, err)
+	}
+	if err := store.SetMember(ctx, admin, second.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if library, err := store.Library(ctx, reader, second.ID); err != nil || library.Primary {
+		t.Fatalf("second membership must not steal primary = %#v, %v", library, err)
+	}
+	if err := store.SetMember(ctx, admin, first.ID, reader.ID, "editor"); err != nil {
+		t.Fatal(err)
+	}
+	if library, err := store.Library(ctx, reader, first.ID); err != nil || !library.Primary {
+		t.Fatalf("role change must not reset primary = %#v, %v", library, err)
+	}
+
+	// Losing access to your primary library clears it rather than leaving a dangling pick.
+	if err := store.RemoveMember(ctx, admin, first.ID, reader.ID); err != nil {
+		t.Fatal(err)
+	}
+	if library, err := store.Library(ctx, reader, second.ID); err != nil || library.Primary {
+		t.Fatalf("primary must clear, not jump to another library = %#v, %v", library, err)
+	}
+}
+
+func TestLibraryCountsReflectMembersAndWorks(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	reader := createUser(t, accounts, admin, "counts-reader")
+	library, err := store.CreateLibrary(ctx, admin, "Counted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if library.WorkCount != 0 || library.MemberCount != 1 {
+		t.Fatalf("initial counts = %#v", library)
+	}
+	if err := store.SetMember(ctx, admin, library.ID, reader.ID, "reader"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateWork(ctx, admin, library.ID, "Counted Book", ""); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.Library(ctx, admin, library.ID)
+	if err != nil || updated.WorkCount != 1 || updated.MemberCount != 2 {
+		t.Fatalf("updated counts = %#v, %v", updated, err)
+	}
+}
+
 func TestMembershipConstraints(t *testing.T) {
 	ctx := context.Background()
 	store, accounts, admin := testCatalog(t)

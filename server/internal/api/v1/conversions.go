@@ -25,7 +25,7 @@ func sessionDTO(v auth.Session) contracts.Session {
 }
 
 func libraryDTO(v catalog.Library) contracts.Library {
-	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, Exclusive: v.Exclusive, Effective: v.Effective, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return contracts.Library{ID: v.ID, Name: v.Name, Role: v.Role, Exclusive: v.Exclusive, Effective: v.Effective, CanRequestAcquisitions: v.CanRequest, CanBypassAcquisitionApproval: v.CanBypassApproval, CanAdvancedAcquisitionRequest: v.CanAdvancedRequest, Primary: v.Primary, WorkCount: v.WorkCount, MemberCount: v.MemberCount, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 
 func workDTO(v catalog.Work) contracts.Work {

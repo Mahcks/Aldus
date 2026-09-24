@@ -1,11 +1,56 @@
-import { type PropsWithChildren, type ReactNode } from 'react';
+import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Head from 'expo-router/head';
 import { router, usePathname } from 'expo-router';
 import { goBackOr, pageBackFallback } from '@/lib/navigation';
 import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
-import { IconButton } from '@/components/ui/Button';
+import { IconButton, resolvePressStateClass } from '@/components/ui/Button';
+import { AppIcon } from '@/components/ui/icons';
+import { useThemeColors } from '@/components/ui/theme';
+
+/**
+ * A page title that's also a control — used only where the title itself
+ * names a switchable context (e.g. "which library am I in"), so switching
+ * is discoverable exactly where people already read the current one.
+ */
+function PressableTitle({
+  title,
+  actionLabel,
+  onPress,
+  className,
+}: {
+  title: string;
+  actionLabel: string;
+  onPress: () => void;
+  className: string;
+}) {
+  const colors = useThemeColors();
+  const [focused, setFocused] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const stateClass = resolvePressStateClass({ focused, pressed });
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={actionLabel}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      onPress={onPress}
+      className={`min-h-11 flex-shrink flex-row items-center gap-1.5 rounded-control ${stateClass}`}
+    >
+      <Text
+        accessibilityRole="header"
+        numberOfLines={1}
+        className={`min-w-0 shrink text-ink ${className}`}
+      >
+        {title}
+      </Text>
+      <AppIcon name="chevronDown" size={18} color={colors.subtle} />
+    </Pressable>
+  );
+}
 
 /**
  * App-level page header: title, optional back control, and at most one
@@ -18,6 +63,8 @@ export function PageHeader({
   back,
   compact,
   editorial = false,
+  onTitlePress,
+  titleActionLabel,
 }: {
   title: string;
   actions?: ReactNode;
@@ -25,6 +72,10 @@ export function PageHeader({
   compact: boolean;
   /** Screen titles use sans by default; editorial is reserved for a book title. */
   editorial?: boolean;
+  /** Makes the title itself a control (a context switcher) instead of plain text. */
+  onTitlePress?: () => void;
+  /** Accessible name for the title control; required whenever onTitlePress is set. */
+  titleActionLabel?: string;
 }) {
   const paddingClass = compact ? 'px-4' : 'px-6';
   const layoutClass = compact ? 'items-stretch' : 'items-center';
@@ -38,12 +89,21 @@ export function PageHeader({
     >
       <View className="min-w-0 max-w-full flex-row items-center gap-2.5">
         {back}
-        <Text
-          accessibilityRole="header"
-          className={`flex-shrink text-ink ${titleFontClass} ${titleSizeClass}`}
-        >
-          {title}
-        </Text>
+        {onTitlePress ? (
+          <PressableTitle
+            title={title}
+            actionLabel={titleActionLabel || title}
+            onPress={onTitlePress}
+            className={`${titleFontClass} ${titleSizeClass}`}
+          />
+        ) : (
+          <Text
+            accessibilityRole="header"
+            className={`flex-shrink text-ink ${titleFontClass} ${titleSizeClass}`}
+          >
+            {title}
+          </Text>
+        )}
       </View>
       {actions ? (
         <View className={`flex-row flex-wrap items-center gap-2 ${actionsWidthClass}`}>
@@ -63,6 +123,8 @@ export function Page({
   hideHeader = false,
   scrollable = true,
   editorial = false,
+  onTitlePress,
+  titleActionLabel,
 }: PropsWithChildren<{
   title: string;
   /** Virtualized screens provide their own scrolling surface. */
@@ -75,6 +137,10 @@ export function Page({
   hideHeader?: boolean;
   /** See `PageHeader`'s `editorial` prop — set false for administration screens. */
   editorial?: boolean;
+  /** Makes the title itself a control (a context switcher), on both the mobile bar and desktop header. */
+  onTitlePress?: () => void;
+  /** Accessible name for the title control; required whenever onTitlePress is set. */
+  titleActionLabel?: string;
 }>) {
   const width = useWindowDimensions().width;
   const compact = width < 600;
@@ -110,13 +176,24 @@ export function Page({
                 </Pressable>
               )}
             </View>
-            <Text
-              accessibilityRole="header"
-              numberOfLines={1}
-              className="min-w-0 flex-1 text-center text-base font-sans-semibold text-ink"
-            >
-              {title}
-            </Text>
+            <View className="min-w-0 flex-1 items-center">
+              {onTitlePress ? (
+                <PressableTitle
+                  title={title}
+                  actionLabel={titleActionLabel || title}
+                  onPress={onTitlePress}
+                  className="text-base font-sans-semibold"
+                />
+              ) : (
+                <Text
+                  accessibilityRole="header"
+                  numberOfLines={1}
+                  className="text-center text-base font-sans-semibold text-ink"
+                >
+                  {title}
+                </Text>
+              )}
+            </View>
             <View className="w-[72px] items-end">
               {mobileActions || (
                 <IconButton
@@ -135,6 +212,8 @@ export function Page({
             back={back}
             compact={compact}
             editorial={editorial}
+            onTitlePress={onTitlePress}
+            titleActionLabel={titleActionLabel}
           />
         )}
         {scrollable ? (
