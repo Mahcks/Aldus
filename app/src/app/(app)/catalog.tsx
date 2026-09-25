@@ -127,7 +127,7 @@ function CatalogContent() {
         </View>
       )}
       {loading ? (
-        <LoadingState label="Loading your catalog…" />
+        <LoadingState layout="title-list" label="Loading your catalog…" />
       ) : error ? (
         <ErrorState
           title="Couldn't load the catalog"

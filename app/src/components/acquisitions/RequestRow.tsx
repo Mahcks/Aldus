@@ -3,9 +3,11 @@ import { acquisitionDate } from '@/lib/acquisitions/acquisition';
 import { BookCover } from '@/components/catalog/bookshelf';
 import { titleRequestDetail, titleRequestPresentation } from '@/lib/acquisitions/title-search';
 import { Button, StatusBadge } from '@/components/ui';
-import { Text, View } from '@/components/ui/tw';
+import { fadeOut, layoutShift, listItemEnter } from '@/components/ui/motion';
+import { AnimatedView, Text, View } from '@/components/ui/tw';
 
 export function RequestRow({
+  index = 0,
   request,
   requester,
   library,
@@ -13,6 +15,7 @@ export function RequestRow({
   onApprove,
   onDeny,
 }: {
+  index?: number;
   request: TitleRequest;
   requester: string;
   library?: string;
@@ -21,7 +24,13 @@ export function RequestRow({
   onDeny: (format: string) => void;
 }) {
   return (
-    <View role="listitem" className="gap-5 border-b border-line-subtle py-6 sm:flex-row sm:gap-8">
+    <AnimatedView
+      role="listitem"
+      className="gap-5 border-b border-line-subtle py-6 sm:flex-row sm:gap-8"
+      entering={listItemEnter(index)}
+      exiting={fadeOut}
+      layout={layoutShift}
+    >
       <View className="min-w-0 flex-row items-start gap-4 sm:flex-1">
         <BookCover
           size="mini"
@@ -73,6 +82,6 @@ export function RequestRow({
           );
         })}
       </View>
-    </View>
+    </AnimatedView>
   );
 }

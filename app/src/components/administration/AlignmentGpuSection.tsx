@@ -1,6 +1,7 @@
 import { DiagnosticMeta } from './SystemDiagnostics';
 import { Button, Notice, Section, StatusBadge, type StatusTone } from '@/components/ui';
-import { Text, View } from '@/components/ui/tw';
+import { fadeIn, fadeOut, layoutShift, reveal, revealExit } from '@/components/ui/motion';
+import { AnimatedView, Text, View } from '@/components/ui/tw';
 import type {
   AlignmentGpuStatus,
   GpuTestState,
@@ -55,13 +56,18 @@ function StatusRow({
   statusLabel: string;
 }) {
   return (
-    <View className="min-h-14 flex-row flex-wrap items-center justify-between gap-3 border-b border-line-subtle py-3">
+    <AnimatedView
+      layout={layoutShift}
+      className="min-h-14 flex-row flex-wrap items-center justify-between gap-3 border-b border-line-subtle py-3"
+    >
       <View className="min-w-0 flex-1 gap-1">
         <Text className="font-sans-semibold text-ink">{label}</Text>
         {detail ? <Text className="text-sm text-muted">{detail}</Text> : null}
       </View>
-      <StatusBadge tone={tone} label={statusLabel} />
-    </View>
+      <AnimatedView key={statusLabel} entering={fadeIn} exiting={fadeOut}>
+        <StatusBadge tone={tone} label={statusLabel} />
+      </AnimatedView>
+    </AnimatedView>
   );
 }
 
@@ -92,7 +98,11 @@ export function AlignmentGpuSection({
         />
       }
     >
-      {error ? <Notice danger>{error}</Notice> : null}
+      {error ? (
+        <AnimatedView entering={reveal} exiting={revealExit}>
+          <Notice danger>{error}</Notice>
+        </AnimatedView>
+      ) : null}
       <Text className="max-w-[70ch] text-sm leading-6 text-muted">
         {usesCpu
           ? 'Alignment uses your CPU to match ebook text with audiobook audio. No GPU is required.'
@@ -118,9 +128,14 @@ export function AlignmentGpuSection({
           />
         ) : null}
         {!usesCpu && status.gpuTest.state === 'failed' && status.gpuTest.error ? (
-          <View className="pt-3">
+          <AnimatedView
+            entering={reveal}
+            exiting={revealExit}
+            layout={layoutShift}
+            className="pt-3"
+          >
             <Notice danger>{status.gpuTest.error}</Notice>
-          </View>
+          </AnimatedView>
         ) : null}
 
         <StatusRow
@@ -129,13 +144,18 @@ export function AlignmentGpuSection({
           statusLabel={checking ? 'Checking…' : alignment.label}
         />
         {status.alignment.readiness === 'not_ready' && status.alignment.issues.length > 0 ? (
-          <View className="gap-2 pt-3">
+          <AnimatedView
+            entering={reveal}
+            exiting={revealExit}
+            layout={layoutShift}
+            className="gap-2 pt-3"
+          >
             {status.alignment.issues.map((issue) => (
               <Notice key={issue} tone="warning">
                 {issue}
               </Notice>
             ))}
-          </View>
+          </AnimatedView>
         ) : null}
       </View>
 

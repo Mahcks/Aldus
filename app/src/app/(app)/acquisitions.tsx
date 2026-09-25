@@ -32,7 +32,8 @@ import {
   StatusBadge,
 } from '@/components/ui';
 import { Page } from '@/components/shell/Page';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { fadeIn } from '@/components/ui/motion';
+import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import { api, errorMessage } from '@/lib/api';
 
 export default function AcquisitionsAdministration() {
@@ -328,7 +329,7 @@ export default function AcquisitionsAdministration() {
   if (loading)
     return (
       <Page title="Acquisitions" editorial={false}>
-        <LoadingState layout="form" label="Loading acquisition settings…" />
+        <LoadingState layout="tabbed-form" label="Loading acquisition settings…" />
       </Page>
     );
 
@@ -357,452 +358,461 @@ export default function AcquisitionsAdministration() {
         ))}
       </View>
 
-      {tab === 'requests' ? (
-        <Section
-          title="Book requests"
-          action={
-            <View className="w-full sm:w-56">
-              <RequestStatusFilter
-                label="Request status"
-                value={requestFilter}
-                onChange={(value) => setRequestFilter(value as typeof requestFilter)}
-                options={[
-                  { value: 'all', label: 'All requests' },
-                  { value: 'pending_approval', label: 'Awaiting approval' },
-                  { value: 'active', label: 'Active requests' },
-                  { value: 'ready', label: 'Ready in library' },
-                  { value: 'history', label: 'Past attempts' },
-                ]}
-              />
-            </View>
-          }
-        >
-          <Text className="text-sm leading-5 text-muted">
-            Across your libraries, newest requests first.
-          </Text>
-          {approvalError || requestPages.error ? (
-            <Notice tone="danger">{approvalError || requestPages.error}</Notice>
-          ) : null}
-          {requestPages.error ? (
-            <Button
-              label="Retry requests"
-              kind="secondary"
-              onPress={() => void reloadApprovals()}
-            />
-          ) : null}
-          {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
-          {approvalLoading && shownRequests.length === 0 ? (
-            <LoadingState label="Loading requests…" />
-          ) : shownRequests.length === 0 ? (
-            !requestPages.error ? (
-              <EmptyState icon="acquire" title={requestEmptyState?.title}>
-                {requestEmptyState?.detail}
-              </EmptyState>
-            ) : null
-          ) : (
-            <View accessibilityRole="list">
-              {shownRequests.map((request) => (
-                <RequestRow
-                  key={request.id}
-                  request={request}
-                  requester={requesterName(request.requested_by)}
-                  library={libraries.find((library) => library.id === request.library_id)?.name}
-                  busy={approvalBusy}
-                  onApprove={(format) => void approve(request, format)}
-                  onDeny={(format) => setDenyTarget({ request, format })}
-                />
-              ))}
-            </View>
-          )}
-          {requestPages.hasMore ? (
-            <Button
-              label="Show more requests"
-              kind="secondary"
-              loading={requestPages.loading}
-              onPress={() => void requestPages.loadMore()}
-            />
-          ) : null}
-        </Section>
-      ) : null}
-
-      {tab === 'settings' ? (
-        <View className="w-full max-w-[1080px]">
-          <Text className="mb-6 max-w-[680px] text-base leading-7 text-muted">
-            Connect a search provider and a download client. Aldus finds releases, waits for
-            downloads to finish, then imports the books into your library.
-          </Text>
-          <ConnectionSection
-            title="Find releases"
-            description="Prowlarr searches your connected indexers. Choose a direct feed only if you already have its Torznab or Newznab address."
-          >
-            <Select
-              label="Search provider"
-              value={indexerKind}
-              options={[
-                { value: 'prowlarr', label: 'Prowlarr' },
-                { value: 'torznab', label: 'Direct Torznab feed (advanced)' },
-                { value: 'newznab', label: 'Direct Newznab feed (Usenet)' },
-              ]}
-              onChange={(value) => setIndexerKind(value as 'prowlarr' | 'torznab' | 'newznab')}
-            />
-            <Field
-              label={
-                indexerKind === 'prowlarr'
-                  ? 'Prowlarr URL'
-                  : indexerKind === 'newznab'
-                    ? 'Newznab feed URL'
-                    : 'Torznab feed URL'
-              }
-              value={indexerURL}
-              onChangeText={setIndexerURL}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              placeholder={
-                indexerKind === 'prowlarr' ? 'http://prowlarr:9696' : 'https://indexer.example/api'
-              }
-              help={
-                indexerKind === 'prowlarr'
-                  ? 'Aldus discovers and searches all enabled Prowlarr indexers.'
-                  : indexerKind === 'newznab'
-                    ? 'Use the API feed address from your Usenet indexer.'
-                    : 'Use the Torznab API feed address from your torrent indexer.'
-              }
-            />
-            <Field
-              label="Indexer API key"
-              value={indexerAPIKey}
-              onChangeText={setIndexerAPIKey}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              placeholder={settings?.has_indexer_api_key ? 'Saved, leave blank to keep it' : ''}
-            />
-          </ConnectionSection>
-          <ConnectionSection
-            title="Download files"
-            description="Use qBittorrent for torrents, SABnzbd for Usenet, or both. You only need to configure the services you use."
-          >
-            <ConnectionEditor
-              name="qBittorrent"
-              description="Torrents · keeps your original files for seeding"
-              configured={Boolean(settings?.qbittorrent_url)}
-            >
-              <Field
-                label="qBittorrent URL"
-                value={qBitTorrentURL}
-                onChangeText={setQBitTorrentURL}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                placeholder="http://qbittorrent:8080"
-              />
-              <View className="gap-4 sm:flex-row">
-                <View className="sm:flex-1">
-                  <Field
-                    label="qBittorrent username"
-                    value={qBitTorrentUsername}
-                    onChangeText={setQBitTorrentUsername}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
-                <View className="sm:flex-1">
-                  <Field
-                    label="qBittorrent password"
-                    value={qBitTorrentPassword}
-                    onChangeText={setQBitTorrentPassword}
-                    secureTextEntry
-                    placeholder={
-                      settings?.has_qbittorrent_password ? 'Saved, leave blank to keep it' : ''
-                    }
-                  />
-                </View>
-              </View>
-              <Field
-                label="qBittorrent category"
-                value={qBitTorrentCategory}
-                onChangeText={setQBitTorrentCategory}
-                autoCapitalize="none"
-                autoCorrect={false}
-                help="Downloads are grouped under this category."
-              />
-              <Field
-                label="qBittorrent download root"
-                value={qBitTorrentDownloadRoot}
-                onChangeText={setQBitTorrentDownloadRoot}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="/downloads"
-                help="Enter the path qBittorrent reports for completed files. This is not Aldus's /downloads mount unless qBittorrent also reports /downloads."
-              />
-            </ConnectionEditor>
-            <View className="border-t border-line-subtle" />
-            <ConnectionEditor
-              name="SABnzbd"
-              description="Usenet · repairs and unpacks before importing"
-              configured={Boolean(settings?.sabnzbd_url)}
-            >
-              <Field
-                label="SABnzbd URL"
-                value={sabURL}
-                onChangeText={setSabURL}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                placeholder="http://sabnzbd:8080"
-              />
-              <Field
-                label="SABnzbd API key"
-                value={sabKey}
-                onChangeText={setSabKey}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={settings?.has_sabnzbd_api_key ? 'Saved, leave blank to keep it' : ''}
-                help="Use the full API key from SABnzbd Settings → General, not the NZB-only key."
-              />
-              <Field
-                label="SABnzbd category"
-                value={sabCategory}
-                onChangeText={setSabCategory}
-                autoCapitalize="none"
-                autoCorrect={false}
-                help="Use an existing category, or leave blank for SABnzbd's default."
-              />
-              <Field
-                label="SABnzbd completed download root"
-                value={sabRoot}
-                onChangeText={setSabRoot}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="/downloads"
-                help="The completed folder reported by SABnzbd. Mount the same files into Aldus's download folder. Aldus waits for repair and unpacking to finish."
-              />
-            </ConnectionEditor>
-          </ConnectionSection>
-          <ConnectionSection
-            title="Check your setup"
-            description="Save your changes to test the provider and clients together. A connection can work even when Aldus cannot yet see completed files."
-          >
-            <ConnectionEditor
-              help
-              name="Connection help"
-              description="Addresses, Docker networking, and shared folders"
-              configured={false}
-            >
-              <Text className="text-sm leading-6 text-muted">
-                Use an address reachable from the Aldus server. In Docker, localhost points to the
-                Aldus container itself. Use a service name on the same Docker network, or your
-                server’s LAN address and published port.
-              </Text>
-              <Text className="text-sm leading-6 text-muted">
-                Both apps must see the same completed files. For example, mount the host’s completed
-                folder at /downloads in both containers, then enter /downloads as the client
-                download root. If the client reports a different path, enter that path instead.
-              </Text>
-              <Text className="text-sm leading-6 text-muted">
-                If the test cannot verify file access yet, finish a download and test again. Aldus
-                makes its own library copy and keeps the downloader’s original files.
-              </Text>
-            </ConnectionEditor>
-            <View className="items-start">
-              <View className="gap-3 sm:flex-row">
-                <Button
-                  label="Save connections"
-                  icon="check"
-                  kind="primary"
-                  loading={savingSettings}
-                  disabled={
-                    testingSettings ||
-                    !indexerURL.trim() ||
-                    (!qBitTorrentURL.trim() && !sabURL.trim())
-                  }
-                  onPress={() => void saveSettings()}
-                />
-                <Button
-                  label="Test connections"
-                  icon="synced"
-                  kind="secondary"
-                  loading={testingSettings}
-                  disabled={!settings || savingSettings || connectionsDirty}
-                  onPress={() => void testSettings()}
-                />
-              </View>
-              {!indexerURL.trim() || (!qBitTorrentURL.trim() && !sabURL.trim()) ? (
-                <Text className="mt-2 text-sm text-warning">
-                  Add a search provider and at least one download client before saving.
-                </Text>
-              ) : null}
-            </View>
-            <Text className="text-sm text-muted">
-              {connectionsDirty
-                ? 'Save your connection changes before testing. Trending settings are saved separately.'
-                : 'Test connections checks your saved settings without changing them.'}
-            </Text>
-            {settingsAction === 'connections' && error ? (
-              <Notice tone="danger">{error}</Notice>
-            ) : null}
-            {settingsAction === 'connections' && success ? (
-              <Notice tone="success">{success}</Notice>
-            ) : null}
-            {connectionStatus && !connectionsDirty ? (
-              <ConnectionDiagnostics status={connectionStatus} />
-            ) : null}
-          </ConnectionSection>
-
-          <ConnectionSection
-            title="Trending books"
-            description="Optional discovery lists. Open Library works without an API key; add an NYT key for Best Sellers."
-          >
-            <View className="max-w-[720px] gap-4">
-              <Notice>
-                Get an API key at developer.nytimes.com and enable the Books API for your
-                application.
-              </Notice>
-              <Field
-                label="NYT API key"
-                value={nytAPIKey}
-                onChangeText={setNYTAPIKey}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-                placeholder={settings?.has_nyt_api_key ? 'Saved, leave blank to keep it' : ''}
-              />
-              <View className="items-start">
-                <Button
-                  label="Save trending settings"
-                  disabled={testingSettings || !settings}
-                  icon="check"
-                  kind="primary"
-                  loading={savingSettings}
-                  onPress={() => void saveSettings(false)}
-                />
-              </View>
-              {settingsAction === 'trending' && error ? (
-                <Notice tone="danger">{error}</Notice>
-              ) : null}
-              {settingsAction === 'trending' && success ? (
-                <Notice tone="success">{success}</Notice>
-              ) : null}
-            </View>
-          </ConnectionSection>
-        </View>
-      ) : null}
-
-      {tab === 'downloads' ? (
-        <View className="min-w-0 gap-8">
+      <AnimatedView key={tab} entering={fadeIn}>
+        {tab === 'requests' ? (
           <Section
-            title="Downloads"
+            title="Book requests"
             action={
-              <View className="flex-row gap-2">
-                {visibleRequests.length > currentDownloads.length ? (
-                  <Button
-                    label={showDownloadHistory ? 'Hide history' : 'Show history'}
-                    kind="quiet"
-                    onPress={() => setShowDownloadHistory((value) => !value)}
-                  />
-                ) : null}
+              <View className="w-full sm:w-56">
+                <RequestStatusFilter
+                  label="Request status"
+                  value={requestFilter}
+                  onChange={(value) => setRequestFilter(value as typeof requestFilter)}
+                  options={[
+                    { value: 'all', label: 'All requests' },
+                    { value: 'pending_approval', label: 'Awaiting approval' },
+                    { value: 'active', label: 'Active requests' },
+                    { value: 'ready', label: 'Ready in library' },
+                    { value: 'history', label: 'Past attempts' },
+                  ]}
+                />
               </View>
             }
           >
-            <View className="gap-4">
-              {libraries.length > 1 ? (
-                <Select
-                  label="Library"
-                  value={libraryID}
-                  options={libraries.map((library) => ({ value: library.id, label: library.name }))}
-                  onChange={setLibraryID}
-                />
-              ) : libraries[0] ? (
-                <Text className="text-sm text-muted">{libraries[0].name}</Text>
-              ) : null}
-
-              {shownDownloads.length === 0 ? (
-                <EmptyState
-                  icon="acquire"
-                  title={showDownloadHistory ? 'No download history' : 'No active downloads'}
-                >
-                  New downloads will appear here when a requested release starts downloading.
+            <Text className="text-sm leading-5 text-muted">
+              Across your libraries, newest requests first.
+            </Text>
+            {approvalError || requestPages.error ? (
+              <Notice tone="danger">{approvalError || requestPages.error}</Notice>
+            ) : null}
+            {requestPages.error ? (
+              <Button
+                label="Retry requests"
+                kind="secondary"
+                onPress={() => void reloadApprovals()}
+              />
+            ) : null}
+            {approvalSuccess ? <Notice tone="success">{approvalSuccess}</Notice> : null}
+            {approvalLoading && shownRequests.length === 0 ? (
+              <LoadingState layout="notification-list" label="Loading requests…" />
+            ) : shownRequests.length === 0 ? (
+              !requestPages.error ? (
+                <EmptyState icon="acquire" title={requestEmptyState?.title}>
+                  {requestEmptyState?.detail}
                 </EmptyState>
-              ) : (
-                <View>
-                  {shownDownloads.map((request) => {
-                    const status = acquisitionFulfillment(request);
-                    if (!status) return null;
-                    return (
-                      <View
-                        key={request.id}
-                        className="min-h-[72px] gap-2 border-b border-line py-3 lg:flex-row lg:items-start lg:justify-between"
-                      >
-                        <View className="min-w-0 gap-1.5 lg:flex-1">
-                          <Text className="text-sm font-sans-bold text-ink">
-                            {request.selected_title || request.query}
-                          </Text>
-                          <Text className="text-xs text-muted">
-                            {[
-                              request.selected_source,
-                              request.selected_size ? acquisitionSize(request.selected_size) : '',
-                              acquisitionDate(request.updated_at),
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </Text>
-                          {request.download_error ? (
-                            <View className="items-start gap-1">
-                              <Text className="text-sm leading-5 text-danger">
-                                {acquisitionFailureMessage(request)}
-                              </Text>
-                              <Button
-                                label={
-                                  technicalRequestID === request.id
-                                    ? 'Hide technical details'
-                                    : 'Technical details'
-                                }
-                                kind="quiet"
-                                onPress={() =>
-                                  setTechnicalRequestID((value) =>
-                                    value === request.id ? '' : request.id,
-                                  )
-                                }
-                              />
-                              {technicalRequestID === request.id ? (
-                                <Text
-                                  selectable
-                                  className="max-w-[72ch] text-xs leading-5 text-muted"
-                                >
-                                  {request.download_error}
-                                </Text>
-                              ) : null}
-                            </View>
-                          ) : null}
-                        </View>
-                        <View className="items-start gap-2 lg:w-72">
-                          <StatusBadge tone={status.tone} label={status.label} />
-                          {request.can_cancel ? (
-                            <Text className="max-w-[48ch] text-sm text-muted">
-                              {request.download_client_kind === 'sabnzbd'
-                                ? 'Canceling stops this request and keeps downloaded files in SABnzbd.'
-                                : request.torrent_ownership === 'created'
-                                  ? 'Created by Aldus. Canceling can remove this download and its files.'
-                                  : 'Canceling this request keeps the torrent and its files in qBittorrent.'}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
+              ) : null
+            ) : (
+              <View accessibilityRole="list">
+                {shownRequests.map((request, index) => (
+                  <RequestRow
+                    key={request.id}
+                    index={index}
+                    request={request}
+                    requester={requesterName(request.requested_by)}
+                    library={libraries.find((library) => library.id === request.library_id)?.name}
+                    busy={approvalBusy}
+                    onApprove={(format) => void approve(request, format)}
+                    onDeny={(format) => setDenyTarget({ request, format })}
+                  />
+                ))}
+              </View>
+            )}
+            {requestPages.hasMore ? (
+              <Button
+                label="Show more requests"
+                kind="secondary"
+                loading={requestPages.loading}
+                onPress={() => void requestPages.loadMore()}
+              />
+            ) : null}
           </Section>
+        ) : null}
 
-          <Notice tone="info">
-            Already use Listenarr or another download manager? Point it at an enabled Aldus Source
-            folder. Aldus can scan completed files without a search-provider connection.
-          </Notice>
-        </View>
-      ) : null}
+        {tab === 'settings' ? (
+          <View className="w-full max-w-[1080px]">
+            <Text className="mb-6 max-w-[680px] text-base leading-7 text-muted">
+              Connect a search provider and a download client. Aldus finds releases, waits for
+              downloads to finish, then imports the books into your library.
+            </Text>
+            <ConnectionSection
+              title="Find releases"
+              description="Prowlarr searches your connected indexers. Choose a direct feed only if you already have its Torznab or Newznab address."
+            >
+              <Select
+                label="Search provider"
+                value={indexerKind}
+                options={[
+                  { value: 'prowlarr', label: 'Prowlarr' },
+                  { value: 'torznab', label: 'Direct Torznab feed (advanced)' },
+                  { value: 'newznab', label: 'Direct Newznab feed (Usenet)' },
+                ]}
+                onChange={(value) => setIndexerKind(value as 'prowlarr' | 'torznab' | 'newznab')}
+              />
+              <Field
+                label={
+                  indexerKind === 'prowlarr'
+                    ? 'Prowlarr URL'
+                    : indexerKind === 'newznab'
+                      ? 'Newznab feed URL'
+                      : 'Torznab feed URL'
+                }
+                value={indexerURL}
+                onChangeText={setIndexerURL}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder={
+                  indexerKind === 'prowlarr'
+                    ? 'http://prowlarr:9696'
+                    : 'https://indexer.example/api'
+                }
+                help={
+                  indexerKind === 'prowlarr'
+                    ? 'Aldus discovers and searches all enabled Prowlarr indexers.'
+                    : indexerKind === 'newznab'
+                      ? 'Use the API feed address from your Usenet indexer.'
+                      : 'Use the Torznab API feed address from your torrent indexer.'
+                }
+              />
+              <Field
+                label="Indexer API key"
+                value={indexerAPIKey}
+                onChangeText={setIndexerAPIKey}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                placeholder={settings?.has_indexer_api_key ? 'Saved, leave blank to keep it' : ''}
+              />
+            </ConnectionSection>
+            <ConnectionSection
+              title="Download files"
+              description="Use qBittorrent for torrents, SABnzbd for Usenet, or both. You only need to configure the services you use."
+            >
+              <ConnectionEditor
+                name="qBittorrent"
+                description="Torrents · keeps your original files for seeding"
+                configured={Boolean(settings?.qbittorrent_url)}
+              >
+                <Field
+                  label="qBittorrent URL"
+                  value={qBitTorrentURL}
+                  onChangeText={setQBitTorrentURL}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  placeholder="http://qbittorrent:8080"
+                />
+                <View className="gap-4 sm:flex-row">
+                  <View className="sm:flex-1">
+                    <Field
+                      label="qBittorrent username"
+                      value={qBitTorrentUsername}
+                      onChangeText={setQBitTorrentUsername}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+                  <View className="sm:flex-1">
+                    <Field
+                      label="qBittorrent password"
+                      value={qBitTorrentPassword}
+                      onChangeText={setQBitTorrentPassword}
+                      secureTextEntry
+                      placeholder={
+                        settings?.has_qbittorrent_password ? 'Saved, leave blank to keep it' : ''
+                      }
+                    />
+                  </View>
+                </View>
+                <Field
+                  label="qBittorrent category"
+                  value={qBitTorrentCategory}
+                  onChangeText={setQBitTorrentCategory}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  help="Downloads are grouped under this category."
+                />
+                <Field
+                  label="qBittorrent download root"
+                  value={qBitTorrentDownloadRoot}
+                  onChangeText={setQBitTorrentDownloadRoot}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="/downloads"
+                  help="Enter the path qBittorrent reports for completed files. This is not Aldus's /downloads mount unless qBittorrent also reports /downloads."
+                />
+              </ConnectionEditor>
+              <View className="border-t border-line-subtle" />
+              <ConnectionEditor
+                name="SABnzbd"
+                description="Usenet · repairs and unpacks before importing"
+                configured={Boolean(settings?.sabnzbd_url)}
+              >
+                <Field
+                  label="SABnzbd URL"
+                  value={sabURL}
+                  onChangeText={setSabURL}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  placeholder="http://sabnzbd:8080"
+                />
+                <Field
+                  label="SABnzbd API key"
+                  value={sabKey}
+                  onChangeText={setSabKey}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder={settings?.has_sabnzbd_api_key ? 'Saved, leave blank to keep it' : ''}
+                  help="Use the full API key from SABnzbd Settings → General, not the NZB-only key."
+                />
+                <Field
+                  label="SABnzbd category"
+                  value={sabCategory}
+                  onChangeText={setSabCategory}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  help="Use an existing category, or leave blank for SABnzbd's default."
+                />
+                <Field
+                  label="SABnzbd completed download root"
+                  value={sabRoot}
+                  onChangeText={setSabRoot}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="/downloads"
+                  help="The completed folder reported by SABnzbd. Mount the same files into Aldus's download folder. Aldus waits for repair and unpacking to finish."
+                />
+              </ConnectionEditor>
+            </ConnectionSection>
+            <ConnectionSection
+              title="Check your setup"
+              description="Save your changes to test the provider and clients together. A connection can work even when Aldus cannot yet see completed files."
+            >
+              <ConnectionEditor
+                help
+                name="Connection help"
+                description="Addresses, Docker networking, and shared folders"
+                configured={false}
+              >
+                <Text className="text-sm leading-6 text-muted">
+                  Use an address reachable from the Aldus server. In Docker, localhost points to the
+                  Aldus container itself. Use a service name on the same Docker network, or your
+                  server’s LAN address and published port.
+                </Text>
+                <Text className="text-sm leading-6 text-muted">
+                  Both apps must see the same completed files. For example, mount the host’s
+                  completed folder at /downloads in both containers, then enter /downloads as the
+                  client download root. If the client reports a different path, enter that path
+                  instead.
+                </Text>
+                <Text className="text-sm leading-6 text-muted">
+                  If the test cannot verify file access yet, finish a download and test again. Aldus
+                  makes its own library copy and keeps the downloader’s original files.
+                </Text>
+              </ConnectionEditor>
+              <View className="items-start">
+                <View className="gap-3 sm:flex-row">
+                  <Button
+                    label="Save connections"
+                    icon="check"
+                    kind="primary"
+                    loading={savingSettings}
+                    disabled={
+                      testingSettings ||
+                      !indexerURL.trim() ||
+                      (!qBitTorrentURL.trim() && !sabURL.trim())
+                    }
+                    onPress={() => void saveSettings()}
+                  />
+                  <Button
+                    label="Test connections"
+                    icon="synced"
+                    kind="secondary"
+                    loading={testingSettings}
+                    disabled={!settings || savingSettings || connectionsDirty}
+                    onPress={() => void testSettings()}
+                  />
+                </View>
+                {!indexerURL.trim() || (!qBitTorrentURL.trim() && !sabURL.trim()) ? (
+                  <Text className="mt-2 text-sm text-warning">
+                    Add a search provider and at least one download client before saving.
+                  </Text>
+                ) : null}
+              </View>
+              <Text className="text-sm text-muted">
+                {connectionsDirty
+                  ? 'Save your connection changes before testing. Trending settings are saved separately.'
+                  : 'Test connections checks your saved settings without changing them.'}
+              </Text>
+              {settingsAction === 'connections' && error ? (
+                <Notice tone="danger">{error}</Notice>
+              ) : null}
+              {settingsAction === 'connections' && success ? (
+                <Notice tone="success">{success}</Notice>
+              ) : null}
+              {connectionStatus && !connectionsDirty ? (
+                <ConnectionDiagnostics status={connectionStatus} />
+              ) : null}
+            </ConnectionSection>
+
+            <ConnectionSection
+              title="Trending books"
+              description="Optional discovery lists. Open Library works without an API key; add an NYT key for Best Sellers."
+            >
+              <View className="max-w-[720px] gap-4">
+                <Notice>
+                  Get an API key at developer.nytimes.com and enable the Books API for your
+                  application.
+                </Notice>
+                <Field
+                  label="NYT API key"
+                  value={nytAPIKey}
+                  onChangeText={setNYTAPIKey}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                  placeholder={settings?.has_nyt_api_key ? 'Saved, leave blank to keep it' : ''}
+                />
+                <View className="items-start">
+                  <Button
+                    label="Save trending settings"
+                    disabled={testingSettings || !settings}
+                    icon="check"
+                    kind="primary"
+                    loading={savingSettings}
+                    onPress={() => void saveSettings(false)}
+                  />
+                </View>
+                {settingsAction === 'trending' && error ? (
+                  <Notice tone="danger">{error}</Notice>
+                ) : null}
+                {settingsAction === 'trending' && success ? (
+                  <Notice tone="success">{success}</Notice>
+                ) : null}
+              </View>
+            </ConnectionSection>
+          </View>
+        ) : null}
+
+        {tab === 'downloads' ? (
+          <View className="min-w-0 gap-8">
+            <Section
+              title="Downloads"
+              action={
+                <View className="flex-row gap-2">
+                  {visibleRequests.length > currentDownloads.length ? (
+                    <Button
+                      label={showDownloadHistory ? 'Hide history' : 'Show history'}
+                      kind="quiet"
+                      onPress={() => setShowDownloadHistory((value) => !value)}
+                    />
+                  ) : null}
+                </View>
+              }
+            >
+              <View className="gap-4">
+                {libraries.length > 1 ? (
+                  <Select
+                    label="Library"
+                    value={libraryID}
+                    options={libraries.map((library) => ({
+                      value: library.id,
+                      label: library.name,
+                    }))}
+                    onChange={setLibraryID}
+                  />
+                ) : libraries[0] ? (
+                  <Text className="text-sm text-muted">{libraries[0].name}</Text>
+                ) : null}
+
+                {shownDownloads.length === 0 ? (
+                  <EmptyState
+                    icon="acquire"
+                    title={showDownloadHistory ? 'No download history' : 'No active downloads'}
+                  >
+                    New downloads will appear here when a requested release starts downloading.
+                  </EmptyState>
+                ) : (
+                  <View>
+                    {shownDownloads.map((request) => {
+                      const status = acquisitionFulfillment(request);
+                      if (!status) return null;
+                      return (
+                        <View
+                          key={request.id}
+                          className="min-h-[72px] gap-2 border-b border-line py-3 lg:flex-row lg:items-start lg:justify-between"
+                        >
+                          <View className="min-w-0 gap-1.5 lg:flex-1">
+                            <Text className="text-sm font-sans-bold text-ink">
+                              {request.selected_title || request.query}
+                            </Text>
+                            <Text className="text-xs text-muted">
+                              {[
+                                request.selected_source,
+                                request.selected_size ? acquisitionSize(request.selected_size) : '',
+                                acquisitionDate(request.updated_at),
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </Text>
+                            {request.download_error ? (
+                              <View className="items-start gap-1">
+                                <Text className="text-sm leading-5 text-danger">
+                                  {acquisitionFailureMessage(request)}
+                                </Text>
+                                <Button
+                                  label={
+                                    technicalRequestID === request.id
+                                      ? 'Hide technical details'
+                                      : 'Technical details'
+                                  }
+                                  kind="quiet"
+                                  onPress={() =>
+                                    setTechnicalRequestID((value) =>
+                                      value === request.id ? '' : request.id,
+                                    )
+                                  }
+                                />
+                                {technicalRequestID === request.id ? (
+                                  <Text
+                                    selectable
+                                    className="max-w-[72ch] text-xs leading-5 text-muted"
+                                  >
+                                    {request.download_error}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            ) : null}
+                          </View>
+                          <View className="items-start gap-2 lg:w-72">
+                            <StatusBadge tone={status.tone} label={status.label} />
+                            {request.can_cancel ? (
+                              <Text className="max-w-[48ch] text-sm text-muted">
+                                {request.download_client_kind === 'sabnzbd'
+                                  ? 'Canceling stops this request and keeps downloaded files in SABnzbd.'
+                                  : request.torrent_ownership === 'created'
+                                    ? 'Created by Aldus. Canceling can remove this download and its files.'
+                                    : 'Canceling this request keeps the torrent and its files in qBittorrent.'}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            </Section>
+
+            <Notice tone="info">
+              Already use Listenarr or another download manager? Point it at an enabled Aldus Source
+              folder. Aldus can scan completed files without a search-provider connection.
+            </Notice>
+          </View>
+        ) : null}
+      </AnimatedView>
       <ConfirmDialog
         visible={Boolean(denyTarget)}
         title={`Deny ${denyTarget ? formatLabel(denyTarget.format).toLowerCase() : ''} request?`}

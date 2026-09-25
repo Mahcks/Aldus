@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { AppIcon } from './icons';
 import { useThemeColors } from './theme';
-import { Text, TextInput, View, type TextInputProps } from './tw';
+import { reveal } from './motion';
+import { AnimatedText, Text, TextInput, View, type TextInputProps } from './tw';
 
 function resolveFieldBorderClass({ focused, error }: { focused: boolean; error: boolean }) {
   if (focused) return 'border border-focus outline outline-2 outline-focus';
@@ -60,12 +61,14 @@ export function Field({
         className={`min-h-11 rounded-control px-3 py-2 text-[16px] text-ink outline-none ${backgroundClass} ${borderClass}`}
       />
       {error || help ? (
-        <Text
+        <AnimatedText
+          key={error ? 'error' : 'help'}
+          entering={error ? reveal : undefined}
           accessibilityRole={error ? 'alert' : undefined}
           className={`text-xs ${error ? 'text-danger' : 'text-muted'}`}
         >
           {error || help}
-        </Text>
+        </AnimatedText>
       ) : null}
     </View>
   );

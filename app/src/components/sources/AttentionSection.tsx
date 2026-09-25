@@ -1,7 +1,8 @@
 import type { ImportProposal, LibrarySource, SourceScan } from '@/generated/api';
 import { AppIcon } from '@/components/ui/icons';
 import { Button, Section } from '@/components/ui';
-import { Text, View } from '@/components/ui/tw';
+import { fadeOut, layoutShift, listItemEnter, reveal, revealExit } from '@/components/ui/motion';
+import { AnimatedView, Text, View } from '@/components/ui/tw';
 import { useThemeColors } from '@/components/ui/theme';
 import { formatDate, sourceStatus } from '@/lib/sources/helpers';
 import { ProposalCard } from './ProposalCard';
@@ -33,35 +34,46 @@ export function AttentionSection({
   if (total === 0) return null;
 
   return (
-    <Section title={`Needs your attention · ${total}`}>
-      <View className="gap-3">
-        {problems.map(({ source, latest }) => (
-          <ProblemRow
-            key={source.id}
-            source={source}
-            latest={latest}
-            onView={() => onViewProblem(source)}
-          />
-        ))}
-        {proposals.map((proposal) => (
-          <View key={proposal.id} className="rounded-card border border-warning/25 bg-paper px-4">
-            <ProposalCard
-              proposal={proposal}
-              onReview={() => onReviewProposal(proposal)}
-              onIgnore={() => onIgnoreProposal(proposal)}
+    <AnimatedView entering={reveal} exiting={revealExit}>
+      <Section title={`Needs your attention · ${total}`}>
+        <View className="gap-3">
+          {problems.map(({ source, latest }, index) => (
+            <ProblemRow
+              key={source.id}
+              index={index}
+              source={source}
+              latest={latest}
+              onView={() => onViewProblem(source)}
             />
-          </View>
-        ))}
-      </View>
-    </Section>
+          ))}
+          {proposals.map((proposal, index) => (
+            <AnimatedView
+              key={proposal.id}
+              entering={listItemEnter(problems.length + index)}
+              exiting={fadeOut}
+              layout={layoutShift}
+              className="rounded-card border border-warning/25 bg-paper px-4"
+            >
+              <ProposalCard
+                proposal={proposal}
+                onReview={() => onReviewProposal(proposal)}
+                onIgnore={() => onIgnoreProposal(proposal)}
+              />
+            </AnimatedView>
+          ))}
+        </View>
+      </Section>
+    </AnimatedView>
   );
 }
 
 function ProblemRow({
+  index,
   source,
   latest,
   onView,
 }: {
+  index: number;
   source: LibrarySource;
   latest?: SourceScan;
   onView: () => void;
@@ -80,7 +92,12 @@ function ProblemRow({
   const date = latest?.finished_at ?? latest?.started_at ?? latest?.created_at;
 
   return (
-    <View className="flex-row items-center gap-3.5 rounded-card bg-danger-soft px-4 py-3.5">
+    <AnimatedView
+      entering={listItemEnter(index)}
+      exiting={fadeOut}
+      layout={layoutShift}
+      className="flex-row items-center gap-3.5 rounded-card bg-danger-soft px-4 py-3.5"
+    >
       <View className="h-9 w-9 flex-none items-center justify-center rounded-pill bg-paper">
         <AppIcon name="warning" size={16} color={colors.danger} />
       </View>
@@ -91,6 +108,6 @@ function ProblemRow({
         </Text>
       </View>
       <Button label="View source" kind="secondary" onPress={onView} />
-    </View>
+    </AnimatedView>
   );
 }

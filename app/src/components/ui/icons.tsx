@@ -60,6 +60,7 @@ const names = {
   check: 'check',
   warning: 'alert-outline',
   error: 'alert-circle-outline',
+  info: 'information-outline',
   close: 'close',
   starOutline: 'star-outline',
   starFilled: 'star',
@@ -120,6 +121,15 @@ const names = {
 } satisfies Record<string, MaterialName>;
 
 export type AppIconName = keyof typeof names;
+
+/** Solid variants shown for the selected tab, the way native tab bars fill the active icon. */
+const filledNames: Partial<Record<AppIconName, MaterialName>> = {
+  home: 'home-variant',
+  discover: 'compass',
+  activity: 'bell',
+  account: 'account-circle',
+  more: 'dots-horizontal-circle',
+};
 
 export const genreIconOptions: { value: AppIconName; label: string }[] = [
   { value: 'genres', label: 'Tag' },
@@ -184,17 +194,19 @@ export function AppIcon({
   name,
   size = 20,
   color,
+  filled = false,
 }: {
   name: AppIconName;
   size?: number;
   color?: string;
+  filled?: boolean;
 }) {
   const theme = useThemeColors();
   return (
     <MaterialCommunityIcons
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      name={names[name]}
+      name={(filled && filledNames[name]) || names[name]}
       size={size}
       color={color ?? theme.ink}
     />

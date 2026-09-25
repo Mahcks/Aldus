@@ -162,7 +162,8 @@ for (const width of [390, 1024, 1440]) {
       .getByTestId('audio-player-scroll')
       .getByLabel("Cover for Alice's Adventures in Wonderland", { exact: true });
     // The frame matches the artwork's own shape, so nothing is trimmed off it.
-    const image = artwork.locator('img');
+    // The previous (failed audio) image may remain as an invisible fade layer.
+    const image = artwork.locator('img[src*="alice-gutenberg-11-epub-media"]');
     await expect(image).toBeVisible();
     await expect
       .poll(async () => {

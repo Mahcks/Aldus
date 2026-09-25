@@ -25,7 +25,7 @@ export function EditionSection({
   if (epubs.length <= 1 && audio.length <= 1) return null;
 
   return (
-    <View className="gap-6 border-t border-line pt-6 sm:flex-row sm:gap-12">
+    <View className="gap-6 sm:flex-row sm:gap-12">
       {epubs.length > 1 ? (
         <EditionGroup
           label="Reading edition"

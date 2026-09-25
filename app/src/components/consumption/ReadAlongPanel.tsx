@@ -101,6 +101,15 @@ export function ReadAlongPanel({
       token: next.reset ? view.token + 1 : view.token,
       lastId: passage.current.id,
     });
+    // Keep measurements bounded to the mounted window, not the whole book.
+    const retainedKeys = new Set(
+      [...next.segments, passage.next, passage.following].flatMap((segment) =>
+        segment ? chunksFor(segment).map((_chunk, index) => `${segment.id}:${index}`) : [],
+      ),
+    );
+    setLayouts(
+      Object.fromEntries(Object.entries(layouts).filter(([key]) => retainedKeys.has(key))),
+    );
   }
 
   const currentChunks = chunksFor(passage.current);
@@ -110,10 +119,10 @@ export function ReadAlongPanel({
     (segment): segment is AlignmentSegment => Boolean(segment),
   );
 
+  const activeY = layouts[activeKey]?.y;
   useEffect(() => {
     if (detached || viewportHeight === 0) return;
-    const layout = layouts[activeKey];
-    if (!layout) return;
+    if (activeY === undefined) return;
 
     // The first placement, and any placement after a seek, snaps; following
     // the narration from one phrase to the next glides. Placements stay
@@ -125,10 +134,10 @@ export function ReadAlongPanel({
     }
     const snap = Date.now() < snapUntil.current;
     scroll.current?.scrollTo({
-      y: Math.max(0, layout.y - viewportHeight * ANCHOR),
+      y: Math.max(0, activeY - viewportHeight * ANCHOR),
       animated: !snap && !reducedMotion,
     });
-  }, [activeKey, layouts, viewportHeight, detached, view.token, reducedMotion]);
+  }, [activeKey, activeY, viewportHeight, detached, view.token, reducedMotion]);
 
   // Touch drags are reported by the scroll view; a mouse wheel on web is not.
   useEffect(() => {
@@ -177,7 +186,7 @@ export function ReadAlongPanel({
     <AnimatedView
       entering={fadeIn.delay(220)}
       exiting={fadeOut}
-      className="mt-3 min-h-[220px] w-full flex-1 border-t border-line pt-2"
+      className="min-h-[220px] w-full flex-1"
     >
       <View className="relative min-h-[160px] w-full flex-1">
         <ScrollView
@@ -187,7 +196,7 @@ export function ReadAlongPanel({
           alwaysBounceVertical={false}
           accessibilityLabel="Read along text"
           className="w-full flex-1"
-          contentContainerClassName="pr-2 pt-4"
+          contentContainerClassName="pr-2 pt-2"
           contentContainerStyle={{ paddingBottom: Math.round(viewportHeight * (1 - ANCHOR)) }}
           onLayout={(event: LayoutChangeEvent) =>
             setViewportHeight(event.nativeEvent.layout.height)
@@ -224,10 +233,21 @@ export function ReadAlongPanel({
   );
 }
 
-/** Flat stepped layers rather than a gradient: `expo-linear-gradient` is a native module a Metro reload can't add. */
+const FADE_LAYERS = 14;
+const FADE_LAYER_HEIGHT = 2;
+const fadeOpacities = Array.from({ length: FADE_LAYERS }, (_, index) => {
+  const distance = index / (FADE_LAYERS - 1);
+  return Math.pow(1 - distance, 1.5);
+});
+
+/**
+ * Many thin canvas-colored strips with eased opacity, so text dissolves into
+ * the page without a visible edge. `expo-linear-gradient` is a native module a
+ * Metro reload can't add, so the gradient is built from plain views.
+ */
 function EdgeFade({ edge }: { edge: 'top' | 'bottom' }) {
-  const layers = ['bg-canvas/95', 'bg-canvas/65', 'bg-canvas/30'];
-  const ordered = edge === 'top' ? layers : [...layers].reverse();
+  const opacities = edge === 'top' ? fadeOpacities : [...fadeOpacities].reverse();
+
   return (
     <View
       pointerEvents="none"
@@ -235,8 +255,8 @@ function EdgeFade({ edge }: { edge: 'top' | 'bottom' }) {
       importantForAccessibility="no-hide-descendants"
       className={`absolute inset-x-0 ${edge === 'top' ? 'top-0' : 'bottom-0'}`}
     >
-      {ordered.map((layer) => (
-        <View key={layer} className={`h-2.5 ${layer}`} />
+      {opacities.map((opacity, index) => (
+        <View key={index} className="bg-canvas" style={{ height: FADE_LAYER_HEIGHT, opacity }} />
       ))}
     </View>
   );

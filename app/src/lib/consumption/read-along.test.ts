@@ -144,3 +144,12 @@ test('a sentence too long for one phrase is cut at a pause, never mid-phrase', (
     /^(and|as|while|that|when|where|which|who|whose|but|or|so|yet|because|if|though|although|then)$/,
   );
 });
+
+test('long unbroken words never duplicate text or create empty phrases', () => {
+  for (const text of ['x'.repeat(2000), Array(12).fill('x'.repeat(400)).join(' ')]) {
+    const phrases = estimatedChunks(text);
+    expect(phrases.every((phrase) => phrase.length > 0)).toBe(true);
+    expect(phrases.join(' ')).toBe(text);
+    expect(phrases.length).toBeLessThanOrEqual(text.split(' ').length);
+  }
+});

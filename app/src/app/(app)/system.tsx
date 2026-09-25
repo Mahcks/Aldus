@@ -48,7 +48,7 @@ export default function SystemAdministration() {
   if (loading && !report)
     return (
       <Page title="System" editorial={false}>
-        <LoadingState label="Checking Aldus…" />
+        <LoadingState layout="section-list" label="Checking Aldus…" />
       </Page>
     );
 

@@ -15,10 +15,10 @@ import { requestNotification } from '@/lib/activity/activity-presentation';
 import { collectionCount } from '@/lib/collections/collection-presentation';
 import { workProgressLabel } from '@/lib/consumption/consumption';
 import { AppIcon } from '@/components/ui/icons';
-import { listItemEnter } from '@/components/ui/motion';
+import { listItemEnter, sectionEnter } from '@/components/ui/motion';
 import { notificationHref } from '@/lib/activity/notification-presentation';
 import { useThemeColors } from '@/components/ui/theme';
-import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
+import { AnimatedView, Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 import {
   Button,
   EmptyState,
@@ -393,57 +393,67 @@ export default function HomeScreen() {
         </EmptyState>
       ) : (
         <View className="gap-7">
-          <View className="gap-1">
+          <AnimatedView entering={sectionEnter(0)} className="gap-1">
             <Text className="font-editorial text-[26px] text-ink">{greeting}</Text>
             {summaryParts.length ? (
               <Text className="text-sm text-muted">{summaryParts.join(' · ')}</Text>
             ) : null}
-          </View>
-          {continuing.length ? <ContinueSpotlight work={continuing[0]} /> : null}
+          </AnimatedView>
+          {continuing.length ? (
+            <AnimatedView entering={sectionEnter(1)}>
+              <ContinueSpotlight work={continuing[0]} />
+            </AnimatedView>
+          ) : null}
           {continuing.length > 1 ? (
-            <Section
-              title="Up next"
-              action={
-                <Button
-                  label="See all"
-                  kind="quiet"
-                  onPress={() => router.push('/books?status=in_progress')}
-                />
-              }
-            >
-              <UpNextShelf works={continuing.slice(1, 4)} />
-            </Section>
+            <AnimatedView entering={sectionEnter(2)}>
+              <Section
+                title="Up next"
+                action={
+                  <Button
+                    label="See all"
+                    kind="quiet"
+                    onPress={() => router.push('/books?status=in_progress')}
+                  />
+                }
+              >
+                <UpNextShelf works={continuing.slice(1, 4)} />
+              </Section>
+            </AnimatedView>
           ) : null}
           {ready.length ? (
-            <Section
-              title="Ready for you"
-              action={
-                <Button
-                  label="View activity"
-                  kind="quiet"
-                  onPress={() => router.push('/activity')}
-                />
-              }
-            >
-              <View className="max-w-[900px] rounded-card border border-line bg-paper p-3 shadow-xs">
-                {ready.map((item) => (
-                  <ReadyRow key={item.id} item={item} work={readyWorks[item.work_id ?? '']} />
-                ))}
-              </View>
-            </Section>
+            <AnimatedView entering={sectionEnter(3)}>
+              <Section
+                title="Ready for you"
+                action={
+                  <Button
+                    label="View activity"
+                    kind="quiet"
+                    onPress={() => router.push('/activity')}
+                  />
+                }
+              >
+                <View className="max-w-[900px] rounded-card border border-line bg-paper p-3 shadow-xs">
+                  {ready.map((item) => (
+                    <ReadyRow key={item.id} item={item} work={readyWorks[item.work_id ?? '']} />
+                  ))}
+                </View>
+              </Section>
+            </AnimatedView>
           ) : null}
           {recent.length ? (
-            <Section
-              title="Recently added"
-              action={
-                <Button label="Browse all" kind="quiet" onPress={() => router.push('/books')} />
-              }
-            >
-              <WorkShelf works={recent} />
-            </Section>
+            <AnimatedView entering={sectionEnter(4)}>
+              <Section
+                title="Recently added"
+                action={
+                  <Button label="Browse all" kind="quiet" onPress={() => router.push('/books')} />
+                }
+              >
+                <WorkShelf works={recent} />
+              </Section>
+            </AnimatedView>
           ) : null}
           {wantToRead.length || finished.length ? (
-            <View className="gap-3">
+            <AnimatedView entering={sectionEnter(5)} className="gap-3">
               <View className="min-h-11 flex-row flex-wrap items-center justify-between gap-x-3 gap-y-2">
                 {showShelfTabs ? (
                   <View
@@ -482,21 +492,27 @@ export default function HomeScreen() {
                 />
               </View>
               <WorkShelf works={activeShelfWorks} />
-            </View>
+            </AnimatedView>
           ) : null}
           {collections.length ? (
-            <Section
-              title="Collections"
-              action={
-                <Button label="View all" kind="quiet" onPress={() => router.push('/collections')} />
-              }
-            >
-              <View className="max-w-[900px] flex-row flex-wrap gap-3">
-                {collections.map((collection) => (
-                  <CollectionCard key={collection.id} item={collection} />
-                ))}
-              </View>
-            </Section>
+            <AnimatedView entering={sectionEnter(6)}>
+              <Section
+                title="Collections"
+                action={
+                  <Button
+                    label="View all"
+                    kind="quiet"
+                    onPress={() => router.push('/collections')}
+                  />
+                }
+              >
+                <View className="max-w-[900px] flex-row flex-wrap gap-3">
+                  {collections.map((collection) => (
+                    <CollectionCard key={collection.id} item={collection} />
+                  ))}
+                </View>
+              </Section>
+            </AnimatedView>
           ) : null}
         </View>
       )}

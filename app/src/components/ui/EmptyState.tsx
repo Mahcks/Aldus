@@ -1,7 +1,8 @@
 import { type PropsWithChildren, type ReactNode } from 'react';
 import { AppIcon, type AppIconName } from './icons';
 import { useThemeColors } from './theme';
-import { Text, View } from './tw';
+import { fadeIn, popIn } from './motion';
+import { AnimatedView, Text } from './tw';
 
 export function Empty({ children }: PropsWithChildren) {
   return <Text className="py-4 text-muted">{children}</Text>;
@@ -25,15 +26,17 @@ function StateBlock({
   titleIsHeader?: boolean;
 }>) {
   return (
-    <View
+    <AnimatedView
+      entering={fadeIn}
       accessibilityLiveRegion="polite"
       className="min-h-[180px] max-w-[420px] items-center justify-center gap-3 self-center py-4"
     >
-      <View
+      <AnimatedView
+        entering={popIn}
         className={`h-14 w-14 items-center justify-center rounded-full shadow-xs ${iconBackgroundClass}`}
       >
         <AppIcon name={icon} size={28} color={iconColor} />
-      </View>
+      </AnimatedView>
       <Text
         accessibilityRole={titleIsHeader ? 'header' : undefined}
         className="text-center text-base font-sans-semibold text-ink"
@@ -42,7 +45,7 @@ function StateBlock({
       </Text>
       <Text className="text-center text-base leading-6 text-muted">{children}</Text>
       {action}
-    </View>
+    </AnimatedView>
   );
 }
 

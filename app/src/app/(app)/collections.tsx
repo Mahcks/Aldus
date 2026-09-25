@@ -134,7 +134,7 @@ export default function CollectionsScreen() {
   if (loading) {
     return (
       <Page title="Collections" hideHeader>
-        <LoadingState label="Loading collections…" />
+        <LoadingState layout="section-list" label="Loading collections…" />
       </Page>
     );
   }

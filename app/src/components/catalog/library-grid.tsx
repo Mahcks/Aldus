@@ -3,7 +3,8 @@ import { useRef, useState, type ReactNode } from 'react';
 import { useWindowDimensions, type FlatList as NativeFlatList } from 'react-native';
 import type { WorkSummary } from '@/generated/api';
 import { WorkCard, WorkRow, coverPresentation } from './bookshelf';
-import { FlatList, View } from '@/components/ui/tw';
+import { listItemEnter } from '@/components/ui/motion';
+import { AnimatedView, FlatList, View } from '@/components/ui/tw';
 import { workResumeMode } from '@/lib/catalog/work-resume';
 import { workProgressLabel } from '@/lib/consumption/consumption';
 import { workHref, type WorkQuickAction } from '@/lib/catalog/work-actions';
@@ -63,27 +64,30 @@ export function LibraryGrid({
       ListFooterComponent={<>{footer}</>}
       renderItem={({ item, index }) =>
         listView ? (
-          <WorkRow
-            separator={index > 0}
-            title={item.title}
-            author={item.author}
-            coverURL={
-              (workResumeMode(item) === 'listen'
-                ? item.audiobook_cover_url
-                : item.ebook_cover_url) || item.cover_url
-            }
-            fallbackCoverURL={fallbackCoverURL(
-              item,
-              workResumeMode(item) === 'listen' ? 'audiobook' : 'ebook',
-            )}
-            audioArtwork={workResumeMode(item) === 'listen'}
-            coverPresentation={coverPresentation(item)}
-            progress={workProgressLabel(item.in_progress, item.completion_percent)}
-            availability={item}
-            onPress={() => onOpen(item)}
-          />
+          <AnimatedView entering={index < 14 ? listItemEnter(index) : undefined}>
+            <WorkRow
+              separator={index > 0}
+              title={item.title}
+              author={item.author}
+              coverURL={
+                (workResumeMode(item) === 'listen'
+                  ? item.audiobook_cover_url
+                  : item.ebook_cover_url) || item.cover_url
+              }
+              fallbackCoverURL={fallbackCoverURL(
+                item,
+                workResumeMode(item) === 'listen' ? 'audiobook' : 'ebook',
+              )}
+              audioArtwork={workResumeMode(item) === 'listen'}
+              coverPresentation={coverPresentation(item)}
+              progress={workProgressLabel(item.in_progress, item.completion_percent)}
+              availability={item}
+              onPress={() => onOpen(item)}
+            />
+          </AnimatedView>
         ) : (
-          <View
+          <AnimatedView
+            entering={index < 14 ? listItemEnter(index) : undefined}
             style={{ width: `${100 / columns}%`, height: rowHeight }}
             className="justify-end px-1.5 pb-6"
           >
@@ -105,7 +109,7 @@ export function LibraryGrid({
               onBeforeOpen={onBeforeOpen}
               onPress={() => onOpen(item)}
             />
-          </View>
+          </AnimatedView>
         )
       }
       getItemLayout={

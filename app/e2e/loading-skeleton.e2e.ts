@@ -4,7 +4,7 @@ import { signInAsTestAdmin } from './auth';
 const destinations = [
   { path: '/home', layout: 'home-feed' },
   { path: '/books', layout: 'library-grid' },
-  { path: '/work/alice-gutenberg-11-work', layout: 'details' },
+  { path: '/work/alice-gutenberg-11-work', layout: 'work' },
   { path: '/consume/alice-gutenberg-11-work?mode=listen', layout: 'player' },
 ];
 

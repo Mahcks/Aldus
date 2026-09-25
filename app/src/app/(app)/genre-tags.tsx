@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppIcon, genreIconOptions, isAppIconName, type AppIconName } from '@/components/ui/icons';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { fadeOut, layoutShift, listItemEnter } from '@/components/ui/motion';
+import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   ConfirmDialog,
@@ -300,15 +301,18 @@ export default function GenreTagsScreen() {
             {visibleTags.length} {visibleTags.length === 1 ? 'genre' : 'genres'}
           </Text>
           {loading ? (
-            <LoadingState label="Loading genres…" />
+            <LoadingState layout="list-rows" label="Loading genres…" />
           ) : tagLoadError ? (
             <Notice danger>{tagLoadError}</Notice>
           ) : visibleTags.length ? (
             <View className="border-t border-line">
-              {visibleTags.map((tag) => (
-                <View
+              {visibleTags.map((tag, index) => (
+                <AnimatedView
                   key={tag.id}
                   className="min-h-16 flex-row items-center gap-3 border-b border-line py-3"
+                  entering={listItemEnter(index)}
+                  exiting={fadeOut}
+                  layout={layoutShift}
                 >
                   <View className="h-10 w-10 items-center justify-center rounded-control bg-panel">
                     <AppIcon
@@ -331,7 +335,7 @@ export default function GenreTagsScreen() {
                     kind="quiet"
                     onPress={() => openEdit(tag)}
                   />
-                </View>
+                </AnimatedView>
               ))}
             </View>
           ) : (
@@ -358,7 +362,7 @@ export default function GenreTagsScreen() {
           </View>
           {coverageSuccess ? <Notice tone="success">{coverageSuccess}</Notice> : null}
           {coverageLoading ? (
-            <LoadingState label="Loading imported subjects…" />
+            <LoadingState layout="list-rows" label="Loading imported subjects…" />
           ) : coverageError ? (
             <Notice danger>{coverageError}</Notice>
           ) : unmatched.length ? (

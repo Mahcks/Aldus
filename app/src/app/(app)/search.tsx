@@ -15,7 +15,8 @@ import { BookCover } from '@/components/catalog/bookshelf';
 import { AcquisitionGroupRow } from '@/components/catalog/browse';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { RequestActions } from '@/components/acquisitions/request-actions';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { fadeIn, fadeOut, layoutShift, listItemEnter } from '@/components/ui/motion';
+import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Dialog,
@@ -63,47 +64,57 @@ function destinationFor(
  * dialog. This is the same declutter as Library's grid: the list stays
  * scannable, the decisions live one tap away.
  */
-function TitleRow({ result, onPress }: { result: TitleSearchResult; onPress: () => void }) {
+function TitleRow({
+  result,
+  index,
+  onPress,
+}: {
+  result: TitleSearchResult;
+  index: number;
+  onPress: () => void;
+}) {
   const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${result.title}${result.author ? ` by ${result.author}` : ''}`}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`min-h-16 flex-row items-center gap-4 border-b border-line-subtle py-4 ${stateClass}`}
-    >
-      <BookCover
-        title={result.title}
-        author={result.author}
-        coverURL={result.cover_url}
-        size="mini"
-      />
-      <View className="min-w-0 flex-1 gap-1">
-        <Text numberOfLines={2} className="font-editorial-bold text-lg leading-6 text-ink">
-          {result.title}
-        </Text>
-        <Text numberOfLines={1} className="text-sm text-muted">
-          {result.author || 'Unknown author'}
-        </Text>
-        <Text className="text-sm text-muted">
-          {result.work_id ? 'In your library' : 'Not in your library'}
-        </Text>
-        {result.synchronized ? (
-          <View className="mt-1 self-start">
-            <StatusBadge tone="info" label="Read & Listen" icon="synced" />
-          </View>
-        ) : null}
-      </View>
-      <AppIcon name="chevron" size={20} color={colors.muted} />
-    </Pressable>
+    <AnimatedView entering={listItemEnter(index)} exiting={fadeOut} layout={layoutShift}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${result.title}${result.author ? ` by ${result.author}` : ''}`}
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        onPress={onPress}
+        className={`min-h-16 flex-row items-center gap-4 border-b border-line-subtle py-4 ${stateClass}`}
+      >
+        <BookCover
+          title={result.title}
+          author={result.author}
+          coverURL={result.cover_url}
+          size="mini"
+        />
+        <View className="min-w-0 flex-1 gap-1">
+          <Text numberOfLines={2} className="font-editorial-bold text-lg leading-6 text-ink">
+            {result.title}
+          </Text>
+          <Text numberOfLines={1} className="text-sm text-muted">
+            {result.author || 'Unknown author'}
+          </Text>
+          <Text className="text-sm text-muted">
+            {result.work_id ? 'In your library' : 'Not in your library'}
+          </Text>
+          {result.synchronized ? (
+            <View className="mt-1 self-start">
+              <StatusBadge tone="info" label="Read & Listen" icon="synced" />
+            </View>
+          ) : null}
+        </View>
+        <AppIcon name="chevron" size={20} color={colors.muted} />
+      </Pressable>
+    </AnimatedView>
   );
 }
 
@@ -457,15 +468,18 @@ export default function SearchScreen() {
       />
       {!trimmedQuery ? (
         trendingLoading ? (
-          <LoadingState layout="grid" label="Finding what's popular…" />
+          <LoadingState layout="title-list" label="Finding what's popular…" />
         ) : trending.length ? (
           <View className="gap-8">
-            {trending.map((section) => (
+            {trending.map((section, sectionIndex) => (
               <Section key={section.source} title={section.title}>
                 <View className="max-w-[900px]">
-                  {section.items.map((result) => (
+                  {section.items.map((result, itemIndex) => (
                     <TitleRow
                       key={resultKey(result)}
+                      index={trending
+                        .slice(0, sectionIndex)
+                        .reduce((total, previous) => total + previous.items.length, itemIndex)}
                       result={result}
                       onPress={() => openResult(result)}
                     />
@@ -475,7 +489,7 @@ export default function SearchScreen() {
             ))}
           </View>
         ) : (
-          <>
+          <AnimatedView entering={fadeIn} className="gap-4">
             <Notice>
               {trendingError
                 ? `Trending books couldn't load: ${trendingError}`
@@ -500,35 +514,42 @@ export default function SearchScreen() {
               Search for books to request as ebooks or audiobooks. Books you already have are marked
               in the results.
             </EmptyState>
-          </>
+          </AnimatedView>
         )
       ) : offline ? (
-        <EmptyState
-          icon="search"
-          title="Discover needs a connection"
-          action={<Button label="Open your library" onPress={() => router.navigate('/books')} />}
-        >
-          You can still read and listen to downloaded books in Library.
-        </EmptyState>
+        <AnimatedView entering={fadeIn}>
+          <EmptyState
+            icon="search"
+            title="Discover needs a connection"
+            action={<Button label="Open your library" onPress={() => router.navigate('/books')} />}
+          >
+            You can still read and listen to downloaded books in Library.
+          </EmptyState>
+        </AnimatedView>
       ) : error ? (
-        <ErrorState
-          title="Couldn’t search for books"
-          action={<Button label="Retry" onPress={() => setRetry((value) => value + 1)} />}
-        >
-          {error}
-        </ErrorState>
+        <AnimatedView entering={fadeIn}>
+          <ErrorState
+            title="Couldn’t search for books"
+            action={<Button label="Retry" onPress={() => setRetry((value) => value + 1)} />}
+          >
+            {error}
+          </ErrorState>
+        </AnimatedView>
       ) : loading ? (
-        <LoadingState layout="grid" label="Finding books…" />
+        <LoadingState layout="title-list" label="Finding books…" />
       ) : results.length === 0 ? (
-        <EmptyState icon="search" title="No matching books">
-          Try another title, author, or ISBN.
-        </EmptyState>
+        <AnimatedView entering={fadeIn}>
+          <EmptyState icon="search" title="No matching books">
+            Try another title, author, or ISBN.
+          </EmptyState>
+        </AnimatedView>
       ) : (
         <Section title="Search results">
           <View className="max-w-[900px]">
-            {results.map((result) => (
+            {results.map((result, index) => (
               <TitleRow
                 key={resultKey(result)}
+                index={index}
                 result={result}
                 onPress={() => openResult(result)}
               />

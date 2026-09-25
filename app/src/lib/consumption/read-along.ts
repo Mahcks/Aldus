@@ -105,13 +105,21 @@ function bestBreak(words: string[], start: number, end: number, ideal: number) {
 function splitLong(words: string[], sentence: Range): Range[] {
   const count = sentence.end - sentence.start + 1;
   const characters = words.slice(sentence.start, sentence.end + 1).join(' ').length;
-  const parts = Math.max(2, Math.ceil(Math.max(count / MAX_WORDS, characters / MAX_CHARS)));
+  // A long token cannot be split at a word boundary. Never ask for more
+  // phrases than words, and reserve a word for each remaining phrase.
+  const parts = Math.min(
+    count,
+    Math.max(2, Math.ceil(Math.max(count / MAX_WORDS, characters / MAX_CHARS))),
+  );
 
   const ranges: Range[] = [];
   let start = sentence.start;
   for (let part = 1; part < parts; part++) {
     const ideal = sentence.start + Math.round((count * part) / parts) - 1;
-    const cut = bestBreak(words, start, sentence.end, ideal);
+    const cut = Math.min(
+      sentence.end - (parts - part),
+      Math.max(start, bestBreak(words, start, sentence.end, ideal)),
+    );
     ranges.push({ start, end: cut });
     start = cut + 1;
   }

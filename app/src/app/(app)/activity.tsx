@@ -29,7 +29,17 @@ import { RequestTimeline } from '@/components/acquisitions/request-timeline';
 import { useThemeColors } from '@/components/ui/theme';
 import { titleRequestDetail, titleRequestPresentation } from '@/lib/acquisitions/title-search';
 import { relativeTime } from '@/lib/format';
-import { Text, View } from '@/components/ui/tw';
+import {
+  fadeIn,
+  fadeOut,
+  layoutShift,
+  listItemEnter,
+  popIn,
+  popOut,
+  reveal,
+  revealExit,
+} from '@/components/ui/motion';
+import { AnimatedView, Text, View } from '@/components/ui/tw';
 import {
   Button,
   ConfirmDialog,
@@ -106,12 +116,14 @@ function emptyStateFor(
 /** A stray notification whose request isn't in the currently loaded page — kept visible rather than silently dropped. */
 function NotificationRow({
   group,
+  index,
   coverURL,
   busy,
   onMarkRead,
   onOpen,
 }: {
   group: NotificationGroup;
+  index: number;
   coverURL?: string;
   busy: boolean;
   onMarkRead: (group: NotificationGroup) => void;
@@ -123,14 +135,24 @@ function NotificationRow({
   const action = notificationAction(group);
 
   return (
-    <View className={`flex-row gap-4 border-b border-line py-5 ${unread ? 'bg-paper' : ''}`}>
+    <AnimatedView
+      entering={listItemEnter(index)}
+      exiting={fadeOut}
+      layout={layoutShift}
+      className={`flex-row gap-4 border-b border-line py-5 ${unread ? 'bg-paper' : ''}`}
+    >
       <BookCover title={group.title} coverURL={coverURL} size="mini" />
       <View className="min-w-0 flex-1 gap-3 sm:flex-row sm:items-start sm:justify-between">
         <View className="min-w-0 gap-1.5 sm:flex-1">
           <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
             <Text className="font-editorial-bold text-lg leading-6 text-ink">{group.title}</Text>
             {unread ? (
-              <View accessibilityElementsHidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+              <AnimatedView
+                entering={popIn}
+                exiting={popOut}
+                accessibilityElementsHidden
+                className="h-1.5 w-1.5 rounded-full bg-accent"
+              />
             ) : null}
           </View>
           <View className="flex-row flex-wrap items-center gap-2">
@@ -172,7 +194,7 @@ function NotificationRow({
           ) : null}
         </View>
       </View>
-    </View>
+    </AnimatedView>
   );
 }
 
@@ -394,7 +416,7 @@ export default function ActivityScreen() {
   if (loading)
     return (
       <Page title="Activity">
-        <LoadingState label="Loading activity…" />
+        <LoadingState layout="activity" label="Loading activity…" />
       </Page>
     );
 
@@ -504,34 +526,41 @@ export default function ActivityScreen() {
           onPress={() => setFilterDialogOpen(true)}
         />
         {unreadCount > 0 ? (
-          <Button
-            label="Mark all read"
-            kind="quiet"
-            icon="enabled"
-            loading={markingAll}
-            onPress={() => void handleMarkAllRead()}
-          />
+          <AnimatedView entering={fadeIn} exiting={fadeOut}>
+            <Button
+              label="Mark all read"
+              kind="quiet"
+              icon="enabled"
+              loading={markingAll}
+              onPress={() => void handleMarkAllRead()}
+            />
+          </AnimatedView>
         ) : null}
       </View>
 
       {requestPages.loading && requests.length === 0 && items.length === 0 ? (
-        <LoadingState label="Loading requests…" />
+        <LoadingState layout="notification-list" label="Loading requests…" />
       ) : !hasAnyData ? (
-        <EmptyState icon="activity" title="No activity yet">
-          Requests and updates about your books will appear here.
-        </EmptyState>
+        <AnimatedView entering={fadeIn}>
+          <EmptyState icon="activity" title="No activity yet">
+            Requests and updates about your books will appear here.
+          </EmptyState>
+        </AnimatedView>
       ) : !hasVisibleContent ? (
-        <EmptyState icon={empty.icon} title={empty.title}>
-          {empty.body}
-        </EmptyState>
+        <AnimatedView key={viewFilter} entering={fadeIn}>
+          <EmptyState icon={empty.icon} title={empty.title}>
+            {empty.body}
+          </EmptyState>
+        </AnimatedView>
       ) : (
         <View className="gap-2">
           {visibleAdminGroups.length > 0 ? (
             <Section title="Needs your approval">
               <View accessibilityRole="list">
-                {visibleAdminGroups.map((group) => (
+                {visibleAdminGroups.map((group, index) => (
                   <NotificationRow
                     key={group.key}
+                    index={index}
                     group={group}
                     coverURL={groupCoverURL(group)}
                     busy={busyID === group.key}
@@ -548,8 +577,14 @@ export default function ActivityScreen() {
               accessibilityRole="list"
               className={visibleAdminGroups.length > 0 ? 'border-t border-line pt-2' : ''}
             >
-              {visibleRequests.map((request) => (
-                <View key={request.id} className="flex-row gap-4 border-b border-line py-5">
+              {visibleRequests.map((request, requestIndex) => (
+                <AnimatedView
+                  key={request.id}
+                  entering={listItemEnter(requestIndex)}
+                  exiting={fadeOut}
+                  layout={layoutShift}
+                  className="flex-row gap-4 border-b border-line py-5"
+                >
                   <BookCover
                     title={request.title}
                     author={request.author}
@@ -582,8 +617,9 @@ export default function ActivityScreen() {
                       );
                       const unread = (notifGroup?.unreadCount ?? 0) > 0;
                       return (
-                        <View
+                        <AnimatedView
                           key={format.format}
+                          layout={layoutShift}
                           className="gap-2 border-t border-line pt-4 first:border-t-0 first:pt-0"
                         >
                           <View className="gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -593,7 +629,9 @@ export default function ActivityScreen() {
                                   {formatLabel(format.format)}
                                 </Text>
                                 {unread ? (
-                                  <View
+                                  <AnimatedView
+                                    entering={popIn}
+                                    exiting={popOut}
                                     accessibilityElementsHidden
                                     className="h-1.5 w-1.5 rounded-full bg-accent"
                                   />
@@ -611,13 +649,17 @@ export default function ActivityScreen() {
                                 {titleRequestDetail(format)}
                               </Text>
                               {isTakingLonger(format.state, format.updated_at) ? (
-                                <View className="flex-row items-start gap-2 bg-warning-soft px-3 py-2">
+                                <AnimatedView
+                                  entering={reveal}
+                                  exiting={revealExit}
+                                  className="flex-row items-start gap-2 bg-warning-soft px-3 py-2"
+                                >
                                   <AppIcon name="warning" size={17} color={colors.warning} />
                                   <Text className="min-w-0 flex-1 text-sm leading-5 text-ink">
                                     This download is taking longer than expected. Aldus will keep
                                     checking it.
                                   </Text>
-                                </View>
+                                </AnimatedView>
                               ) : null}
                             </View>
                             <View className="flex-row flex-wrap items-center gap-1">
@@ -682,20 +724,23 @@ export default function ActivityScreen() {
                             </View>
                           </View>
                           {expanded ? (
-                            <RequestTimeline
-                              events={requestEvents[request.id] ?? []}
-                              format={format.format}
-                            />
+                            <AnimatedView entering={reveal} exiting={revealExit}>
+                              <RequestTimeline
+                                events={requestEvents[request.id] ?? []}
+                                format={format.format}
+                              />
+                            </AnimatedView>
                           ) : null}
-                        </View>
+                        </AnimatedView>
                       );
                     })}
                   </View>
-                </View>
+                </AnimatedView>
               ))}
-              {visibleOrphanGroups.map((group) => (
+              {visibleOrphanGroups.map((group, index) => (
                 <NotificationRow
                   key={group.key}
+                  index={visibleRequests.length + index}
                   group={group}
                   coverURL={groupCoverURL(group)}
                   busy={busyID === group.key}

@@ -4,9 +4,9 @@ import { useCallback, useRef, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppIcon } from '@/components/ui/icons';
-import { listItemEnter } from '@/components/ui/motion';
+import { listItemEnter, popIn, popOut } from '@/components/ui/motion';
 import { resolvePressStateClass } from '@/components/ui/Button';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Dialog,
@@ -125,7 +125,11 @@ function LibraryRow({
             <Text numberOfLines={1} className="font-sans-semibold text-base text-ink">
               {item.name}
             </Text>
-            {item.primary ? <AppIcon name="starFilled" size={14} color={colors.accent} /> : null}
+            {item.primary ? (
+              <AnimatedView entering={popIn} exiting={popOut}>
+                <AppIcon name="starFilled" size={14} color={colors.accent} />
+              </AnimatedView>
+            ) : null}
           </View>
           <View className="flex-row flex-wrap items-center gap-1.5">
             <Text className="text-xs font-sans-semibold text-subtle">
@@ -141,17 +145,19 @@ function LibraryRow({
         </View>
       </Pressable>
       {canSwitchPrimary ? (
-        <IconButton
-          icon={item.primary ? 'starFilled' : 'starOutline'}
-          label={
-            item.primary
-              ? `${item.name} is your primary library`
-              : `Make ${item.name} your primary library`
-          }
-          kind="quiet"
-          disabled={settingPrimary}
-          onPress={onSetPrimary}
-        />
+        <AnimatedView key={String(item.primary)} entering={item.primary ? popIn : undefined}>
+          <IconButton
+            icon={item.primary ? 'starFilled' : 'starOutline'}
+            label={
+              item.primary
+                ? `${item.name} is your primary library`
+                : `Make ${item.name} your primary library`
+            }
+            kind="quiet"
+            disabled={settingPrimary}
+            onPress={onSetPrimary}
+          />
+        </AnimatedView>
       ) : null}
       {canManage ? (
         <IconButton icon="settings" label={`Manage ${item.name}`} kind="quiet" onPress={onManage} />
@@ -275,7 +281,7 @@ export default function Libraries() {
       {offline ? <Notice>Offline · showing libraries with downloads on this device.</Notice> : null}
       {error ? <Notice danger>{error}</Notice> : null}
       {loading ? (
-        <Loading label="Loading libraries…" />
+        <Loading layout="section-list" label="Loading libraries…" />
       ) : items.length === 0 ? (
         <FirstLibraryHero
           name={name}

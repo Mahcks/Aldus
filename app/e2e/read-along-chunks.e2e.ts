@@ -31,11 +31,26 @@ for (const exact of [true, false]) {
       } as AlignmentSegment;
       if (!exact) segment.word_timings = (segment.word_timings as unknown[]).slice(1);
       const chunks = readAlongChunks(segment);
+      const longSession = width === 390 && !exact;
+      const followingSegments = longSession
+        ? Array.from({ length: 24 }, (_, index) => ({
+            ...segment,
+            id: `passage-${index + 1}`,
+            ordinal: index + 1,
+            text: `Passage ${index + 1} follows the narration without retaining the entire book on screen.`,
+            audio_start_ms: (index + 3) * 20000,
+            audio_end_ms: (index + 4) * 20000,
+            word_timings: undefined,
+          }))
+        : [];
       await page.route('**/api/v1/alignments/*', async (route) => {
         const response = await route.fetch();
         const alignment = await response.json();
         await route.fulfill({
-          json: { ...alignment, segments: [{ ...alignment.segments[0], ...segment }] },
+          json: {
+            ...alignment,
+            segments: [{ ...alignment.segments[0], ...segment, ordinal: 0 }, ...followingSegments],
+          },
         });
       });
       await page.addInitScript(() => {
@@ -91,6 +106,19 @@ for (const exact of [true, false]) {
           ),
         )
         .toBeCloseTo(target.startMS / 1000, 0);
+      if (longSession) {
+        for (const next of followingSegments) {
+          await seek(next.audio_start_ms / 1000 + 1);
+          const active = panel.getByRole('button', { name: next.text, exact: true });
+          await expect(active).toHaveAttribute('aria-selected', 'true');
+          await expect(active).toBeInViewport();
+          // Eight past/current segments and at most two upcoming segments.
+          expect(await panel.getByRole('button').count()).toBeLessThanOrEqual(12);
+        }
+        await seek(0);
+        await expect(phrase(0)).toHaveAttribute('aria-selected', 'true');
+        await expect(phrase(0)).toBeInViewport();
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(
         false,
       );

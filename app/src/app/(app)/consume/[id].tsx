@@ -133,13 +133,44 @@ export default function ConsumeWorkScreen() {
 
   if (loading || !work)
     return loading ? (
-      <View className="flex-1 bg-canvas">
-        <SafeAreaView>
-          <View className="mx-auto w-full max-w-xl px-6">
-            <Loading layout={mode === 'listen' ? 'player' : 'details'} label="Opening your book…" />
+      mode === 'listen' ? (
+        <View className="flex-1 bg-canvas">
+          <View
+            className={`flex-row items-center gap-2 border-b border-line bg-paper ${
+              compactNative ? 'min-h-11' : 'min-h-[62px] px-3 pb-2'
+            }`}
+            style={{
+              paddingTop: compactNative ? insets.top : insets.top + 8,
+              paddingLeft: compactNative ? insets.left + 12 : undefined,
+              paddingRight: compactNative ? insets.right + 12 : undefined,
+            }}
+          >
+            <IconButton
+              icon="back"
+              label="Back to work"
+              kind="quiet"
+              onPress={() => void leaveReader()}
+            />
+            <Text numberOfLines={1} className="min-w-0 flex-1 text-base font-sans-bold text-ink">
+              Now playing
+            </Text>
           </View>
-        </SafeAreaView>
-      </View>
+          <View
+            className="mx-auto w-full max-w-[560px] flex-1 px-5"
+            style={{ paddingBottom: insets.bottom + 24 }}
+          >
+            <Loading layout="player" label="Opening your book…" />
+          </View>
+        </View>
+      ) : (
+        <View className="flex-1 bg-canvas">
+          <SafeAreaView>
+            <View className="mx-auto w-full max-w-xl px-6">
+              <Loading layout="details" label="Opening your book…" />
+            </View>
+          </SafeAreaView>
+        </View>
+      )
     ) : (
       <View className="min-h-full flex-1 items-center justify-center bg-canvas p-6">
         <Notice danger>{notice || 'Work unavailable.'}</Notice>

@@ -200,7 +200,7 @@ export default function CollectionDetailScreen() {
   if (loading) {
     return (
       <Page title="Collection" hideHeader>
-        <LoadingState label="Loading collection…" />
+        <LoadingState layout="title-list" label="Loading collection…" />
       </Page>
     );
   }

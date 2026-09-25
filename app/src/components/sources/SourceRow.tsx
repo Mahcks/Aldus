@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { LibrarySource, SourceScan } from '@/generated/api';
 import { AppIcon } from '@/components/ui/icons';
-import { Button, Notice, Row, StatusBadge } from '@/components/ui';
+import { Button, Notice, RotatingChevron, Row, StatusBadge } from '@/components/ui';
+import { reveal, revealExit } from '@/components/ui/motion';
 import { useThemeColors } from '@/components/ui/theme';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import { EntryList } from './EntryList';
 import { formatDate, scanStatus, sourceStatus } from '@/lib/sources/helpers';
 import { ScanHistory } from './ScanHistory';
@@ -68,11 +69,11 @@ export function SourceRow({
           </Text>
         </View>
         <StatusBadge {...status} />
-        <AppIcon name={expanded ? 'chevronDown' : 'chevron'} size={18} />
+        <RotatingChevron open={expanded} />
       </Pressable>
 
       {expanded ? (
-        <View className="gap-4 pb-5 pl-[54px]">
+        <AnimatedView entering={reveal} exiting={revealExit} className="gap-4 pb-5 pl-[54px]">
           {latest ? <ScanSummary scan={latest} /> : null}
 
           {source.auto_import ? (
@@ -107,7 +108,11 @@ export function SourceRow({
           ) : null}
 
           {admin && settingsOpen ? (
-            <View className="gap-3 rounded-card border border-line bg-paper p-3.5">
+            <AnimatedView
+              entering={reveal}
+              exiting={revealExit}
+              className="gap-3 rounded-card border border-line bg-paper p-3.5"
+            >
               {source.root_path ? (
                 <View className="gap-1">
                   <Text className="text-xs font-sans-bold text-muted">Server path</Text>
@@ -132,17 +137,21 @@ export function SourceRow({
                   onPress={onRemove}
                 />
               </Row>
-            </View>
+            </AnimatedView>
           ) : null}
 
           {filesOpen ? (
-            <View className="gap-4 rounded-card border border-line bg-paper p-3.5">
+            <AnimatedView
+              entering={reveal}
+              exiting={revealExit}
+              className="gap-4 rounded-card border border-line bg-paper p-3.5"
+            >
               {latest ? <ScanBreakdown scan={latest} /> : null}
               <ScanHistory scans={details?.scans.slice(1, 6) ?? []} />
               <EntryList entries={details?.entries ?? []} />
-            </View>
+            </AnimatedView>
           ) : null}
-        </View>
+        </AnimatedView>
       ) : null}
     </View>
   );

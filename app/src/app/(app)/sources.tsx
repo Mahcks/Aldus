@@ -411,7 +411,7 @@ export default function SourcesAdministration() {
   if (loading)
     return (
       <Page title="Sources & imports" scrollRef={scrollRef} editorial={false}>
-        <Loading label="Loading source administration…" />
+        <Loading layout="section-list" label="Loading source administration…" />
       </Page>
     );
 

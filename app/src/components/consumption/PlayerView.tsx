@@ -20,6 +20,10 @@ import { EmptyState, IconButton, Loading, Notice } from '@/components/ui';
 import { layoutShift, textSwapEnter, textSwapExit } from '@/components/ui/motion';
 import { AnimatedView, Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 
+// Header padding (16 top + 8 bottom) plus the gap between the cover and the title block (20).
+const COVER_SPACING = 44;
+const MIN_COVER_HEIGHT = 120;
+
 type PlayerViewProps = {
   selectedAudio: MediaChoice | undefined;
   work: Work;
@@ -75,6 +79,9 @@ export function PlayerView({
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const [audioScrubbing, setAudioScrubbing] = useState(false);
   const [listeningHeight, setListeningHeight] = useState(0);
+  // Space above the fixed controls, and the height of the title block under the cover.
+  const [topHeight, setTopHeight] = useState(0);
+  const [textHeight, setTextHeight] = useState(0);
   const insets = useSafeAreaInsets();
   const [readAlongEnabled, setReadAlongEnabled] = useReadAlongEnabled();
   const [syncPromptOpen, setSyncPromptOpen] = useState(false);
@@ -99,7 +106,14 @@ export function PlayerView({
     620 * Math.max(1, fontScale),
     listeningHeight - insets.bottom - 40,
   );
-  const coverHeight = showReadAlong ? 64 : Math.round(listeningContentHeight * 0.46);
+  // The scrubber and controls are pinned to the bottom of a fixed-height page in both modes, so
+  // they never move; the cover takes whatever room is left above them.
+  const coverRoom = topHeight - textHeight - COVER_SPACING;
+  const fittedCoverHeight =
+    topHeight > 0 && textHeight > 0
+      ? Math.max(MIN_COVER_HEIGHT, coverRoom)
+      : Math.round(listeningContentHeight * 0.4);
+  const coverHeight = showReadAlong ? 64 : fittedCoverHeight;
   const coverWidth = showReadAlong
     ? Math.round(Math.min(96, 64 * artRatio))
     : Math.round(Math.min(windowWidth - 40, 340, coverHeight * artRatio));
@@ -127,74 +141,79 @@ export function PlayerView({
     >
       <View
         className="mx-auto w-full max-w-[560px] px-5"
-        style={{
-          height: showReadAlong ? listeningContentHeight : undefined,
-          minHeight: listeningContentHeight,
-        }}
+        style={{ height: listeningContentHeight }}
       >
-        <AnimatedView
-          layout={layoutShift}
-          className={
-            showReadAlong ? 'flex-row items-center gap-4 py-2' : 'items-center gap-5 pb-2 pt-4'
-          }
+        <View
+          className={`min-h-0 flex-1 ${showReadAlong ? '' : 'justify-center'}`}
+          onLayout={(event) => setTopHeight(event.nativeEvent.layout.height)}
         >
-          <AnimatedView layout={layoutShift} style={{ width: coverWidth }}>
-            <BookCover
-              title={work.title}
-              author={work.author}
-              coverURL={work.audiobook_cover_url || `/api/media/${selectedAudio.id}/cover`}
-              fallbackCoverURL={fallbackCoverURL(work, 'audiobook')}
-              size="grid"
-              aspectRatio={artRatio}
-              {...coverPresentation(work)}
-              coverFit="contain"
-              onImageLoad={handleArtLoad}
-            />
-          </AnimatedView>
           <AnimatedView
-            key={showReadAlong ? 'compact' : 'full'}
-            entering={textSwapEnter}
-            exiting={textSwapExit}
-            className={showReadAlong ? 'min-w-0 flex-1 gap-1' : 'w-full items-center gap-1.5'}
+            layout={layoutShift}
+            className={
+              showReadAlong ? 'flex-row items-center gap-4 py-2' : 'items-center gap-5 pb-2 pt-4'
+            }
           >
-            <Text
-              numberOfLines={2}
-              className={`${showReadAlong ? 'text-lg leading-6' : 'text-center text-[26px] leading-8'} font-editorial text-ink`}
+            <AnimatedView layout={layoutShift} style={{ width: coverWidth }}>
+              <BookCover
+                title={work.title}
+                author={work.author}
+                coverURL={work.audiobook_cover_url || `/api/media/${selectedAudio.id}/cover`}
+                fallbackCoverURL={fallbackCoverURL(work, 'audiobook')}
+                size="grid"
+                aspectRatio={artRatio}
+                {...coverPresentation(work)}
+                coverFit="contain"
+                onImageLoad={handleArtLoad}
+              />
+            </AnimatedView>
+            <AnimatedView
+              key={showReadAlong ? 'compact' : 'full'}
+              entering={textSwapEnter}
+              exiting={textSwapExit}
+              onLayout={(event) => {
+                if (!showReadAlong) setTextHeight(event.nativeEvent.layout.height);
+              }}
+              className={showReadAlong ? 'min-w-0 flex-1 gap-1' : 'w-full items-center gap-1.5'}
             >
-              {work.title}
-            </Text>
-            <Text
-              numberOfLines={1}
-              className={`text-sm text-text-secondary ${showReadAlong ? '' : 'text-center'}`}
-            >
-              {work.author || 'Unknown author'}
-            </Text>
-            <Text
-              numberOfLines={2}
-              className={
-                showReadAlong ? 'mt-1 text-xs text-muted' : 'text-center text-sm text-muted'
-              }
-            >
-              {selectedAudio.representation.label}
-            </Text>
-            {progressStatus ? (
               <Text
-                accessibilityLiveRegion="polite"
-                className={`pt-1 text-xs font-sans-semibold text-muted ${showReadAlong ? '' : 'text-center'}`}
+                numberOfLines={2}
+                className={`${showReadAlong ? 'text-lg leading-6' : 'text-center text-[26px] leading-8'} font-editorial text-ink`}
               >
-                {progressStatus}
+                {work.title}
               </Text>
-            ) : null}
+              <Text
+                numberOfLines={1}
+                className={`text-sm text-text-secondary ${showReadAlong ? '' : 'text-center'}`}
+              >
+                {work.author || 'Unknown author'}
+              </Text>
+              <Text
+                numberOfLines={2}
+                className={
+                  showReadAlong ? 'mt-1 text-xs text-muted' : 'text-center text-sm text-muted'
+                }
+              >
+                {selectedAudio.representation.label}
+              </Text>
+              {progressStatus ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  className={`pt-1 text-xs font-sans-semibold text-muted ${showReadAlong ? '' : 'text-center'}`}
+                >
+                  {progressStatus}
+                </Text>
+              ) : null}
+            </AnimatedView>
           </AnimatedView>
-        </AnimatedView>
-        {showReadAlong && passage ? (
-          <ReadAlongPanel
-            passage={passage}
-            timestampMS={status.currentTime * 1000}
-            scrollEnabled={!audioScrubbing}
-            onSeek={(seconds) => void handleScrubberSeek(seconds)}
-          />
-        ) : null}
+          {showReadAlong && passage ? (
+            <ReadAlongPanel
+              passage={passage}
+              timestampMS={status.currentTime * 1000}
+              scrollEnabled={!audioScrubbing}
+              onSeek={handleScrubberSeek}
+            />
+          ) : null}
+        </View>
         {status.error ? (
           <View className="mt-5">
             <Notice danger>The audiobook could not be opened on this device.</Notice>
@@ -206,7 +225,7 @@ export function PlayerView({
         ) : null}
         {status.isLoaded || status.error ? (
           <>
-            <View className="mt-auto w-full gap-1 pt-6">
+            <View className="w-full gap-1 pt-4">
               <AudioScrubber
                 key={audioID}
                 position={status.currentTime}
@@ -247,33 +266,14 @@ export function PlayerView({
                 />
               </View>
             ) : null}
-            <View className="mt-5 w-full flex-row items-center">
-              <View className="flex-1 flex-row items-center justify-around">
-                <Pressable
-                  accessibilityRole="adjustable"
-                  accessibilityLabel="Playback speed"
-                  accessibilityHint="Cycles through playback speeds"
-                  accessibilityValue={{ text: `${currentPlaybackRate} times` }}
-                  accessibilityActions={[
-                    { name: 'increment', label: 'Increase playback speed' },
-                    { name: 'decrement', label: 'Decrease playback speed' },
-                  ]}
-                  accessibilityState={{ disabled: !canAdjustPlaybackRate }}
-                  disabled={!canAdjustPlaybackRate}
-                  onAccessibilityAction={handlePlaybackRateAccessibilityAction}
-                  onPress={cyclePlaybackRate}
-                  className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
-                >
-                  <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
-                </Pressable>
-                <IconButton
-                  icon="skipBack"
-                  label="Rewind 15 seconds"
-                  kind="quiet"
-                  disabled={!status.isLoaded}
-                  onPress={handleSkipBack}
-                />
-              </View>
+            <View className="mt-5 w-full flex-row items-center justify-center gap-10">
+              <IconButton
+                icon="skipBack"
+                label="Rewind 15 seconds"
+                kind="quiet"
+                disabled={!status.isLoaded}
+                onPress={handleSkipBack}
+              />
               <IconButton
                 icon={status.playing ? 'pause' : 'play'}
                 label={status.playing ? 'Pause' : 'Play'}
@@ -282,35 +282,52 @@ export function PlayerView({
                 disabled={!status.isLoaded}
                 onPress={handlePlayPause}
               />
-              <View className="flex-1 flex-row items-center justify-around">
+              <IconButton
+                icon="skipForward"
+                label="Skip forward 15 seconds"
+                kind="quiet"
+                disabled={!status.isLoaded}
+                onPress={handleSkipForward}
+              />
+            </View>
+            <View className="mt-3 w-full flex-row items-center justify-around">
+              <Pressable
+                accessibilityRole="adjustable"
+                accessibilityLabel="Playback speed"
+                accessibilityHint="Cycles through playback speeds"
+                accessibilityValue={{ text: `${currentPlaybackRate} times` }}
+                accessibilityActions={[
+                  { name: 'increment', label: 'Increase playback speed' },
+                  { name: 'decrement', label: 'Decrease playback speed' },
+                ]}
+                accessibilityState={{ disabled: !canAdjustPlaybackRate }}
+                disabled={!canAdjustPlaybackRate}
+                onAccessibilityAction={handlePlaybackRateAccessibilityAction}
+                onPress={cyclePlaybackRate}
+                className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
+              >
+                <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
+              </Pressable>
+              <IconButton
+                icon="sleepTimer"
+                label={
+                  sleepTimerRemaining == null
+                    ? 'Set sleep timer'
+                    : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
+                }
+                kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
+                disabled={!status.isLoaded}
+                onPress={() => setSleepTimerOpen(true)}
+              />
+              <View className={passage ? undefined : 'opacity-60'}>
                 <IconButton
-                  icon="skipForward"
-                  label="Skip forward 15 seconds"
+                  icon="readAlong"
+                  label="Read along"
                   kind="quiet"
-                  disabled={!status.isLoaded}
-                  onPress={handleSkipForward}
+                  selected={showReadAlong}
+                  pressed={showReadAlong}
+                  onPress={handleReadAlongPress}
                 />
-                <IconButton
-                  icon="sleepTimer"
-                  label={
-                    sleepTimerRemaining == null
-                      ? 'Set sleep timer'
-                      : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
-                  }
-                  kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
-                  disabled={!status.isLoaded}
-                  onPress={() => setSleepTimerOpen(true)}
-                />
-                <View className={passage ? undefined : 'opacity-60'}>
-                  <IconButton
-                    icon="readAlong"
-                    label="Read along"
-                    kind="quiet"
-                    selected={showReadAlong}
-                    pressed={showReadAlong}
-                    onPress={handleReadAlongPress}
-                  />
-                </View>
               </View>
             </View>
           </>

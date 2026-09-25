@@ -1,13 +1,13 @@
 import { router, Stack, usePathname, type Href } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Modal, Platform, useWindowDimensions } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { useCallback, useEffect, useState } from 'react';
+import { Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
-import { sheetEnter, sheetExit } from '@/components/ui/motion';
-import { IconButton, resolvePressStateClass } from '@/components/ui';
+import { resolvePressStateClass } from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
+import { MobileTabBar } from './MobileTabBar';
+import { MoreSheet } from './MoreSheet';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import { api } from '@/lib/api';
 import {
@@ -30,10 +30,6 @@ function isActive(path: string, href: string) {
     (href === '/libraries' &&
       ['/library/', '/representation/'].some((prefix) => path.startsWith(prefix)))
   );
-}
-
-function noop() {
-  // Swallows presses on sheet content so they don't bubble to the backdrop.
 }
 
 export function AppShell() {
@@ -128,9 +124,7 @@ function AppShellChrome() {
   function openSheet() {
     setSheetOpen(true);
   }
-  function closeSheet() {
-    setSheetOpen(false);
-  }
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   return (
     <View className="min-h-full flex-1 flex-row bg-canvas">
@@ -184,8 +178,8 @@ function AppShellChrome() {
         {!desktop && !immersive ? (
           <>
             <MobileTabBar
-              path={navigationPath}
-              consumerLinks={consumerLinks.filter((link) => link.href !== '/account')}
+              links={consumerLinks.filter((link) => link.href !== '/account')}
+              isActive={(href) => isActive(navigationPath, href)}
               bottomInset={insets.bottom}
               sheetOpen={sheetOpen}
               moreSelected={
@@ -197,7 +191,7 @@ function AppShellChrome() {
             <MoreSheet
               visible={sheetOpen}
               onClose={closeSheet}
-              path={path}
+              isActive={(href) => isActive(path, href)}
               adminLinks={adminLinks}
               userLabel={userLabel}
               onSignOut={handleSignOut}
@@ -305,221 +299,6 @@ function NavLink({
         ) : null}
       </View>
       <Text className={`text-sm font-sans-medium ${selected ? 'text-on-rail' : inactiveTextClass}`}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/** Mobile bottom tab bar: consumer destinations only, plus a "More" entry for everything else. */
-function MobileTabBar({
-  path,
-  consumerLinks,
-  bottomInset,
-  sheetOpen,
-  moreSelected,
-  onOpenSheet,
-}: {
-  path: string;
-  consumerLinks: NavItem[];
-  bottomInset: number;
-  sheetOpen: boolean;
-  moreSelected: boolean;
-  onOpenSheet: () => void;
-}) {
-  return (
-    <View
-      accessibilityRole="tablist"
-      className="w-full flex-row justify-around border-t border-line-subtle bg-canvas px-2 pt-1.5"
-      style={{ paddingBottom: bottomInset + 6 }}
-    >
-      {consumerLinks.map((link) => (
-        <MobileTab
-          key={link.href}
-          label={link.label}
-          icon={link.icon}
-          badge={link.badge}
-          selected={isActive(path, link.href)}
-          onPress={() => router.navigate(link.href as Href)}
-        />
-      ))}
-      <MobileTab
-        label="More"
-        icon="more"
-        selected={sheetOpen || moreSelected}
-        expanded={sheetOpen}
-        onPress={onOpenSheet}
-      />
-    </View>
-  );
-}
-
-function MobileTab({
-  label,
-  icon,
-  badge,
-  selected,
-  expanded,
-  onPress,
-}: {
-  label: string;
-  icon: AppIconName;
-  badge?: number;
-  selected: boolean;
-  expanded?: boolean;
-  onPress: () => void;
-}) {
-  const colors = useThemeColors();
-  const color = selected ? colors.accent : colors.muted;
-  const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const stateClass = resolvePressStateClass({ focused, pressed });
-
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
-      accessibilityState={{ selected, expanded }}
-      aria-selected={selected}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`min-h-11 min-w-11 flex-1 items-center justify-center gap-1 py-1 ${stateClass}`}
-    >
-      <View>
-        <AppIcon name={icon} size={20} color={color} />
-        {badge ? (
-          <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
-            <Text className="text-[10px] font-sans-bold text-on-accent">{Math.min(badge, 9)}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Text className={`text-[11px] font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/**
- * Slide-up sheet for everything the bottom tab bar doesn't have room for:
- * admin links (grouped and visually separated, same treatment as the
- * desktop rail) and the account section. Uses the shared `sheetEnter`/
- * `sheetExit` motion presets, which already resolve to an instant transition
- * when the OS/browser reduced-motion setting is on.
- */
-function MoreSheet({
-  visible,
-  onClose,
-  path,
-  adminLinks,
-  userLabel,
-  onSignOut,
-  bottomInset,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  path: string;
-  adminLinks: NavItem[];
-  userLabel: string;
-  onSignOut: () => void;
-  bottomInset: number;
-}) {
-  if (!visible) return null;
-
-  function handleLinkPress(href: string) {
-    onClose();
-    router.navigate(href as Href);
-  }
-
-  return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        accessibilityLabel="Dismiss menu"
-        accessibilityRole="button"
-        onPress={onClose}
-        className="flex-1 justify-end bg-ink/40"
-      >
-        <Animated.View entering={sheetEnter} exiting={sheetExit}>
-          <Pressable
-            onPress={noop}
-            accessibilityViewIsModal
-            role="dialog"
-            className="gap-1 rounded-t-card border-x border-t border-line bg-paper px-5 pt-4"
-            style={{ paddingBottom: bottomInset + 16 }}
-          >
-            <View className="mb-1 flex-row items-center justify-between gap-4 border-b border-line pb-3">
-              <Text accessibilityRole="header" className="text-lg font-sans-bold text-ink">
-                More
-              </Text>
-              <IconButton icon="close" label="Close menu" kind="quiet" onPress={onClose} />
-            </View>
-            {adminLinks.length > 0 ? (
-              <View className="gap-1 pb-2">
-                <Text className="px-[11px] pb-1 text-[11px] font-sans-bold text-muted">
-                  Administration
-                </Text>
-                {adminLinks.map((link) => (
-                  <SheetLink
-                    key={link.href}
-                    {...link}
-                    selected={isActive(path, link.href)}
-                    onPress={() => handleLinkPress(link.href)}
-                  />
-                ))}
-              </View>
-            ) : null}
-            <View className="gap-1 border-t border-line pt-3">
-              <SheetLink
-                label={userLabel || 'Account'}
-                href="/account"
-                icon="account"
-                selected={isActive(path, '/account')}
-                onPress={() => handleLinkPress('/account')}
-              />
-              <Pressable
-                accessibilityRole="button"
-                onPress={onSignOut}
-                className="min-h-11 flex-row items-center px-[11px]"
-              >
-                <Text className="text-sm font-sans-bold text-accent">Sign out</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Animated.View>
-      </Pressable>
-    </Modal>
-  );
-}
-
-function SheetLink({
-  label,
-  icon,
-  selected,
-  onPress,
-}: NavItem & { selected: boolean; onPress: () => void }) {
-  const colors = useThemeColors();
-  const iconColor = selected ? colors.accent : colors.muted;
-  const backgroundClass = selected ? 'bg-accent-soft' : '';
-  const [focused, setFocused] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const stateClass = resolvePressStateClass({ focused, pressed });
-
-  return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityState={{ selected }}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={onPress}
-      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
-    >
-      <AppIcon name={icon} size={18} color={iconColor} />
-      <Text className={`text-sm font-sans-bold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>

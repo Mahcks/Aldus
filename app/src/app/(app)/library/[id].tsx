@@ -19,7 +19,8 @@ import {
   validPolicyToken,
 } from '@/lib/acquisitions/acquisition-policy-form';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { Pressable, Text, View } from '@/components/ui/tw';
+import { listItemEnter, popIn } from '@/components/ui/motion';
+import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Checkbox,
@@ -1001,9 +1002,10 @@ export default function LibraryScreen() {
       >
         <View className="gap-1">
           {switcherError ? <Notice danger>{switcherError}</Notice> : null}
-          {libraries.map((item) => (
-            <View
+          {libraries.map((item, index) => (
+            <AnimatedView
               key={item.id}
+              entering={listItemEnter(index)}
               className="flex-row items-center gap-2 rounded-control border-b border-line-subtle py-1 last:border-b-0"
             >
               <View className="flex-1">
@@ -1013,18 +1015,20 @@ export default function LibraryScreen() {
                   onPress={() => switchToLibrary(item.id)}
                 />
               </View>
-              <IconButton
-                icon={item.primary ? 'starFilled' : 'starOutline'}
-                label={
-                  item.primary
-                    ? `${item.name} is your primary library`
-                    : `Make ${item.name} your primary library`
-                }
-                kind="quiet"
-                disabled={Boolean(settingPrimaryID)}
-                onPress={() => void setAsPrimary(item.id)}
-              />
-            </View>
+              <AnimatedView key={String(item.primary)} entering={item.primary ? popIn : undefined}>
+                <IconButton
+                  icon={item.primary ? 'starFilled' : 'starOutline'}
+                  label={
+                    item.primary
+                      ? `${item.name} is your primary library`
+                      : `Make ${item.name} your primary library`
+                  }
+                  kind="quiet"
+                  disabled={Boolean(settingPrimaryID)}
+                  onPress={() => void setAsPrimary(item.id)}
+                />
+              </AnimatedView>
+            </AnimatedView>
           ))}
           <View className="border-t border-line pt-1">
             <ManagementRow

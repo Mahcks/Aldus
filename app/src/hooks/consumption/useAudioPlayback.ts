@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, type AccessibilityActionEvent } from 'react-native';
 import {
   setAudioModeAsync,
@@ -39,9 +39,11 @@ export function useAudioPlayback({
     useState<(typeof PLAYBACK_RATES)[number]>(1);
   const player = useAudioPlayer(source, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
-  const alignedDuration = Math.max(
-    0,
-    ...(alignment?.segments.map((segment) => segment.audio_end_ms / 1000) ?? []),
+  const alignedDuration = useMemo(
+    () =>
+      alignment?.segments.reduce((end, segment) => Math.max(end, segment.audio_end_ms / 1000), 0) ??
+      0,
+    [alignment?.segments],
   );
   const audioDuration = playableAudioDuration(status.duration, alignedDuration);
   useEffect(() => {
@@ -116,13 +118,16 @@ export function useAudioPlayback({
     if (chapter?.next) seekToSeconds(chapter.next.start_ms / 1000);
   }
 
-  async function handleScrubberSeek(target: number) {
-    try {
-      await player.seekTo(clampAudioPosition(target, audioDuration), 0, 0);
-    } catch (error) {
-      setNotice(errorMessage(error));
-    }
-  }
+  const handleScrubberSeek = useCallback(
+    async (target: number) => {
+      try {
+        await player.seekTo(clampAudioPosition(target, audioDuration), 0, 0);
+      } catch (error) {
+        setNotice(errorMessage(error));
+      }
+    },
+    [player, audioDuration, setNotice],
+  );
 
   function handlePlaybackRate(rate: number) {
     if (!canAdjustPlaybackRate) return;

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { Platform, Share, useWindowDimensions } from 'react-native';
 import { getAPIBaseURL } from '@/lib/api-base';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { Text, View } from '@/components/ui/tw';
+import { fadeOut, layoutShift, listItemEnter } from '@/components/ui/motion';
+import { AnimatedView, Text, View } from '@/components/ui/tw';
 import {
   libraryAccessCountLabel,
   libraryAccessSummary,
@@ -306,13 +307,16 @@ Choose your own password when you sign in.`;
               {visibleUsers.length} {visibleUsers.length === 1 ? 'account' : 'accounts'}
             </Text>
             {loading ? (
-              <Loading label="Loading accounts…" />
+              <Loading layout="list-rows" label="Loading accounts…" />
             ) : visibleUsers.length ? (
               <View className="border-t border-line">
-                {visibleUsers.map((user) => (
-                  <View
+                {visibleUsers.map((user, index) => (
+                  <AnimatedView
                     key={user.id}
                     className="min-h-16 flex-row flex-wrap items-center justify-between gap-3 border-b border-line py-3"
+                    entering={listItemEnter(index)}
+                    exiting={fadeOut}
+                    layout={layoutShift}
                   >
                     <View className="h-11 w-11 items-center justify-center rounded-full bg-neutral-soft">
                       <Text className="text-lg font-sans-medium text-ink">
@@ -366,7 +370,7 @@ Choose your own password when you sign in.`;
                         }}
                       />
                     </Row>
-                  </View>
+                  </AnimatedView>
                 ))}
               </View>
             ) : (

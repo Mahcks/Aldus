@@ -12,6 +12,8 @@ import {
   FadeInDown,
   FadeOut,
   LinearTransition,
+  ZoomIn,
+  ZoomOut,
   ReduceMotion,
   SlideInDown,
   SlideOutDown,
@@ -31,10 +33,10 @@ export const fadeIn = FadeIn.duration(DURATION_STANDARD)
   .reduceMotion(ReduceMotion.System);
 
 /** Bottom sheets and slide-up panels entering/exiting. */
-export const sheetEnter = SlideInDown.duration(DURATION_STANDARD)
+export const sheetEnter = SlideInDown.duration(340)
   .easing(EASE_STANDARD)
   .reduceMotion(ReduceMotion.System);
-export const sheetExit = SlideOutDown.duration(DURATION_QUICK)
+export const sheetExit = SlideOutDown.duration(220)
   .easing(EASE_STANDARD)
   .reduceMotion(ReduceMotion.System);
 
@@ -43,8 +45,16 @@ export const sheetExit = SlideOutDown.duration(DURATION_QUICK)
  * feel slow to settle.
  */
 export function listItemEnter(index: number) {
-  return FadeIn.duration(DURATION_STANDARD)
-    .delay(Math.min(index, 8) * 40)
+  return FadeInDown.duration(320)
+    .delay(Math.min(index, 10) * 55)
+    .easing(EASE_STANDARD)
+    .reduceMotion(ReduceMotion.System);
+}
+
+/** A whole section of a page arriving (Home's shelves, spotlight, greeting), one after another. */
+export function sectionEnter(index: number) {
+  return FadeInDown.duration(420)
+    .delay(index * 100)
     .easing(EASE_STANDARD)
     .reduceMotion(ReduceMotion.System);
 }
@@ -85,3 +95,16 @@ export function phraseEnter(rank: number) {
     .easing(EASE_STANDARD)
     .reduceMotion(ReduceMotion.System);
 }
+
+/** Something opening in place (a timeline, a settings panel): it drops in a few pixels as it fades. */
+export const reveal = FadeInDown.duration(240)
+  .easing(EASE_STANDARD)
+  .reduceMotion(ReduceMotion.System);
+export const revealExit = FadeOut.duration(140).reduceMotion(ReduceMotion.System);
+
+/** A small marker landing with a bit of spring (an unread dot, a starred library). */
+export const popIn = ZoomIn.springify()
+  .damping(14)
+  .stiffness(220)
+  .reduceMotion(ReduceMotion.System);
+export const popOut = ZoomOut.duration(120).reduceMotion(ReduceMotion.System);

@@ -18,7 +18,8 @@ import { useWindowDimensions } from 'react-native';
 import { BookCover } from '@/components/catalog/bookshelf';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { TechnicalDetails } from '@/components/sources/TechnicalDetails';
-import { Pressable, ScrollView, Text, View } from '@/components/ui/tw';
+import { fadeIn } from '@/components/ui/motion';
+import { AnimatedView, Pressable, ScrollView, Text, View } from '@/components/ui/tw';
 import {
   Button,
   IconButton,
@@ -206,7 +207,7 @@ export default function ManageWorkScreen() {
   if (loading)
     return (
       <Page title="Manage work" editorial={false}>
-        <Loading layout="details" label="Loading work…" />
+        <Loading layout="tabbed-form" label="Loading work…" />
       </Page>
     );
   if (!work)
@@ -312,717 +313,734 @@ export default function ManageWorkScreen() {
           ))}
         </ScrollView>
 
-        {activeTab === 'artwork' ? (
-          <View className="gap-6">
-            <Select
-              label="Cover for"
-              value={coverFormat}
-              disabled={Boolean(savingCover)}
-              options={[
-                { value: 'ebook', label: 'Ebook' },
-                { value: 'audiobook', label: 'Audiobook' },
-              ]}
-              onChange={(value) => {
-                setCoverPreview(null);
-                changeCoverFormat(value as 'ebook' | 'audiobook');
-              }}
-            />
-            <View className={narrow ? 'gap-6' : 'flex-row items-start gap-10'}>
-              <View
-                className={
-                  narrow
-                    ? 'flex-row items-center gap-5 border-b border-line pb-6'
-                    : 'w-[204px] gap-4'
-                }
-              >
-                <View className={narrow ? 'w-[148px]' : 'w-[204px]'}>
-                  <BookCover
-                    title={work.title}
-                    author={work.author}
-                    coverURL={coverURL}
-                    fallbackCoverURL={alternateCoverURL}
-                    size={coverFormat === 'audiobook' ? 'audio' : narrow ? 'continue' : 'hero'}
-                    coverFit="contain"
-                    generatedCoverStyle={work.generated_cover_style}
-                    generatedCoverTone={work.generated_cover_tone}
-                    generatedCoverLayout={work.generated_cover_layout}
-                  />
-                </View>
-                <View className="min-w-0 flex-shrink gap-1">
-                  <Text className="text-sm font-sans-semibold text-ink">Current cover</Text>
-                  <Text className="text-sm leading-5 text-muted">{coverStatus}</Text>
-                  <Button
-                    label="Cover options"
-                    kind="quiet"
-                    onPress={() => setFallbackOpen(true)}
-                    disabled={Boolean(savingCover)}
-                  />
-                </View>
-              </View>
-              <View className="min-w-0 flex-1 gap-5">
-                <View className="flex-row flex-wrap items-center justify-between gap-2 border-b border-line">
-                  <View
-                    className="flex-row"
-                    accessibilityRole="tablist"
-                    accessibilityLabel="Cover sources"
-                  >
-                    <ManageTabItem
-                      label="Find a cover"
-                      compact
-                      selected={coverView === 'search'}
-                      onPress={() => setCoverView('search')}
-                    />
-                    <ManageTabItem
-                      label="Your images"
-                      compact
-                      selected={coverView === 'saved'}
-                      onPress={() => setCoverView('saved')}
+        <AnimatedView key={activeTab} entering={fadeIn}>
+          {activeTab === 'artwork' ? (
+            <View className="gap-6">
+              <Select
+                label="Cover for"
+                value={coverFormat}
+                disabled={Boolean(savingCover)}
+                options={[
+                  { value: 'ebook', label: 'Ebook' },
+                  { value: 'audiobook', label: 'Audiobook' },
+                ]}
+                onChange={(value) => {
+                  setCoverPreview(null);
+                  changeCoverFormat(value as 'ebook' | 'audiobook');
+                }}
+              />
+              <View className={narrow ? 'gap-6' : 'flex-row items-start gap-10'}>
+                <View
+                  className={
+                    narrow
+                      ? 'flex-row items-center gap-5 border-b border-line pb-6'
+                      : 'w-[204px] gap-4'
+                  }
+                >
+                  <View className={narrow ? 'w-[148px]' : 'w-[204px]'}>
+                    <BookCover
+                      title={work.title}
+                      author={work.author}
+                      coverURL={coverURL}
+                      fallbackCoverURL={alternateCoverURL}
+                      size={coverFormat === 'audiobook' ? 'audio' : narrow ? 'continue' : 'hero'}
+                      coverFit="contain"
+                      generatedCoverStyle={work.generated_cover_style}
+                      generatedCoverTone={work.generated_cover_tone}
+                      generatedCoverLayout={work.generated_cover_layout}
                     />
                   </View>
-                  {narrow ? (
-                    <IconButton
-                      label="Upload image"
-                      icon="upload"
-                      kind="quiet"
-                      disabled={Boolean(savingCover)}
-                      onPress={() => void uploadCover()}
-                    />
-                  ) : (
+                  <View className="min-w-0 flex-shrink gap-1">
+                    <Text className="text-sm font-sans-semibold text-ink">Current cover</Text>
+                    <Text className="text-sm leading-5 text-muted">{coverStatus}</Text>
                     <Button
-                      label="Upload"
-                      icon="upload"
+                      label="Cover options"
                       kind="quiet"
-                      loading={savingCover === 'upload'}
+                      onPress={() => setFallbackOpen(true)}
                       disabled={Boolean(savingCover)}
-                      onPress={() => void uploadCover()}
                     />
-                  )}
-                </View>
-                {artworkError ? (
-                  <View className="gap-2">
-                    <Notice danger>{artworkError}</Notice>
-                    {refreshNeeded ? (
-                      <Button
-                        label="Refresh cover"
-                        kind="secondary"
-                        onPress={() => void reloadArtwork()}
-                      />
-                    ) : null}
                   </View>
-                ) : null}
-                {artworkMessage ? <Notice>{artworkMessage}</Notice> : null}
-                {coverView === 'search' ? (
-                  <View className="gap-5">
-                    <View className="gap-3">
-                      <View className="flex-row items-end gap-2">
-                        <View className="min-w-0 flex-1">
-                          <SearchField
-                            label="Title, author or ISBN"
-                            value={coverQuery}
-                            onChangeText={setCoverQuery}
-                            onSubmit={() => {
-                              if (coverQuery.trim() && !searchingCovers) void searchCovers();
-                            }}
-                          />
-                        </View>
+                </View>
+                <View className="min-w-0 flex-1 gap-5">
+                  <View className="flex-row flex-wrap items-center justify-between gap-2 border-b border-line">
+                    <View
+                      className="flex-row"
+                      accessibilityRole="tablist"
+                      accessibilityLabel="Cover sources"
+                    >
+                      <ManageTabItem
+                        label="Find a cover"
+                        compact
+                        selected={coverView === 'search'}
+                        onPress={() => setCoverView('search')}
+                      />
+                      <ManageTabItem
+                        label="Your images"
+                        compact
+                        selected={coverView === 'saved'}
+                        onPress={() => setCoverView('saved')}
+                      />
+                    </View>
+                    {narrow ? (
+                      <IconButton
+                        label="Upload image"
+                        icon="upload"
+                        kind="quiet"
+                        disabled={Boolean(savingCover)}
+                        onPress={() => void uploadCover()}
+                      />
+                    ) : (
+                      <Button
+                        label="Upload"
+                        icon="upload"
+                        kind="quiet"
+                        loading={savingCover === 'upload'}
+                        disabled={Boolean(savingCover)}
+                        onPress={() => void uploadCover()}
+                      />
+                    )}
+                  </View>
+                  {artworkError ? (
+                    <View className="gap-2">
+                      <Notice danger>{artworkError}</Notice>
+                      {refreshNeeded ? (
                         <Button
-                          label="Search"
-                          kind="primary"
-                          icon="search"
-                          loading={searchingCovers}
-                          disabled={searchingCovers || !coverQuery.trim()}
-                          onPress={() => void searchCovers()}
-                        />
-                      </View>
-                      {coverFormat === 'audiobook' ? (
-                        <Select
-                          label="Search editions"
-                          value={coverSearchFormat}
-                          disabled={searchingCovers}
-                          options={[
-                            { value: 'audiobook', label: 'Audiobook' },
-                            { value: 'ebook', label: 'Book' },
-                          ]}
-                          onChange={(value) => {
-                            setCoverSearchFormat(value as 'ebook' | 'audiobook');
-                            setCoverCandidates([]);
-                            setCoverSearched(false);
-                          }}
+                          label="Refresh cover"
+                          kind="secondary"
+                          onPress={() => void reloadArtwork()}
                         />
                       ) : null}
                     </View>
-                    {searchingCovers ? (
-                      <Loading label="Finding covers…" />
-                    ) : searchError ? (
-                      <ErrorState
-                        title="Couldn’t search for covers"
-                        action={
+                  ) : null}
+                  {artworkMessage ? <Notice>{artworkMessage}</Notice> : null}
+                  {coverView === 'search' ? (
+                    <View className="gap-5">
+                      <View className="gap-3">
+                        <View className="flex-row items-end gap-2">
+                          <View className="min-w-0 flex-1">
+                            <SearchField
+                              label="Title, author or ISBN"
+                              value={coverQuery}
+                              onChangeText={setCoverQuery}
+                              onSubmit={() => {
+                                if (coverQuery.trim() && !searchingCovers) void searchCovers();
+                              }}
+                            />
+                          </View>
                           <Button
-                            label="Try again"
-                            kind="secondary"
+                            label="Search"
+                            kind="primary"
+                            icon="search"
+                            loading={searchingCovers}
+                            disabled={searchingCovers || !coverQuery.trim()}
                             onPress={() => void searchCovers()}
                           />
-                        }
-                      >
-                        {searchError}
-                      </ErrorState>
-                    ) : coverCandidates.length ? (
-                      <View className="gap-4">
-                        <Text className="text-sm text-muted">
-                          {coverFormat === 'audiobook' && coverSearchFormat === 'ebook'
-                            ? 'Book editions · You can use any of these for your audiobook.'
-                            : 'From Open Library · Select an image to preview it.'}
-                        </Text>
-                        <View className="flex-row flex-wrap items-start gap-x-5 gap-y-6">
-                          {coverCandidates.map((candidate) => (
-                            <CoverTile
-                              key={`${candidate.source}-${candidate.source_id}`}
-                              title={candidate.title || work.title}
-                              detail={
-                                [candidate.publisher, candidate.first_publish_year]
-                                  .filter(Boolean)
-                                  .join(' · ') || 'Open Library'
-                              }
-                              imageURL={candidate.image_url}
-                              square={candidate.format === 'audiobook'}
-                              disabled={Boolean(savingCover)}
-                              onPress={() =>
-                                setCoverPreview({
-                                  ...candidate,
-                                  title: candidate.title || work.title,
-                                  detail:
-                                    candidate.format === 'audiobook'
-                                      ? 'Audiobook edition'
-                                      : 'Book edition',
-                                })
-                              }
-                            />
-                          ))}
                         </View>
+                        {coverFormat === 'audiobook' ? (
+                          <Select
+                            label="Search editions"
+                            value={coverSearchFormat}
+                            disabled={searchingCovers}
+                            options={[
+                              { value: 'audiobook', label: 'Audiobook' },
+                              { value: 'ebook', label: 'Book' },
+                            ]}
+                            onChange={(value) => {
+                              setCoverSearchFormat(value as 'ebook' | 'audiobook');
+                              setCoverCandidates([]);
+                              setCoverSearched(false);
+                            }}
+                          />
+                        ) : null}
                       </View>
-                    ) : coverSearched ? (
-                      <EmptyState
-                        icon="search"
-                        title={
-                          coverSearchFormat === 'audiobook'
-                            ? 'No audiobook covers found'
-                            : 'No covers found'
-                        }
-                        action={
-                          coverSearchFormat === 'audiobook' ? (
+                      {searchingCovers ? (
+                        <Loading label="Finding covers…" />
+                      ) : searchError ? (
+                        <ErrorState
+                          title="Couldn’t search for covers"
+                          action={
                             <Button
-                              label="Search book covers instead"
+                              label="Try again"
                               kind="secondary"
-                              onPress={() => void searchCovers('ebook')}
+                              onPress={() => void searchCovers()}
                             />
-                          ) : undefined
-                        }
-                      >
-                        {coverSearchFormat === 'audiobook'
-                          ? 'Try a book edition, or upload an image you already have.'
-                          : 'Try a shorter title, another author spelling or an ISBN.'}
-                      </EmptyState>
-                    ) : (
-                      <EmptyState icon="search" title="Find the cover you love">
-                        Search Open Library, then preview an edition before choosing it.
-                      </EmptyState>
-                    )}
-                  </View>
-                ) : galleryLoading ? (
-                  <Loading label="Loading your images…" />
-                ) : galleryError ? (
-                  <ErrorState
-                    title="Couldn’t load your images"
-                    action={
-                      <Button
-                        label="Try again"
-                        kind="secondary"
-                        onPress={() => void artwork.refreshCoverAssets()}
-                      />
-                    }
-                  >
-                    {galleryError}
-                  </ErrorState>
-                ) : coverAssets.length ? (
-                  <View className="flex-row flex-wrap items-start gap-x-5 gap-y-6">
-                    {coverAssets.map((asset) => (
-                      <CoverTile
-                        key={`${asset.source}-${asset.source_id}`}
-                        title={
-                          asset.source === 'embedded'
-                            ? 'From your file'
-                            : asset.source === 'upload'
-                              ? 'Uploaded image'
-                              : 'Saved cover'
-                        }
-                        detail={asset.source === 'open_library' ? 'Open Library' : coverFormatLabel}
-                        imageURL={asset.image_url}
-                        square={coverFormat === 'audiobook'}
-                        selected={asset.image_url === coverURL}
-                        disabled={Boolean(savingCover)}
-                        onPress={() =>
-                          setCoverPreview({
-                            ...asset,
-                            title: work.title,
-                            detail:
-                              asset.source === 'embedded'
-                                ? 'From your file'
-                                : asset.source === 'upload'
-                                  ? 'Uploaded image'
-                                  : 'Open Library',
-                            selected: asset.image_url === coverURL,
-                          })
-                        }
-                      />
-                    ))}
-                  </View>
-                ) : (
-                  <EmptyState title="No saved images yet">
-                    Images from your files and covers you choose will appear here.
-                  </EmptyState>
-                )}
-                <Text className="text-xs text-muted">
-                  Uploads become the cover immediately. Original book files stay unchanged.
-                </Text>
+                          }
+                        >
+                          {searchError}
+                        </ErrorState>
+                      ) : coverCandidates.length ? (
+                        <View className="gap-4">
+                          <Text className="text-sm text-muted">
+                            {coverFormat === 'audiobook' && coverSearchFormat === 'ebook'
+                              ? 'Book editions · You can use any of these for your audiobook.'
+                              : 'From Open Library · Select an image to preview it.'}
+                          </Text>
+                          <View className="flex-row flex-wrap items-start gap-x-5 gap-y-6">
+                            {coverCandidates.map((candidate) => (
+                              <CoverTile
+                                key={`${candidate.source}-${candidate.source_id}`}
+                                title={candidate.title || work.title}
+                                detail={
+                                  [candidate.publisher, candidate.first_publish_year]
+                                    .filter(Boolean)
+                                    .join(' · ') || 'Open Library'
+                                }
+                                imageURL={candidate.image_url}
+                                square={candidate.format === 'audiobook'}
+                                disabled={Boolean(savingCover)}
+                                onPress={() =>
+                                  setCoverPreview({
+                                    ...candidate,
+                                    title: candidate.title || work.title,
+                                    detail:
+                                      candidate.format === 'audiobook'
+                                        ? 'Audiobook edition'
+                                        : 'Book edition',
+                                  })
+                                }
+                              />
+                            ))}
+                          </View>
+                        </View>
+                      ) : coverSearched ? (
+                        <EmptyState
+                          icon="search"
+                          title={
+                            coverSearchFormat === 'audiobook'
+                              ? 'No audiobook covers found'
+                              : 'No covers found'
+                          }
+                          action={
+                            coverSearchFormat === 'audiobook' ? (
+                              <Button
+                                label="Search book covers instead"
+                                kind="secondary"
+                                onPress={() => void searchCovers('ebook')}
+                              />
+                            ) : undefined
+                          }
+                        >
+                          {coverSearchFormat === 'audiobook'
+                            ? 'Try a book edition, or upload an image you already have.'
+                            : 'Try a shorter title, another author spelling or an ISBN.'}
+                        </EmptyState>
+                      ) : (
+                        <EmptyState icon="search" title="Find the cover you love">
+                          Search Open Library, then preview an edition before choosing it.
+                        </EmptyState>
+                      )}
+                    </View>
+                  ) : galleryLoading ? (
+                    <Loading label="Loading your images…" />
+                  ) : galleryError ? (
+                    <ErrorState
+                      title="Couldn’t load your images"
+                      action={
+                        <Button
+                          label="Try again"
+                          kind="secondary"
+                          onPress={() => void artwork.refreshCoverAssets()}
+                        />
+                      }
+                    >
+                      {galleryError}
+                    </ErrorState>
+                  ) : coverAssets.length ? (
+                    <View className="flex-row flex-wrap items-start gap-x-5 gap-y-6">
+                      {coverAssets.map((asset) => (
+                        <CoverTile
+                          key={`${asset.source}-${asset.source_id}`}
+                          title={
+                            asset.source === 'embedded'
+                              ? 'From your file'
+                              : asset.source === 'upload'
+                                ? 'Uploaded image'
+                                : 'Saved cover'
+                          }
+                          detail={
+                            asset.source === 'open_library' ? 'Open Library' : coverFormatLabel
+                          }
+                          imageURL={asset.image_url}
+                          square={coverFormat === 'audiobook'}
+                          selected={asset.image_url === coverURL}
+                          disabled={Boolean(savingCover)}
+                          onPress={() =>
+                            setCoverPreview({
+                              ...asset,
+                              title: work.title,
+                              detail:
+                                asset.source === 'embedded'
+                                  ? 'From your file'
+                                  : asset.source === 'upload'
+                                    ? 'Uploaded image'
+                                    : 'Open Library',
+                              selected: asset.image_url === coverURL,
+                            })
+                          }
+                        />
+                      ))}
+                    </View>
+                  ) : (
+                    <EmptyState title="No saved images yet">
+                      Images from your files and covers you choose will appear here.
+                    </EmptyState>
+                  )}
+                  <Text className="text-xs text-muted">
+                    Uploads become the cover immediately. Original book files stay unchanged.
+                  </Text>
+                </View>
               </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {activeTab === 'files' ? (
-          <Section
-            title="Files"
-            action={
-              <Button
-                label="Add file"
-                icon="add"
-                kind="primary"
-                onPress={() => setAddFileOpen(true)}
-              />
-            }
-          >
-            <Text className={shared.itemMeta}>
-              Keep reading editions and audiobook narrations together. Open an edition to review its
-              uploads or add a newer file.
-            </Text>
-            {representations.length === 0 ? (
-              <EmptyState
-                icon="folder"
-                title="No ebook or audiobook files yet"
-                action={
-                  <Button label="Add file" kind="primary" onPress={() => setAddFileOpen(true)} />
-                }
-              >
-                Add an EPUB or audiobook to make this work available to readers.
-              </EmptyState>
-            ) : (
-              <View className="gap-6">
-                <RepresentationGroup
-                  title="Reading editions"
-                  items={representations.filter((item) => item.kind === 'epub')}
-                  media={media}
+          {activeTab === 'files' ? (
+            <Section
+              title="Files"
+              action={
+                <Button
+                  label="Add file"
+                  icon="add"
+                  kind="primary"
+                  onPress={() => setAddFileOpen(true)}
                 />
-                <RepresentationGroup
-                  title="Audiobook narrations"
-                  items={representations.filter(
-                    (item) => item.kind === 'audio' || item.kind === 'audiobook',
-                  )}
-                  media={media}
-                />
-              </View>
-            )}
-          </Section>
-        ) : null}
-
-        {activeTab === 'sync' ? (
-          <View className="gap-8">
-            <Section title="Read + Listen sync">
-              <Text className="max-w-[680px] text-base leading-6 text-muted">
-                Match one reading edition with one narration so readers can switch at the same
-                sentence.
+              }
+            >
+              <Text className={shared.itemMeta}>
+                Keep reading editions and audiobook narrations together. Open an edition to review
+                its uploads or add a newer file.
               </Text>
-              {!selectedEPUB || !selectedAudio ? (
+              {representations.length === 0 ? (
                 <EmptyState
-                  icon="synced"
-                  title="An ebook and audiobook are required"
+                  icon="folder"
+                  title="No ebook or audiobook files yet"
                   action={
-                    <Button
-                      label="Review files"
-                      kind="primary"
-                      onPress={() => selectTab('files')}
-                    />
+                    <Button label="Add file" kind="primary" onPress={() => setAddFileOpen(true)} />
                   }
                 >
-                  Add both formats in Files before creating synchronized reading and listening.
+                  Add an EPUB or audiobook to make this work available to readers.
                 </EmptyState>
               ) : (
                 <View className="gap-6">
-                  <View className="gap-4 border-y border-line py-5">
-                    <View className="flex-row flex-wrap items-center justify-between gap-3">
-                      <Text className="text-base font-sans-bold text-ink">Selected pair</Text>
-                      <StatusBadge
-                        tone={selectedPairJob ? alignmentJobTone(selectedPairJob.state) : 'neutral'}
-                        label={
-                          selectedPairJob ? alignmentJobLabel(selectedPairJob.state) : 'Not synced'
-                        }
-                      />
-                    </View>
-                    <View className={shared.split}>
-                      <SyncSourceSummary title="Reading edition" item={selectedEPUB} />
-                      <SyncSourceSummary title="Narration" item={selectedAudio} />
-                    </View>
-                    {selectedPairJob && alignmentRunning(selectedPairJob) ? (
-                      <AlignmentProgress job={selectedPairJob} unreachable={progressUnreachable} />
-                    ) : selectedPairJob ? (
-                      <Notice tone={alignmentNoticeTone(selectedPairJob.state)}>
-                        {alignmentJobHint(selectedPairJob)}
-                      </Notice>
-                    ) : (
-                      <Text className={shared.itemMeta}>
-                        These files have not been synchronized yet.
-                      </Text>
+                  <RepresentationGroup
+                    title="Reading editions"
+                    items={representations.filter((item) => item.kind === 'epub')}
+                    media={media}
+                  />
+                  <RepresentationGroup
+                    title="Audiobook narrations"
+                    items={representations.filter(
+                      (item) => item.kind === 'audio' || item.kind === 'audiobook',
                     )}
-                  </View>
-
-                  {epubs.length > 1 || audio.length > 1 ? (
-                    <View className="gap-3">
-                      <Text className="text-base font-sans-bold text-ink">Choose source files</Text>
-                      <View className={shared.split}>
-                        <RevisionChoiceList
-                          title="Reading edition"
-                          items={epubs}
-                          selected={epubID}
-                          onSelect={setEPUBID}
-                        />
-                        <RevisionChoiceList
-                          title="Narration"
-                          items={audio}
-                          selected={audioID}
-                          onSelect={setAudioID}
-                        />
-                      </View>
-                    </View>
-                  ) : null}
-
-                  <View className="items-start gap-2">
-                    {syncRunning && selectedPairJob ? (
-                      <Button
-                        label="Cancel sync"
-                        kind="danger"
-                        loading={cancelingJobID === selectedPairJob.id}
-                        disabled={Boolean(cancelingJobID)}
-                        onPress={() => void cancelJob(selectedPairJob.id)}
-                      />
-                    ) : (
-                      <Button
-                        label={syncActionLabel}
-                        kind="primary"
-                        loading={alignmentBusy}
-                        disabled={alignmentBusy || syncRunning || syncReady}
-                        onPress={() => void enqueue()}
-                      />
-                    )}
-                    <Text className={shared.itemMeta}>
-                      Alignment runs on the server. You can safely leave this page.
-                    </Text>
-                  </View>
+                    media={media}
+                  />
                 </View>
               )}
             </Section>
+          ) : null}
 
-            {jobs.length ? (
-              <Section title="Sync history">
-                <Button
-                  label={historyOpen ? 'Hide sync history' : 'Show sync history'}
-                  kind="quiet"
-                  onPress={() => setHistoryOpen(!historyOpen)}
-                />
-                {historyOpen
-                  ? jobs.map((job) => {
-                      const epubMedia = media.find((item) => item.id === job.epub_media_id);
-                      const audioMedia = media.find((item) => item.id === job.audio_media_id);
-                      return (
-                        <View key={job.id} className={shared.listItem}>
-                          <View className="flex-row flex-wrap items-center gap-2">
-                            <StatusBadge
-                              tone={alignmentJobTone(job.state)}
-                              label={alignmentJobLabel(job.state)}
-                            />
-                            <Text className={shared.itemMeta}>
-                              {new Date(job.created_at).toLocaleString()}
-                            </Text>
-                          </View>
-                          <Text className={shared.itemTitle}>
-                            {epubMedia?.original_filename ||
-                              epubMedia?.representation.label ||
-                              'EPUB'}
-                            {' + '}
-                            {audioMedia?.original_filename ||
-                              audioMedia?.representation.label ||
-                              'Audiobook'}
-                          </Text>
-                          <Text className={shared.itemMeta}>{alignmentJobHint(job)}</Text>
-                          <TechnicalDetails
-                            rows={[
-                              { label: 'Job ID', value: job.id, copyable: true },
-                              { label: 'EPUB media ID', value: job.epub_media_id, copyable: true },
-                              {
-                                label: 'Audio media ID',
-                                value: job.audio_media_id,
-                                copyable: true,
-                              },
-                              ...(job.alignment_id
-                                ? [
-                                    {
-                                      label: 'Alignment ID',
-                                      value: job.alignment_id,
-                                      copyable: true,
-                                    },
-                                  ]
-                                : []),
-                              ...(job.error
-                                ? [{ label: 'Error', value: job.error, copyable: true }]
-                                : []),
-                            ]}
-                          />
-                          {!terminal.has(job.state) ? (
-                            <View className="self-start">
-                              <Button
-                                label="Cancel"
-                                kind="danger"
-                                loading={cancelingJobID === job.id}
-                                disabled={Boolean(cancelingJobID)}
-                                onPress={() => void cancelJob(job.id)}
-                              />
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    })
-                  : null}
-              </Section>
-            ) : null}
-          </View>
-        ) : null}
-
-        {activeTab === 'details' ? (
-          <View className="gap-8">
-            <View className="gap-4 border-b border-line-subtle pb-5">
-              <View className="max-w-[760px] gap-3">
-                <View className="flex-row flex-wrap gap-2">
-                  <Button
-                    label="Find book details"
-                    icon="search"
-                    kind="secondary"
-                    disabled={detailsDirty || savingDetails || refreshingMetadata}
-                    onPress={() => setMetadataReviewOpen(true)}
-                  />
-                  <Button
-                    label="Fill missing"
-                    kind="quiet"
-                    loading={refreshingMetadata}
-                    disabled={detailsDirty || refreshingMetadata || savingDetails}
-                    onPress={() => void refreshMetadata()}
-                  />
-                </View>
-                {detailsDirty ? (
-                  <Text className="text-sm text-muted">
-                    Save your manual edits below before finding details online.
-                  </Text>
+          {activeTab === 'sync' ? (
+            <View className="gap-8">
+              <Section title="Read + Listen sync">
+                <Text className="max-w-[680px] text-base leading-6 text-muted">
+                  Match one reading edition with one narration so readers can switch at the same
+                  sentence.
+                </Text>
+                {!selectedEPUB || !selectedAudio ? (
+                  <EmptyState
+                    icon="synced"
+                    title="An ebook and audiobook are required"
+                    action={
+                      <Button
+                        label="Review files"
+                        kind="primary"
+                        onPress={() => selectTab('files')}
+                      />
+                    }
+                  >
+                    Add both formats in Files before creating synchronized reading and listening.
+                  </EmptyState>
                 ) : (
-                  <Text className="text-sm text-muted">
-                    Find an edition to compare, or fill missing details without replacing your
-                    edits.
-                  </Text>
+                  <View className="gap-6">
+                    <View className="gap-4 border-y border-line py-5">
+                      <View className="flex-row flex-wrap items-center justify-between gap-3">
+                        <Text className="text-base font-sans-bold text-ink">Selected pair</Text>
+                        <StatusBadge
+                          tone={
+                            selectedPairJob ? alignmentJobTone(selectedPairJob.state) : 'neutral'
+                          }
+                          label={
+                            selectedPairJob
+                              ? alignmentJobLabel(selectedPairJob.state)
+                              : 'Not synced'
+                          }
+                        />
+                      </View>
+                      <View className={shared.split}>
+                        <SyncSourceSummary title="Reading edition" item={selectedEPUB} />
+                        <SyncSourceSummary title="Narration" item={selectedAudio} />
+                      </View>
+                      {selectedPairJob && alignmentRunning(selectedPairJob) ? (
+                        <AlignmentProgress
+                          job={selectedPairJob}
+                          unreachable={progressUnreachable}
+                        />
+                      ) : selectedPairJob ? (
+                        <Notice tone={alignmentNoticeTone(selectedPairJob.state)}>
+                          {alignmentJobHint(selectedPairJob)}
+                        </Notice>
+                      ) : (
+                        <Text className={shared.itemMeta}>
+                          These files have not been synchronized yet.
+                        </Text>
+                      )}
+                    </View>
+
+                    {epubs.length > 1 || audio.length > 1 ? (
+                      <View className="gap-3">
+                        <Text className="text-base font-sans-bold text-ink">
+                          Choose source files
+                        </Text>
+                        <View className={shared.split}>
+                          <RevisionChoiceList
+                            title="Reading edition"
+                            items={epubs}
+                            selected={epubID}
+                            onSelect={setEPUBID}
+                          />
+                          <RevisionChoiceList
+                            title="Narration"
+                            items={audio}
+                            selected={audioID}
+                            onSelect={setAudioID}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
+
+                    <View className="items-start gap-2">
+                      {syncRunning && selectedPairJob ? (
+                        <Button
+                          label="Cancel sync"
+                          kind="danger"
+                          loading={cancelingJobID === selectedPairJob.id}
+                          disabled={Boolean(cancelingJobID)}
+                          onPress={() => void cancelJob(selectedPairJob.id)}
+                        />
+                      ) : (
+                        <Button
+                          label={syncActionLabel}
+                          kind="primary"
+                          loading={alignmentBusy}
+                          disabled={alignmentBusy || syncRunning || syncReady}
+                          onPress={() => void enqueue()}
+                        />
+                      )}
+                      <Text className={shared.itemMeta}>
+                        Alignment runs on the server. You can safely leave this page.
+                      </Text>
+                    </View>
+                  </View>
                 )}
-              </View>
-              {metadataReviewOpen ? (
-                <MetadataReviewDialog
-                  workID={id}
-                  initialQuery={`${work.title} ${work.author || ''}`.trim()}
-                  onClose={() => setMetadataReviewOpen(false)}
-                  onApplied={metadataApplied}
-                />
+              </Section>
+
+              {jobs.length ? (
+                <Section title="Sync history">
+                  <Button
+                    label={historyOpen ? 'Hide sync history' : 'Show sync history'}
+                    kind="quiet"
+                    onPress={() => setHistoryOpen(!historyOpen)}
+                  />
+                  {historyOpen
+                    ? jobs.map((job) => {
+                        const epubMedia = media.find((item) => item.id === job.epub_media_id);
+                        const audioMedia = media.find((item) => item.id === job.audio_media_id);
+                        return (
+                          <View key={job.id} className={shared.listItem}>
+                            <View className="flex-row flex-wrap items-center gap-2">
+                              <StatusBadge
+                                tone={alignmentJobTone(job.state)}
+                                label={alignmentJobLabel(job.state)}
+                              />
+                              <Text className={shared.itemMeta}>
+                                {new Date(job.created_at).toLocaleString()}
+                              </Text>
+                            </View>
+                            <Text className={shared.itemTitle}>
+                              {epubMedia?.original_filename ||
+                                epubMedia?.representation.label ||
+                                'EPUB'}
+                              {' + '}
+                              {audioMedia?.original_filename ||
+                                audioMedia?.representation.label ||
+                                'Audiobook'}
+                            </Text>
+                            <Text className={shared.itemMeta}>{alignmentJobHint(job)}</Text>
+                            <TechnicalDetails
+                              rows={[
+                                { label: 'Job ID', value: job.id, copyable: true },
+                                {
+                                  label: 'EPUB media ID',
+                                  value: job.epub_media_id,
+                                  copyable: true,
+                                },
+                                {
+                                  label: 'Audio media ID',
+                                  value: job.audio_media_id,
+                                  copyable: true,
+                                },
+                                ...(job.alignment_id
+                                  ? [
+                                      {
+                                        label: 'Alignment ID',
+                                        value: job.alignment_id,
+                                        copyable: true,
+                                      },
+                                    ]
+                                  : []),
+                                ...(job.error
+                                  ? [{ label: 'Error', value: job.error, copyable: true }]
+                                  : []),
+                              ]}
+                            />
+                            {!terminal.has(job.state) ? (
+                              <View className="self-start">
+                                <Button
+                                  label="Cancel"
+                                  kind="danger"
+                                  loading={cancelingJobID === job.id}
+                                  disabled={Boolean(cancelingJobID)}
+                                  onPress={() => void cancelJob(job.id)}
+                                />
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })
+                    : null}
+                </Section>
               ) : null}
             </View>
-            <Section title="Book details">
-              <View className="max-w-[760px] gap-4">
-                <Field label="Title" value={title} onChangeText={setTitle} />
-                <Field label="Author" value={author} onChangeText={setAuthor} />
-                <Field
-                  label="Description"
-                  value={description}
-                  multiline
-                  numberOfLines={6}
-                  className="min-h-32"
-                  onChangeText={setDescription}
-                />
-                <View className="border-y border-line-subtle py-2">
-                  <Button
-                    label={
-                      publicationOpen
-                        ? 'Hide publication details'
-                        : 'Series, publication & subjects'
-                    }
-                    kind="quiet"
-                    icon={publicationOpen ? 'chevronUp' : 'chevronDown'}
-                    onPress={() => setPublicationOpen((open) => !open)}
-                  />
-                </View>
-                {publicationOpen ? (
-                  <View className="gap-4">
-                    <View className="flex-row flex-wrap gap-4">
-                      <View className="min-w-[220px] flex-grow basis-[280px]">
-                        <Field
-                          label="Series"
-                          maxLength={200}
-                          value={series}
-                          onChangeText={(value) => {
-                            setSeries(value);
-                            if (!value.trim()) setSeriesPosition('');
-                          }}
-                        />
-                      </View>
-                      <View className="min-w-[160px] flex-grow basis-[180px]">
-                        <Field
-                          label="Position in series"
-                          error={seriesPositionError(seriesPosition)}
-                          value={seriesPosition}
-                          onChangeText={setSeriesPosition}
-                          help="Optional. Use 0, 1, or 1.5; up to three decimal places."
-                        />
-                      </View>
-                    </View>
-                    <View className="flex-row flex-wrap gap-4">
-                      <View className="min-w-[220px] flex-grow basis-[280px]">
-                        <Field label="Publisher" value={publisher} onChangeText={setPublisher} />
-                      </View>
-                      <View className="min-w-[160px] flex-grow basis-[180px]">
-                        <Field
-                          label="Publication year"
-                          value={publishYear}
-                          keyboardType="number-pad"
-                          onChangeText={setPublishYear}
-                        />
-                      </View>
-                    </View>
-                    <View className="flex-row flex-wrap gap-4">
-                      <View className="min-w-[220px] flex-grow basis-[280px]">
-                        <Field label="ISBN" value={isbn} onChangeText={setISBN} />
-                      </View>
-                      <View className="min-w-[160px] flex-grow basis-[180px]">
-                        <Field label="Language" value={language} onChangeText={setLanguage} />
-                      </View>
-                    </View>
-                    <Field
-                      label="Subjects"
-                      help="One subject per line. Genres are assigned from these values."
-                      value={subjects}
-                      multiline
-                      numberOfLines={5}
-                      className="min-h-28"
-                      onChangeText={setSubjects}
+          ) : null}
+
+          {activeTab === 'details' ? (
+            <View className="gap-8">
+              <View className="gap-4 border-b border-line-subtle pb-5">
+                <View className="max-w-[760px] gap-3">
+                  <View className="flex-row flex-wrap gap-2">
+                    <Button
+                      label="Find book details"
+                      icon="search"
+                      kind="secondary"
+                      disabled={detailsDirty || savingDetails || refreshingMetadata}
+                      onPress={() => setMetadataReviewOpen(true)}
+                    />
+                    <Button
+                      label="Fill missing"
+                      kind="quiet"
+                      loading={refreshingMetadata}
+                      disabled={detailsDirty || refreshingMetadata || savingDetails}
+                      onPress={() => void refreshMetadata()}
                     />
                   </View>
-                ) : null}
-                <View className="self-start">
-                  <Button
-                    label="Save details"
-                    kind="primary"
-                    loading={savingDetails}
-                    disabled={savingDetails || !title.trim()}
-                    onPress={() => void saveWorkSettings()}
-                  />
+                  {detailsDirty ? (
+                    <Text className="text-sm text-muted">
+                      Save your manual edits below before finding details online.
+                    </Text>
+                  ) : (
+                    <Text className="text-sm text-muted">
+                      Find an edition to compare, or fill missing details without replacing your
+                      edits.
+                    </Text>
+                  )}
                 </View>
+                {metadataReviewOpen ? (
+                  <MetadataReviewDialog
+                    workID={id}
+                    initialQuery={`${work.title} ${work.author || ''}`.trim()}
+                    onClose={() => setMetadataReviewOpen(false)}
+                    onApplied={metadataApplied}
+                  />
+                ) : null}
               </View>
-            </Section>
-            <Section title="Genres">
-              <View className="max-w-[760px] gap-5">
-                <Select
-                  label="Assignment"
-                  value={genreMode}
-                  options={[
-                    { value: 'automatic', label: 'Match from subjects' },
-                    { value: 'manual', label: 'Choose manually' },
-                  ]}
-                  onChange={(value) => setGenreMode(value as 'automatic' | 'manual')}
-                />
-                {genreMode === 'automatic' ? (
-                  <View className="gap-3 border-y border-line py-4">
-                    <Text className={shared.itemMeta}>
-                      Aldus matches the subjects above against the genre rules configured for this
-                      server.
-                    </Text>
-                    {work.genre_tags.length ? (
-                      <View className="flex-row flex-wrap gap-2">
-                        {work.genre_tags.map((tag) => (
-                          <GenreTagChip key={tag.id} icon={tag.icon} label={tag.label} />
-                        ))}
-                      </View>
-                    ) : (
-                      <Text className="text-sm text-muted">No genres currently match.</Text>
-                    )}
+              <Section title="Book details">
+                <View className="max-w-[760px] gap-4">
+                  <Field label="Title" value={title} onChangeText={setTitle} />
+                  <Field label="Author" value={author} onChangeText={setAuthor} />
+                  <Field
+                    label="Description"
+                    value={description}
+                    multiline
+                    numberOfLines={6}
+                    className="min-h-32"
+                    onChangeText={setDescription}
+                  />
+                  <View className="border-y border-line-subtle py-2">
+                    <Button
+                      label={
+                        publicationOpen
+                          ? 'Hide publication details'
+                          : 'Series, publication & subjects'
+                      }
+                      kind="quiet"
+                      icon={publicationOpen ? 'chevronUp' : 'chevronDown'}
+                      onPress={() => setPublicationOpen((open) => !open)}
+                    />
                   </View>
-                ) : (
-                  <View className="gap-2">
-                    <Text className={shared.itemMeta}>
-                      This exact selection replaces automatic matching for this work.
-                    </Text>
-                    <View className="flex-row flex-wrap gap-x-6 gap-y-1 border-y border-line py-3">
-                      {allGenreTags.map((tag) => (
-                        <View key={tag.id} className="min-w-[180px] flex-grow basis-[220px]">
-                          <Checkbox
-                            label={tag.label}
-                            checked={selectedGenreIDs.includes(tag.id)}
-                            onPress={() => toggleGenre(tag.id)}
+                  {publicationOpen ? (
+                    <View className="gap-4">
+                      <View className="flex-row flex-wrap gap-4">
+                        <View className="min-w-[220px] flex-grow basis-[280px]">
+                          <Field
+                            label="Series"
+                            maxLength={200}
+                            value={series}
+                            onChangeText={(value) => {
+                              setSeries(value);
+                              if (!value.trim()) setSeriesPosition('');
+                            }}
                           />
                         </View>
-                      ))}
+                        <View className="min-w-[160px] flex-grow basis-[180px]">
+                          <Field
+                            label="Position in series"
+                            error={seriesPositionError(seriesPosition)}
+                            value={seriesPosition}
+                            onChangeText={setSeriesPosition}
+                            help="Optional. Use 0, 1, or 1.5; up to three decimal places."
+                          />
+                        </View>
+                      </View>
+                      <View className="flex-row flex-wrap gap-4">
+                        <View className="min-w-[220px] flex-grow basis-[280px]">
+                          <Field label="Publisher" value={publisher} onChangeText={setPublisher} />
+                        </View>
+                        <View className="min-w-[160px] flex-grow basis-[180px]">
+                          <Field
+                            label="Publication year"
+                            value={publishYear}
+                            keyboardType="number-pad"
+                            onChangeText={setPublishYear}
+                          />
+                        </View>
+                      </View>
+                      <View className="flex-row flex-wrap gap-4">
+                        <View className="min-w-[220px] flex-grow basis-[280px]">
+                          <Field label="ISBN" value={isbn} onChangeText={setISBN} />
+                        </View>
+                        <View className="min-w-[160px] flex-grow basis-[180px]">
+                          <Field label="Language" value={language} onChangeText={setLanguage} />
+                        </View>
+                      </View>
+                      <Field
+                        label="Subjects"
+                        help="One subject per line. Genres are assigned from these values."
+                        value={subjects}
+                        multiline
+                        numberOfLines={5}
+                        className="min-h-28"
+                        onChangeText={setSubjects}
+                      />
                     </View>
-                    {!selectedGenreIDs.length ? (
-                      <Text className="text-sm text-muted">
-                        No genres selected. This work will appear without genre tags.
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-                <View className="self-start">
-                  <Button
-                    label="Save genres"
-                    kind="primary"
-                    loading={savingGenres}
-                    disabled={savingGenres}
-                    onPress={() => void saveGenres()}
-                  />
-                </View>
-              </View>
-            </Section>
-            <Section title="Delete work">
-              <View className="max-w-[760px] gap-3">
-                <Text className={shared.itemMeta}>
-                  {representations.length
-                    ? 'This work still has files. Remove its reading editions and narrations before deleting it.'
-                    : 'Permanently remove this work from the library.'}
-                </Text>
-                <Row>
-                  {representations.length ? (
-                    <Button
-                      label="Review files"
-                      kind="secondary"
-                      onPress={() => selectTab('files')}
-                    />
                   ) : null}
-                  <Button
-                    label="Delete work"
-                    kind="danger"
-                    disabled={representations.length > 0}
-                    onPress={() => setConfirmingDelete(true)}
+                  <View className="self-start">
+                    <Button
+                      label="Save details"
+                      kind="primary"
+                      loading={savingDetails}
+                      disabled={savingDetails || !title.trim()}
+                      onPress={() => void saveWorkSettings()}
+                    />
+                  </View>
+                </View>
+              </Section>
+              <Section title="Genres">
+                <View className="max-w-[760px] gap-5">
+                  <Select
+                    label="Assignment"
+                    value={genreMode}
+                    options={[
+                      { value: 'automatic', label: 'Match from subjects' },
+                      { value: 'manual', label: 'Choose manually' },
+                    ]}
+                    onChange={(value) => setGenreMode(value as 'automatic' | 'manual')}
                   />
-                </Row>
-              </View>
-            </Section>
-          </View>
-        ) : null}
+                  {genreMode === 'automatic' ? (
+                    <View className="gap-3 border-y border-line py-4">
+                      <Text className={shared.itemMeta}>
+                        Aldus matches the subjects above against the genre rules configured for this
+                        server.
+                      </Text>
+                      {work.genre_tags.length ? (
+                        <View className="flex-row flex-wrap gap-2">
+                          {work.genre_tags.map((tag) => (
+                            <GenreTagChip key={tag.id} icon={tag.icon} label={tag.label} />
+                          ))}
+                        </View>
+                      ) : (
+                        <Text className="text-sm text-muted">No genres currently match.</Text>
+                      )}
+                    </View>
+                  ) : (
+                    <View className="gap-2">
+                      <Text className={shared.itemMeta}>
+                        This exact selection replaces automatic matching for this work.
+                      </Text>
+                      <View className="flex-row flex-wrap gap-x-6 gap-y-1 border-y border-line py-3">
+                        {allGenreTags.map((tag) => (
+                          <View key={tag.id} className="min-w-[180px] flex-grow basis-[220px]">
+                            <Checkbox
+                              label={tag.label}
+                              checked={selectedGenreIDs.includes(tag.id)}
+                              onPress={() => toggleGenre(tag.id)}
+                            />
+                          </View>
+                        ))}
+                      </View>
+                      {!selectedGenreIDs.length ? (
+                        <Text className="text-sm text-muted">
+                          No genres selected. This work will appear without genre tags.
+                        </Text>
+                      ) : null}
+                    </View>
+                  )}
+                  <View className="self-start">
+                    <Button
+                      label="Save genres"
+                      kind="primary"
+                      loading={savingGenres}
+                      disabled={savingGenres}
+                      onPress={() => void saveGenres()}
+                    />
+                  </View>
+                </View>
+              </Section>
+              <Section title="Delete work">
+                <View className="max-w-[760px] gap-3">
+                  <Text className={shared.itemMeta}>
+                    {representations.length
+                      ? 'This work still has files. Remove its reading editions and narrations before deleting it.'
+                      : 'Permanently remove this work from the library.'}
+                  </Text>
+                  <Row>
+                    {representations.length ? (
+                      <Button
+                        label="Review files"
+                        kind="secondary"
+                        onPress={() => selectTab('files')}
+                      />
+                    ) : null}
+                    <Button
+                      label="Delete work"
+                      kind="danger"
+                      disabled={representations.length > 0}
+                      onPress={() => setConfirmingDelete(true)}
+                    />
+                  </Row>
+                </View>
+              </Section>
+            </View>
+          ) : null}
+        </AnimatedView>
       </View>
 
       <Dialog

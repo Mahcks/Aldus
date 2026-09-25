@@ -235,7 +235,7 @@ for (const theme of ['light', 'dark'] as const) {
               return '';
             }),
         )
-        .toBe(theme === 'dark' ? 'rgb(23, 20, 16)' : 'rgb(250, 247, 242)');
+        .toBe(theme === 'dark' ? 'rgb(27, 23, 19)' : 'rgb(250, 247, 242)');
 
       await page.goto('/work/book');
       await expect(cover.locator('img')).toBeVisible();
@@ -412,7 +412,7 @@ for (const theme of ['light', 'dark'] as const) {
           };
         });
         await upload.click();
-        await expect(page.getByText('Something went wrong.', { exact: true })).toBeVisible();
+        await expect(page.getByText(/^Something went wrong\./)).toBeVisible();
         await expect(upload).toBeEnabled();
         expect(uploads).toBe(0);
         await page.reload();

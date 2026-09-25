@@ -60,10 +60,10 @@ export const lightColors = {
  * and reader night-mode is a separate, book-local preference.
  */
 export const darkColors: typeof lightColors = {
-  canvas: '#171410',
-  paper: '#211c17',
-  panel: '#171410',
-  panelStrong: '#3a2f24',
+  canvas: '#1b1713',
+  paper: '#27211b',
+  panel: '#1b1713',
+  panelStrong: '#3d3226',
 
   ink: '#eee6d8',
   textSecondary: '#d9cdbb',
@@ -76,14 +76,14 @@ export const darkColors: typeof lightColors = {
   onRail: lightColors.onRail,
   railMuted: lightColors.railMuted,
 
-  accent: '#d97a4c',
-  accentStrong: '#c1673f',
-  accentSoft: '#3a2418',
+  accent: '#d9be8b',
+  accentStrong: '#bfa06a',
+  accentSoft: '#30291b',
   onAccent: '#171410',
 
   danger: '#e26a5d',
   dangerSoft: '#3a1f1c',
-  focus: '#d97a4c',
+  focus: '#d9be8b',
   success: '#6bab70',
   successSoft: '#22301f',
   warning: '#c99a3d',

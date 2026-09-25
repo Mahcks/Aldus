@@ -1,6 +1,7 @@
 import { Link, type Href } from 'expo-router';
 import { Platform } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
@@ -97,6 +98,7 @@ export function BookCover({
   onImageLoad?: (size: { width: number; height: number }) => void;
 } & CoverPresentation) {
   const colors = useThemeColors();
+  const reducedMotion = useReducedMotion();
   const [failedURLs, setFailedURLs] = useState<string[]>([]);
   const [audioWidth, setAudioWidth] = useState(148);
   const imageURL = [coverURL, fallbackCoverURL].find((url) => url && !failedURLs.includes(url));
@@ -186,6 +188,7 @@ export function BookCover({
               : resolveCoverSrc(imageURL || ''),
           }}
           contentFit={coverFit}
+          transition={reducedMotion ? 0 : { duration: 280, effect: 'cross-dissolve' }}
           contentPosition={{ left: `${coverFocalX}%`, top: `${coverFocalY}%` }}
           accessibilityIgnoresInvertColors
           style={{

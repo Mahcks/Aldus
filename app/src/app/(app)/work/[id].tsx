@@ -1,6 +1,14 @@
 import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { EditionSection } from '@/components/catalog/EditionSection';
 import {
+  ActionTile,
+  DetailFacts,
+  DetailSection,
+  ProgressMeter,
+  SyncNote,
+  type DetailFact,
+} from '@/components/catalog/work-detail';
+import {
   AlignmentProgress,
   alignmentRunning,
   useAlignmentPolling,
@@ -29,13 +37,13 @@ import {
   type MediaChoice,
 } from '@/lib/consumption/consumption';
 import { formatDuration } from '@/lib/format';
-import { fadeIn } from '@/components/ui/motion';
+import { fadeIn, layoutShift } from '@/components/ui/motion';
 import {
   ReadingStatusDialog,
   readingStatusLabel,
   type ReadingStatus,
 } from '@/components/catalog/reading-status';
-import { Text, View } from '@/components/ui/tw';
+import { AnimatedView, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Checkbox,
@@ -231,7 +239,7 @@ export default function WorkScreen() {
   if (loading)
     return (
       <Page title="Book details" hideHeader>
-        <LoadingState layout="details" label="Loading this book…" />
+        <LoadingState layout="work" label="Loading this book…" />
       </Page>
     );
 
@@ -276,12 +284,29 @@ export default function WorkScreen() {
     secondaryMode === 'read' ? Boolean(selectedEPUB) : Boolean(selectedAudio);
   const description = work.description?.trim();
   const genreTags = work.genre_tags ?? [];
-  const details = [
-    work.first_publish_year ? `First published ${work.first_publish_year}` : '',
-    work.publisher ? work.publisher : '',
-    work.language ? languageName(work.language) : '',
-    work.isbn ? `ISBN ${work.isbn}` : '',
-  ].filter(Boolean);
+  const narrators = selectedAudio?.representation.narrators ?? [];
+  const nextInSeries = work.next_in_series;
+  const facts: DetailFact[] = [
+    work.first_publish_year
+      ? { label: 'First published', value: String(work.first_publish_year) }
+      : null,
+    work.publisher ? { label: 'Publisher', value: work.publisher } : null,
+    work.language ? { label: 'Language', value: languageName(work.language) } : null,
+    work.isbn ? { label: 'ISBN', value: work.isbn } : null,
+    ...narrators.map((name): DetailFact => ({
+      label: 'Narrated by',
+      value: name,
+      onPress: () => router.push({ pathname: '/catalog', params: { narrator: name } }),
+    })),
+    nextInSeries
+      ? {
+          label: 'Next in series',
+          value: nextInSeries.title,
+          onPress: () => router.push(`/work/${nextInSeries.id}`),
+        }
+      : null,
+  ].filter((fact): fact is DetailFact => fact !== null);
+  const twoColumns = width >= 900;
   const formatLabel = selectedEPUB
     ? selectedAudio
       ? 'Ebook and audiobook'
@@ -458,7 +483,7 @@ export default function WorkScreen() {
   // naturally at book proportions; audio-only books get the square
   // treatment that matches Continue listening elsewhere in the app.
   const cover = (
-    <View className={narrow ? 'w-[148px]' : 'w-[204px]'}>
+    <View className="w-[204px]">
       <BookCover
         title={work.title}
         author={work.author}
@@ -469,76 +494,77 @@ export default function WorkScreen() {
             : work.cover_url)
         }
         fallbackCoverURL={fallbackCoverURL(work, selectedEPUB ? 'ebook' : 'audiobook')}
-        size={selectedAudio && !selectedEPUB ? 'audio' : narrow ? 'small' : 'hero'}
+        size={selectedAudio && !selectedEPUB ? 'audio' : 'hero'}
         {...coverPresentation(work)}
         coverFit="cover"
       />
     </View>
   );
+  const seriesLabel = work.series
+    ? `${work.series}${work.series_position ? ` · Book ${work.series_position}` : ''}`
+    : '';
   const identity = (
-    <View className={narrow ? 'min-w-0 flex-1 gap-2' : 'gap-3'}>
+    <View className={narrow ? 'w-full items-center gap-2' : 'gap-3'}>
       <Text className="text-xs font-sans-medium text-muted">{formatLabel}</Text>
       <Text
         accessibilityRole="header"
         numberOfLines={3}
-        className={`${narrow ? 'text-xl leading-7' : 'text-4xl leading-[44px]'} font-editorial text-ink`}
+        className={`${narrow ? 'text-center text-[28px] leading-9' : 'text-4xl leading-[44px]'} font-editorial text-ink`}
       >
         {work.title}
       </Text>
-      <Text numberOfLines={2} className="text-base text-muted sm:text-lg">
+      <Text
+        numberOfLines={2}
+        className={`text-base text-muted sm:text-lg ${narrow ? 'text-center' : ''}`}
+      >
         {work.author || 'Unknown author'}
       </Text>
+      {work.series ? (
+        <Button
+          kind="quiet"
+          label={seriesLabel}
+          icon="collections"
+          onPress={() =>
+            router.push({
+              pathname: '/catalog',
+              params: { series: work.series, library_id: work.library_id },
+            })
+          }
+        />
+      ) : null}
     </View>
   );
-  const primaryActions = (
-    <View className="w-full gap-2">
-      {primaryAvailable ? (
-        <View className="gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Button
-            label={`${hasProgress || work.in_progress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
-            icon={primaryMode === 'read' ? 'read' : 'listen'}
-            kind="primary"
-            onPress={() => consume(primaryMode)}
-          />
-          {secondaryAvailable ? (
-            <Button
-              icon={secondaryMode === 'read' ? 'read' : 'listen'}
-              label={secondaryMode === 'read' ? 'Read' : 'Listen'}
-              kind="secondary"
-              onPress={() => consume(secondaryMode)}
-            />
-          ) : null}
-        </View>
-      ) : (
-        <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
-      )}
+  const primaryActions = primaryAvailable ? (
+    <View className="w-full gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <Button
+        label={`${hasProgress || work.in_progress ? 'Continue' : 'Start'} ${primaryMode === 'read' ? 'reading' : 'listening'}`}
+        icon={primaryMode === 'read' ? 'read' : 'listen'}
+        kind="primary"
+        onPress={() => consume(primaryMode)}
+      />
+      {secondaryAvailable ? (
+        <Button
+          icon={secondaryMode === 'read' ? 'read' : 'listen'}
+          label={secondaryMode === 'read' ? 'Read' : 'Listen'}
+          kind="secondary"
+          onPress={() => consume(secondaryMode)}
+        />
+      ) : null}
     </View>
+  ) : (
+    <Notice tone="info">This book isn&apos;t available to read or listen to yet.</Notice>
   );
   const controls = (
-    <View className="w-full gap-4">
+    <View className={`w-full gap-4 ${narrow ? '' : 'max-w-md'}`}>
       {work.in_progress ? (
-        <View className="w-full max-w-md gap-1.5 py-0.5">
-          {work.completion_percent > 0 ? (
-            <View
-              className="h-1.5 overflow-hidden rounded-full bg-line"
-              accessibilityRole="progressbar"
-              accessibilityValue={{ min: 0, max: 100, now: work.completion_percent }}
-            >
-              <View
-                className="h-full rounded-full bg-accent-strong"
-                style={{ width: `${work.completion_percent}%` }}
-              />
-            </View>
-          ) : null}
-          <Text className="text-sm text-muted">
-            {workProgressLabel(work.in_progress, work.completion_percent)}
-            {work.active_seconds > 0 ? ` · ${formatDuration(work.active_seconds)} active` : ''}
-          </Text>
-        </View>
+        <ProgressMeter
+          percent={work.completion_percent}
+          label={`${workProgressLabel(work.in_progress, work.completion_percent)}${work.active_seconds > 0 ? ` · ${formatDuration(work.active_seconds)} active` : ''}`}
+        />
       ) : null}
 
       {activeAlignment ? (
-        <View className="gap-3 border-t border-line pt-4">
+        <View className="gap-3 rounded-card border border-line-subtle bg-paper p-4">
           <AlignmentProgress job={activeAlignment} unreachable={progressUnreachable} compact />
           {canEdit ? (
             <Button
@@ -549,11 +575,11 @@ export default function WorkScreen() {
           ) : null}
         </View>
       ) : note ? (
-        <Text className="max-w-md text-sm text-muted">{note}</Text>
+        <SyncNote text={note} />
       ) : null}
 
-      <View className="w-full flex-row flex-wrap items-center gap-1 border-t border-line pt-3">
-        <Button
+      <View className="w-full flex-row gap-2">
+        <ActionTile
           label={readingStatusLabel(work.reading_status)}
           icon={
             work.reading_status === 'finished'
@@ -562,24 +588,21 @@ export default function WorkScreen() {
                 ? 'read'
                 : 'add'
           }
-          kind="quiet"
           disabled={offline}
           onPress={() => setStatusOpen(true)}
         />
-        <Button
+        <ActionTile
           label="Collection"
           accessibilityLabel="Add to collection"
           icon="collections"
-          kind="quiet"
           disabled={offline}
           onPress={() => void openCollections()}
         />
         {Platform.OS !== 'web' && (selectedEPUB || selectedAudio) ? (
-          <Button
+          <ActionTile
             label={downloaded ? 'Downloads' : 'Download'}
             accessibilityLabel={downloaded ? 'Manage offline downloads' : 'Download for offline'}
             icon={downloaded ? 'enabled' : 'acquire'}
-            kind="quiet"
             loading={downloadBusy}
             disabled={offline}
             onPress={() => setDownloadOpen(true)}
@@ -591,6 +614,73 @@ export default function WorkScreen() {
       ) : null}
     </View>
   );
+
+  const aboutSection =
+    description || genreTags.length || canEdit ? (
+      <DetailSection index={1} title="About this book">
+        {description ? (
+          <AnimatedView layout={layoutShift} className="gap-1">
+            <Text
+              numberOfLines={descriptionExpanded ? undefined : 5}
+              className="max-w-[70ch] text-base leading-7 text-muted"
+            >
+              {description}
+            </Text>
+            {description.length > 360 ? (
+              <View className="self-start">
+                <Button
+                  label={descriptionExpanded ? 'Show less' : 'Show more'}
+                  kind="quiet"
+                  onPress={() => setDescriptionExpanded((current) => !current)}
+                />
+              </View>
+            ) : null}
+          </AnimatedView>
+        ) : canEdit ? (
+          <View className="gap-2">
+            <Text className="max-w-[70ch] text-base text-muted">
+              Add a description and book details from Open Library, or edit them in Manage this
+              work.
+            </Text>
+            <View className="self-start">
+              <Button
+                label="Fill in details from Open Library"
+                icon="scan"
+                kind="secondary"
+                onPress={() => router.push(`/work/${id}/manage?tab=artwork`)}
+              />
+            </View>
+          </View>
+        ) : null}
+        {genreTags.length ? (
+          <View className="flex-row flex-wrap gap-1.5 pt-1">
+            {genreTags.map((tag) => (
+              <GenreTagChip key={tag.id} icon={tag.icon} label={tag.label} />
+            ))}
+          </View>
+        ) : null}
+      </DetailSection>
+    ) : null;
+  const factsSection = facts.length ? (
+    <DetailSection index={2} title="Details">
+      <DetailFacts facts={facts} />
+    </DetailSection>
+  ) : null;
+  const requestSection =
+    !offline && (!selectedEPUB || !selectedAudio) ? (
+      <DetailSection index={3} title="Get another format">
+        <RequestActions
+          key={work.id}
+          book={{
+            ...work,
+            work_id: work.id,
+            readable: Boolean(selectedEPUB),
+            listenable: Boolean(selectedAudio),
+            synchronized: false,
+          }}
+        />
+      </DetailSection>
+    ) : null;
 
   return (
     <Page
@@ -620,135 +710,35 @@ export default function WorkScreen() {
       {error ? <Notice tone="danger">{error}</Notice> : null}
 
       <Animated.View entering={fadeIn}>
-        <View
-          className={
-            narrow
-              ? 'w-full gap-5'
-              : 'mx-auto w-full max-w-[1000px] flex-row items-start gap-12 py-10'
-          }
-        >
-          {narrow ? (
-            <>
-              <View className="w-full flex-row items-start gap-5">
-                {cover}
-                <View className="min-w-0 flex-1 gap-4">
-                  {identity}
-                  {primaryActions}
-                </View>
-              </View>
+        {narrow ? (
+          <View className="w-full items-center gap-6 pb-2 pt-2">
+            {cover}
+            {identity}
+            <View className="w-full gap-5">
+              {primaryActions}
               {controls}
-            </>
-          ) : (
-            <>
-              {cover}
-              <View className="min-w-0 flex-1 items-start gap-5 pt-2">
-                {identity}
-                {primaryActions}
-                {controls}
-              </View>
-            </>
-          )}
-        </View>
+            </View>
+          </View>
+        ) : (
+          <View className="mx-auto w-full max-w-[1000px] flex-row items-start gap-12 py-8">
+            {cover}
+            <View className="min-w-0 flex-1 items-start gap-5 pt-2">
+              {identity}
+              {primaryActions}
+              {controls}
+            </View>
+          </View>
+        )}
       </Animated.View>
 
-      {!offline && (!selectedEPUB || !selectedAudio) ? (
-        <View className="mx-auto w-full max-w-[1000px] gap-3 border-t border-line py-4">
-          <Text className="text-base font-sans-semibold text-ink">Get another format</Text>
-          <RequestActions
-            key={work.id}
-            book={{
-              ...work,
-              work_id: work.id,
-              readable: Boolean(selectedEPUB),
-              listenable: Boolean(selectedAudio),
-              synchronized: false,
-            }}
-          />
-        </View>
-      ) : null}
-
-      {work.series || selectedAudio?.representation.narrators?.length ? (
-        <View className="mx-auto w-full max-w-[1000px] gap-2 border-t border-line py-4">
-          {work.series ? (
-            <Button
-              kind="quiet"
-              label={`${work.series}${work.series_position ? ` · Book ${work.series_position}` : ''}`}
-              onPress={() =>
-                router.push({
-                  pathname: '/catalog',
-                  params: { series: work.series, library_id: work.library_id },
-                })
-              }
-            />
-          ) : null}
-          {selectedAudio?.representation.narrators?.map((name) => (
-            <Button
-              key={name}
-              kind="quiet"
-              label={`Narrated by ${name}`}
-              onPress={() => router.push({ pathname: '/catalog', params: { narrator: name } })}
-            />
-          ))}
-          {work.next_in_series ? (
-            <Button
-              kind="secondary"
-              label={`Next in series: ${work.next_in_series.title}`}
-              onPress={() => router.push(`/work/${work.next_in_series!.id}`)}
-            />
+      <View className="mx-auto w-full max-w-[1000px] gap-8 pb-10 pt-2">
+        <View className={twoColumns ? 'flex-row items-start gap-12' : 'gap-8'}>
+          {aboutSection ? <View className="min-w-0 flex-1">{aboutSection}</View> : null}
+          {factsSection ? (
+            <View className={twoColumns ? 'w-[340px]' : 'w-full'}>{factsSection}</View>
           ) : null}
         </View>
-      ) : null}
-      {description || details.length || genreTags.length || canEdit ? (
-        <View
-          className={`mx-auto w-full max-w-[1000px] gap-3 ${narrow ? 'pb-6' : 'border-t border-line py-8'}`}
-        >
-          <Text className="text-lg font-sans-semibold text-ink">About this book</Text>
-          {description ? (
-            <>
-              <Text
-                numberOfLines={descriptionExpanded ? undefined : 5}
-                className="max-w-[70ch] text-base leading-7 text-muted"
-              >
-                {description}
-              </Text>
-              {description.length > 360 ? (
-                <Button
-                  label={descriptionExpanded ? 'Show less' : 'Show more'}
-                  kind="quiet"
-                  onPress={() => setDescriptionExpanded((current) => !current)}
-                />
-              ) : null}
-            </>
-          ) : canEdit ? (
-            <View className="gap-2">
-              <Text className="max-w-[70ch] text-base text-muted">
-                Add a description and book details from Open Library, or edit them in Manage this
-                work.
-              </Text>
-              <View className="self-start">
-                <Button
-                  label="Fill in details from Open Library"
-                  icon="scan"
-                  kind="secondary"
-                  onPress={() => router.push(`/work/${id}/manage?tab=artwork`)}
-                />
-              </View>
-            </View>
-          ) : null}
-          {details.length ? (
-            <Text className="text-sm text-subtle">{details.join(' · ')}</Text>
-          ) : null}
-          {genreTags.length ? (
-            <View className="flex-row flex-wrap gap-1.5 pt-1">
-              {genreTags.map((tag) => (
-                <GenreTagChip key={tag.id} icon={tag.icon} label={tag.label} />
-              ))}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
-      <View className="mx-auto w-full max-w-[1000px]">
+        {requestSection}
         <EditionSection
           epubs={epubs}
           audio={audio}

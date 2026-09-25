@@ -111,13 +111,13 @@
  */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #171410;
-    --color-panel: #171410;
-    --color-paper: #211c17;
-    --color-raised: #211c17;
-    --color-panel-strong: #3a2f24;
-    --color-control: #1c1712;
-    --color-control-focus: #211c17;
+    --color-canvas: #1b1713;
+    --color-panel: #1b1713;
+    --color-paper: #27211b;
+    --color-raised: #27211b;
+    --color-panel-strong: #3d3226;
+    --color-control: #211b16;
+    --color-control-focus: #27211b;
 
     --color-ink: #eee6d8;
     --color-text-secondary: #d9cdbb;
@@ -128,14 +128,14 @@
     --color-line-subtle: rgb(238 230 216 / 0.08);
     --color-line-strong: #5c5040;
 
-    --color-accent: #d97a4c;
-    --color-accent-strong: #c1673f;
-    --color-accent-soft: #3a2418;
+    --color-accent: #d9be8b;
+    --color-accent-strong: #bfa06a;
+    --color-accent-soft: #30291b;
     --color-on-accent: #171410;
 
     --color-danger: #e26a5d;
     --color-danger-soft: #3a1f1c;
-    --color-focus: #d97a4c;
+    --color-focus: #d9be8b;
     --color-success: #6bab70;
     --color-success-soft: #22301f;
     --color-warning: #c99a3d;
@@ -156,13 +156,13 @@
 
 /* Explicit "Dark" choice on web — same values as the media query above. */
 :root.theme-dark {
-  --color-canvas: #171410;
-  --color-panel: #171410;
-  --color-paper: #211c17;
-  --color-raised: #211c17;
-  --color-panel-strong: #3a2f24;
-  --color-control: #1c1712;
-  --color-control-focus: #211c17;
+  --color-canvas: #1b1713;
+  --color-panel: #1b1713;
+  --color-paper: #27211b;
+  --color-raised: #27211b;
+  --color-panel-strong: #3d3226;
+  --color-control: #211b16;
+  --color-control-focus: #27211b;
 
   --color-ink: #eee6d8;
   --color-text-secondary: #d9cdbb;
@@ -173,14 +173,14 @@
   --color-line-subtle: rgb(238 230 216 / 0.08);
   --color-line-strong: #5c5040;
 
-  --color-accent: #d97a4c;
-  --color-accent-strong: #c1673f;
-  --color-accent-soft: #3a2418;
+  --color-accent: #d9be8b;
+  --color-accent-strong: #bfa06a;
+  --color-accent-soft: #30291b;
   --color-on-accent: #171410;
 
   --color-danger: #e26a5d;
   --color-danger-soft: #3a1f1c;
-  --color-focus: #d97a4c;
+  --color-focus: #d9be8b;
   --color-success: #6bab70;
   --color-success-soft: #22301f;
   --color-warning: #c99a3d;
