@@ -469,6 +469,7 @@ export default function ConsumeWorkScreen() {
         <PlayerView
           selectedAudio={selectedAudio}
           work={work}
+          hasEbook={Boolean(selectedEPUB)}
           passage={passage}
           status={status}
           progressStatus={progressStatus}

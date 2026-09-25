@@ -246,6 +246,7 @@ export function IconButton({
   kind = 'secondary',
   disabled,
   selected = false,
+  pressed: toggled,
   nativeID,
   size = 'default',
 }: {
@@ -255,6 +256,8 @@ export function IconButton({
   kind?: ButtonKind;
   disabled?: boolean;
   selected?: boolean;
+  /** Marks a toggle button's on/off state for assistive tech (`aria-pressed` on web). */
+  pressed?: boolean;
   nativeID?: string;
   size?: 'default' | 'large';
 }) {
@@ -300,6 +303,7 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled, selected }}
+      {...(toggled === undefined ? {} : ({ 'aria-pressed': toggled } as object))}
       disabled={disabled}
       onBlur={handleBlur}
       onFocus={handleFocus}

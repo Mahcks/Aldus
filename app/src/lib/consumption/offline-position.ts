@@ -6,7 +6,7 @@ type PersistedTimedWord = Partial<
   TimedWord & { word: string; start: number; end: number; confidence: number; score: number }
 >;
 
-function timedWords(
+export function timedWords(
   value: unknown,
   segmentStartMS: number,
   segmentEndMS: number,

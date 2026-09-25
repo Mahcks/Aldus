@@ -82,6 +82,7 @@ export function BookCover({
   generatedCoverStyle = 'classic',
   generatedCoverTone = -1,
   generatedCoverLayout = 'center',
+  onImageLoad,
 }: {
   title: string;
   author?: string;
@@ -92,6 +93,8 @@ export function BookCover({
   aspectRatio?: number;
   coverURL?: string;
   fallbackCoverURL?: string;
+  /** Reports the real artwork's pixel size once it loads, for callers that size the frame to the art. */
+  onImageLoad?: (size: { width: number; height: number }) => void;
 } & CoverPresentation) {
   const colors = useThemeColors();
   const [failedURLs, setFailedURLs] = useState<string[]>([]);
@@ -193,6 +196,7 @@ export function BookCover({
             bottom: 0,
             backgroundColor: colors.panel,
           }}
+          onLoad={(event) => onImageLoad?.(event.source)}
           onError={() => {
             if (imageURL) setFailedURLs((urls) => [...urls, imageURL]);
           }}

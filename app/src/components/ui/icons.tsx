@@ -46,6 +46,7 @@ const names = {
   scan: 'refresh',
   import: 'tray-arrow-down',
   gpu: 'memory',
+  readAlong: 'subtitles-outline',
   alignment: 'waveform',
   acquire: 'download-box-outline',
   bookmark: 'bookmark-outline',

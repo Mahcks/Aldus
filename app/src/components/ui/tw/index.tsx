@@ -59,6 +59,28 @@ export const Text = (props: TextProps): React.ReactElement => {
 };
 Text.displayName = 'CSS(Text)';
 
+export type AnimatedViewProps = React.ComponentProps<typeof Animated.View> & {
+  className?: string;
+};
+
+export const AnimatedView = (props: AnimatedViewProps): React.ReactElement => {
+  return useCssElement(Animated.View as unknown as MinimalStyledComponent, props, {
+    className: 'style',
+  }) as React.ReactElement;
+};
+AnimatedView.displayName = 'CSS(AnimatedView)';
+
+export type AnimatedTextProps = React.ComponentProps<typeof Animated.Text> & {
+  className?: string;
+};
+
+export const AnimatedText = (props: AnimatedTextProps): React.ReactElement => {
+  return useCssElement(Animated.Text as unknown as MinimalStyledComponent, props, {
+    className: 'style',
+  }) as React.ReactElement;
+};
+AnimatedText.displayName = 'CSS(AnimatedText)';
+
 export type ScrollViewProps = React.ComponentProps<typeof RNScrollView> & {
   ref?: React.Ref<RNScrollView>;
   className?: string;

@@ -755,7 +755,11 @@ export const api = {
 };
 
 export function errorMessage(error: unknown) {
-  if (!(error instanceof APIError)) return 'Something went wrong.';
+  if (!(error instanceof APIError)) {
+    // The message is deliberately generic for people; keep the real cause findable while developing.
+    if (__DEV__) console.warn('Aldus: unexpected error', error);
+    return 'Something went wrong.';
+  }
   if (error.status === 401) {
     if (error.message === 'invalid credentials') return 'Username or password is incorrect.';
     if (error.message === 'current password is incorrect') return 'Current password is incorrect.';
