@@ -18,6 +18,9 @@ import {
   segmentRangeMode,
 } from './reader-location';
 import { installEPUBContentSecurity } from './epub-security';
+import { deserializeReadiumLocator } from './readium-locator';
+import { savedEPUBCFI } from './readium-cfi';
+import { findReadiumRange } from './readium-web-restore';
 
 const openDyslexicURL = Asset.fromModule(
   // Metro resolves bundled font assets through its static CommonJS lookup.
@@ -239,13 +242,52 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             end?: RangeBoundary;
           };
         };
-        if (location.cfi)
+        if (location.cfi) {
+          const native = deserializeReadiumLocator(location.cfi);
+          const portable = native && savedEPUBCFI(native);
           return (
             (await disposal.track(async () => {
-              await view.goTo(location.cfi);
+              if (!native || portable) {
+                const cfi = portable?.cfi ?? location.cfi!;
+                if (!cfi.startsWith('epubcfi(')) return false;
+                return Boolean(await view.goTo(cfi));
+              }
+              // Older native saves contain a Readium text anchor, not an EPUB CFI.
+              // Resolve that exact quote in its resource; never restore by percentage.
+              const resolved = await view.resolveNavigation(native.href);
+              if (!resolved || resolved.index < 0 || !(await view.goTo(native.href))) return false;
+              if (disposal.requested()) return false;
+              const content = view.renderer
+                .getContents()
+                .find(({ index }: { index: number }) => index === resolved.index);
+              if (!content?.doc) return false;
+              const range = findReadiumRange(content.doc, native);
+              if (!range) return false;
+              const cfi = view.getCFI(resolved.index, range);
+              if (!(await view.goTo(cfi)) || disposal.requested()) return false;
+              const visible = page.current?.range;
+              if (
+                !visible ||
+                visible.startContainer.ownerDocument !== range.startContainer.ownerDocument ||
+                visible.comparePoint(range.startContainer, range.startOffset) !== 0
+              )
+                return false;
+              cursor.current = {
+                href: view.book.sections[resolved.index].id,
+                cfi,
+                syncState: page.current?.state,
+                reason: 'restore',
+              };
+              onLocationRef.current?.(cursor.current);
+              if (highlight) {
+                const selected = content.doc.getSelection();
+                selected?.removeAllRanges();
+                selected?.addRange(range);
+              }
               return true;
             })) ?? false
           );
+        }
         if (
           !location.href ||
           location.locator?.type !== 'dom-element' ||
