@@ -1,4 +1,5 @@
 import { File, Paths } from 'expo-file-system';
+import { parseSavedEPUBCFI, savedEPUBCFI } from './readium-cfi';
 import {
   forwardRef,
   useCallback,
@@ -32,6 +33,7 @@ import {
   readiumRestoreDisposition,
   readiumSearchQueries,
   segmentForEPUBLocator,
+  sameReadiumResource,
 } from './readium-locator';
 import { lightColors, useThemeColors } from '@/components/ui/theme';
 import { flattenReaderContents } from '@/lib/consumption/reader-navigation';
@@ -136,6 +138,7 @@ export const EPUBReader = forwardRef<
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const restoring = useRef(false);
+  const restoreAttempt = useRef(0);
   const pendingNavigation = useRef<
     { href: string; locator: Locator; finish: (success: boolean) => void } | undefined
   >(undefined);
@@ -304,7 +307,8 @@ export const EPUBReader = forwardRef<
         if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
         return false;
       }
-      const saved = savedLocator(location);
+      const attempt = ++restoreAttempt.current;
+      const saved = savedLocator(location) ?? parseSavedEPUBCFI(location);
       if (saved) {
         if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
         clearHighlight();
@@ -325,11 +329,16 @@ export const EPUBReader = forwardRef<
           if (success && saved.text?.highlight) pendingHighlight.current = saved;
           return success;
         } finally {
-          restoring.current = false;
+          if (attempt === restoreAttempt.current) restoring.current = false;
         }
       }
       if (!location || typeof location !== 'object') {
         if (__DEV__) console.debug('Aldus native EPUB restore skipped: invalid target', location);
+        return false;
+      }
+      const storedCFI = (location as { cfi?: unknown }).cfi;
+      if (typeof storedCFI === 'string' && storedCFI.startsWith('epubcfi(')) {
+        if (__DEV__) console.debug('Aldus native EPUB restore skipped: unsupported EPUB CFI');
         return false;
       }
       const target = location as EPUBLocator;
@@ -444,7 +453,7 @@ export const EPUBReader = forwardRef<
         onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
         return false;
       } finally {
-        restoring.current = false;
+        if (attempt === restoreAttempt.current) restoring.current = false;
         pendingRestore.current = undefined;
         try {
           view.cancelSearch();
@@ -538,7 +547,7 @@ export const EPUBReader = forwardRef<
     clearHighlight();
     currentPage.current = locator;
     if (restoring.current && !navigation) return;
-    if (navigation && locator.href.split('#')[0] !== navigation.href.split('#')[0]) return;
+    if (navigation && !sameReadiumResource(locator.href, navigation.href)) return;
     const request = ++locationRequest.current;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
     const restored = pendingRestore.current;
@@ -555,6 +564,28 @@ export const EPUBReader = forwardRef<
       (navigation && pendingNavigation.current !== navigation)
     )
       return;
+    if (
+      selected &&
+      !navigation &&
+      !direction.current &&
+      visible &&
+      savedEPUBCFI(selected) &&
+      selected.href === visible.href
+    ) {
+      selectedPage.current = selected;
+      return;
+    }
+    const restoredCFI = navigation && savedEPUBCFI(navigation.locator);
+    if (restoredCFI) {
+      // Verification proved the original DOM anchor, not this page's first word.
+      // Keep the portable CFI intact and never manufacture canonical progress.
+      selectedPage.current = locator;
+      pendingRestore.current = undefined;
+      direction.current = undefined;
+      onLocation?.({ ...restoredCFI, syncState: 'none', reason: 'restore' });
+      navigation.finish(true);
+      return;
+    }
     // The visible page can begin before the saved sentence. Preserve the exact
     // text anchor after restoring instead of immediately saving the page start.
     const savedSelection = navigation?.locator.text?.highlight ? navigation.locator : undefined;
@@ -598,10 +629,11 @@ export const EPUBReader = forwardRef<
     );
     direction.current = disposition.pendingDirection;
     if (sync) lastProgression.current = progression;
+    const portable = savedEPUBCFI(readingLocator);
     onLocation?.({
       totalProgression: locator.locations?.totalProgression,
-      href: readingLocator.href,
-      cfi: JSON.stringify(readingLocator),
+      href: portable?.href ?? readingLocator.href,
+      cfi: portable?.cfi ?? JSON.stringify(readingLocator),
       sync,
       syncState: sync ? 'full' : 'none',
       reason: navigation ? 'restore' : disposition.reason,

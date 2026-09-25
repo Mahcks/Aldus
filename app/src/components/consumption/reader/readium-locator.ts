@@ -189,6 +189,10 @@ export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSe
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+export function sameReadiumResource(left: string, right: string) {
+  return normalizeHref(left) === normalizeHref(right);
+}
+
 export function readiumRestoreDisposition(target: EPUBLocator | undefined, href: string) {
   if (!target) return 'publish' as const;
   return normalizeHref(target.href) === normalizeHref(href)

@@ -14,7 +14,7 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b49
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e..f46b791 100644
+index 84dfd8e..1137125 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -49,7 +49,7 @@ index 84dfd8e..f46b791 100644
        guard let navigator = readerViewController?.navigator else { return }
        _ = await navigator.goForward(options: .animated)
      }
-@@ -271,11 +273,135 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -271,11 +273,188 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    func goBackward() {
      Task { @MainActor in
@@ -68,9 +68,20 @@ index 84dfd8e..f46b791 100644
 +          userInfo: [NSLocalizedDescriptionKey: "Aldus restore v2: \(reason)"]
 +        )
 +      }
++      let hrefParts = locator.href.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
++      let cfi = hrefParts.count == 2 && hrefParts[1].hasPrefix("epubcfi(")
++        ? String(hrefParts[1]) : nil
++      let resource = Locator(
++        href: cfi == nil ? locator.href : String(hrefParts[0]),
++        type: locator.type,
++        target: locator.target,
++        title: locator.title,
++        locations: locator.locations,
++        text: locator.text
++      )
 +      guard let self,
 +            let navigator = self.readerViewController?.navigator as? EPUBNavigatorViewController,
-+            let target = nitroLocatorToReadium(locator),
++            let target = nitroLocatorToReadium(resource),
 +            let json = target.jsonString
 +      else {
 +        throw failure("reader-or-target-unavailable")
@@ -91,11 +102,35 @@ index 84dfd8e..f46b791 100644
 +              == target.href.string.split(separator: "#", maxSplits: 1).first
 +      else { throw failure("visible-resource-mismatch") }
 +
-+      let result = await navigator.evaluateJavaScript("""
-+        typeof window.readium?.aldusLocatorVisible === "function"
-+          ? window.readium.aldusLocatorVisible(\(json), true)
-+          : "probe-unavailable";
-+        """)
++      let verificationScript: String
++      if let cfi {
++        guard let spineIndex = self.readerViewController?.publication.readingOrder.firstIndex(where: {
++          $0.href == resource.href || $0.href.removingPercentEncoding == resource.href.removingPercentEncoding
++        }) else { throw failure("cfi-resource-not-in-spine") }
++        let cfiJSON = String(decoding: try JSONEncoder().encode(cfi), as: UTF8.self)
++        let moved = await navigator.evaluateJavaScript("""
++          typeof window.readium?.aldusRestoreCFI === "function"
++            ? window.readium.aldusRestoreCFI(\(cfiJSON), \(spineIndex))
++            : "cfi-bridge-unavailable";
++          """)
++        guard self.restorationGeneration == generation,
++              self.readerViewController?.navigator === navigator
++        else { return false }
++        guard case let .success(value) = moved, (value as? Bool) == true else {
++          throw failure("cfi-navigation-rejected")
++        }
++        verificationScript = """
++          typeof window.readium?.aldusCFIVisible === "function"
++            && window.readium.aldusCFIVisible(\(cfiJSON), \(spineIndex)) === true;
++          """
++      } else {
++        verificationScript = """
++          typeof window.readium?.aldusLocatorVisible === "function"
++            ? window.readium.aldusLocatorVisible(\(json), true)
++            : "probe-unavailable";
++          """
++      }
++      let result = await navigator.evaluateJavaScript(verificationScript)
 +      let verifiedVisible = await navigator.firstVisibleElementLocator()
 +      guard self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator
@@ -121,6 +156,9 @@ index 84dfd8e..f46b791 100644
 +      else { return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true) }
 +      let generation = self.restorationGeneration
 +      let current = await navigator.firstVisibleElementLocator()
++      let spineIndex = self.readerViewController?.publication.readingOrder.firstIndex(where: {
++        $0.href.removingPercentEncoding == current?.href.string.removingPercentEncoding
++      })
 +      let script = """
 +      (() => {
 +        const visible = (rect) =>
@@ -144,7 +182,9 @@ index 84dfd8e..f46b791 100644
 +            prefix.setEnd(node, start);
 +            const text = block.textContent || "";
 +            const offset = prefix.toString().length;
++            range.collapse(true);
 +            return {
++              cfi: window.readium?.aldusCFIFromRange?.(range, \(spineIndex ?? -1)) ?? null,
 +              before: text.slice(Math.max(0, offset - 80), offset),
 +              highlight: word[0],
 +              after: text.slice(offset + word[0].length, offset + word[0].length + 80),
@@ -172,8 +212,21 @@ index 84dfd8e..f46b791 100644
 +      else {
 +        return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true)
 +      }
++      var nativeLocator = readiumLocatorToNitro(locator)
++      if case let .success(value) = textResult,
++         let fields = value as? [String: Any],
++         let cfi = fields["cfi"] as? String {
++        nativeLocator = Locator(
++          href: nativeLocator.href + "#" + cfi,
++          type: nativeLocator.type,
++          target: nativeLocator.target,
++          title: nativeLocator.title,
++          locations: nativeLocator.locations,
++          text: nativeLocator.text
++        )
++      }
 +      let result = SearchResult(
-+        locator: readiumLocatorToNitro(locator),
++        locator: nativeLocator,
 +        before: locator.text.before,
 +        highlight: locator.text.highlight,
 +        after: locator.text.after
@@ -185,7 +238,7 @@ index 84dfd8e..f46b791 100644
    func destroy() {
      if Thread.isMainThread {
        cleanup()
-@@ -389,6 +515,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -389,6 +568,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    // Cleanup
    func cleanup() {

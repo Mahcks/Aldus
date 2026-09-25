@@ -149,6 +149,9 @@ function sanitizeInlineStyle(source: string) {
 function sanitizeRules(container: CSSStyleSheet | CSSGroupingRule) {
   for (let index = container.cssRules.length - 1; index >= 0; index -= 1) {
     const rule = container.cssRules[index];
+    // Namespace URLs identify selector namespaces; they do not fetch resources.
+    // Deleting one while style rules exist also throws InvalidStateError.
+    if (rule.type === CSSRule.NAMESPACE_RULE) continue;
     if ('cssRules' in rule) sanitizeRules(rule as CSSGroupingRule);
     if ('style' in rule && rule.style instanceof CSSStyleDeclaration) {
       sanitizeDeclarations(rule.style);

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 (globalThis as any).__DEV__ = false;
 let searchRelease: (value: unknown) => void = () => {};
 let restoreRelease: (value: boolean) => void = () => {};
+let restoreLocator: any;
 let steps = 0;
 let visible: any;
 let decorations: any[] = [];
@@ -28,7 +29,12 @@ function tickFeedback() {
 }
 const bridge = {
   goTo: (_locator: unknown) => {},
-  restoreTo: (_locator: unknown) => new Promise<boolean>((resolve) => { restoreRelease = resolve; }),
+  restoreTo: (locator: unknown) => {
+    restoreLocator = locator;
+    return new Promise<boolean>((resolve) => {
+      restoreRelease = resolve;
+    });
+  },
   goForward: () => steps++,
   goBackward: () => steps++,
   search: () =>
@@ -175,22 +181,38 @@ const chosen = {
   ...destination,
   text: { highlight: 'waited patiently', before: 'Alice ', after: ' for the caterpillar' },
 };
-native.onSelectionAction({ locator: chosen, selectedText: 'waited patiently', actionId: 'save-place' });
+native.onSelectionAction({
+  locator: chosen,
+  selectedText: 'waited patiently',
+  actionId: 'save-place',
+});
 assert.equal(events.at(-1).reason, 'explicit');
-assert.deepEqual(JSON.parse(events.at(-1).cfi), chosen, 'Save the selected text, not the page start');
+assert.deepEqual(
+  JSON.parse(events.at(-1).cfi),
+  chosen,
+  'Save the selected text, not the page start',
+);
 assert.equal(saveFeedback, undefined, 'Selection alone must not claim the save succeeded');
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(destination) }, 'saved');
 assert.equal(saveFeedback, undefined, 'A stale save must not confirm a different selection');
 assert.equal(decorations.length, 0, 'A stale save must not highlight a different selection');
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(chosen) }, 'saved');
 assert.equal(saveFeedback, 'saved');
-assert.deepEqual(decorations[0].decorations[0].locator, chosen, 'Saving immediately highlights the exact saved sentence');
+assert.deepEqual(
+  decorations[0].decorations[0].locator,
+  chosen,
+  'Saving immediately highlights the exact saved sentence',
+);
 tickFeedback();
 assert.equal(saveFeedback, undefined, 'The save confirmation is temporary');
 assert.equal(decorations.length, 0, 'The save highlight expires with its confirmation');
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(chosen) }, 'offline');
 assert.equal(saveFeedback, 'offline', 'Offline confirmation distinguishes a local save');
-assert.deepEqual(decorations[0].decorations[0].locator, chosen, 'A durable offline save also highlights the sentence');
+assert.deepEqual(
+  decorations[0].decorations[0].locator,
+  chosen,
+  'A durable offline save also highlights the sentence',
+);
 tickFeedback();
 assert.equal(saveFeedback, undefined);
 
@@ -213,11 +235,23 @@ assert.equal(saveFeedback, 'offline');
 
 const countAfterSelection = events.length;
 await native.onLocationChange(destination);
-assert.equal(events.length, countAfterSelection, 'Closing the menu must not replace the saved sentence');
+assert.equal(
+  events.length,
+  countAfterSelection,
+  'Closing the menu must not replace the saved sentence',
+);
 await native.onLocationChange({ ...destination, locations: { progression: 0.6 } });
-assert.equal(events.length, countAfterSelection + 1, 'Reading the next page resumes normal tracking');
+assert.equal(
+  events.length,
+  countAfterSelection + 1,
+  'Reading the next page resumes normal tracking',
+);
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(chosen) }, 'saved');
-assert.equal(saveFeedback, undefined, 'A late save after leaving the page must not show confirmation');
+assert.equal(
+  saveFeedback,
+  undefined,
+  'A late save after leaving the page must not show confirmation',
+);
 
 const restoreChosen = ref.current.restoreLocation({ cfi: JSON.stringify(chosen) });
 await native.onLocationChange(destination);
@@ -227,7 +261,11 @@ assert.deepEqual(JSON.parse(events.at(-1).cfi), chosen, 'Reopening must retain t
 assert.equal(decorations.length, 0, 'The cue must not expire behind the opening cover');
 assert.equal(feedbackTimers.size, 0, 'Hidden restoration must not start the cue timer');
 ref.current.revealRestoredPlace();
-assert.deepEqual(decorations[0].decorations[0].locator, chosen, 'Reopening highlights the saved sentence');
+assert.deepEqual(
+  decorations[0].decorations[0].locator,
+  chosen,
+  'Reopening highlights the saved sentence',
+);
 ref.current.revealRestoredPlace();
 assert.equal(feedbackTimers.size, 1, 'Repeated readiness must not restart the cue');
 assert.equal(feedbackTimers.size, 1);
@@ -236,7 +274,11 @@ assert.equal(decorations.length, 0, 'The restore highlight is temporary');
 
 const countAfterReopen = events.length;
 await native.onLocationChange(destination);
-assert.equal(events.length, countAfterReopen, 'A restored sentence must survive a repeated page event');
+assert.equal(
+  events.length,
+  countAfterReopen,
+  'A restored sentence must survive a repeated page event',
+);
 
 for (const actionId of ['save-place', 'listen-here']) {
   previous.onPress();
@@ -277,7 +319,11 @@ assert.equal(await expired, false, 'A missing destination event must fail instea
 globalThis.setTimeout = realSetTimeout;
 globalThis.clearTimeout = realClearTimeout;
 
-native.onSelectionAction({ locator: chosen, selectedText: 'waited patiently', actionId: 'save-place' });
+native.onSelectionAction({
+  locator: chosen,
+  selectedText: 'waited patiently',
+  actionId: 'save-place',
+});
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(chosen) }, 'saved');
 assert.equal(saveFeedback, 'saved');
 assert.equal(feedbackTimers.size, 1);
@@ -285,13 +331,134 @@ previous.onPress();
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(chosen) }, 'saved');
 assert.equal(saveFeedback, undefined, 'Turning the page blocks late confirmation before arrival');
 
-native.onSelectionAction({ locator: chosen, selectedText: 'waited patiently', actionId: 'save-place' });
+native.onSelectionAction({
+  locator: chosen,
+  selectedText: 'waited patiently',
+  actionId: 'save-place',
+});
 ref.current.confirmSavedPlace({ cfi: JSON.stringify(chosen) }, 'saved');
 assert.equal(feedbackTimers.size, 1);
 const canceled = ref.current.restoreLocation(destination);
 cleanup();
 assert.equal(feedbackTimers.size, 0, 'Unmount cancels feedback timers');
 assert.equal(await canceled, false, 'Unmount cancels navigation without reporting success');
+
+// A web-saved CFI must restore even when the EPUB has no audiobook alignment.
+refIndex = 0;
+stateIndex = 0;
+const cfiEvents: any[] = [];
+const cfiRef: any = {};
+const effectIndex = effects.length;
+const cfiTree = (EPUBReader as any)(
+  {
+    source: 'file:///unaligned.epub',
+    segments: [],
+    onLocation: (location: unknown) => cfiEvents.push(location),
+  },
+  cfiRef,
+);
+const cfiNative = find(cfiTree, 'ReadiumView');
+const cleanupCFI = effects[effectIndex]();
+await Promise.resolve();
+for (const savedCFI of [
+  { href: 'titlepage.xhtml', cfi: 'epubcfi(/6/2!/4/2,,/2)' },
+  {
+    href: 'Suzanne Collins - Hunger Games 2 - Catching Fire_split_1.html',
+    cfi: 'epubcfi(/6/6!/4,/108/2/1:448,/128/2/1:342)',
+  },
+]) {
+  const count = cfiEvents.length;
+  const attempt = cfiRef.current.restoreLocation(savedCFI);
+  assert.equal(restoreLocator.href, `${savedCFI.href}#${savedCFI.cfi}`);
+  visible = { ...destination, href: `${encodeURI(savedCFI.href)}#${savedCFI.cfi}` };
+  await cfiNative.onLocationChange(visible);
+  assert.equal(cfiEvents.length, count, 'A chapter callback cannot confirm the CFI anchor');
+  restoreRelease(true);
+  assert.equal(await attempt, true);
+  assert.equal(cfiEvents.length, count + 1);
+  assert.equal(cfiEvents.at(-1).cfi, savedCFI.cfi, 'Keep the exact web CFI, not visible-page text');
+  assert.equal(cfiEvents.at(-1).href, savedCFI.href);
+  assert.equal(cfiEvents.at(-1).reason, 'restore');
+  assert.equal(cfiEvents.at(-1).sync, undefined, 'No alignment means no invented canonical place');
+
+  const delayedLocation = {
+    ...destination,
+    href: savedCFI.href,
+    locations: { progression: 0.75 },
+  };
+  await cfiNative.onLocationChange(delayedLocation);
+  assert.equal(
+    cfiEvents.length,
+    count + 1,
+    'Delayed native progression must not overwrite the CFI',
+  );
+  assert.equal(
+    cfiEvents.at(-1).reason,
+    'restore',
+    'Closing without a page turn must not save again',
+  );
+  assert.equal(cfiEvents.at(-1).cfi, savedCFI.cfi);
+
+  const nextCFI = 'epubcfi(/6/6!/4/2/1:500)';
+  visible = { ...destination, href: `${encodeURI(savedCFI.href)}#${nextCFI}` };
+  await cfiNative.onLocationChange({ ...delayedLocation, locations: { progression: 0.8 } });
+  assert.equal(
+    cfiEvents.length,
+    count + 2,
+    'A native swipe must publish its new exact page anchor',
+  );
+  assert.equal(cfiEvents.at(-1).cfi, nextCFI);
+  assert.equal(cfiEvents.at(-1).href, encodeURI(savedCFI.href));
+  assert.equal(cfiEvents.at(-1).reason, 'relocate');
+}
+const savedCFI = { href: 'chapter.xhtml', cfi: 'epubcfi(/6/6!/4/2/1:7)' };
+const beforeCFIFailure = cfiEvents.length;
+const failedCFI = cfiRef.current.restoreLocation(savedCFI);
+restoreRelease(false);
+assert.equal(await failedCFI, false);
+assert.equal(
+  cfiEvents.length,
+  beforeCFIFailure,
+  'Failed CFI verification cannot publish a location',
+);
+
+const supersededCFI = cfiRef.current.restoreLocation(savedCFI);
+const releaseSupersededCFI = restoreRelease;
+const replacingCFI = cfiRef.current.restoreLocation(savedCFI);
+const releaseReplacingCFI = restoreRelease;
+assert.equal(await supersededCFI, false);
+releaseSupersededCFI(true);
+await Promise.resolve();
+const stepsBeforeReplacement = steps;
+find(cfiTree, 'IconButton').onPress();
+assert.equal(
+  steps,
+  stepsBeforeReplacement,
+  'Superseded completion must keep replacement controls locked',
+);
+assert.equal(
+  cfiEvents.length,
+  beforeCFIFailure,
+  'Superseded CFI success cannot publish a location',
+);
+visible = { ...destination, href: savedCFI.href };
+releaseReplacingCFI(true);
+assert.equal(await replacingCFI, true);
+assert.equal(cfiEvents.length, beforeCFIFailure + 1);
+
+const beforeUnmount = cfiEvents.length;
+const lateCFI = cfiRef.current.restoreLocation(savedCFI);
+const releaseLateCFI = restoreRelease;
+cleanupCFI();
+assert.equal(await lateCFI, false);
+releaseLateCFI(true);
+await Promise.resolve();
+await Promise.resolve();
+assert.equal(
+  cfiEvents.length,
+  beforeUnmount,
+  'An unmounted CFI restore cannot publish late success',
+);
 console.log(
   'Native restoration waits for destination, ignores input, preserves offsets, and cancels on unmount.',
 );

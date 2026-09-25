@@ -1,3 +1,5 @@
+const fs = require('node:fs');
+
 // Readium 3.5 already resolves text quotes and DOM locators. Reuse that resolver
 // to verify the start of the saved passage, not merely its chapter or percentage.
 function locatorStartVisible(range, locator, diagnostics = false) {
@@ -73,8 +75,126 @@ function locatorStartVisible(range, locator, diagnostics = false) {
   );
 }
 
+function cfiNodeFilter(node, blockedElements) {
+  if (node.nodeType !== Node.ELEMENT_NODE) return NodeFilter.FILTER_ACCEPT;
+  const name = node.localName.toLowerCase();
+  return blockedElements.includes(name) ||
+    (name === 'meta' &&
+      Array.from(node.attributes).some(
+        (attribute) => attribute.localName.toLowerCase() === 'http-equiv',
+      )) ||
+    (name === 'link' && node.getAttribute('rel')?.toLowerCase() !== 'stylesheet') ||
+    (document.documentElement.localName === 'svg' && name === 'style')
+    ? NodeFilter.FILTER_REJECT
+    : NodeFilter.FILTER_ACCEPT;
+}
+
+// Keep the web reader's CFI resolver as the single interpretation of saved CFIs.
+// It runs inside the publication document; no network or alignment is required.
+function cfiAnchorRect(CFI, cfi, spineIndex, filter) {
+  if (typeof cfi !== 'string' || cfi.length > 16384 || !CFI.isCFI.test(cfi)) return null;
+  try {
+    const parts = CFI.parse(cfi);
+    if (CFI.toString(parts) !== cfi) return null;
+    const path = parts.parent ?? parts;
+    if (path.length !== 2) return null;
+    const packagePath = path.shift();
+    if (spineIndex != null && packagePath.at(-1)?.index !== (spineIndex + 1) * 2) return null;
+    const start = CFI.collapse(parts)[0];
+    const end = CFI.collapse(parts, true)[0];
+    for (const step of [...start, ...end]) {
+      if (!Number.isSafeInteger(step.index) || step.index < 1) return null;
+      if (step.offset != null && (!Number.isSafeInteger(step.offset) || step.offset < 0))
+        return null;
+      if (step.temporal != null || step.spatial != null || step.text != null) return null;
+    }
+    const range = CFI.toRange(document, parts, filter);
+    // The resolver can recover invalid paths using ID assertions or virtual nodes.
+    // Restore only when a round trip proves the exact requested DOM boundaries.
+    const actual = CFI.parse(CFI.fromRange(range, filter));
+    if (CFI.compare(actual, parts) !== 0) return null;
+    for (const toEnd of [false, true]) {
+      const requestedPath = CFI.collapse(parts, toEnd)[0];
+      const actualPath = CFI.collapse(actual, toEnd)[0];
+      if (requestedPath.some((step, index) => step.id && step.id !== actualPath[index]?.id))
+        return null;
+    }
+    range.collapse(true);
+    if (range.startContainer.nodeType === Node.TEXT_NODE) {
+      const node = range.startContainer;
+      if (range.startOffset < node.length) {
+        const length = String.fromCodePoint(node.data.codePointAt(range.startOffset)).length;
+        range.setEnd(node, range.startOffset + length);
+      }
+    } else {
+      const child = range.startContainer.childNodes[range.startOffset];
+      if (!child) return null;
+      range.selectNode(child);
+    }
+    return (
+      Array.from(range.getClientRects()).find((rect) => rect.height > 0 && rect.width >= 0) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function cfiFromRange(CFI, range, spineIndex, filter) {
+  if (
+    !Number.isSafeInteger(spineIndex) ||
+    spineIndex < 0 ||
+    !range ||
+    range.startContainer.ownerDocument !== document ||
+    range.endContainer.ownerDocument !== document
+  )
+    return null;
+  try {
+    const local = CFI.fromRange(range, filter);
+    const resolved = CFI.toRange(document, CFI.parse(local), filter);
+    if (
+      resolved.startContainer !== range.startContainer ||
+      resolved.startOffset !== range.startOffset ||
+      resolved.endContainer !== range.endContainer ||
+      resolved.endOffset !== range.endOffset
+    )
+      return null;
+    return CFI.joinIndir(CFI.fake.fromIndex(spineIndex), local);
+  } catch {
+    return null;
+  }
+}
+
+function cfiProbeSource() {
+  const module = fs.readFileSync(require.resolve('foliate-js/epubcfi.js'), 'utf8');
+  const source = module.replace(/^export /gm, '');
+  const security = fs.readFileSync(
+    require.resolve('../src/components/consumption/reader/epub-security.ts'),
+    'utf8',
+  );
+  const blocked = security.match(/const BLOCKED_ELEMENTS = new Set\(\[([\s\S]*?)\]\)/)?.[1];
+  if (!blocked) throw new Error('EPUB sanitizer changed; review CFI DOM filtering.');
+  const blockedElements = Array.from(blocked.matchAll(/'([^']+)'/g), (match) => match[1]);
+  return `/* Aldus CFI begin */
+    ,aldusCFI:(function(){${source}
+      const CFI={isCFI,parse,collapse,toRange,fromRange,compare,toString,joinIndir,fake};
+      const filter = node => (${cfiNodeFilter.toString()})(node,${JSON.stringify(blockedElements)});
+      return { check:function(cfi,scroll,spineIndex){
+        const rect=(${cfiAnchorRect.toString()})(CFI,cfi,spineIndex,filter);
+        if(!rect)return false;
+        if(scroll)return A(rect);
+        return rect.bottom>0&&rect.top<innerHeight&&rect.right>=0&&rect.left<innerWidth;
+      },fromRange:function(range,spineIndex){
+        return (${cfiFromRange.toString()})(CFI,range,spineIndex,filter);
+      }};
+    })(),aldusRestoreCFI:function(cfi,spineIndex){return this.aldusCFI.check(cfi,true,spineIndex);}
+    ,aldusCFIVisible:function(cfi,spineIndex){return this.aldusCFI.check(cfi,false,spineIndex);}
+    ,aldusCFIFromRange:function(range,spineIndex){return this.aldusCFI.fromRange(range,spineIndex);}
+    /* Aldus CFI end */`;
+}
+
 function patchRestoreProbe(source) {
   const marker = 'aldusLocatorVisible:function(locator,diagnostics)';
+  source = source.replace(/\/\* Aldus CFI begin \*\/[\s\S]*?\/\* Aldus CFI end \*\//g, '');
   // Replace the previous probe too, when CocoaPods reuses a patched toolkit.
   source = source.replace(
     /,aldusLocatorVisible:function\(locator(?:,diagnostics)?\)\{return \([\s\S]*?\)\(T\(locator\)(?:, locator(?:, diagnostics)?)?\);\}/,
@@ -90,8 +210,8 @@ function patchRestoreProbe(source) {
   }
   return source.replace(
     hook,
-    `${hook},${marker}{return (${locatorStartVisible.toString()})(T(locator), locator, diagnostics);}`,
+    `${hook},${marker}{return (${locatorStartVisible.toString()})(T(locator), locator, diagnostics);}${cfiProbeSource()}`,
   );
 }
 
-module.exports = { patchRestoreProbe, locatorStartVisible };
+module.exports = { patchRestoreProbe, locatorStartVisible, cfiAnchorRect };

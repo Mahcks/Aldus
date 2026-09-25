@@ -179,7 +179,10 @@ describe('Readium config plugin', () => {
     expect(restore.match(/await navigator.firstVisibleElementLocator\(\)/g)).toHaveLength(2);
     expect(restore).toContain('window.readium.aldusLocatorVisible');
     expect(restore).toContain('verifiedVisible?.href.string.split');
-    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(2);
+    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(3);
+    expect(restore).toContain('window.readium.aldusRestoreCFI');
+    expect(restore).toContain('window.readium.aldusCFIVisible');
+    expect(restore).toContain('cfi-resource-not-in-spine');
     expect(visible).not.toContain('navigator.currentLocation');
     expect(visible).toContain('locator = current.copy(text: { $0 = text })');
     expect(visible).toContain('visible?.href == locator.href');
