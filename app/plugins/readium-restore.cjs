@@ -1,7 +1,8 @@
 // Readium 3.5 already resolves text quotes and DOM locators. Reuse that resolver
 // to verify the start of the saved passage, not merely its chapter or percentage.
-function locatorStartVisible(range, locator) {
-  if (!range) return false;
+function locatorStartVisible(range, locator, diagnostics = false) {
+  const fail = (reason) => (diagnostics ? reason : false);
+  if (!range) return fail('range-not-found');
   // Readium's quote resolver accepts fuzzy matches. They are useful for moving
   // around a publication, but cannot prove that this saved passage was found.
   const normalize = (text) => text.replace(/\s+/gu, ' ').trim();
@@ -11,17 +12,19 @@ function locatorStartVisible(range, locator) {
   const text = locator?.text;
   if (text?.highlight) {
     const quote = normalize(text.highlight);
-    if (!quote || normalize(range.toString()) !== quote) return false;
+    if (!quote || normalize(range.toString()) !== quote) return fail('quote-mismatch');
     const context = range.cloneRange();
     if (text.before) {
       context.selectNodeContents(document.body);
       context.setEnd(range.startContainer, range.startOffset);
-      if (!contextText(context.toString()).endsWith(contextText(text.before))) return false;
+      if (!contextText(context.toString()).endsWith(contextText(text.before)))
+        return fail('before-context-mismatch');
     }
     if (text.after) {
       context.selectNodeContents(document.body);
       context.setStart(range.endContainer, range.endOffset);
-      if (!contextText(context.toString()).startsWith(contextText(text.after))) return false;
+      if (!contextText(context.toString()).startsWith(contextText(text.after)))
+        return fail('after-context-mismatch');
     }
 
     // A quote resolver chooses one match even when identical passages repeat.
@@ -34,7 +37,7 @@ function locatorStartVisible(range, locator) {
       scope = locations.fragments.map((id) => document.getElementById(id)).find(Boolean);
     }
     if (!scope || !scope.contains(range.startContainer) || !scope.contains(range.endContainer)) {
-      return false;
+      return fail('anchor-scope-mismatch');
     }
     const content = contextText(scope.textContent || '');
     const compactQuote = contextText(quote);
@@ -54,25 +57,27 @@ function locatorStartVisible(range, locator) {
       if (before && !prefix.endsWith(before) && !before.endsWith(prefix)) continue;
       if (after && !suffix.startsWith(after) && !after.startsWith(suffix)) continue;
       matches += 1;
-      if (matches > 1) return false;
+      if (matches > 1) return fail('ambiguous-quote');
     }
-    if (matches !== 1) return false;
+    if (matches !== 1) return fail('quote-not-in-scope');
   }
   const rect = Array.from(range.getClientRects()).find((rect) => rect.width > 0 && rect.height > 0);
-  return Boolean(
-    rect &&
-    rect.bottom > 0 &&
-    rect.top < window.innerHeight &&
-    rect.right > 0 &&
-    rect.left < window.innerWidth,
+  return (
+    Boolean(
+      rect &&
+      rect.bottom > 0 &&
+      rect.top < window.innerHeight &&
+      rect.right > 0 &&
+      rect.left < window.innerWidth,
+    ) || fail('passage-start-offscreen')
   );
 }
 
 function patchRestoreProbe(source) {
-  const marker = 'aldusLocatorVisible:function(locator)';
+  const marker = 'aldusLocatorVisible:function(locator,diagnostics)';
   // Replace the previous probe too, when CocoaPods reuses a patched toolkit.
   source = source.replace(
-    /,aldusLocatorVisible:function\(locator\)\{return \([\s\S]*?\)\(T\(locator\)(?:, locator)?\);\}/,
+    /,aldusLocatorVisible:function\(locator(?:,diagnostics)?\)\{return \([\s\S]*?\)\(T\(locator\)(?:, locator(?:, diagnostics)?)?\);\}/,
     '',
   );
 
@@ -85,7 +90,7 @@ function patchRestoreProbe(source) {
   }
   return source.replace(
     hook,
-    `${hook},${marker}{return (${locatorStartVisible.toString()})(T(locator), locator);}`,
+    `${hook},${marker}{return (${locatorStartVisible.toString()})(T(locator), locator, diagnostics);}`,
   );
 }
 

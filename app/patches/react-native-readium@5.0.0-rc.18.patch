@@ -14,7 +14,7 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b49
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e..9050208 100644
+index 84dfd8e..f46b791 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -49,7 +49,7 @@ index 84dfd8e..9050208 100644
        guard let navigator = readerViewController?.navigator else { return }
        _ = await navigator.goForward(options: .animated)
      }
-@@ -271,11 +273,124 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -271,11 +273,135 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    func goBackward() {
      Task { @MainActor in
@@ -61,12 +61,19 @@ index 84dfd8e..9050208 100644
  
 +  func restoreTo(locator: Locator) throws -> Promise<Bool> {
 +    Promise.async { @MainActor [weak self] in
++      func failure(_ reason: String) -> NSError {
++        NSError(
++          domain: "AldusRestore",
++          code: 1,
++          userInfo: [NSLocalizedDescriptionKey: "Aldus restore v2: \(reason)"]
++        )
++      }
 +      guard let self,
 +            let navigator = self.readerViewController?.navigator as? EPUBNavigatorViewController,
 +            let target = nitroLocatorToReadium(locator),
 +            let json = target.jsonString
 +      else {
-+        return false
++        throw failure("reader-or-target-unavailable")
 +      }
 +
 +      self.restorationGeneration += 1
@@ -75,30 +82,34 @@ index 84dfd8e..9050208 100644
 +      // go(to:) can finish before Readium publishes its cached currentLocation.
 +      // Bind verification to the visible spread instead of that delayed notification.
 +      let visible = await navigator.firstVisibleElementLocator()
-+      guard navigated,
-+            self.restorationGeneration == generation,
-+            self.readerViewController?.navigator === navigator,
-+            visible?.href.string.split(separator: "#", maxSplits: 1).first
++      guard self.restorationGeneration == generation,
++            self.readerViewController?.navigator === navigator
++      else { return false }
++      guard navigated else { throw failure("navigation-rejected") }
++      guard let visible else { throw failure("visible-location-unavailable") }
++      guard visible.href.string.split(separator: "#", maxSplits: 1).first
 +              == target.href.string.split(separator: "#", maxSplits: 1).first
-+      else {
-+        return false
-+      }
++      else { throw failure("visible-resource-mismatch") }
 +
 +      let result = await navigator.evaluateJavaScript("""
 +        typeof window.readium?.aldusLocatorVisible === "function"
-+          && window.readium.aldusLocatorVisible(\(json)) === true;
++          ? window.readium.aldusLocatorVisible(\(json), true)
++          : "probe-unavailable";
 +        """)
 +      let verifiedVisible = await navigator.firstVisibleElementLocator()
 +      guard self.restorationGeneration == generation,
-+            self.readerViewController?.navigator === navigator,
-+            verifiedVisible?.href.string.split(separator: "#", maxSplits: 1).first
-+              == target.href.string.split(separator: "#", maxSplits: 1).first,
-+            case let .success(value) = result
-+      else {
-+        return false
++            self.readerViewController?.navigator === navigator
++      else { return false }
++      guard verifiedVisible?.href.string.split(separator: "#", maxSplits: 1).first
++              == target.href.string.split(separator: "#", maxSplits: 1).first
++      else { throw failure("visible-resource-changed") }
++      switch result {
++      case .failure:
++        throw failure("probe-evaluation-failed")
++      case .success(let value):
++        if (value as? Bool) == true { return true }
++        throw failure(value as? String ?? "probe-rejected-without-diagnostic")
 +      }
-+
-+      return (value as? Bool) == true
 +    }
 +  }
 +
@@ -174,7 +185,7 @@ index 84dfd8e..9050208 100644
    func destroy() {
      if Thread.isMainThread {
        cleanup()
-@@ -389,6 +504,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -389,6 +515,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    // Cleanup
    func cleanup() {

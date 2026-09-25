@@ -504,7 +504,9 @@ export const EPUBReader = forwardRef<
           await handleLocation(visible, navigation);
         } catch (error) {
           if (typeof __DEV__ !== 'undefined' && __DEV__) {
-            console.debug('Aldus native EPUB restore bridge error', error);
+            console.debug('Aldus native EPUB restore bridge error', {
+              message: error instanceof Error ? error.message : String(error),
+            });
           }
           finish(false, 'bridge-error');
         }

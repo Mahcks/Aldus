@@ -8,10 +8,15 @@ test('restore proof requires the start of the passage on screen', () => {
   const range = (...rects) => ({ getClientRects: () => rects });
   try {
     expect(locatorStartVisible(null)).toBe(false);
+    expect(locatorStartVisible(null, undefined, true)).toBe('range-not-found');
     expect(locatorStartVisible(range())).toBe(false);
     expect(locatorStartVisible(range(rect))).toBe(true);
+    expect(locatorStartVisible(range(rect), undefined, true)).toBe(true);
     expect(locatorStartVisible(range({ ...rect, left: 800, right: 980 }))).toBe(false);
     expect(locatorStartVisible(range({ ...rect, top: 800, bottom: 820 }))).toBe(false);
+    expect(locatorStartVisible(range({ ...rect, top: 800, bottom: 820 }), undefined, true)).toBe(
+      'passage-start-offscreen',
+    );
     // Seeing the end of a long selection is not arriving at its saved start.
     expect(locatorStartVisible(range({ ...rect, left: -400, right: -220 }, rect))).toBe(false);
   } finally {
@@ -32,6 +37,7 @@ test('pinned bundle exposes its existing locator resolver once and fails on chan
   expect(patchRestoreProbe(previousProbe)).toBe(patched);
   const result = new Function('T', `${patched}; return readium.aldusLocatorVisible;`)(() => null);
   expect(result({ text: { highlight: 'missing passage' } })).toBe(false);
+  expect(result({ text: { highlight: 'missing passage' } }, true)).toBe('range-not-found');
   expect(() => patchRestoreProbe('changed bundle')).toThrow('locator resolver changed');
   expect(() => patchRestoreProbe(source + source)).toThrow('locator resolver changed');
 });
@@ -100,18 +106,22 @@ test('only an exact, uniquely anchored visible quote confirms restoration', () =
     after = ' by the door.';
     quote = 'waited silently';
     expect(probe(locator)).toBe(false);
+    expect(probe(locator, true)).toBe('quote-mismatch');
     quote = 'waited\n patiently';
     expect(probe(locator)).toBe(true);
     before = 'Elsewhere, he ';
     expect(probe(locator)).toBe(false);
+    expect(probe(locator, true)).toBe('before-context-mismatch');
     before = 'Earlier, she ';
     after = ' by the window.';
     expect(probe(locator)).toBe(false);
+    expect(probe(locator, true)).toBe('after-context-mismatch');
     after = ' by the door.';
     additionalPassage = ' Elsewhere, he waited patiently by the window.';
     expect(probe(locator)).toBe(true);
     additionalPassage = ' Earlier, she waited patiently by the door.';
     expect(probe(locator)).toBe(false);
+    expect(probe(locator, true)).toBe('ambiguous-quote');
     // A saved element distinguishes otherwise identical passages in a chapter.
     expect(probe({ ...locator, locations: { cssSelector: '#saved' } })).toBe(true);
     expect(probe({ ...locator, locations: { fragments: ['saved'] } })).toBe(true);
