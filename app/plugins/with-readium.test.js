@@ -162,6 +162,30 @@ describe('Readium config plugin', () => {
     expect(patchPodfile(old)).toContain('    aldus_readium_post_install(installer)');
   });
 
+  test('verifies restoration against the visible spread, not delayed location notifications', () => {
+    const swift = readFileSync(
+      join(__dirname, '../node_modules/react-native-readium/ios/HybridReadiumView.swift'),
+      'utf8',
+    );
+    const restore = swift.slice(
+      swift.indexOf('func restoreTo('),
+      swift.indexOf('func currentVisibleLocation()'),
+    );
+    const visible = swift.slice(
+      swift.indexOf('func currentVisibleLocation()'),
+      swift.indexOf('func destroy()'),
+    );
+    expect(restore).not.toContain('navigator.currentLocation');
+    expect(restore.match(/await navigator.firstVisibleElementLocator\(\)/g)).toHaveLength(2);
+    expect(restore).toContain('window.readium.aldusLocatorVisible');
+    expect(restore).toContain('verifiedVisible?.href.string.split');
+    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(2);
+    expect(visible).not.toContain('navigator.currentLocation');
+    expect(visible).toContain('locator = current.copy(text: { $0 = text })');
+    expect(visible).toContain('visible?.href == locator.href');
+    expect(visible).toContain('self.restorationGeneration == generation');
+  });
+
   test('keeps the patched iOS locator method outside destroy', () => {
     const swift = readFileSync(
       join(__dirname, '../node_modules/react-native-readium/ios/HybridReadiumView.swift'),
@@ -171,7 +195,7 @@ describe('Readium config plugin', () => {
       swift.indexOf('func destroy()'),
     );
     expect(swift).toContain('NodeFilter.SHOW_TEXT');
-    expect(swift).toContain('navigator.currentLocation');
+    expect(swift).toContain('navigator.firstVisibleElementLocator()');
     expect(swift.match(/addChild\(readerViewController!\)/g)).toHaveLength(1);
   });
 });

@@ -289,3 +289,59 @@ describe('Readium spike locator', () => {
     expect(readiumSearchQueries(target, 0, [target, other])).toContain('uniquemarker');
   });
 });
+
+test('fallback queries preserve whole-book uniqueness without rereading it for every word', () => {
+  const target = {
+    ...segment,
+    text: 'Because repeated repeated ＵＮＩＱＵＥ nearby résumé anotherword.',
+  };
+  let reads = 0;
+  const other = {
+    ...segment,
+    id: 'other',
+    get text() {
+      reads += 1;
+      return 'because NEARBY résumé';
+    },
+  };
+  const result = readiumSearchQueries(target, 0, [target, other]);
+  expect(result).toEqual([readiumSearchQuery(target, 0), 'unique', 'anotherword']);
+  expect(reads).toBe(1);
+});
+
+test('optimized native fallback queries match the previous selector', () => {
+  const texts = [
+    'because repeated repeated ＵＮＩＱＵＥ nearby résumé anotherword.',
+    'because NEARBY résumé common words words common',
+    '東京の物語 chapter punctuation—another story about reading together',
+    '😀 beginning uniquealpha uniquebeta repeated repeated',
+  ];
+  const segments = texts.map((text, ordinal) => ({ ...segment, id: String(ordinal), text }));
+  for (const target of segments) {
+    const text = target.text.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+    const legacyWords = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
+      .map((match) => match[0])
+      .filter(
+        (word) =>
+          word.length >= 5 &&
+          segments.reduce(
+            (count, item) =>
+              count +
+              (
+                item.text
+                  .normalize('NFKC')
+                  .toLocaleLowerCase()
+                  .match(/[\p{L}\p{N}]+/gu) ?? []
+              ).filter((candidate) => candidate === word.normalize('NFKC').toLocaleLowerCase())
+                .length,
+            0,
+          ) === 1,
+      )
+      .filter((word, index, words) => words.indexOf(word) === index)
+      .slice(0, 8);
+    expect(readiumSearchQueries(target, 0, segments)).toEqual([
+      readiumSearchQuery(target, 0),
+      ...legacyWords,
+    ]);
+  }
+});

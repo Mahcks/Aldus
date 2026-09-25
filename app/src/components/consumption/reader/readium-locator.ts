@@ -158,16 +158,21 @@ export function readiumSearchQueries(
   const phrase = readiumSearchQuery(segment, offset);
   const text = fold(segment.text);
   const target = utf16IndexAtCanonicalOffset(text, offset);
+  const wordCounts = new Map<string, number>();
+  for (const item of segments) {
+    const words =
+      item.text
+        .normalize('NFKC')
+        .toLocaleLowerCase()
+        .match(/[\p{L}\p{N}]+/gu) ?? [];
+    for (const word of words) wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
+  }
   const uniqueWords = [...text.matchAll(/[\p{L}\p{N}]+/gu)]
     .sort(
       (left, right) => Math.abs((left.index ?? 0) - target) - Math.abs((right.index ?? 0) - target),
     )
     .map((match) => match[0])
-    .filter(
-      (word) =>
-        word.length >= 5 &&
-        segments.reduce((count, item) => count + wordOccurrences(item.text, word), 0) === 1,
-    )
+    .filter((word) => word.length >= 5 && wordCounts.get(word) === 1)
     .filter((word, index, words) => words.indexOf(word) === index)
     .slice(0, 8);
   return [phrase, ...uniqueWords];
@@ -224,15 +229,6 @@ function occurrences(text: string, query: string) {
   for (let index = text.indexOf(query); index >= 0; index = text.indexOf(query, index + 1))
     indexes.push(index);
   return indexes;
-}
-function wordOccurrences(text: string, query: string) {
-  const words =
-    text
-      .normalize('NFKC')
-      .toLocaleLowerCase()
-      .match(/[\p{L}\p{N}]+/gu) ?? [];
-  const target = query.normalize('NFKC').toLocaleLowerCase();
-  return words.filter((word) => word === target).length;
 }
 const normalizeHref = (value: string) => {
   try {

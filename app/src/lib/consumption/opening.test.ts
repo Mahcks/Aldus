@@ -90,3 +90,51 @@ test('native publication can prepare early, while canceled selections never publ
     expect(sourceID.current).toBe(canceled ? '' : 'media');
   }
 });
+
+test('work detail overlaps independent lookups and media with a slow library response', async () => {
+  const work = deferred<object>();
+  const library = deferred<object>();
+  const mediaStarted = deferred<void>();
+  const calls: string[] = [];
+  const progress = { revision: 7 };
+  const load = workflow('../catalog/load-work-detail.ts', 'loadWorkDetail', {
+    api: {
+      work: () => work.promise,
+      library: () => library.promise,
+      representations: async () => {
+        calls.push('representations');
+        return [{ id: 'edition' }];
+      },
+      alignmentJobs: async () => {
+        calls.push('jobs');
+        return [];
+      },
+      workProgress: async () => {
+        calls.push('progress');
+        return progress;
+      },
+      workPreference: async () => {
+        calls.push('preference');
+        return null;
+      },
+      media: async (libraryID: string, editionID: string) => {
+        expect([libraryID, editionID]).toEqual(['library', 'edition']);
+        mediaStarted.resolve();
+        return [{ id: 'media' }];
+      },
+    },
+  });
+  let finished = false;
+  const result = load('work').then((value: unknown) => {
+    finished = true;
+    return value;
+  });
+  expect(calls).toEqual(['representations', 'jobs', 'progress', 'preference']);
+  work.resolve({ library_id: 'library' });
+  await mediaStarted.promise;
+  expect(finished).toBe(false);
+  library.resolve({ id: 'library' });
+  const value = await result;
+  expect(value.progress).toBe(progress);
+  expect(value.revisions).toEqual([{ id: 'media', representation: { id: 'edition' } }]);
+});

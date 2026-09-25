@@ -1,3 +1,4 @@
+import { loadWorkDetail } from '@/lib/catalog/load-work-detail';
 import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { EditionSection } from '@/components/catalog/EditionSection';
 import {
@@ -14,14 +15,7 @@ import {
   useAlignmentPolling,
 } from '@/components/catalog/alignment-progress';
 import { RequestActions } from '@/components/acquisitions/request-actions';
-import type {
-  AlignmentJob,
-  Collection,
-  Library,
-  Media,
-  Representation,
-  WorkDetail,
-} from '@/generated/api';
+import type { AlignmentJob, Collection, Library, WorkDetail } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
@@ -145,61 +139,71 @@ export default function WorkScreen() {
     setJobs,
   );
 
-  async function load() {
-    if (!id) return;
-    try {
-      const nextWork = await api.work(id);
-      const [nextLibrary, nextRepresentations, nextJobs, progress, preference] = await Promise.all([
-        api.library(nextWork.library_id),
-        api.representations(id),
-        api.alignmentJobs(id),
-        api.workProgress(id),
-        api.workPreference(id),
-      ]);
-      const revisions = await loadRevisions(nextWork.library_id, nextRepresentations);
-      const pair = defaultPair(
-        nextJobs,
-        choices(nextRepresentations, revisions, ['epub']),
-        choices(nextRepresentations, revisions, ['audio', 'audiobook']),
-        preference?.alignment_id ?? progress?.alignment_id,
-      );
-      setWork(nextWork);
-      setLibrary(nextLibrary);
-      setMedia(revisions);
-      setJobs(nextJobs);
-      setHasProgress(Boolean(progress));
-      setEPUBID((current) =>
-        revisions.some((item) => item.id === current) ? current : (pair.epub?.id ?? ''),
-      );
-      setAudioID((current) =>
-        revisions.some((item) => item.id === current) ? current : (pair.audio?.id ?? ''),
-      );
-      setDownloaded(Boolean(await offlineWork(id)));
-    } catch (value) {
-      const saved = await offlineWork(id);
-      if (saved && value instanceof APIError && value.status === 0) {
-        setWork(saved.work);
-        setMedia([...saved.epubs, ...saved.audio]);
-        setJobs(saved.jobs);
-        setHasProgress(Boolean(saved.progress));
-        setEPUBID(saved.epub_id);
-        setAudioID(saved.audio_id);
-        setDownloaded(true);
-        setOffline(true);
-      } else {
-        setOfflineUnreachable(
-          Platform.OS !== 'web' && value instanceof APIError && value.status === 0,
-        );
-        setError(errorMessage(value));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
+    let canceled = false;
+    async function load() {
+      if (!id) return;
+      try {
+        const {
+          nextWork,
+          nextLibrary,
+          nextRepresentations,
+          nextJobs,
+          progress,
+          preference,
+          revisions,
+        } = await loadWorkDetail(id);
+        const downloaded = Boolean(await offlineWork(id));
+        if (canceled) return;
+        const pair = defaultPair(
+          nextJobs,
+          choices(nextRepresentations, revisions, ['epub']),
+          choices(nextRepresentations, revisions, ['audio', 'audiobook']),
+          preference?.alignment_id ?? progress?.alignment_id,
+        );
+        setError('');
+        setOffline(false);
+        setOfflineUnreachable(false);
+        setWork(nextWork);
+        setLibrary(nextLibrary);
+        setMedia(revisions);
+        setJobs(nextJobs);
+        setHasProgress(Boolean(progress));
+        setEPUBID((current) =>
+          revisions.some((item) => item.id === current) ? current : (pair.epub?.id ?? ''),
+        );
+        setAudioID((current) =>
+          revisions.some((item) => item.id === current) ? current : (pair.audio?.id ?? ''),
+        );
+        setDownloaded(downloaded);
+      } catch (value) {
+        const saved = await offlineWork(id);
+        if (canceled) return;
+        if (saved && value instanceof APIError && value.status === 0) {
+          setWork(saved.work);
+          setMedia([...saved.epubs, ...saved.audio]);
+          setJobs(saved.jobs);
+          setHasProgress(Boolean(saved.progress));
+          setEPUBID(saved.epub_id);
+          setAudioID(saved.audio_id);
+          setDownloaded(true);
+          setOffline(true);
+        } else {
+          setOfflineUnreachable(
+            Platform.OS !== 'web' && value instanceof APIError && value.status === 0,
+          );
+          setError(errorMessage(value));
+        }
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    }
+
+    setLoading(true);
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      canceled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -811,16 +815,4 @@ export default function WorkScreen() {
       </Dialog>
     </Page>
   );
-}
-
-async function loadRevisions(libraryId: string, representations: Representation[]) {
-  const grouped = await Promise.all(
-    representations.map(async (representation) =>
-      (await api.media(libraryId, representation.id)).map((item: Media) => ({
-        ...item,
-        representation,
-      })),
-    ),
-  );
-  return grouped.flat();
 }

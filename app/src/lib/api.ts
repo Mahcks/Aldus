@@ -135,64 +135,86 @@ async function responseErrorMessage(response: Response) {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const origin = getAPIBaseURL();
-  const generation = sessionGeneration(origin);
-  const token = await getToken(origin);
-  if (generation !== sessionGeneration(origin) || origin !== getAPIBaseURL()) {
-    throw new APIError(409, 'The active account changed. Try again.');
-  }
-  const headers = new Headers(init.headers);
-  if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  // Bound ordinary reads, including offline-library fallback. Uploads and other
-  // writes keep their existing lifetime rather than timing out mid-operation.
-  const signal =
-    init.signal ??
-    (!init.method || init.method === 'GET' ? AbortSignal.timeout(15_000) : undefined);
-  let response: Response;
+  const started = Date.now();
+  let tokenReady: number | undefined;
+  let headersReady: number | undefined;
   try {
-    response = await fetch(`${origin}${apiBasePath}${path}`, {
-      ...init,
-      signal,
-      headers,
-      credentials: 'include',
-    });
-  } catch {
-    throw new APIError(
-      0,
-      'Unable to reach your server. Check your connection and that the server is running.',
-    );
-  }
-  if (!response.ok) {
-    const message = await responseErrorMessage(response);
-    if (
-      response.status === 401 &&
-      path !== '/auth/login' &&
-      path !== '/auth/me/password' &&
-      !(path === '/auth/me' && init.method === 'DELETE') &&
-      generation === sessionGeneration(origin)
-    ) {
-      advanceSession(origin);
-      if (origin === getAPIBaseURL()) unauthorized?.();
-      await clearToken(origin);
+    const origin = getAPIBaseURL();
+    const generation = sessionGeneration(origin);
+    const token = await getToken(origin);
+    tokenReady = Date.now();
+    if (generation !== sessionGeneration(origin) || origin !== getAPIBaseURL()) {
+      throw new APIError(409, 'The active account changed. Try again.');
     }
-    throw new APIError(
-      response.status,
-      message,
-      response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
-    );
-  }
-  if (response.status === 204) return undefined as T;
-  try {
-    return (await response.json()) as T;
-  } catch (error) {
-    if (signal?.aborted) {
+    const headers = new Headers(init.headers);
+    if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    // Bound ordinary reads, including offline-library fallback. Uploads and other
+    // writes keep their existing lifetime rather than timing out mid-operation.
+    const signal =
+      init.signal ??
+      (!init.method || init.method === 'GET' ? AbortSignal.timeout(15_000) : undefined);
+    let response: Response;
+    try {
+      response = await fetch(`${origin}${apiBasePath}${path}`, {
+        ...init,
+        signal,
+        headers,
+        credentials: 'include',
+      });
+    } catch {
       throw new APIError(
         0,
         'Unable to reach your server. Check your connection and that the server is running.',
       );
     }
-    throw error;
+    headersReady = Date.now();
+    if (!response.ok) {
+      const message = await responseErrorMessage(response);
+      if (
+        response.status === 401 &&
+        path !== '/auth/login' &&
+        path !== '/auth/me/password' &&
+        !(path === '/auth/me' && init.method === 'DELETE') &&
+        generation === sessionGeneration(origin)
+      ) {
+        advanceSession(origin);
+        if (origin === getAPIBaseURL()) unauthorized?.();
+        await clearToken(origin);
+      }
+      throw new APIError(
+        response.status,
+        message,
+        response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
+      );
+    }
+    if (response.status === 204) return undefined as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new APIError(
+          0,
+          'Unable to reach your server. Check your connection and that the server is running.',
+        );
+      }
+      throw error;
+    }
+  } finally {
+    const finished = Date.now();
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && finished - started >= 1000) {
+      // No credentials, payloads, or query strings. Metro shows where a slow
+      // request spent its time, including network failures and JSON decoding.
+      console.info('Aldus: slow API request', {
+        method: init.method ?? 'GET',
+        path: path.split('?')[0],
+        totalMS: finished - started,
+        credentialsMS: (tokenReady ?? finished) - started,
+        responseHeadersMS:
+          tokenReady === undefined ? undefined : (headersReady ?? finished) - tokenReady,
+        responseBodyMS: headersReady === undefined ? undefined : finished - headersReady,
+      });
+    }
   }
 }
 

@@ -14,7 +14,7 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b49
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840259b6979 100644
+index 84dfd8e..9050208 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -49,7 +49,7 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840
        guard let navigator = readerViewController?.navigator else { return }
        _ = await navigator.goForward(options: .animated)
      }
-@@ -271,11 +273,112 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -271,11 +273,124 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    func goBackward() {
      Task { @MainActor in
@@ -72,10 +72,13 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840
 +      self.restorationGeneration += 1
 +      let generation = self.restorationGeneration
 +      let navigated = await navigator.go(to: target, options: .animated)
++      // go(to:) can finish before Readium publishes its cached currentLocation.
++      // Bind verification to the visible spread instead of that delayed notification.
++      let visible = await navigator.firstVisibleElementLocator()
 +      guard navigated,
 +            self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator,
-+            navigator.currentLocation?.href.string.split(separator: "#", maxSplits: 1).first
++            visible?.href.string.split(separator: "#", maxSplits: 1).first
 +              == target.href.string.split(separator: "#", maxSplits: 1).first
 +      else {
 +        return false
@@ -85,9 +88,10 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840
 +        typeof window.readium?.aldusLocatorVisible === "function"
 +          && window.readium.aldusLocatorVisible(\(json)) === true;
 +        """)
++      let verifiedVisible = await navigator.firstVisibleElementLocator()
 +      guard self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator,
-+            navigator.currentLocation?.href.string.split(separator: "#", maxSplits: 1).first
++            verifiedVisible?.href.string.split(separator: "#", maxSplits: 1).first
 +              == target.href.string.split(separator: "#", maxSplits: 1).first,
 +            case let .success(value) = result
 +      else {
@@ -101,8 +105,11 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840
 +  func currentVisibleLocation() throws -> Promise<SearchPage> {
 +    Promise.async { @MainActor [weak self] in
 +      guard
-+        let navigator = self?.readerViewController?.navigator as? EPUBNavigatorViewController
++        let self,
++        let navigator = self.readerViewController?.navigator as? EPUBNavigatorViewController
 +      else { return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true) }
++      let generation = self.restorationGeneration
++      let current = await navigator.firstVisibleElementLocator()
 +      let script = """
 +      (() => {
 +        const visible = (rect) =>
@@ -141,12 +148,17 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840
 +      if case let .success(value) = textResult,
 +         let text = try? ReadiumShared.Locator.Text(json: value),
 +         text.highlight != nil,
-+         let current = navigator.currentLocation {
++         let current {
 +        locator = current.copy(text: { $0 = text })
 +      } else {
-+        locator = await navigator.firstVisibleElementLocator()
++        locator = current
 +      }
-+      guard let locator else {
++      let visible = await navigator.firstVisibleElementLocator()
++      guard let locator,
++            self.restorationGeneration == generation,
++            self.readerViewController?.navigator === navigator,
++            visible?.href == locator.href
++      else {
 +        return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true)
 +      }
 +      let result = SearchResult(
@@ -162,7 +174,7 @@ index 84dfd8e46ee20b18b4ab7b9ed35331b409347a3b..081e167584272c428dcd27b9f5c52840
    func destroy() {
      if Thread.isMainThread {
        cleanup()
-@@ -389,6 +492,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -389,6 +504,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    // Cleanup
    func cleanup() {

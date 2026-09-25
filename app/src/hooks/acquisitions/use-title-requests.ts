@@ -15,6 +15,7 @@ export function useTitleRequests(filter: string, own: boolean, focusID = '', foc
   const [error, setError] = useState('');
   const [hasMore, setHasMore] = useState(false);
   const depth = useRef(1);
+  const loadedScope = useRef('');
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const origin = getAPIBaseURL();
 
@@ -25,10 +26,14 @@ export function useTitleRequests(filter: string, own: boolean, focusID = '', foc
       let reload = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       let generation = 0;
-      depth.current = 1;
-      setItems([]);
-      setHasMore(false);
-      setLoading(true);
+      const scope = JSON.stringify([auth.user?.id, origin, filter, own, focusID, focusLibrary]);
+      if (loadedScope.current !== scope) {
+        loadedScope.current = scope;
+        depth.current = 1;
+        setItems([]);
+        setHasMore(false);
+        setLoading(true);
+      }
 
       function foreground() {
         return Platform.OS === 'web'
@@ -50,17 +55,32 @@ export function useTitleRequests(filter: string, own: boolean, focusID = '', foc
           const libraries = await api.libraries();
           const next: TitleRequest[] = [];
           let more = false;
-          for (const library of libraries) {
+          // Libraries are independent; cursors within one library remain sequential.
+          // Settle a bounded batch before continuing so failures cannot leave requests
+          // from this refresh racing the next one. Publish only a complete result.
+          const pageDepth = depth.current;
+          for (let start = 0; start < libraries.length; start += 4) {
             if (!current()) return;
-            let cursor = '';
-            for (let page = 0; page < depth.current; page++) {
-              const result = await api.titleRequestPage(library.id, { filter, own, cursor });
-              if (!current()) return;
-              next.push(...result.items);
-              cursor = result.next_cursor ?? '';
-              if (!cursor) break;
+            const results = await Promise.allSettled(
+              libraries.slice(start, start + 4).map(async (library) => {
+                const items: TitleRequest[] = [];
+                let cursor = '';
+                for (let page = 0; page < pageDepth; page++) {
+                  if (!current()) break;
+                  const result = await api.titleRequestPage(library.id, { filter, own, cursor });
+                  items.push(...result.items);
+                  cursor = result.next_cursor ?? '';
+                  if (!cursor) break;
+                }
+                return { items, cursor };
+              }),
+            );
+            if (!current()) return;
+            for (const result of results) {
+              if (result.status === 'rejected') throw result.reason;
+              next.push(...result.value.items);
+              more ||= Boolean(result.value.cursor);
             }
-            more ||= Boolean(cursor);
           }
           if (focusID && focusLibrary) {
             const focused = await api.titleRequest(focusLibrary, focusID);

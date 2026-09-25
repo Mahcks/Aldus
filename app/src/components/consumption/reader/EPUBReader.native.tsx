@@ -310,7 +310,18 @@ export const EPUBReader = forwardRef<
         clearHighlight();
         restoring.current = true;
         try {
+          const navigationStarted = performance.now();
           const success = await navigateAndWait(view, saved);
+          if (
+            typeof __DEV__ !== 'undefined' &&
+            __DEV__ &&
+            performance.now() - navigationStarted >= 1000
+          ) {
+            console.debug('Aldus slow native saved-page navigation', {
+              durationMS: Math.round(performance.now() - navigationStarted),
+              success,
+            });
+          }
           if (success && saved.text?.highlight) pendingHighlight.current = saved;
           return success;
         } finally {
@@ -328,11 +339,17 @@ export const EPUBReader = forwardRef<
           console.debug('Aldus native EPUB restore skipped: alignment segment not found', target);
         return false;
       }
+      const queryStarted = performance.now();
       const queries = readiumSearchQueries(
         segment,
         target.offset,
         segmentsRef.current as AlignmentSegment[],
       );
+      if (typeof __DEV__ !== 'undefined' && __DEV__ && performance.now() - queryStarted >= 1000) {
+        console.debug('Aldus slow native restore query preparation', {
+          durationMS: Math.round(performance.now() - queryStarted),
+        });
+      }
       if (!queries[0]) {
         if (__DEV__) console.debug('Aldus native EPUB restore skipped: empty search query', target);
         return false;
@@ -352,6 +369,7 @@ export const EPUBReader = forwardRef<
         let matches: SearchResult[] = [];
         let matchedQuery = '';
         for (const query of queries) {
+          const searchStarted = performance.now();
           let page = await view.search(query, {
             caseSensitive: false,
             diacriticSensitive: false,
@@ -371,6 +389,15 @@ export const EPUBReader = forwardRef<
             );
             if (!page.hasMore || matches.length > 1) break;
             page = await view.loadMoreSearchResults();
+          }
+          if (
+            typeof __DEV__ !== 'undefined' &&
+            __DEV__ &&
+            performance.now() - searchStarted >= 1000
+          ) {
+            console.debug('Aldus slow native restore search', {
+              durationMS: Math.round(performance.now() - searchStarted),
+            });
           }
           if (page.hasMore && matches.length <= 1) matches = [];
           if (matches.length === 1) {
@@ -397,7 +424,18 @@ export const EPUBReader = forwardRef<
           });
         pendingRestore.current = target;
         clearHighlight();
+        const navigationStarted = performance.now();
         const success = await navigateAndWait(view, matches[0].locator);
+        if (
+          typeof __DEV__ !== 'undefined' &&
+          __DEV__ &&
+          performance.now() - navigationStarted >= 1000
+        ) {
+          console.debug('Aldus slow native restore navigation', {
+            durationMS: Math.round(performance.now() - navigationStarted),
+            success,
+          });
+        }
         if (success && highlight) pendingHighlight.current = matches[0].locator;
         return success;
       } catch (cause) {
@@ -423,8 +461,16 @@ export const EPUBReader = forwardRef<
     locationRequest.current += 1;
     pendingNavigation.current?.finish(false);
     return new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => finish(false), 10000);
-      function finish(success: boolean) {
+      const started = performance.now();
+      const timer = setTimeout(() => finish(false, 'timeout'), 10000);
+      function finish(success: boolean, reason = 'superseded') {
+        if (!success && typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.debug('Aldus native EPUB restore verification failed', {
+            reason,
+            href: locator.href,
+            durationMS: Math.round(performance.now() - started),
+          });
+        }
         clearTimeout(timer);
         if (pendingNavigation.current?.finish === finish) pendingNavigation.current = undefined;
         resolve(success);
@@ -440,24 +486,27 @@ export const EPUBReader = forwardRef<
           }
           if (typeof view.restoreTo !== 'function') {
             onErrorRef.current?.(new Error('Update Aldus to restore your saved reading place.'));
-            finish(false);
+            finish(false, 'restore-bridge-unavailable');
             return;
           }
           const restored = await view.restoreTo(locator);
           if (pendingNavigation.current !== navigation) return;
           if (!restored) {
-            finish(false);
+            finish(false, 'native-anchor-not-confirmed');
             return;
           }
           const visible = await view.currentVisibleLocation();
           if (pendingNavigation.current !== navigation) return;
           if (!visible) {
-            finish(false);
+            finish(false, 'visible-location-unavailable');
             return;
           }
           await handleLocation(visible, navigation);
-        } catch {
-          finish(false);
+        } catch (error) {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.debug('Aldus native EPUB restore bridge error', error);
+          }
+          finish(false, 'bridge-error');
         }
       }
       void restore();
