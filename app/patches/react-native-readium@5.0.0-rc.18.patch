@@ -247,20 +247,17 @@ index 84dfd8e..1137125 100644
      searchIterator = nil
  
 diff --git a/lib/src/components/ReadiumView.js b/lib/src/components/ReadiumView.js
-index 1af3e82c2d452e4e0ecadeef06165511de330af8..3f2f8e9241460796bbd142ac1551dcda2bb8a45c 100644
+index 1af3e82..00c2a36 100644
 --- a/lib/src/components/ReadiumView.js
 +++ b/lib/src/components/ReadiumView.js
-@@ -26,8 +26,17 @@ export const ReadiumView = forwardRef(({ onLocationChange, onPublicationReady, o
+@@ -26,8 +26,14 @@ export const ReadiumView = forwardRef(({ onLocationChange, onPublicationReady, o
      }, [onPublicationReady]);
      useImperativeHandle(forwardedRef, () => ({
          goTo: (locator) => hybridRef.current?.goTo(locator),
 +        restoreTo: async (locator) => {
-+            try {
-+                return (await hybridRef.current?.restoreTo?.(locator)) === true;
-+            }
-+            catch {
-+                return false;
-+            }
++          const view = hybridRef.current;
++          if (!view?.restoreTo) throw new Error('Native restore bridge is unavailable.');
++          return (await view.restoreTo(locator)) === true;
 +        },
          goForward: () => hybridRef.current?.goForward(),
          goBackward: () => hybridRef.current?.goBackward(),
@@ -874,19 +871,17 @@ index caeba80dc51a9a0ef41c518c27e111dbd89158f8..2a38a2a1ec7a3c2b7e56a407aff07994
        virtual std::shared_ptr<Promise<SearchPage>> loadMoreSearchResults() = 0;
        virtual void cancelSearch() = 0;
 diff --git a/src/components/ReadiumView.tsx b/src/components/ReadiumView.tsx
-index cc65f4f04ff22b1005e05ce1687d5c04a4e51217..8834a06bdf3bff224c61dde18ad57d92096f46d5 100644
+index cc65f4f..383dc6d 100644
 --- a/src/components/ReadiumView.tsx
 +++ b/src/components/ReadiumView.tsx
-@@ -68,8 +68,17 @@ export const ReadiumView = forwardRef<ReadiumViewRef, ReadiumProps>(
+@@ -68,8 +68,15 @@ export const ReadiumView = forwardRef<ReadiumViewRef, ReadiumProps>(
        forwardedRef,
        () => ({
          goTo: (locator) => hybridRef.current?.goTo(locator),
 +        restoreTo: async (locator) => {
-+          try {
-+            return (await hybridRef.current?.restoreTo?.(locator)) === true;
-+          } catch {
-+            return false;
-+          }
++          const view = hybridRef.current;
++          if (!view?.restoreTo) throw new Error('Native restore bridge is unavailable.');
++          return (await view.restoreTo(locator)) === true;
 +        },
          goForward: () => hybridRef.current?.goForward(),
          goBackward: () => hybridRef.current?.goBackward(),
