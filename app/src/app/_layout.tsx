@@ -8,7 +8,6 @@ import {
 import { SourceSerif4_400Regular } from '@expo-google-fonts/source-serif-4';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import '@/global.css';
 import { useThemeColors } from '@/components/ui/theme';
@@ -33,7 +32,6 @@ function ServerSession() {
         <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Screen name="(app)" options={{ animation: 'none' }} />
       </Stack>
-      <StatusBar style="auto" />
     </AuthProvider>
   );
 }
