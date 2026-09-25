@@ -30,3 +30,19 @@ for (const file of ['src/components/ReadiumView.tsx', 'lib/src/components/Readiu
     await expect(restore({})).rejects.toThrow('Native restore bridge is unavailable');
   });
 }
+
+test('native locator conversion uses the shared encoded-URL/decoded-path fallback', () => {
+  const native = join(__dirname, '../node_modules/react-native-readium/ios');
+  const normalizer = readFileSync(join(native, 'HrefNormalizer.swift'), 'utf8');
+  const converter = readFileSync(join(native, 'DecorationData.swift'), 'utf8');
+  const restore = readFileSync(join(native, 'HybridReadiumView.swift'), 'utf8');
+  expect(normalizer).toContain(
+    'AnyURL(string: normalized.resourcePath) ?? AnyURL(path: normalized.resourcePath)',
+  );
+  expect(converter).toContain('guard let anyURL = anyURLFromNitroHref(href)');
+  expect(converter).not.toContain('AnyURL(string: normalized.resourcePath)');
+  expect(restore).toContain('failure("reader-unavailable")');
+  expect(restore).toContain('failure("target-locator-invalid")');
+  expect(restore).toContain('failure("target-json-unavailable")');
+  expect(restore).not.toContain('reader-or-target-unavailable');
+});

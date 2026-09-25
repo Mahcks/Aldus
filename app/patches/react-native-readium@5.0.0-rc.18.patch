@@ -1,3 +1,29 @@
+diff --git a/ios/HrefNormalizer.swift b/ios/HrefNormalizer.swift
+index b160245..45449ca 100644
+--- a/ios/HrefNormalizer.swift
++++ b/ios/HrefNormalizer.swift
+@@ -34,5 +34,7 @@ func normalizeHref(_ href: String) -> NormalizedHref {
+ /// Returns `nil` if the resource path cannot be parsed as a valid URL.
+ func anyURLFromNitroHref(_ href: String) -> AnyURL? {
+   let normalized = normalizeHref(href)
+-  return AnyURL(string: normalized.resourcePath)
++  // EPUB hrefs may contain decoded spaces or Unicode. Preserve already encoded
++  // URLs, then use Readium's decoded-path initializer for legacy filenames.
++  return AnyURL(string: normalized.resourcePath) ?? AnyURL(path: normalized.resourcePath)
+ }
+diff --git a/ios/DecorationData.swift b/ios/DecorationData.swift
+index e510b91..31e4790 100644
+--- a/ios/DecorationData.swift
++++ b/ios/DecorationData.swift
+@@ -14,7 +14,7 @@ struct LocatorData: Codable {
+   func toLocator() -> ReadiumShared.Locator? {
+     let normalized = normalizeHref(href)
+
+-    guard let anyURL = AnyURL(string: normalized.resourcePath) else {
++    guard let anyURL = anyURLFromNitroHref(href) else {
+       return nil
+     }
+
 diff --git a/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt b/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt
 index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b4975e611a5 100644
 --- a/android/src/main/java/com/reactnativereadium/HybridReadiumView.kt
@@ -14,7 +40,7 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b49
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e..1137125 100644
+index 84dfd8e..44f53cf 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -80,12 +106,12 @@ index 84dfd8e..1137125 100644
 +        text: locator.text
 +      )
 +      guard let self,
-+            let navigator = self.readerViewController?.navigator as? EPUBNavigatorViewController,
-+            let target = nitroLocatorToReadium(resource),
-+            let json = target.jsonString
-+      else {
-+        throw failure("reader-or-target-unavailable")
-+      }
++            let navigator = self.readerViewController?.navigator as? EPUBNavigatorViewController
++      else { throw failure("reader-unavailable") }
++      guard let target = nitroLocatorToReadium(resource)
++      else { throw failure("target-locator-invalid") }
++      guard let json = target.jsonString
++      else { throw failure("target-json-unavailable") }
 +
 +      self.restorationGeneration += 1
 +      let generation = self.restorationGeneration
