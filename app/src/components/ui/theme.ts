@@ -48,7 +48,8 @@ export const lightColors = {
 
   readerNightPaper: '#171410',
   readerNightInk: '#eee6d8',
-  readerNightSelection: '#5b3024',
+  readerSelection: '#d39a57',
+  readerNightSelection: '#80512f',
 };
 
 /**
@@ -95,6 +96,7 @@ export const darkColors: typeof lightColors = {
 
   readerNightPaper: lightColors.readerNightPaper,
   readerNightInk: lightColors.readerNightInk,
+  readerSelection: lightColors.readerSelection,
   readerNightSelection: lightColors.readerNightSelection,
 };
 

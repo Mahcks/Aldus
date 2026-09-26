@@ -137,6 +137,12 @@ func (s *Store) Get(ctx context.Context, actor auth.User, workID string) (*Sessi
 }
 
 func (s *Store) Claim(ctx context.Context, actor auth.User, workID string, claim Claim) (*Session, error) {
+	return s.ClaimWithSnapshot(ctx, actor, workID, claim, nil)
+}
+
+// ClaimWithSnapshot captures the saved place before releasing the takeover's
+// write lock. A failed capture rolls back the claim as well.
+func (s *Store) ClaimWithSnapshot(ctx context.Context, actor auth.User, workID string, claim Claim, capture func(context.Context, *sql.Tx) error) (*Session, error) {
 	if strings.TrimSpace(claim.DeviceID) == "" || len(claim.DeviceID) > 128 ||
 		strings.TrimSpace(claim.Label) == "" || len(claim.Label) > 100 ||
 		strings.TrimSpace(claim.RequestID) == "" || len(claim.RequestID) > 128 ||
@@ -170,6 +176,11 @@ func (s *Store) Claim(ctx context.Context, actor auth.User, workID string, claim
 			return nil, fmt.Errorf("read takeover request: %w", err)
 		}
 		if requestID == claim.RequestID && owner.DeviceID == claim.DeviceID {
+			if capture != nil {
+				if err := capture(ctx, tx); err != nil {
+					return nil, err
+				}
+			}
 			return owner, nil
 		}
 	}
@@ -202,6 +213,11 @@ func (s *Store) Claim(ctx context.Context, actor auth.User, workID string, claim
 		actor.ID, workID, claim.DeviceID, epoch+1, claim.RequestID, now.Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, fmt.Errorf("claim reading session: %w", err)
+	}
+	if capture != nil {
+		if err := capture(ctx, tx); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit reading takeover: %w", err)

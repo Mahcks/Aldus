@@ -82,17 +82,7 @@ func writePositionResult(w http.ResponseWriter, value any, err error) {
 	var superseded *ownership.Superseded
 	switch {
 	case errors.As(err, &superseded):
-		var owner *contracts.ReadingOwner
-		if current := superseded.Owner; current != nil {
-			owner = &contracts.ReadingOwner{
-				WorkID:    current.WorkID,
-				DeviceID:  current.DeviceID,
-				Label:     current.Label,
-				Platform:  current.Platform,
-				Epoch:     current.Epoch,
-				UpdatedAt: current.UpdatedAt,
-			}
-		}
+		owner := readingOwnerDTO(superseded.Owner)
 		writeJSON(w, http.StatusConflict, contracts.ReadingOwnershipConflict{
 			Code:  "ownership_superseded",
 			Owner: owner,
@@ -117,4 +107,23 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func readingOwnerDTO(current *ownership.Session) *contracts.ReadingOwner {
+	if current == nil {
+		return nil
+	}
+	idle := int64(time.Since(current.UpdatedAt).Seconds())
+	if idle < 0 {
+		idle = 0
+	}
+	return &contracts.ReadingOwner{
+		WorkID:      current.WorkID,
+		DeviceID:    current.DeviceID,
+		Label:       current.Label,
+		Platform:    current.Platform,
+		Epoch:       current.Epoch,
+		UpdatedAt:   current.UpdatedAt,
+		IdleSeconds: idle,
+	}
 }

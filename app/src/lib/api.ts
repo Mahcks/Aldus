@@ -95,7 +95,18 @@ import type {
   WorkBrowsePage,
   WorkProgressUpdate,
   WorkPreference,
+  ClaimReadingSessionRequest,
+  ReadingOwner,
+  ReadingClaim,
+  ReadingOwnershipProof,
 } from '@/generated/api';
+import {
+  OwnershipSupersededError,
+  ownershipConflictFrom,
+  readingProofForRepresentation,
+  readingProofForWork,
+  reportOwnershipLost,
+} from './consumption/reading-proof';
 import { clearToken, getToken, setToken } from './auth-token';
 import { getAPIBaseURL } from './api-base';
 import { setStorageUserID } from './storage-scope';
@@ -171,6 +182,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headersReady = Date.now();
     if (!response.ok) {
       const message = await responseErrorMessage(response);
+      if (response.status === 409) {
+        const conflict = ownershipConflictFrom(message);
+        if (conflict) throw new OwnershipSupersededError(conflict.owner);
+      }
       if (
         response.status === 401 &&
         path !== '/auth/login' &&
@@ -215,6 +230,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         responseBodyMS: headersReady === undefined ? undefined : finished - headersReady,
       });
     }
+  }
+}
+
+/** Announces a refused save so the open screen can pause itself, then lets the caller see the error too. */
+async function fenced<T>(
+  workID: string | undefined,
+  save: () => Promise<T>,
+  proof?: ReadingOwnershipProof,
+) {
+  try {
+    return await save();
+  } catch (error) {
+    if (workID && error instanceof OwnershipSupersededError) {
+      reportOwnershipLost(workID, error.owner, proof);
+    }
+    throw error;
   }
 }
 
@@ -740,11 +771,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(position),
     }),
-  updateWorkProgress: (id: string, body: WorkProgressUpdate) =>
-    request<CanonicalPosition>(`/works/${id}/progress`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
+  updateWorkProgress: async (id: string, body: WorkProgressUpdate) => {
+    const update = 'ownership' in body ? body : { ...body, ownership: readingProofForWork(id) };
+    return fenced(
+      id,
+      () =>
+        request<CanonicalPosition>(`/works/${id}/progress`, {
+          method: 'PUT',
+          body: JSON.stringify(update),
+        }),
+      update.ownership,
+    );
+  },
   startActivity: (id: string, body: StartActivityRequest) =>
     request<ActivitySession>(`/works/${id}/activity`, {
       method: 'POST',
@@ -763,10 +801,33 @@ export const api = {
       throw error;
     }
   },
-  updateRepresentationState: (id: string, body: RepresentationStateUpdate) =>
-    request<RepresentationState>(`/representations/${id}/state`, {
-      method: 'PUT',
+  updateRepresentationState: (id: string, body: RepresentationStateUpdate) => {
+    // Only position writes are fenced; reader settings must keep working on any device.
+    const writesPosition = body.epub_locator !== undefined || body.audio_timestamp_ms !== undefined;
+    const proof =
+      writesPosition && !('ownership' in body) ? readingProofForRepresentation(id) : undefined;
+    return fenced(
+      proof?.workID,
+      () =>
+        request<RepresentationState>(`/representations/${id}/state`, {
+          method: 'PUT',
+          body: JSON.stringify(proof ? { ownership: proof.proof, ...body } : body),
+        }),
+      proof?.proof,
+    );
+  },
+  readingSession: (workID: string) =>
+    request<ReadingOwner | null>(`/works/${workID}/reading-session`),
+  claimReadingSession: (workID: string, body: ClaimReadingSessionRequest) =>
+    request<ReadingClaim>(`/works/${workID}/reading-session/claim`, {
+      method: 'POST',
       body: JSON.stringify(body),
+    }),
+  refreshReadingSession: (workID: string, proof: ReadingOwnershipProof) =>
+    request<ReadingOwner>(`/works/${workID}/reading-session/heartbeat`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify(proof),
     }),
   readerPreferences: () => request<ReaderPreferences>('/reader-preferences'),
   updateReaderPreferences: (body: ReaderPreferencesUpdate) =>
@@ -777,6 +838,7 @@ export const api = {
 };
 
 export function errorMessage(error: unknown) {
+  if (error instanceof OwnershipSupersededError) return error.message;
   if (!(error instanceof APIError)) {
     // People get a generic message. Development builds append the real cause so it shows in the app itself.
     if (__DEV__) {

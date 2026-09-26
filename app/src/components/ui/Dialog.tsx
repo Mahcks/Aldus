@@ -33,6 +33,7 @@ export function Dialog({
   sheet = false,
   footer,
   scrollHint,
+  dismissible = true,
 }: PropsWithChildren<{
   visible: boolean;
   onClose: () => void;
@@ -42,6 +43,8 @@ export function Dialog({
   sheet?: boolean;
   footer?: ReactNode;
   scrollHint?: string;
+  /** False while a step must finish first: no close button, backdrop press, or Escape. */
+  dismissible?: boolean;
 }>) {
   const colors = useThemeColors();
   const closeButtonId = useId();
@@ -82,7 +85,7 @@ export function Dialog({
     }, 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseRef.current();
+      if (event.key === 'Escape' && dismissible) onCloseRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -91,7 +94,7 @@ export function Dialog({
       window.removeEventListener('keydown', handleKeyDown);
       previouslyFocusedRef.current?.focus();
     };
-  }, [visible, closeButtonId]);
+  }, [visible, closeButtonId, dismissible]);
 
   if (!visible) return null;
 
@@ -120,13 +123,15 @@ export function Dialog({
         >
           {title}
         </Text>
-        <IconButton
-          icon="close"
-          label="Close dialog"
-          kind="quiet"
-          onPress={onClose}
-          nativeID={closeButtonId}
-        />
+        {dismissible ? (
+          <IconButton
+            icon="close"
+            label="Close dialog"
+            kind="quiet"
+            onPress={onClose}
+            nativeID={closeButtonId}
+          />
+        ) : null}
       </View>
       <ScrollView
         className={fullScreen ? 'min-h-0 flex-1 px-5 py-4' : 'min-h-0 flex-shrink px-6 py-4'}
@@ -169,7 +174,7 @@ export function Dialog({
       visible={visible}
       animationType={fullScreen ? 'slide' : 'fade'}
       presentationStyle={fullScreen ? 'fullScreen' : undefined}
-      onRequestClose={onClose}
+      onRequestClose={dismissible ? onClose : undefined}
     >
       {/*
        * Modal renders in its own native window on Android, so the activity's
@@ -202,7 +207,7 @@ export function Dialog({
           {fullScreen ? null : (
             <Pressable
               accessibilityLabel="Dismiss dialog"
-              onPress={onClose}
+              onPress={dismissible ? onClose : undefined}
               className="absolute inset-0 bg-ink/40"
             />
           )}

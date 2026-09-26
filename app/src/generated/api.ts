@@ -710,10 +710,29 @@ export interface ReadingOwner {
   platform: 'web' | 'ios' | 'android' | 'other';
   epoch: number /* int64 */;
   updated_at: string;
+  /**
+   * IdleSeconds is measured on the server, so clients need not trust their own clock.
+   */
+  idle_seconds: number /* int64 */;
 }
 export interface ReadingOwnershipConflict {
   code: 'ownership_superseded';
   owner?: ReadingOwner | null;
+}
+export interface ClaimReadingSessionRequest {
+  device_id: string;
+  label: string;
+  platform: 'web' | 'ios' | 'android' | 'other';
+  request_id: string;
+  expected_epoch: number /* int64 */;
+}
+/**
+ * ReadingClaim includes the exact saved places captured with the ownership change.
+ */
+export interface ReadingClaim {
+  owner: ReadingOwner;
+  progress?: CanonicalPosition | null;
+  representation_states: RepresentationState[];
 }
 
 //////////

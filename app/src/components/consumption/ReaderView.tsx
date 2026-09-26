@@ -44,6 +44,8 @@ type ReaderViewProps = {
   canRetryRestore: boolean;
   restoreReader: (target: unknown) => Promise<void>;
   leaveReader: () => Promise<void>;
+  /** Another device has the book: the web listen footer is hidden and the native status becomes a warning. */
+  paused?: boolean;
 };
 
 export function ReaderView({
@@ -74,6 +76,7 @@ export function ReaderView({
   canRetryRestore,
   restoreReader,
   leaveReader,
+  paused = false,
 }: ReaderViewProps) {
   const colors = useThemeColors();
   return (
@@ -98,9 +101,10 @@ export function ReaderView({
             segments={alignment?.segments}
             preferences={readerPreferences}
             compactChrome={compactNative}
+            statusTone={paused ? 'warning' : undefined}
             statusLabel={
               compactNative
-                ? canListenFromReader
+                ? canListenFromReader && !paused
                   ? [progressStatus, 'Select text to listen from there'].filter(Boolean).join(' · ')
                   : progressStatus ||
                     (alignmentID
@@ -118,7 +122,7 @@ export function ReaderView({
               setNotice(error.message || 'Unable to open EPUB.');
             }}
           />
-          {!compactNative ? (
+          {!compactNative && !paused ? (
             <SafeAreaView edges={['bottom']}>
               <View className="min-h-[62px] w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line py-2.5">
                 <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>

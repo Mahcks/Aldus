@@ -89,7 +89,10 @@ mock.module('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => 
 mock.module('react-native-readium', () => ({ ReadiumView: 'ReadiumView' }));
 mock.module('expo-file-system', () => ({ File: class {}, Paths: {} }));
 mock.module('../../src/components/ui/tw', () => ({ Text: 'Text', View: 'View' }));
-mock.module('../../src/components/ui/index', () => ({ IconButton: 'IconButton' }));
+mock.module('../../src/components/ui/index', () => ({
+  IconButton: 'IconButton',
+  StatusBadge: 'StatusBadge',
+}));
 mock.module('../../src/components/consumption/reader-save-feedback', () => ({
   ReaderSaveFeedback: 'ReaderSaveFeedback',
 }));

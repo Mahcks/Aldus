@@ -106,11 +106,14 @@ export function Checkbox({
 /** Single radio item, for custom radiogroups (role pickers, destination pickers, …). */
 export function Radio({
   label,
+  description,
   selected,
   onPress,
   disabled = false,
 }: {
   label: string;
+  /** A second line under the label, read together with it. */
+  description?: string;
   selected: boolean;
   onPress: () => void;
   disabled?: boolean;
@@ -128,7 +131,7 @@ export function Radio({
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityLabel={label}
+      accessibilityLabel={description ? `${label}. ${description}` : label}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
       aria-checked={selected}
@@ -154,7 +157,10 @@ export function Radio({
       >
         {selected ? <View className="h-3 w-3 rounded-full bg-accent" /> : null}
       </View>
-      <Text className="min-w-0 flex-1 text-base text-ink">{label}</Text>
+      <View className="min-w-0 flex-1 py-1">
+        <Text className="text-base text-ink">{label}</Text>
+        {description ? <Text className="text-sm text-muted">{description}</Text> : null}
+      </View>
     </Pressable>
   );
 }

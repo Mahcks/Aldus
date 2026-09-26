@@ -348,6 +348,7 @@ function TabbedForm() {
 function WorkPage() {
   const { width } = useWindowDimensions();
   const contentWidth = width - (width >= 820 ? 224 : 0);
+  const phone = width < 600;
   const about = (
     <View className="gap-3">
       <Block className="h-5 w-40" />
@@ -387,8 +388,10 @@ function WorkPage() {
 
   return (
     <View className="mx-auto w-full max-w-[720px] gap-6">
-      <View className="items-center gap-4 rounded-dialog bg-line/40 px-5 pb-6 pt-8">
-        <Block className="h-[300px] w-[204px]" />
+      <View
+        className={`items-center rounded-dialog bg-line/40 ${phone ? 'gap-3 px-4 pb-5 pt-5' : 'gap-4 px-5 pb-6 pt-8'}`}
+      >
+        <Block className={phone ? 'h-[218px] w-[148px]' : 'h-[300px] w-[204px]'} />
         <View className="w-full items-center gap-2">
           <Block className="h-3 w-24" />
           <Block className="h-9 w-3/4" />

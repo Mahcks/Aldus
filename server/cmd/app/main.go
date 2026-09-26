@@ -28,6 +28,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/genretag"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/notification"
+	"github.com/mahcks/aldus/server/internal/ownership"
 	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
 )
@@ -149,6 +150,7 @@ func main() {
 
 	slog.Debug("database ready", "path", databasePath)
 	store := position.New(db)
+	ownershipStore := ownership.New(db)
 	catalogStore := catalog.New(db)
 	genreTagStore := genretag.New(db)
 	collectionStore := collection.New(db)
@@ -304,7 +306,7 @@ func main() {
 	server := &http.Server{
 		Addr: cfg.Addr,
 		Handler: api.Handler(api.Dependencies{
-			ServerVersion: version, SchemaVersion: database.SupportedSchemaVersion(), Web: os.DirFS("public"), Position: store, Auth: authStore,
+			ServerVersion: version, SchemaVersion: database.SupportedSchemaVersion(), Web: os.DirFS("public"), Position: store, Ownership: ownershipStore, Auth: authStore,
 			Catalog: catalogStore, Collections: collectionStore, Ingest: ingestStore, Sources: sourceStore, AlignmentJobs: alignmentManager,
 			Acquisitions:        acquisitionStore,
 			AcquisitionPolicies: acquisitionPolicyStore,

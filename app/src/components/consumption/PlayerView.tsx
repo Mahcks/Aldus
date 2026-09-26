@@ -4,7 +4,7 @@ import { ReadAlongPanel } from './ReadAlongPanel';
 import { ReadAlongUnavailableSheet } from './ReadAlongUnavailableSheet';
 import type { AudioChapter, Work } from '@/generated/api';
 import { useAudioPlayerStatus } from 'expo-audio';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { AccessibilityActionEvent } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +23,8 @@ import { AnimatedView, Pressable, ScrollView, Text, View } from '@/components/ui
 // Header padding (16 top + 8 bottom) plus the gap between the cover and the title block (20).
 const COVER_SPACING = 44;
 const MIN_COVER_HEIGHT = 120;
+// With a notice above it the cover gives up room first, so the controls never leave the screen.
+const PAUSED_MIN_COVER_HEIGHT = 72;
 
 type PlayerViewProps = {
   selectedAudio: MediaChoice | undefined;
@@ -47,6 +49,10 @@ type PlayerViewProps = {
   handleSkipBack: () => void;
   handleSkipForward: () => void;
   handlePlayPause: () => void;
+  /** When set, the session moved to another device: controls disable and this explains why. */
+  pausedReason?: string;
+  /** Shown above the cover when another device took over, inside the page so the cover shrinks to fit. */
+  pausedNotice?: ReactNode;
   sleepTimerRemaining: number | undefined;
   setSleepTimerOpen: (open: boolean) => void;
 };
@@ -73,6 +79,8 @@ export function PlayerView({
   handleSkipBack,
   handleSkipForward,
   handlePlayPause,
+  pausedReason,
+  pausedNotice,
   sleepTimerRemaining,
   setSleepTimerOpen,
 }: PlayerViewProps) {
@@ -100,7 +108,10 @@ export function PlayerView({
     const timer = setTimeout(() => setTextRevealed(true), 450);
     return () => clearTimeout(timer);
   }, [settledOn, textRevealed]);
-  const showReadAlong = readAlongOn && textRevealed;
+  // While another device has the book, the text (and its stale place) gives way to a compact header.
+  const showReadAlong = readAlongOn && textRevealed && !pausedNotice;
+  const compactHeader = showReadAlong || Boolean(pausedNotice);
+  const controlsLocked = Boolean(pausedReason);
   // Leave room for the header, home indicator, and large text; short screens can scroll.
   const listeningContentHeight = Math.max(
     620 * Math.max(1, fontScale),
@@ -111,10 +122,10 @@ export function PlayerView({
   const coverRoom = topHeight - textHeight - COVER_SPACING;
   const fittedCoverHeight =
     topHeight > 0 && textHeight > 0
-      ? Math.max(MIN_COVER_HEIGHT, coverRoom)
+      ? Math.max(pausedNotice ? PAUSED_MIN_COVER_HEIGHT : MIN_COVER_HEIGHT, coverRoom)
       : Math.round(listeningContentHeight * 0.4);
-  const coverHeight = showReadAlong ? 64 : fittedCoverHeight;
-  const coverWidth = showReadAlong
+  const coverHeight = compactHeader ? 64 : fittedCoverHeight;
+  const coverWidth = compactHeader
     ? Math.round(Math.min(96, 64 * artRatio))
     : Math.round(Math.min(windowWidth - 40, 340, coverHeight * artRatio));
 
@@ -143,6 +154,7 @@ export function PlayerView({
         className="mx-auto w-full max-w-[560px] px-5"
         style={{ height: listeningContentHeight }}
       >
+        {pausedNotice ? <View className="pb-3 pt-1">{pausedNotice}</View> : null}
         <View
           className={`min-h-0 flex-1 ${showReadAlong ? '' : 'justify-center'}`}
           onLayout={(event) => setTopHeight(event.nativeEvent.layout.height)}
@@ -150,7 +162,7 @@ export function PlayerView({
           <AnimatedView
             layout={layoutShift}
             className={
-              showReadAlong ? 'flex-row items-center gap-4 py-2' : 'items-center gap-5 pb-2 pt-4'
+              compactHeader ? 'flex-row items-center gap-4 py-2' : 'items-center gap-5 pb-2 pt-4'
             }
           >
             <AnimatedView layout={layoutShift} style={{ width: coverWidth }}>
@@ -167,30 +179,30 @@ export function PlayerView({
               />
             </AnimatedView>
             <AnimatedView
-              key={showReadAlong ? 'compact' : 'full'}
+              key={compactHeader ? 'compact' : 'full'}
               entering={textSwapEnter}
               exiting={textSwapExit}
               onLayout={(event) => {
-                if (!showReadAlong) setTextHeight(event.nativeEvent.layout.height);
+                if (!compactHeader) setTextHeight(event.nativeEvent.layout.height);
               }}
-              className={showReadAlong ? 'min-w-0 flex-1 gap-1' : 'w-full items-center gap-1.5'}
+              className={compactHeader ? 'min-w-0 flex-1 gap-1' : 'w-full items-center gap-1.5'}
             >
               <Text
                 numberOfLines={2}
-                className={`${showReadAlong ? 'text-lg leading-6' : 'text-center text-[26px] leading-8'} font-editorial text-ink`}
+                className={`${compactHeader ? 'text-lg leading-6' : 'text-center text-[26px] leading-8'} font-editorial text-ink`}
               >
                 {work.title}
               </Text>
               <Text
                 numberOfLines={1}
-                className={`text-sm text-text-secondary ${showReadAlong ? '' : 'text-center'}`}
+                className={`text-sm text-text-secondary ${compactHeader ? '' : 'text-center'}`}
               >
                 {work.author || 'Unknown author'}
               </Text>
               <Text
                 numberOfLines={2}
                 className={
-                  showReadAlong ? 'mt-1 text-xs text-muted' : 'text-center text-sm text-muted'
+                  compactHeader ? 'mt-1 text-xs text-muted' : 'text-center text-sm text-muted'
                 }
               >
                 {selectedAudio.representation.label}
@@ -198,7 +210,7 @@ export function PlayerView({
               {progressStatus ? (
                 <Text
                   accessibilityLiveRegion="polite"
-                  className={`pt-1 text-xs font-sans-semibold text-muted ${showReadAlong ? '' : 'text-center'}`}
+                  className={`pt-1 text-xs font-sans-semibold text-muted ${compactHeader ? '' : 'text-center'}`}
                 >
                   {progressStatus}
                 </Text>
@@ -230,7 +242,7 @@ export function PlayerView({
                 key={audioID}
                 position={status.currentTime}
                 duration={audioDuration}
-                enabled={status.isLoaded}
+                enabled={status.isLoaded && !controlsLocked}
                 onSeek={handleScrubberSeek}
                 onScrubbingChange={setAudioScrubbing}
               />
@@ -241,7 +253,7 @@ export function PlayerView({
                   icon="previousPage"
                   label="Previous chapter"
                   kind="quiet"
-                  disabled={!chapter.previous}
+                  disabled={!chapter.previous || controlsLocked}
                   onPress={handlePreviousChapter}
                 />
                 <Pressable
@@ -261,7 +273,7 @@ export function PlayerView({
                   icon="nextPage"
                   label="Next chapter"
                   kind="quiet"
-                  disabled={!chapter.next}
+                  disabled={!chapter.next || controlsLocked}
                   onPress={handleNextChapter}
                 />
               </View>
@@ -271,7 +283,7 @@ export function PlayerView({
                 icon="skipBack"
                 label="Rewind 15 seconds"
                 kind="quiet"
-                disabled={!status.isLoaded}
+                disabled={!status.isLoaded || controlsLocked}
                 onPress={handleSkipBack}
               />
               <IconButton
@@ -279,14 +291,14 @@ export function PlayerView({
                 label={status.playing ? 'Pause' : 'Play'}
                 kind="primary"
                 size="large"
-                disabled={!status.isLoaded}
+                disabled={!status.isLoaded || controlsLocked}
                 onPress={handlePlayPause}
               />
               <IconButton
                 icon="skipForward"
                 label="Skip forward 15 seconds"
                 kind="quiet"
-                disabled={!status.isLoaded}
+                disabled={!status.isLoaded || controlsLocked}
                 onPress={handleSkipForward}
               />
             </View>
@@ -300,11 +312,11 @@ export function PlayerView({
                   { name: 'increment', label: 'Increase playback speed' },
                   { name: 'decrement', label: 'Decrease playback speed' },
                 ]}
-                accessibilityState={{ disabled: !canAdjustPlaybackRate }}
-                disabled={!canAdjustPlaybackRate}
+                accessibilityState={{ disabled: !canAdjustPlaybackRate || controlsLocked }}
+                disabled={!canAdjustPlaybackRate || controlsLocked}
                 onAccessibilityAction={handlePlaybackRateAccessibilityAction}
                 onPress={cyclePlaybackRate}
-                className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate ? '' : 'opacity-50'}`}
+                className={`will-change-variable h-11 min-w-12 items-center justify-center rounded-pill bg-panel px-2 ${canAdjustPlaybackRate && !controlsLocked ? '' : 'opacity-50'}`}
               >
                 <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
               </Pressable>
@@ -316,7 +328,7 @@ export function PlayerView({
                     : `Sleep timer, ${formatAudioTime(sleepTimerRemaining)} remaining`
                 }
                 kind={sleepTimerRemaining == null ? 'quiet' : 'secondary'}
-                disabled={!status.isLoaded}
+                disabled={!status.isLoaded || controlsLocked}
                 onPress={() => setSleepTimerOpen(true)}
               />
               <View className={passage ? undefined : 'opacity-60'}>
@@ -331,6 +343,11 @@ export function PlayerView({
               </View>
             </View>
           </>
+        ) : null}
+        {pausedReason ? (
+          <Text accessibilityLiveRegion="polite" className="mt-3 text-center text-sm text-muted">
+            {pausedReason}
+          </Text>
         ) : null}
         {sleepTimerRemaining != null ? (
           <Text

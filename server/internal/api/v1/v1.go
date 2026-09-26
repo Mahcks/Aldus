@@ -32,6 +32,9 @@ func Handler(deps Dependencies) http.Handler {
 			registerAlignmentJobRoutes(router, deps.AlignmentJobs, deps.Catalog)
 			registerAlignmentRoutes(router, deps.Position, deps.Catalog)
 			registerProgressRoutes(router, deps.Position, deps.Catalog)
+			if deps.Ownership != nil {
+				registerOwnershipRoutes(router, deps.Ownership)
+			}
 			registerAcquisitionRoutes(router, deps.Acquisitions)
 			if deps.AcquisitionPolicies != nil {
 				registerAcquisitionPolicyRoutes(router, deps.AcquisitionPolicies)

@@ -60,6 +60,8 @@ export const EPUBReader = forwardRef<
     preferences?: ReaderPreferences;
     compactChrome?: boolean;
     statusLabel?: string;
+    /** A warning tone renders the native footer status as a badge, e.g. while another device has the book. */
+    statusTone?: 'warning';
     onLocation?: (location: ReaderLocation) => void;
     onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;

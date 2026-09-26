@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import type { ReadingClaim } from '@/generated/api';
 import { api } from '@/lib/api';
 import { pendingProgress } from '@/lib/progress-outbox';
 import { choices, defaultPair, pendingCanonicalProgress } from './consumption';
@@ -8,10 +8,12 @@ export async function loadConsumptionWork({
   id,
   epub,
   audio,
+  snapshot,
 }: {
   id: string;
   epub?: string;
   audio?: string;
+  snapshot?: ReadingClaim;
 }) {
   const workRequest = api.work(id);
   const representationsRequest = api.representations(id);
@@ -36,7 +38,7 @@ export async function loadConsumptionWork({
     workRequest,
     representationsRequest,
     api.alignmentJobs(id),
-    api.workProgress(id),
+    snapshot ? (snapshot.progress ?? null) : api.workProgress(id),
     api.workPreference(id),
     api.readerPreferences(),
     revisionsRequest,
@@ -51,7 +53,7 @@ export async function loadConsumptionWork({
   );
   const nextEPUB = nextEPUBs.find((item) => item.id === epub) ?? pair.epub;
   const nextAudioChoice = nextAudio.find((item) => item.id === audio) ?? pair.audio;
-  const pending = Platform.OS === 'web' ? null : await pendingProgress(id);
+  const pending = await pendingProgress(id);
   const effectiveProgress = pendingCanonicalProgress(nextProgress, pending);
   return {
     nextWork,
@@ -62,5 +64,7 @@ export async function loadConsumptionWork({
     nextEPUB,
     nextAudioChoice,
     effectiveProgress,
+    pending,
+    serverProgress: nextProgress,
   };
 }

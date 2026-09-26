@@ -31,14 +31,14 @@ import {
   readiumLocationReason,
   readiumResumeDecorations,
   readiumRestoreDisposition,
-  readiumSearchQueries,
+  readiumCanonicalAnchor,
   segmentForEPUBLocator,
   sameReadiumResource,
 } from './readium-locator';
 import { lightColors, useThemeColors } from '@/components/ui/theme';
 import { flattenReaderContents } from '@/lib/consumption/reader-navigation';
 import { Text, View } from '@/components/ui/tw';
-import { IconButton } from '@/components/ui';
+import { IconButton, StatusBadge } from '@/components/ui';
 import { ReaderSaveFeedback } from '@/components/consumption/reader-save-feedback';
 
 type ReaderLocation = {
@@ -98,6 +98,7 @@ export const EPUBReader = forwardRef<
     preferences?: ReaderPreferences;
     compactChrome?: boolean;
     statusLabel?: string;
+    statusTone?: 'warning';
     onLocation?: (location: ReaderLocation) => void;
     onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;
@@ -110,6 +111,7 @@ export const EPUBReader = forwardRef<
     preferences = DEFAULT_READER_PREFERENCES,
     compactChrome,
     statusLabel,
+    statusTone,
     onLocation,
     onListenFromLocation,
     onReady,
@@ -158,13 +160,16 @@ export const EPUBReader = forwardRef<
     setResumeDecorations([]);
   }, []);
 
+  const selectionTint =
+    preferences?.theme === 'night' ? lightColors.readerNightSelection : lightColors.readerSelection;
+
   const highlightPlace = useCallback(
     (locator: Locator) => {
       clearHighlight();
-      setResumeDecorations(readiumResumeDecorations(locator, true, lightColors.accentSoft));
+      setResumeDecorations(readiumResumeDecorations(locator, true, selectionTint));
       highlightTimer.current = setTimeout(clearHighlight, 4000);
     },
-    [clearHighlight],
+    [clearHighlight, selectionTint],
   );
 
   const readiumPreferences = useMemo<Preferences>(
@@ -254,7 +259,7 @@ export const EPUBReader = forwardRef<
       clearFeedback();
       const locator = savedLocator(location);
       if (locator) {
-        setResumeDecorations(readiumResumeDecorations(locator, true, lightColors.accentSoft));
+        setResumeDecorations(readiumResumeDecorations(locator, true, selectionTint));
       }
       setSaveFeedback(result);
       feedbackTimer.current = setTimeout(() => {
@@ -348,93 +353,22 @@ export const EPUBReader = forwardRef<
           console.debug('Aldus native EPUB restore skipped: alignment segment not found', target);
         return false;
       }
-      const queryStarted = performance.now();
-      const queries = readiumSearchQueries(
-        segment,
-        target.offset,
-        segmentsRef.current as AlignmentSegment[],
-      );
-      if (typeof __DEV__ !== 'undefined' && __DEV__ && performance.now() - queryStarted >= 1000) {
-        console.debug('Aldus slow native restore query preparation', {
-          durationMS: Math.round(performance.now() - queryStarted),
-        });
-      }
-      if (!queries[0]) {
-        if (__DEV__) console.debug('Aldus native EPUB restore skipped: empty search query', target);
-        return false;
-      }
-      if (
-        typeof view.search !== 'function' ||
-        typeof view.loadMoreSearchResults !== 'function' ||
-        typeof view.cancelSearch !== 'function'
-      ) {
-        if (__DEV__) console.warn('Aldus native EPUB search bridge is unavailable.');
-        onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
-        return false;
-      }
+      const anchor = readiumCanonicalAnchor(segment, target.offset);
+      if (!anchor) return false;
       restoring.current = true;
       locationRequest.current += 1;
       try {
-        let matches: SearchResult[] = [];
-        let matchedQuery = '';
-        for (const query of queries) {
-          const searchStarted = performance.now();
-          let page = await view.search(query, {
-            caseSensitive: false,
-            diacriticSensitive: false,
-            wholeWord: !query.includes(' '),
-          });
-          if (!page.isSupported) {
-            if (__DEV__) console.debug('Aldus native EPUB restore skipped: search is unsupported');
-            pendingRestore.current = undefined;
-            return false;
-          }
-          matches = [];
-          for (let pageCount = 0; pageCount < 100; pageCount += 1) {
-            matches.push(
-              ...page.results.filter(
-                (result) => readiumRestoreDisposition(target, result.locator.href) === 'restore',
-              ),
-            );
-            if (!page.hasMore || matches.length > 1) break;
-            page = await view.loadMoreSearchResults();
-          }
-          if (
-            typeof __DEV__ !== 'undefined' &&
-            __DEV__ &&
-            performance.now() - searchStarted >= 1000
-          ) {
-            console.debug('Aldus slow native restore search', {
-              durationMS: Math.round(performance.now() - searchStarted),
-            });
-          }
-          if (page.hasMore && matches.length <= 1) matches = [];
-          if (matches.length === 1) {
-            matchedQuery = query;
-            break;
-          }
-        }
-        if (matches.length !== 1) {
-          if (__DEV__)
-            console.debug('Aldus native EPUB restore search was not unique', {
-              href: target.href,
-              queries,
-              matches: matches.length,
-            });
-          pendingRestore.current = undefined;
-          return false;
-        }
         if (__DEV__)
           console.debug('Aldus native EPUB restoring canonical target', {
             segment_id: segment.id,
             offset: target.offset,
-            href: target.href,
-            query: matchedQuery,
+            href: anchor.href,
+            method: 'verified-text-anchor',
           });
         pendingRestore.current = target;
         clearHighlight();
         const navigationStarted = performance.now();
-        const success = await navigateAndWait(view, matches[0].locator);
+        const success = await navigateAndWait(view, anchor);
         if (
           typeof __DEV__ !== 'undefined' &&
           __DEV__ &&
@@ -445,20 +379,17 @@ export const EPUBReader = forwardRef<
             success,
           });
         }
-        if (success && highlight) pendingHighlight.current = matches[0].locator;
+        if (success && highlight) pendingHighlight.current = anchor;
         return success;
       } catch (cause) {
         pendingRestore.current = undefined;
-        if (__DEV__) console.warn('Aldus native EPUB search failed.', cause);
+        if (__DEV__) console.warn('Aldus native EPUB restoration failed.', cause);
         onErrorRef.current?.(new Error('Synchronized navigation is unavailable on this device.'));
         return false;
       } finally {
-        if (attempt === restoreAttempt.current) restoring.current = false;
-        pendingRestore.current = undefined;
-        try {
-          view.cancelSearch();
-        } catch {
-          // An older native binary has no search iterator to cancel.
+        if (attempt === restoreAttempt.current) {
+          restoring.current = false;
+          pendingRestore.current = undefined;
         }
       }
     },
@@ -738,6 +669,10 @@ export const EPUBReader = forwardRef<
           <View className="min-h-12 min-w-0 flex-1 items-center justify-center">
             {saveFeedback || resumeDecorations.length ? (
               <ReaderSaveFeedback result={saveFeedback ?? 'restored'} />
+            ) : statusTone === 'warning' && displayedStatus ? (
+              <View accessibilityLiveRegion="polite" accessibilityLabel={displayedStatus}>
+                <StatusBadge tone="warning" icon="warning" label={displayedStatus} />
+              </View>
             ) : (
               <Text
                 accessibilityLiveRegion="polite"

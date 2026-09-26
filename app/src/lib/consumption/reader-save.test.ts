@@ -81,6 +81,8 @@ function harness(
     work: { id: 'book' },
     alignmentID: 'alignment',
     readerScope: 'account',
+    maySaveReadingPosition: () => true,
+    readingProofForWork: () => undefined,
     readerOrigin: 'server',
     activeStorageScope: () => 'account',
     getAPIBaseURL: () => 'server',
@@ -191,7 +193,11 @@ test('a conflict blocks already queued and subsequent saves until the user choos
   ]);
   await reader.saveReadingCursor(selection('third'));
   expect(reader.writes).toEqual(['first']);
-  expect(reader.progress.current.segment_id).toBe('other-device');
+  expect(reader.progress.current.segment_id).toBe('initial');
+  expect(reader.context.progressConflictRef.current).toMatchObject({
+    local: { segment_id: 'first' },
+    remote: { segment_id: 'other-device' },
+  });
   expect(reader.confirmations).toEqual([]);
 });
 
@@ -240,9 +246,13 @@ function navigationHarness(reason = 'explicit', aligned = false, mode = 'read') 
     audio: async () => true,
   };
   const leaving = { current: false };
+  const ownership = { writable: true };
+  const switching = { current: false };
   const context = {
     leaving,
-    switching: { current: false },
+    switching,
+    exited: { current: false },
+    maySaveReadingPosition: () => ownership.writable,
     mode,
     readerLocation: {
       href: 'chapter.xhtml',
@@ -253,7 +263,7 @@ function navigationHarness(reason = 'explicit', aligned = false, mode = 'read') 
     selectedEPUB: { id: 'epub' },
     selectedAudio: mode === 'listen' ? { id: 'audio' } : undefined,
     status: { isLoaded: true },
-    player: { currentTime: 45 },
+    player: { currentTime: 45, pause: () => {} },
     lastAudioSave: { current: 0 },
     alignmentID: aligned ? 'alignment' : undefined,
     readerInputBlocked: { current: false },
@@ -295,7 +305,7 @@ function navigationHarness(reason = 'explicit', aligned = false, mode = 'read') 
     handleListenMode: () => Promise<void>;
     handleReadMode: () => Promise<void>;
   };
-  return { ...actions, calls, persistence, leaving };
+  return { ...actions, calls, persistence, leaving, ownership, switching };
 }
 
 test('closing stays in the reader after an edition save fails and permits retry', async () => {
@@ -436,26 +446,29 @@ test('audio save success requires durable edition and aligned canonical progress
   }
 });
 
-test('remote target conversion cannot restore over a newer reading or listening save', async () => {
+test('progress refresh preserves the visible place and checks ownership before offering a conflict', async () => {
   const source = transpiler.transformSync(functionSource('refreshProgress'));
   for (const mode of ['read', 'listen']) {
-    for (const change of ['unchanged', 'queued-save', 'new-progress']) {
-      let finishMapping!: (target: { timestamp_ms: number }) => void;
-      let mappingStarted!: () => void;
-      const started = new Promise<void>((resolve) => {
-        mappingStarted = resolve;
+    for (const change of [
+      'unchanged',
+      'queued-save',
+      'new-progress',
+      'lost-ownership',
+      'save-during-owner-check',
+    ]) {
+      let release!: () => void;
+      let started!: () => void;
+      const requested = new Promise<void>((resolve) => {
+        started = resolve;
       });
-      const target = new Promise<{ timestamp_ms: number }>((resolve) => {
-        finishMapping = resolve;
+      const response = new Promise<void>((resolve) => {
+        release = resolve;
       });
-      const mapTarget = async () => {
-        mappingStarted();
-        return target;
-      };
       const canonicalSaves = { current: Promise.resolve() };
       const progress = { current: position('initial', 1) };
-      const restored: unknown[] = [];
-      const notices: string[] = [];
+      const conflicts: unknown[] = [];
+      let owns = true;
+      let ownershipChecks = 0;
       const context = {
         active: true,
         refreshing: false,
@@ -467,40 +480,53 @@ test('remote target conversion cannot restore over a newer reading or listening 
         progressConflictRef: { current: undefined },
         workID: 'book',
         mode,
-        alignmentID: 'alignment',
+        checkOwnership: async () => {
+          ownershipChecks++;
+          if (change === 'save-during-owner-check' && ownershipChecks === 2) {
+            canonicalSaves.current = Promise.resolve();
+            progress.current = position('newer-selection', 3);
+          }
+          return owns;
+        },
         reconcileOfflineRepresentationStates: async () => [],
         reconcilePendingProgress: async () => null,
         isCurrentReader: () => true,
         api: {
-          workProgress: async () => ({ ...position('remote', 2), resolvable: true }),
-          canonicalToEPUB: mapTarget,
-          canonicalToAudio: mapTarget,
+          workProgress: async () => {
+            started();
+            await response;
+            return position('remote', 2);
+          },
         },
         progressRef: progress,
-        setProgress: () => {},
-        queueReaderRestore: (value: unknown) => restored.push(value),
-        restoredAudio: { current: 'previous' },
-        setAudioReady: () => {},
-        setInitialAudioMS: (value: unknown) => restored.push(value),
-        setSyncAvailable: () => {},
-        setResumeMessage: () => {},
-        resumedProgressLabel: () => 'Restored',
+        setProgress: () => {
+          throw new Error('Must not adopt the other place before a choice');
+        },
+        updateProgressConflict: (value: unknown) => conflicts.push(value),
+        setSaveState: () => {},
         APIError,
-        setNotice: (value: string) => notices.push(value),
+        OwnershipSupersededError: class extends Error {},
+        setNotice: (value: string) => {
+          throw new Error(value);
+        },
         errorMessage: (error: Error) => error.message,
       };
-      const create = new Function(...Object.keys(context), `${source}; return refreshProgress;`);
-      const refresh = create(...Object.values(context)) as () => Promise<void>;
+      const refresh = new Function(...Object.keys(context), `${source}; return refreshProgress;`)(
+        ...Object.values(context),
+      );
       const refreshing = refresh();
-      await started;
+      await requested;
       if (change === 'queued-save') canonicalSaves.current = Promise.resolve();
       if (change === 'new-progress') progress.current = position('newer-selection', 3);
-      finishMapping({ timestamp_ms: 45000 });
+      if (change === 'lost-ownership') owns = false;
+      release();
       await refreshing;
-      expect(notices).toEqual([]);
-      expect(restored).toEqual(
-        change === 'unchanged' ? [mode === 'read' ? { timestamp_ms: 45000 } : 45000] : [],
+      expect(progress.current.segment_id).toBe(
+        change === 'new-progress' || change === 'save-during-owner-check'
+          ? 'newer-selection'
+          : 'initial',
       );
+      expect(conflicts).toHaveLength(change === 'unchanged' ? 1 : 0);
     }
   }
 });
@@ -562,6 +588,7 @@ test('foreground edition saves use their own acknowledged replay revision and st
         remote: { ...older, revision: 10 },
       };
       const context = {
+        serializeEditionSave: (_key: string, save: () => Promise<unknown>) => save(),
         selectedEPUB: { representation: { id: 'edition' } },
         selectedAudio: { representation: { id: 'edition' } },
         work: { id: 'book' },
@@ -572,6 +599,9 @@ test('foreground edition saves use their own acknowledged replay revision and st
         epubStateRef: { current: older },
         audioStateRef: { current: older },
         editionConflictRef: { current: undefined },
+        progressConflictRef: { current: undefined },
+        maySaveReadingPosition: () => true,
+        readingProofForWork: () => undefined,
         isCurrentReader: () => activeAccount,
         Platform: { OS: 'ios' },
         reconcileOfflineRepresentationStates: async () => {
@@ -579,9 +609,9 @@ test('foreground edition saves use their own acknowledged replay revision and st
           if (scenario === 'account-changed') activeAccount = false;
           return foreignConflict ? [conflict] : [];
         },
-        offlineWork: async () => {
+        offlineRepresentationState: async () => {
           calls.push('cache');
-          return { epub_state: acknowledged, audio_state: acknowledged };
+          return acknowledged;
         },
         showEditionConflict: (value: unknown) => {
           expect(value).toBe(conflict);
@@ -680,4 +710,44 @@ test('foreground edition saves use their own acknowledged replay revision and st
       }
     }
   }
+});
+
+test('a superseded reader or player can leave during switching without another save', async () => {
+  for (const mode of ['read', 'listen']) {
+    const reader = navigationHarness('explicit', true, mode);
+    reader.ownership.writable = false;
+    reader.switching.current = true;
+    await Promise.all([reader.leaveReader(), reader.leaveReader(), reader.leaveReader()]);
+    expect(reader.calls).toEqual(['close']);
+  }
+});
+
+test('takeover during an in-flight exit permits Back and never navigates twice', async () => {
+  for (const rejects of [false, true]) {
+    const reader = navigationHarness('explicit', true);
+    let finish!: () => void;
+    reader.persistence.epub = () =>
+      new Promise((resolve, reject) => {
+        finish = () => (rejects ? reject(new Error('superseded')) : resolve(false));
+      });
+    const pending = reader.leaveReader();
+    expect(reader.calls).toEqual(['save-epub']);
+    reader.ownership.writable = false;
+    await reader.leaveReader();
+    expect(reader.calls).toEqual(['save-epub', 'close']);
+    finish();
+    await pending;
+    await reader.leaveReader();
+    expect(reader.calls).toEqual(['save-epub', 'close']);
+  }
+});
+
+test('an active reader does not start a competing exit save during a format switch', async () => {
+  const reader = navigationHarness();
+  reader.switching.current = true;
+  await reader.leaveReader();
+  expect(reader.calls).toEqual([]);
+  reader.switching.current = false;
+  await reader.leaveReader();
+  expect(reader.calls).toEqual(['save-epub', 'close']);
 });

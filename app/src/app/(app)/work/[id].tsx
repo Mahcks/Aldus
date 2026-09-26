@@ -16,7 +16,7 @@ import {
   useAlignmentPolling,
 } from '@/components/catalog/alignment-progress';
 import { RequestActions } from '@/components/acquisitions/request-actions';
-import type { AlignmentJob, Collection, Library, WorkDetail } from '@/generated/api';
+import type { AlignmentJob, Collection, Library, ReadingOwner, WorkDetail } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
@@ -32,6 +32,9 @@ import {
   type MediaChoice,
 } from '@/lib/consumption/consumption';
 import { formatDuration } from '@/lib/format';
+import { getDeviceIdentity } from '@/lib/device-identity';
+import { activeElsewhereHint } from '@/lib/consumption/handoff-copy';
+import { PROMPT_WINDOW_SECONDS } from '@/lib/consumption/reading-session';
 import { fadeIn, layoutShift } from '@/components/ui/motion';
 import {
   ReadingStatusDialog,
@@ -48,6 +51,7 @@ import {
   IconButton,
   LoadingState,
   Notice,
+  StatusBadge,
 } from '@/components/ui';
 import { GenreTagChip } from '@/components/catalog/GenreTagChip';
 import { Page } from '@/components/shell/Page';
@@ -134,6 +138,7 @@ export default function WorkScreen() {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionToggled, setDescriptionToggled] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTabKey>('about');
+  const [activeElsewhere, setActiveElsewhere] = useState<ReadingOwner | null>(null);
 
   const progressUnreachable = useAlignmentPolling(
     id || '',
@@ -207,6 +212,27 @@ export default function WorkScreen() {
       canceled = true;
     };
   }, [id]);
+
+  // Read-only: viewing details never claims the book or interrupts the device reading it.
+  useEffect(() => {
+    if (!id || offline) return;
+    let canceled = false;
+    Promise.all([api.readingSession(id), getDeviceIdentity()])
+      .then(([owner, identity]) => {
+        if (canceled) return;
+        const elsewhere =
+          owner &&
+          owner.device_id !== identity.deviceID &&
+          owner.idle_seconds <= PROMPT_WINDOW_SECONDS;
+        setActiveElsewhere(elsewhere ? owner : null);
+      })
+      .catch(() => {
+        if (!canceled) setActiveElsewhere(null);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [id, offline]);
 
   useEffect(() => {
     if (!id || Platform.OS === 'web') return;
@@ -315,6 +341,7 @@ export default function WorkScreen() {
   // The desktop rail takes 224px; the split layout needs about 900px of what remains.
   const contentWidth = width - (width >= 820 ? 224 : 0);
   const split = contentWidth >= 900;
+  const phone = width < 600;
   const coverRatio = selectedAudio && !selectedEPUB ? 1 : 0.68;
   const statusLabel = readingStatusLabel(work.reading_status);
   const statusIcon =
@@ -506,13 +533,13 @@ export default function WorkScreen() {
       ? `/api/media/${(selectedEPUB || selectedAudio)!.id}/cover`
       : work.cover_url);
   const cover = (
-    <View className={split ? 'w-[340px]' : 'w-[204px]'}>
+    <View className={split ? 'w-[340px]' : phone ? 'w-[148px]' : 'w-[204px]'}>
       <BookCover
         title={work.title}
         author={work.author}
         coverURL={coverURL}
         fallbackCoverURL={fallbackCoverURL(work, selectedEPUB ? 'ebook' : 'audiobook')}
-        size={split ? 'grid' : selectedAudio && !selectedEPUB ? 'audio' : 'hero'}
+        size={split ? 'grid' : selectedAudio && !selectedEPUB ? 'audio' : phone ? 'small' : 'hero'}
         aspectRatio={split ? coverRatio : undefined}
         {...coverPresentation(work)}
         coverFit="cover"
@@ -528,7 +555,9 @@ export default function WorkScreen() {
       <Text
         accessibilityRole="header"
         numberOfLines={3}
-        className={`${split ? 'text-[52px] leading-[58px]' : 'text-center text-[28px] leading-9'} font-editorial text-ink`}
+        // Lora's own line metrics are far taller than its size on iOS, so the phone title pins its line height.
+        style={split ? undefined : { lineHeight: 32 }}
+        className={`${split ? 'text-[52px] leading-[58px]' : 'text-center text-[26px]'} font-editorial text-ink`}
       >
         {work.title}
       </Text>
@@ -549,6 +578,16 @@ export default function WorkScreen() {
               params: { series: work.series, library_id: work.library_id },
             })
           }
+        />
+      ) : null}
+      {activeElsewhere && !offline ? (
+        <StatusBadge
+          tone="info"
+          icon={activeElsewhere.platform === 'web' ? 'monitor' : 'phone'}
+          label={activeElsewhereHint(
+            { label: activeElsewhere.label, platform: activeElsewhere.platform },
+            activeElsewhere.idle_seconds,
+          )}
         />
       ) : null}
     </View>
@@ -755,10 +794,11 @@ export default function WorkScreen() {
 
   const showcaseLayout = (
     <View className="mx-auto w-full max-w-[720px] gap-6 pb-10">
-      <View className="items-center gap-4 rounded-dialog bg-accent-soft/50 px-5 pb-6 pt-8">
+      <View
+        className={`items-center rounded-dialog bg-accent-soft/50 ${phone ? 'gap-3 px-4 pb-5 pt-5' : 'gap-4 px-5 pb-6 pt-8'}`}
+      >
         {cover}
         {identity}
-        {genreChips}
         <View className="w-full gap-3 pt-1">
           {unavailableNotice}
           {primaryButton}
@@ -788,6 +828,7 @@ export default function WorkScreen() {
               />
             ) : null}
           </View>
+          {genreChips}
           {progressMeter}
           {syncBlock}
           {downloadStatus}

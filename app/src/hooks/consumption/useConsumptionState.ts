@@ -1,3 +1,4 @@
+import { rememberReadingConflict } from '@/lib/consumption/reading-conflict';
 import { useRepresentationProgress } from '@/hooks/consumption/useRepresentationProgress';
 import { useAudioPlayback } from '@/hooks/consumption/useAudioPlayback';
 import { useCanonicalProgress } from '@/hooks/consumption/useCanonicalProgress';
@@ -46,6 +47,7 @@ export function useConsumptionState(
   const [initialAudioMS, setInitialAudioMS] = useState<number>();
   const [syncAvailable, setSyncAvailable] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
+  const [mediaLoadError, setMediaLoadError] = useState(false);
   const [notice, setNotice] = useState('');
   const [modeSwitching, setModeSwitching] = useState(false);
   const [editionConflict, setEditionConflict] = useState<RepresentationConflict>();
@@ -66,6 +68,7 @@ export function useConsumptionState(
   const representationSaveAttempt = useRef(0);
   const switching = useRef(false);
   const leaving = useRef(false);
+  const exited = useRef(false);
   const selectedEPUB = epubs.find((item) => item.id === epubID);
   const selectedAudio = audio.find((item) => item.id === audioID);
   const {
@@ -126,7 +129,14 @@ export function useConsumptionState(
     readerOrigin,
     isCurrentReader,
     acceptanceNetwork,
-  } = useCanonicalProgress({ work, alignmentID, editionConflictRef, setSyncAvailable, setNotice });
+  } = useCanonicalProgress({
+    workID: params.id,
+    work,
+    alignmentID,
+    editionConflictRef,
+    setSyncAvailable,
+    setNotice,
+  });
 
   const {
     readerLocation,
@@ -169,10 +179,13 @@ export function useConsumptionState(
     (conflict: RepresentationConflict) => {
       editionConflictRef.current = conflict;
       setEditionConflict(conflict);
+      void rememberReadingConflict(params.id, 'edition', conflict, readerScope).catch(() => {
+        setNotice('Could not keep both places on this device. Leave this book open and try again.');
+      });
       player.pause();
       setSaveState('error');
     },
-    [player, setSaveState],
+    [params.id, readerScope, player, setSaveState, setNotice],
   );
 
   const { epubStateRef, audioStateRef, saveRepresentation } = useRepresentationProgress({
@@ -188,6 +201,7 @@ export function useConsumptionState(
     readerScope,
     isCurrentReader,
     editionConflictRef,
+    progressConflictRef,
     showEditionConflict,
     setNotice,
   });
@@ -244,6 +258,8 @@ export function useConsumptionState(
     syncAvailable,
     setSyncAvailable,
     audioReady,
+    mediaLoadError,
+    setMediaLoadError,
     setAudioReady,
     notice,
     setNotice,
@@ -267,6 +283,7 @@ export function useConsumptionState(
     representationSaveAttempt,
     switching,
     leaving,
+    exited,
     selectedEPUB,
     selectedAudio,
     player,

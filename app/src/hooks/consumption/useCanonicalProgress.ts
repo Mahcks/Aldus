@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState, type RefObject } from 'react';
 import { Platform } from 'react-native';
 import type { CanonicalPosition, Work } from '@/generated/api';
+import { rememberReadingConflict, type ProgressConflict } from '@/lib/consumption/reading-conflict';
+import { maySaveReadingPosition, readingProofForWork } from '@/lib/consumption/reading-proof';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { getAPIBaseURL } from '@/lib/api-base';
 import { activeStorageScope } from '@/lib/storage-scope';
@@ -13,15 +15,16 @@ import { discardPendingProgress, pendingProgress, saveWorkProgress } from '@/lib
 import { useAcceptanceNetwork } from '@/maintainer/useAcceptanceNetwork';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
-type ProgressConflict = { local: CanonicalPosition; remote: CanonicalPosition };
 
 export function useCanonicalProgress({
+  workID,
   work,
   alignmentID,
   editionConflictRef,
   setSyncAvailable,
   setNotice,
 }: {
+  workID: string;
   work: Work | undefined;
   alignmentID: string | undefined;
   editionConflictRef: RefObject<RepresentationConflict | undefined>;
@@ -36,11 +39,17 @@ export function useCanonicalProgress({
   const saveAttempt = useRef(0);
   const [progressConflict, setProgressConflict] = useState<ProgressConflict>();
   const progressConflictRef = useRef<ProgressConflict | undefined>(undefined);
-  const updateProgressConflict = useCallback((conflict: ProgressConflict | undefined) => {
-    progressConflictRef.current = conflict;
-    setProgressConflict(conflict);
-  }, []);
   const [readerScope] = useState(activeStorageScope);
+  const updateProgressConflict = useCallback(
+    (conflict: ProgressConflict | undefined) => {
+      progressConflictRef.current = conflict;
+      setProgressConflict(conflict);
+      void rememberReadingConflict(workID, 'progress', conflict, readerScope).catch(() => {
+        setNotice('Could not keep both places on this device. Leave this book open and try again.');
+      });
+    },
+    [workID, readerScope, setNotice],
+  );
   const [readerOrigin] = useState(getAPIBaseURL);
   const isCurrentReader = useCallback(
     () => readerScope === activeStorageScope() && readerOrigin === getAPIBaseURL(),
@@ -58,8 +67,15 @@ export function useCanonicalProgress({
   async function saveCanonical(
     position: CanonicalPosition | (() => Promise<CanonicalPosition | undefined>),
   ): Promise<'saved' | 'offline' | false> {
-    if (!work || !alignmentID || progressConflictRef.current || editionConflictRef.current)
+    if (
+      !work ||
+      !alignmentID ||
+      !maySaveReadingPosition(work.id) ||
+      progressConflictRef.current ||
+      editionConflictRef.current
+    )
       return false;
+    const ownership = readingProofForWork(work.id);
     const saveScope = readerScope;
     const saveOrigin = readerOrigin;
     const attempt = ++saveAttempt.current;
@@ -69,7 +85,12 @@ export function useCanonicalProgress({
       .catch(() => {})
       .then(async () => {
         try {
-          if (!isCurrentReader() || progressConflictRef.current || editionConflictRef.current)
+          if (
+            !isCurrentReader() ||
+            !maySaveReadingPosition(work.id) ||
+            progressConflictRef.current ||
+            editionConflictRef.current
+          )
             return;
           // Resolve inside the queue: a slow older lookup must not save after a
           // more recent selection simply because its response arrived later.
@@ -78,7 +99,12 @@ export function useCanonicalProgress({
             if (attempt === saveAttempt.current) setSaveState('error');
             return;
           }
-          if (!isCurrentReader() || progressConflictRef.current || editionConflictRef.current)
+          if (
+            !isCurrentReader() ||
+            !maySaveReadingPosition(work.id) ||
+            progressConflictRef.current ||
+            editionConflictRef.current
+          )
             return;
           if (Platform.OS !== 'web') {
             // Wait for replay, then adopt its acknowledgment only for the exact
@@ -87,7 +113,12 @@ export function useCanonicalProgress({
             await pendingProgress(work.id, saveScope);
             const cached = (await offlineWork(work.id))?.progress;
             const previous = progressRef.current;
-            if (!isCurrentReader() || progressConflictRef.current || editionConflictRef.current)
+            if (
+              !isCurrentReader() ||
+              !maySaveReadingPosition(work.id) ||
+              progressConflictRef.current ||
+              editionConflictRef.current
+            )
               return;
             if (
               cached &&
@@ -111,6 +142,7 @@ export function useCanonicalProgress({
             return;
           }
           const update = {
+            ownership,
             alignment_id: alignmentID,
             segment_id: canonical.segment_id,
             offset: canonical.offset,
@@ -143,8 +175,6 @@ export function useCanonicalProgress({
             const latest = await api.workProgress(work.id);
             if (!latest) throw error;
             if (!isCurrentReader()) return;
-            progressRef.current = latest;
-            setProgress(latest);
             updateProgressConflict({ local: canonical, remote: latest });
             setSaveState('error');
             return;
@@ -182,7 +212,7 @@ export function useCanonicalProgress({
         alignment_id: alignmentID,
         segment_id: local.segment_id,
         offset: local.offset,
-        expected_revision: progressConflict.remote.revision ?? 0,
+        expected_revision: progressConflict.remote?.revision ?? 0,
         source_device: Platform.OS,
       });
       await discardPendingProgress(work.id);
@@ -191,8 +221,13 @@ export function useCanonicalProgress({
       await updateOfflineProgress(work.id, saved);
       updateProgressConflict(undefined);
       setSaveState('saved');
+      setNotice('');
     } catch (error) {
       setSaveState('error');
+      if (error instanceof APIError && error.status === 409) {
+        const remote = await api.workProgress(work.id).catch(() => null);
+        if (remote && isCurrentReader()) updateProgressConflict({ local, remote });
+      }
       setNotice(errorMessage(error));
     }
   }

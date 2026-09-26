@@ -1,12 +1,13 @@
 diff --git a/paginator.js b/paginator.js
-index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..d407c185ba1f1704f426f4f056776c5a0d09d250 100644
+index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..71fc8fd2c04bb481ee0fe14a32a9b93b65f9e9b6 100644
 --- a/paginator.js
 +++ b/paginator.js
-@@ -198,7 +198,10 @@ const setStylesImportant = (el, styles) => {
+@@ -198,7 +198,11 @@ const setStylesImportant = (el, styles) => {
  }
- 
+
  class View {
 -    #observer = new ResizeObserver(() => this.expand())
++    #loaded = false
 +    #destroyed = false
 +    #observer = new ResizeObserver(() => {
 +        if (!this.#destroyed) this.expand()
@@ -14,7 +15,25 @@ index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..d407c185ba1f1704f426f4f056776c5a
      #element = document.createElement('div')
      #iframe = document.createElement('iframe')
      #contentRange = document.createRange()
-@@ -267,7 +270,9 @@ class View {
+@@ -240,6 +244,10 @@ class View {
+     get document() {
+         return this.#iframe.contentDocument
+     }
++    get ready() {
++        return !this.#destroyed && this.#loaded &&
++            Boolean(this.document?.documentElement && this.document?.body)
++    }
+     async load(src, afterLoad, beforeRender) {
+         if (typeof src !== 'string') throw new Error(`${src} is not string`)
+         return new Promise(resolve => {
+@@ -261,13 +269,16 @@ class View {
+                 this.#contentRange.selectNodeContents(doc.body)
+                 const layout = beforeRender?.({ vertical, rtl, background })
+                 this.#iframe.style.display = 'block'
++                this.#loaded = true
+                 this.render(layout)
+                 this.#observer.observe(doc.body)
+
                  // the resize observer above doesn't work in Firefox
                  // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
                  // until the bug is fixed we can at least account for font load
@@ -22,10 +41,27 @@ index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..d407c185ba1f1704f426f4f056776c5a
 +                doc.fonts.ready.then(() => {
 +                    if (!this.#destroyed) this.expand()
 +                })
- 
+
                  resolve()
              }, { once: true })
-@@ -408,7 +413,8 @@ class View {
+@@ -275,7 +286,7 @@ class View {
+         })
+     }
+     render(layout) {
+-        if (!layout || !this.document) return
++        if (!layout || !this.ready) return
+         this.#column = layout.flow !== 'scrolled'
+         this.#layout = layout
+         if (this.#column) this.columnize(layout)
+@@ -352,6 +363,7 @@ class View {
+         }
+     }
+     expand() {
++        if (!this.ready) return
+         const { documentElement } = this.document
+         if (this.#column) {
+             const side = this.#vertical ? 'height' : 'width'
+@@ -408,7 +420,8 @@ class View {
          return this.#overlayer
      }
      destroy() {
@@ -34,8 +70,8 @@ index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..d407c185ba1f1704f426f4f056776c5a
 +        this.#observer.disconnect()
      }
  }
- 
-@@ -419,7 +425,10 @@ export class Paginator extends HTMLElement {
+
+@@ -419,7 +432,10 @@ export class Paginator extends HTMLElement {
          'max-inline-size', 'max-block-size', 'max-column-count',
      ]
      #root = this.attachShadow({ mode: 'closed' })
@@ -47,16 +83,16 @@ index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..d407c185ba1f1704f426f4f056776c5a
      #top
      #background
      #container
-@@ -770,7 +779,7 @@ export class Paginator extends HTMLElement {
+@@ -770,7 +786,7 @@ export class Paginator extends HTMLElement {
          return { height, width, margin, gap, columnWidth }
      }
      render() {
 -        if (!this.#view) return
-+        if (this.#destroyed || !this.#view) return
++        if (this.#destroyed || !this.#view?.ready) return
          this.#view.render(this.#beforeRender({
              vertical: this.#vertical,
              rtl: this.#rtl,
-@@ -1134,7 +1143,8 @@ export class Paginator extends HTMLElement {
+@@ -1134,7 +1150,8 @@ export class Paginator extends HTMLElement {
      }
      setStyles(styles) {
          this.#styles = styles
@@ -66,15 +102,15 @@ index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..d407c185ba1f1704f426f4f056776c5a
          if (!$$styles) return
          const [$beforeStyle, $style] = $$styles
          if (Array.isArray(styles)) {
-@@ -1145,18 +1155,22 @@ export class Paginator extends HTMLElement {
- 
+@@ -1145,18 +1162,22 @@ export class Paginator extends HTMLElement {
+
          // NOTE: needs `requestAnimationFrame` in Chromium
          requestAnimationFrame(() => {
 -            this.#replaceBackground(this.#view.docBackground, this.columnCount)
 +            if (this.#view === view)
 +                this.#replaceBackground(view.docBackground, this.columnCount)
          })
- 
+
          // needed because the resize observer doesn't work in Firefox
 -        this.#view?.document?.fonts?.ready?.then(() => this.#view.expand())
 +        view.document?.fonts?.ready?.then(() => {

@@ -1,6 +1,10 @@
 import type { AlignmentSegment, EPUBLocator } from '@/generated/api';
 import type { DecorationGroup, Locator } from 'react-native-readium';
-import { canonicalTextOffset, utf16IndexAtCanonicalOffset } from './reader-location';
+import {
+  canonicalTextOffset,
+  utf16IndexAtCanonicalOffset,
+  sameSegmentLocator,
+} from './reader-location';
 
 export function parseReadiumLocator(value: unknown): Locator | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -178,13 +182,40 @@ export function readiumSearchQueries(
   return [phrase, ...uniqueWords];
 }
 
+/** The alignment supplies the resource and exact point; native verification confirms the quote. */
+export function readiumCanonicalAnchor(
+  segment: AlignmentSegment,
+  offset: number,
+): Locator | undefined {
+  if (!segment.epub_href || !Number.isFinite(offset) || offset < 0 || offset > 1_000_000)
+    return undefined;
+  const text = segment.text.replace(/\s+/gu, ' ').trim();
+  let start = utf16IndexAtCanonicalOffset(text, offset);
+  while (text[start] === ' ') start++;
+  if (!text) return undefined;
+  // At the segment's end there is no following character to highlight.
+  // Show the final word while retaining the original canonical end position.
+  if (start >= text.length) start = text.lastIndexOf(' ') + 1;
+  let end = text.indexOf(' ', start);
+  if (end === -1) end = text.length;
+  return {
+    href: segment.epub_href.split('#')[0],
+    type: 'application/xhtml+xml',
+    locations: { progression: 0 },
+    text: {
+      before: text.slice(Math.max(0, start - 80), start),
+      highlight: text.slice(start, end),
+      after: text.slice(end, end + 80),
+    },
+  };
+}
+
 export function segmentForEPUBLocator(target: EPUBLocator, segments: AlignmentSegment[]) {
-  const locator = JSON.stringify(target.locator);
   const matches = segments.filter(
     (segment) =>
       segment.highlightable &&
       normalizeHref(segment.epub_href) === normalizeHref(target.href) &&
-      JSON.stringify(segment.epub_locator) === locator,
+      sameSegmentLocator(segment.epub_locator, target.locator),
   );
   return matches.length === 1 ? matches[0] : undefined;
 }

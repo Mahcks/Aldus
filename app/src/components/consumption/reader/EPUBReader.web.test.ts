@@ -13,6 +13,7 @@ import {
   relocationCursor,
   relocatedCursor,
   segmentRangeMode,
+  sameSegmentLocator,
   utf16IndexAtCanonicalOffset,
 } from './reader-location';
 
@@ -164,6 +165,33 @@ describe('EPUB relocation', () => {
     expect(calls).toEqual(['dispose']);
   });
 
+  test('serializes chapter changes and keeps disposal waiting through a failed navigation', async () => {
+    const calls: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const disposal = deferredDisposal(() => calls.push('dispose'));
+    disposal.settle();
+    const first = disposal.navigate(async () => {
+      calls.push('first');
+      await gate;
+      throw new Error('chapter unavailable');
+    })!;
+    const failure = first.catch((error: Error) => error.message);
+    const second = disposal.navigate(async () => {
+      calls.push('second');
+    });
+    await Promise.resolve();
+    expect(calls).toEqual(['first']);
+    disposal.request();
+    expect(disposal.navigate(async () => calls.push('late'))).toBeUndefined();
+    release();
+    expect(await failure).toBe('chapter unavailable');
+    await second;
+    expect(calls).toEqual(['first', 'second', 'dispose']);
+  });
+
   test('initializes Foliate at readable text after opening a new book', async () => {
     const calls: unknown[] = [];
     await initializeReaderView({
@@ -179,4 +207,24 @@ describe('EPUB relocation', () => {
     expect(classifyPageSync(3, 1)).toBe('partial');
     expect(classifyPageSync(0, 2)).toBe('none');
   });
+});
+
+test('saved DOM anchors match regardless of JSON key order without merging different boundaries', () => {
+  const first = {
+    type: 'dom-element',
+    dom_path: '/p',
+    start: { dom_path: '/p/text()', node_offset: 2 },
+    end: { dom_path: '/p/text()', node_offset: 20 },
+  };
+  const reordered = {
+    end: { node_offset: 20, dom_path: '/p/text()' },
+    dom_path: '/p',
+    type: 'dom-element',
+    start: { node_offset: 2, dom_path: '/p/text()' },
+    segment_id: 'saved',
+  };
+  expect(sameSegmentLocator(first, reordered)).toBe(true);
+  expect(
+    sameSegmentLocator(first, { ...reordered, start: { dom_path: '/p/text()', node_offset: 3 } }),
+  ).toBe(false);
 });

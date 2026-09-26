@@ -1,20 +1,20 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import {
-  applyPlaybackRate,
-  clampAudioPosition,
-  resumedProgressLabel,
-} from '@/lib/consumption/consumption';
+import { applyPlaybackRate, clampAudioPosition } from '@/lib/consumption/consumption';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { reconcileOfflineRepresentationStates } from '@/lib/offline-library';
 import { reconcilePendingProgress } from '@/lib/progress-outbox';
+import { OwnershipSupersededError, maySaveReadingPosition } from '@/lib/consumption/reading-proof';
+import type { ReadingSession } from './useReadingSession';
 import type { ConsumptionState } from './useConsumptionState';
 import type { useConsumptionActions } from './useConsumptionActions';
 
 export function useConsumptionSync(
   state: ConsumptionState,
   actions: ReturnType<typeof useConsumptionActions>,
+  session: ReadingSession,
 ) {
+  const { mayWrite, checkOwnership } = session;
   const {
     work,
     mode,
@@ -23,7 +23,6 @@ export function useConsumptionSync(
     source,
     initialAudioMS,
     setInitialAudioMS,
-    setSyncAvailable,
     audioReady,
     setAudioReady,
     setNotice,
@@ -44,20 +43,18 @@ export function useConsumptionSync(
     setProgress,
     progressRef,
     setSaveState,
-    setResumeMessage,
     progressConflictRef,
     updateProgressConflict,
     canonicalSaves: canonicalSavesRef,
     isCurrentReader,
     readerLocation,
     readerCommit,
-    queueReaderRestore,
     showEditionConflict,
   } = state;
   const { saveEPUBLocation, saveReadingCursor, saveListeningPosition } = actions;
 
   useEffect(() => {
-    if (!work) return;
+    if (!work || !mayWrite) return;
     const workID = work.id;
     let active = true;
     let refreshing = false;
@@ -69,6 +66,7 @@ export function useConsumptionSync(
         await pending;
         await Promise.all([representationSavesRef.current, audioSavesRef.current]);
         if (!active || editionConflictRef.current || progressConflictRef.current) return;
+        if (!(await checkOwnership()) || !active) return;
         const editionConflicts = await reconcileOfflineRepresentationStates(workID);
         if (!active || !isCurrentReader()) return;
         const edition = editionConflicts.find(
@@ -99,43 +97,37 @@ export function useConsumptionSync(
           (next.revision ?? 0) <= (progressRef.current?.revision ?? 0)
         )
           return;
-        progressRef.current = next;
-        setProgress(next);
-        if (!next.resolvable || next.alignment_id !== alignmentID) return;
-        let audioTimestampMS: number | undefined;
-        if (mode === 'read') {
-          const target = await api.canonicalToEPUB(alignmentID, next);
-          if (
-            !active ||
-            !isCurrentReader() ||
-            canonicalSavesRef.current !== pending ||
-            progressRef.current !== next
-          )
-            return;
-          queueReaderRestore(target);
-        } else {
-          const target = await api.canonicalToAudio(alignmentID, next);
-          if (
-            !active ||
-            !isCurrentReader() ||
-            canonicalSavesRef.current !== pending ||
-            progressRef.current !== next
-          )
-            return;
-          restoredAudioRef.current = '';
-          setAudioReady(false);
-          setInitialAudioMS(target.timestamp_ms);
-          audioTimestampMS = target.timestamp_ms;
+        if (!(await checkOwnership()) || !active) return;
+        // A local save can finish while the ownership request is in flight.
+        // Do not compare its new place with the older response we just fetched.
+        if (
+          canonicalSavesRef.current !== pending ||
+          (next.revision ?? 0) <= (progressRef.current?.revision ?? 0)
+        )
+          return;
+        const local = progressRef.current;
+        if (
+          local &&
+          (local.alignment_id !== next.alignment_id ||
+            local.segment_id !== next.segment_id ||
+            local.offset !== next.offset)
+        ) {
+          // Legacy writers can still update progress. Keep the visible place
+          // until the reader explicitly chooses between the two positions.
+          updateProgressConflict({ local, remote: next });
+          setSaveState('error');
+          return;
         }
-        setSyncAvailable(true);
-        setResumeMessage(
-          resumedProgressLabel(
-            next.source_device,
-            audioTimestampMS == null ? undefined : audioTimestampMS / 1000,
-          ),
-        );
+        if (local) {
+          progressRef.current = next;
+          setProgress(next);
+        }
       } catch (error) {
-        if (active && !(error instanceof APIError && error.status === 0))
+        if (
+          active &&
+          !(error instanceof OwnershipSupersededError) &&
+          !(error instanceof APIError && error.status === 0)
+        )
           setNotice(errorMessage(error));
       } finally {
         refreshing = false;
@@ -156,6 +148,8 @@ export function useConsumptionSync(
       if (Platform.OS === 'web') window.removeEventListener('focus', onFocus);
     };
   }, [
+    mayWrite,
+    checkOwnership,
     audioSavesRef,
     editionConflictRef,
     representationSavesRef,
@@ -163,12 +157,10 @@ export function useConsumptionSync(
     setAudioReady,
     setInitialAudioMS,
     setNotice,
-    setSyncAvailable,
     switchingRef,
     work,
     alignmentID,
     mode,
-    queueReaderRestore,
     isCurrentReader,
     showEditionConflict,
     updateProgressConflict,
@@ -176,7 +168,6 @@ export function useConsumptionSync(
     progressConflictRef,
     progressRef,
     setProgress,
-    setResumeMessage,
     setSaveState,
   ]);
 
@@ -195,7 +186,7 @@ export function useConsumptionSync(
         const handoff = pendingAudioHandoffRef.current;
         if (handoff?.audioID !== audioID || handoff.timestampMS !== initialAudioMS) return;
         pendingAudioHandoffRef.current = undefined;
-        player.play();
+        if (work && maySaveReadingPosition(work.id)) player.play();
       } catch (error) {
         const handoff = pendingAudioHandoffRef.current;
         if (handoff?.audioID === audioID && handoff.timestampMS === initialAudioMS) {
@@ -206,6 +197,7 @@ export function useConsumptionSync(
       }
     })();
   }, [
+    work,
     pendingAudioHandoffRef,
     restoredAudioRef,
     setAudioReady,
@@ -222,7 +214,13 @@ export function useConsumptionSync(
   ]);
 
   useEffect(() => {
-    if (mode !== 'read' || !readerLocation || !selectedEPUB || readerLocation.reason === 'restore')
+    if (
+      !mayWrite ||
+      mode !== 'read' ||
+      !readerLocation ||
+      !selectedEPUB ||
+      readerLocation.reason === 'restore'
+    )
       return;
     const location = readerLocation;
     let saved = false;
@@ -248,15 +246,16 @@ export function useConsumptionSync(
       subscription?.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, readerLocation, selectedEPUB?.id, alignmentID]);
+  }, [mayWrite, mode, readerLocation, selectedEPUB?.id, alignmentID]);
 
   useEffect(() => {
-    if (mode === 'read' && readerCommit) void saveReadingCursor(readerCommit);
+    if (mayWrite && mode === 'read' && readerCommit) void saveReadingCursor(readerCommit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, readerCommit]);
+  }, [mayWrite, mode, readerCommit]);
 
   useEffect(() => {
     if (
+      !mayWrite ||
       mode !== 'listen' ||
       mediaLoading ||
       !source ||
@@ -273,6 +272,7 @@ export function useConsumptionSync(
     void saveListeningPosition(timestamp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    mayWrite,
     mode,
     mediaLoading,
     source,
@@ -284,7 +284,14 @@ export function useConsumptionSync(
   ]);
 
   useEffect(() => {
-    if (Platform.OS === 'web' || mode !== 'listen' || !status.isLoaded || !selectedAudio) return;
+    if (
+      !mayWrite ||
+      Platform.OS === 'web' ||
+      mode !== 'listen' ||
+      !status.isLoaded ||
+      !selectedAudio
+    )
+      return;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') return;
       const timestamp = Math.round(player.currentTime * 1000);
@@ -293,5 +300,5 @@ export function useConsumptionSync(
     });
     return () => subscription.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, status.isLoaded, selectedAudio?.id, alignmentID]);
+  }, [mayWrite, mode, status.isLoaded, selectedAudio?.id, alignmentID]);
 }

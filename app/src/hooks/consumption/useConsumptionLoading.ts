@@ -1,5 +1,7 @@
+import { savedReadingConflicts } from '@/lib/consumption/reading-conflict';
 import { loadConsumptionWork } from '@/lib/consumption/load-work';
-import { useEffect } from 'react';
+import type { ReadingClaim } from '@/generated/api';
+import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import {
   canonicalResumeTargets,
@@ -22,7 +24,9 @@ export function useConsumptionLoading(
   state: ConsumptionState,
   params: ConsumptionParams,
   panels: ConsumptionPanels,
+  snapshot?: ReadingClaim,
 ) {
+  const openingSnapshot = useRef(snapshot);
   const {
     work,
     setWork,
@@ -52,6 +56,7 @@ export function useConsumptionLoading(
     editionConflictRef,
     setLoading,
     setMediaLoading,
+    setMediaLoadError,
     epubSourceID: epubSourceIDRef,
     audioSourceID: audioSourceIDRef,
     restoredAudio: restoredAudioRef,
@@ -72,6 +77,7 @@ export function useConsumptionLoading(
     applyReaderDefaults,
     applyEditionPreferences,
     showEditionConflict,
+    updateProgressConflict,
     resetReaderSearch,
   } = state;
   const { setContentsOpen, setReaderSearchOpen } = panels;
@@ -95,7 +101,10 @@ export function useConsumptionLoading(
       const stored = Platform.OS === 'web' ? null : await offlineWork(params.id);
       if (stored && !canceled) {
         const pending = await pendingProgress(params.id);
-        const localProgress = pendingCanonicalProgress(stored.progress, pending);
+        const localProgress = pendingCanonicalProgress(
+          snapshot ? (snapshot.progress ?? null) : stored.progress,
+          pending,
+        );
         const storedEPUBID = stored.epubs.some((item) => item.id === params.epub)
           ? params.epub!
           : stored.epub_id;
@@ -111,7 +120,7 @@ export function useConsumptionLoading(
         setEPUBID(storedEPUBID);
         setAudioID(storedAudioID);
         setSaveState(pending ? 'offline' : 'idle');
-        setLoading(false);
+        if (!snapshot) setLoading(false);
       }
       try {
         const {
@@ -123,16 +132,42 @@ export function useConsumptionLoading(
           nextEPUB,
           nextAudioChoice,
           effectiveProgress,
-        } = await loadConsumptionWork({ id: params.id, epub: params.epub, audio: params.audio });
+          pending,
+          serverProgress,
+        } = await loadConsumptionWork({
+          id: params.id,
+          epub: params.epub,
+          audio: params.audio,
+          snapshot,
+        });
         if (canceled) return;
         applyReaderDefaults(nextReaderDefaults);
         void cacheReaderPreferences(nextReaderDefaults).catch(() => {});
-        progressRef.current = effectiveProgress;
+        const retained = await savedReadingConflicts(params.id);
+        if (canceled) return;
+        if (retained.progress) {
+          updateProgressConflict({ ...retained.progress, remote: serverProgress });
+          setSaveState('error');
+        } else if (snapshot && pending) {
+          updateProgressConflict({
+            local: {
+              alignment_id: pending.alignment_id,
+              segment_id: pending.segment_id,
+              offset: pending.offset,
+            },
+            remote: serverProgress,
+          });
+          setSaveState('error');
+        }
+        const openingProgress = retained.progress
+          ? { ...effectiveProgress, ...retained.progress.local }
+          : effectiveProgress;
+        progressRef.current = openingProgress;
         setWork(nextWork);
         setEPUBs(nextEPUBs);
         setAudio(nextAudio);
         setJobs(nextJobs);
-        setProgress(effectiveProgress);
+        setProgress(openingProgress);
         setEPUBID(nextEPUB?.id ?? '');
         setAudioID(nextAudioChoice?.id ?? '');
       } catch (error) {
@@ -166,6 +201,8 @@ export function useConsumptionLoading(
     setSource,
     setWork,
     applyReaderDefaults,
+    snapshot,
+    updateProgressConflict,
     params.id,
     params.epub,
     params.audio,
@@ -201,6 +238,7 @@ export function useConsumptionLoading(
         setAudioChapters([]);
       }
       setMediaLoading(true);
+      setMediaLoadError(false);
       let stored: Awaited<ReturnType<typeof offlineWork>> = null;
       let openedEPUB = false;
       try {
@@ -208,15 +246,22 @@ export function useConsumptionLoading(
         if (canceled) return;
         const selectedRepresentationID =
           mode === 'read' ? selectedEPUB?.representation.id : selectedAudio?.representation.id;
-        const conflict = conflicts.find(
-          (item) =>
-            item.workID === params.id && item.local.representation_id === selectedRepresentationID,
-        );
+        const retained = await savedReadingConflicts(params.id);
+        if (canceled) return;
+        const conflict =
+          conflicts.find(
+            (item) =>
+              item.workID === params.id &&
+              item.local.representation_id === selectedRepresentationID,
+          ) ??
+          (retained.edition?.local.representation_id === selectedRepresentationID
+            ? retained.edition
+            : undefined);
         editionConflictRef.current = conflict;
         setEditionConflict(conflict);
         if (conflict) showEditionConflict(conflict);
         stored = Platform.OS === 'web' || !params.id ? null : await offlineWork(params.id);
-        if (stored && !canceled) {
+        if (stored && !snapshot && !canceled) {
           const selectedEPUBChoice = stored.epubs.find((item) => item.id === epubID);
           const selectedAudioChoice = stored.audio.find((item) => item.id === audioID);
           const canonical = progress?.alignment_id === stored.alignment?.id ? progress : null;
@@ -282,14 +327,18 @@ export function useConsumptionLoading(
           return nextSource;
         }
         const selectedJob = readyJob(jobs, epubID, audioID);
+        function savedState(representationID: string) {
+          const captured = openingSnapshot.current;
+          return captured
+            ? (captured.representation_states.find(
+                (item) => item.representation_id === representationID,
+              ) ?? null)
+            : api.representationState(representationID);
+        }
         const [nextEPUBState, nextAudioState, nextAlignment, blob, audioSource, nextAudioChapters] =
           await Promise.all([
-            loadEPUB && selectedEPUB
-              ? api.representationState(selectedEPUB.representation.id)
-              : null,
-            loadAudio && selectedAudio
-              ? api.representationState(selectedAudio.representation.id)
-              : null,
+            loadEPUB && selectedEPUB ? savedState(selectedEPUB.representation.id) : null,
+            loadAudio && selectedAudio ? savedState(selectedAudio.representation.id) : null,
             selectedJob?.alignment_id
               ? alignment?.id === selectedJob.alignment_id
                 ? alignment
@@ -308,6 +357,7 @@ export function useConsumptionLoading(
             loadAudio && selectedAudio ? api.audioChapters(selectedAudio.id).catch(() => []) : [],
           ]);
         if (canceled) return;
+        openingSnapshot.current = undefined;
         if (loadEPUB) setEPUBState(nextEPUBState);
         if (loadAudio) {
           setAudioState(nextAudioState);
@@ -359,6 +409,7 @@ export function useConsumptionLoading(
           if (loadAudio) setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
         }
       } catch (error) {
+        if (!canceled && (!stored || snapshot)) setMediaLoadError(true);
         // Early publication setup must not expose the opening page when saved-state loading fails.
         if (!canceled && openedEPUB && !stored) {
           setEPUBSource(undefined);

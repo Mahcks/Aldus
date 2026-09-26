@@ -10,6 +10,13 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   ).toBeVisible();
   await page.getByRole('button', { name: /^(Start reading|Continue reading|Read)$/ }).click();
 
+  // A prior browser surface may still own the fixture book.
+  const takeover = page.getByRole('button', { name: 'Continue here', exact: true });
+  await expect(takeover.or(page.getByRole('button', { name: 'Open reader settings' }))).toBeVisible(
+    { timeout: 30000 },
+  );
+  if (await takeover.isVisible()) await takeover.click();
+
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Next page' }).click();
@@ -73,11 +80,14 @@ test('an administrator can read, listen, and configure KOReader safely', async (
     { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
-    await page.getByText(/Credential created\. Save this password now/).scrollIntoViewIfNeeded();
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(1);
+    // Responsive account layouts replace the node at the breakpoint.
+    await expect(async () => {
+      await page.getByText(/Credential created\. Save this password now/).scrollIntoViewIfNeeded();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(1);
+    }).toPass({ timeout: 5000 });
   }
 });
 
@@ -96,7 +106,8 @@ test('saved-page loading shields the book and cannot replace progress with the o
   const segment = alignment.segments.filter(
     (item: { highlightable: boolean; text: string }) => item.highlightable && item.text.length > 30,
   )[20];
-  const previous = await (await page.request.get(progressURL)).json();
+  const previousResponse = await page.request.get(progressURL);
+  const previous = previousResponse.status() === 404 ? null : await previousResponse.json();
   const seeded = await page.request.put(progressURL, {
     data: {
       alignment_id: job.alignment_id,
@@ -129,6 +140,12 @@ test('saved-page loading shields the book and cannot replace progress with the o
       await route.continue();
     });
     await page.goto('/consume/alice-gutenberg-11-work?mode=read');
+    // Accept ownership before waiting on the intentionally held alignment request.
+    const takeover = page.getByRole('button', { name: 'Continue here', exact: true });
+    await Promise.race([
+      started,
+      takeover.waitFor({ state: 'visible' }).then(() => takeover.click()),
+    ]);
     await started;
     await expect(page.getByText('Opening your book…', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Open reader settings' })).toHaveCount(0);

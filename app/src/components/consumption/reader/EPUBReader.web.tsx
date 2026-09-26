@@ -1,3 +1,4 @@
+import { canonicalResumeRange } from './canonical-range';
 import { Asset } from 'expo-asset';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
@@ -7,6 +8,7 @@ import { flattenReaderContents } from '@/lib/consumption/reader-navigation';
 import { Text, View } from '@/components/ui/tw';
 import {
   activeContentIndex,
+  readingIntentPoint,
   canonicalTextOffset,
   classifyPageSync,
   commitsFoliateRelocation,
@@ -16,6 +18,7 @@ import {
   initializeReaderView,
   relocationCursor,
   segmentRangeMode,
+  sameSegmentLocator,
 } from './reader-location';
 import { installEPUBContentSecurity } from './epub-security';
 import { deserializeReadiumLocator } from './readium-locator';
@@ -85,6 +88,7 @@ type Props = {
   preferences?: ReaderPreferences;
   compactChrome?: boolean;
   statusLabel?: string;
+  statusTone?: 'warning';
   onLocation?: (location: ReaderLocation) => void;
   onListenFromLocation?: (location: ReaderLocation) => void;
   onReady?: (contents: ReaderNavigationItem[]) => void;
@@ -148,9 +152,21 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
 
   useEffect(() => {
     const view = reader.current;
-    if (!view) return;
-    view.renderer.setAttribute('flow', preferences.layout);
-    for (const { doc } of view.renderer.getContents()) applyReaderStyles(doc, preferences);
+    const disposal = disposalRef.current;
+    if (!view || !disposal) return;
+    void disposal
+      .navigate(async () => {
+        if (view.renderer.getAttribute('flow') !== preferences.layout) {
+          view.renderer.setAttribute('flow', preferences.layout);
+        }
+        for (const { doc } of view.renderer.getContents()) applyReaderStyles(doc, preferences);
+      })
+      ?.catch((error: unknown) => {
+        if (!disposal.requested())
+          onErrorRef.current?.(
+            error instanceof Error ? error : new Error('Reader settings could not be applied.'),
+          );
+      });
   }, [preferences]);
 
   useImperativeHandle(
@@ -166,12 +182,15 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         const disposal = disposalRef.current;
         if (!view || !disposal) throw new Error('The reader is no longer open.');
         const target = capture.cfi || capture.href;
-        const operation = disposal.track(async () => {
+        const operation = disposal.navigate(async () => {
           const resolved = await view.resolveNavigation(target);
-          await view.goTo(target);
+          if (!resolved || !(await view.goTo(target)) || disposal.requested()) {
+            throw new Error('The selected passage could not be restored.');
+          }
           const content = view.renderer
             .getContents()
             .find(({ index }: { index: number }) => index === resolved.index);
+          if (!content?.doc?.body) throw new Error('The selected chapter is unavailable.');
           const range = capture.cfi
             ? (resolved.anchor(content.doc) as Range)
             : restoreDOMRange(content.doc, capture);
@@ -188,12 +207,11 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         const view = reader.current;
         const disposal = disposalRef.current;
         if (!view || !disposal || (!location && location !== 0)) return false;
-        restoredCursor.current = false;
-        direction.current = 'forward';
         return (
-          (await disposal.track(async () => {
-            await view.goTo(location);
-            return true;
+          (await disposal.navigate(async () => {
+            restoredCursor.current = false;
+            direction.current = 'forward';
+            return Boolean(await view.goTo(location));
           })) ?? false
         );
       },
@@ -246,7 +264,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           const native = deserializeReadiumLocator(location.cfi);
           const portable = native && savedEPUBCFI(native);
           return (
-            (await disposal.track(async () => {
+            (await disposal.navigate(async () => {
               if (!native || portable) {
                 const cfi = portable?.cfi ?? location.cfi!;
                 if (!cfi.startsWith('epubcfi(')) return false;
@@ -294,7 +312,15 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           !location.locator.dom_path
         )
           return false;
-        if (location.locator.segment_id)
+        const segmentID =
+          location.locator.segment_id ??
+          segmentsRef.current.find(
+            (segment) =>
+              segment.highlightable &&
+              segment.epub_href === location.href &&
+              sameSegmentLocator(segment.epub_locator, location.locator),
+          )?.id;
+        if (segmentID)
           cursor.current = {
             href: location.href,
             cfi: '',
@@ -303,19 +329,22 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
               locator: {
                 type: 'dom-element',
                 dom_path: location.locator.dom_path,
-                segment_id: location.locator.segment_id,
+                segment_id: segmentID,
               },
               offset: location.offset ?? 0,
             },
             reason: 'restore',
           };
+        else cursor.current = { href: location.href, cfi: '', reason: 'restore' };
         return (
-          (await disposal.track(async () => {
+          (await disposal.navigate(async () => {
             const resolved = await view.resolveNavigation(location.href);
-            await view.goTo(location.href);
+            if (!resolved || !(await view.goTo(location.href))) return false;
+            if (disposal.requested()) return false;
             const content = view.renderer
               .getContents()
               .find(({ index }: { index: number }) => index === resolved.index);
+            if (!content?.doc?.body) return false;
             const element = resolveDOMPath(content.doc, location.locator!.dom_path!);
             const range = content.doc.createRange();
             if (location.locator!.start && location.locator!.end) {
@@ -328,20 +357,30 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
                 location.locator!.end!.node_offset,
               );
             } else range.selectNodeContents(element);
-            const cfi = view.getCFI(resolved.index, range);
-            await view.goTo(cfi);
+            const anchor = canonicalResumeRange(range, location.offset ?? 0);
+            const cfi = view.getCFI(resolved.index, anchor);
+            if (!(await view.goTo(cfi)) || disposal.requested()) return false;
             if (highlight) {
               const selected = content.doc.getSelection();
               selected?.removeAllRanges();
-              selected?.addRange(range);
+              selected?.addRange(anchor);
             }
-            if (!disposal.requested() && cursor.current)
-              onLocationRef.current?.({
-                ...cursor.current,
-                cfi,
-                syncState: page.current?.state,
-                reason: 'restore',
-              });
+            if (!disposal.requested() && cursor.current) {
+              cursor.current = segmentID
+                ? syncLocation(
+                    location.href!,
+                    cfi,
+                    {
+                      id: segmentID,
+                      domPath: location.locator!.dom_path!,
+                      offset: location.offset ?? 0,
+                    },
+                    page.current?.state,
+                    'restore',
+                  )
+                : { href: location.href!, cfi, syncState: page.current?.state, reason: 'restore' };
+              onLocationRef.current?.(cursor.current);
+            }
             return true;
           })) ?? false
         );
@@ -390,19 +429,20 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           });
           doc.addEventListener('click', (event: MouseEvent) => {
             if (disposed || !product) return;
-            const point = caretAt(doc, event.clientX, event.clientY);
+            const point = readingIntentPoint(doc, event.clientX, event.clientY);
             const href = view.book.sections[index]?.id;
             const current = page.current;
             if (!point || !href || !current) return;
+            const cfi = view.getCFI(index, point);
             const match = containingSegment(point, href, segmentsRef.current);
             if (!match)
               return onLocationRef.current?.({
                 href,
-                cfi: current.cfi,
+                cfi,
                 syncState: current.state,
                 reason: 'explicit',
               });
-            cursor.current = syncLocation(href, current.cfi, match, current.state, 'explicit');
+            cursor.current = syncLocation(href, cfi, match, current.state, 'explicit');
             if (__DEV__)
               console.debug('Aldus reading cursor', {
                 reason: 'explicit',
@@ -503,7 +543,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     const disposal = disposalRef.current;
     if (!view || !disposal) return;
 
-    const operation = disposal.track(async () => {
+    const operation = disposal.navigate(async () => {
       // Foliate may emit relocation synchronously. Record the gesture before navigation.
       restoredCursor.current = false;
       direction.current = nextDirection;
@@ -704,26 +744,6 @@ function sameBoundary(visible: Range, boundary: RangeBoundary, doc: Document, en
   return current.compareBoundaryPoints(Range.START_TO_START, point) === 0;
 }
 
-function caretAt(doc: Document, x: number, y: number) {
-  const modern = (
-    doc as Document & {
-      caretPositionFromPoint?: (
-        x: number,
-        y: number,
-      ) => { offsetNode: Node; offset: number } | null;
-    }
-  ).caretPositionFromPoint?.(x, y);
-  const legacy = (
-    doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
-  ).caretRangeFromPoint?.(x, y);
-  if (legacy) return legacy;
-  if (!modern) return null;
-  const range = doc.createRange();
-  range.setStart(modern.offsetNode, modern.offset);
-  range.collapse(true);
-  return range;
-}
-
 function boundary(range: Range, end = false) {
   const node = end ? range.endContainer : range.startContainer;
   const offset = end ? range.endOffset : range.startOffset;
@@ -742,7 +762,7 @@ function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
       ? lightColors.canvas
       : lightColors.paper;
   const ink = night ? lightColors.readerNightInk : lightColors.ink;
-  const selection = night ? lightColors.readerNightSelection : lightColors.accentSoft;
+  const selection = night ? lightColors.readerNightSelection : lightColors.readerSelection;
   const fontFamily =
     preferences.fontFamily === 'publisher'
       ? ''

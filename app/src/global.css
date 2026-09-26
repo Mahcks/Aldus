@@ -69,7 +69,8 @@
   /* Reader-only night palette. */
   --color-reader-night-paper: #171410;
   --color-reader-night-ink: #eee6d8;
-  --color-reader-night-selection: #5b3024;
+  --color-reader-selection: #d39a57;
+  --color-reader-night-selection: #80512f;
 
   /* Shared control, surface, and dialog geometry. */
   --radius-control: 0.5rem;

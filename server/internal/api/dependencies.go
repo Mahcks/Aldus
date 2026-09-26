@@ -15,6 +15,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/genretag"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/notification"
+	"github.com/mahcks/aldus/server/internal/ownership"
 	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
 )
@@ -24,6 +25,7 @@ type Dependencies struct {
 	SchemaVersion       int
 	Web                 fs.FS
 	Position            *position.Store
+	Ownership           *ownership.Store
 	Auth                *auth.Store
 	Catalog             *catalog.Store
 	Collections         *collection.Store

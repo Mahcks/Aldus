@@ -1,3 +1,5 @@
+import { maySaveReadingPosition } from '@/lib/consumption/reading-proof';
+import { rememberReadingConflict } from '@/lib/consumption/reading-conflict';
 import { activeStorageScope } from '@/lib/storage-scope';
 import type { AudioLocator, CanonicalPosition } from '@/generated/api';
 import { Platform } from 'react-native';
@@ -57,6 +59,7 @@ export function useConsumptionActions(
     representationSaveAttempt: representationSaveAttemptRef,
     switching: switchingRef,
     leaving: leavingRef,
+    exited: exitedRef,
     selectedEPUB,
     selectedAudio,
     player,
@@ -94,6 +97,7 @@ export function useConsumptionActions(
   const representationSaveAttempt = representationSaveAttemptRef;
   const switching = switchingRef;
   const leaving = leavingRef;
+  const exited = exitedRef;
   const canonicalSaves = canonicalSavesRef;
   const readerInputBlocked = readerInputBlockedRef;
   const { setSettingsOpen, setContentsOpen, setReaderSearchOpen } = panels;
@@ -141,27 +145,53 @@ export function useConsumptionActions(
   }
 
   async function restoreCanonical(next: CanonicalPosition) {
-    if (!alignmentID || !next.resolvable || next.alignment_id !== alignmentID) return;
-    if (mode === 'read') queueReaderRestore(await api.canonicalToEPUB(alignmentID, next));
-    else {
+    if (!alignmentID || !next.resolvable || next.alignment_id !== alignmentID) {
+      throw new Error(
+        'This saved place cannot be opened with the selected editions. Both places are kept.',
+      );
+    }
+    if (mode === 'read') {
+      const target = await api.canonicalToEPUB(alignmentID, next);
+      if (!(await reader.current?.restoreLocation(target, true))) {
+        throw new Error('Could not open that saved place. Both places are kept.');
+      }
+    } else {
       const target = await api.canonicalToAudio(alignmentID, next);
-      restoredAudio.current = '';
-      setAudioReady(false);
-      setInitialAudioMS(target.timestamp_ms);
+      await player.seekTo(target.timestamp_ms / 1000, 0, 0);
     }
   }
 
   async function acceptRemoteProgress() {
     if (!progressConflict || !work) return;
-    const remote = progressConflict.remote;
+    const remote = await api.workProgress(work.id);
+    if (!isCurrentReader()) return;
+    if ((remote?.revision ?? 0) !== (progressConflict.remote?.revision ?? 0)) {
+      updateProgressConflict({ local: progressConflict.local, remote });
+      setNotice('The other place changed again. Choose which place to keep.');
+      return;
+    }
+    if (remote) {
+      await restoreCanonical(remote);
+    } else if (mode === 'read' && selectedEPUB) {
+      const edition = await api.representationState(selectedEPUB.representation.id);
+      if (
+        !edition?.epub_locator ||
+        !(await reader.current?.restoreLocation(edition.epub_locator))
+      ) {
+        throw new Error('Could not open the server’s saved page. Both places are kept.');
+      }
+    } else if (selectedAudio) {
+      const edition = await api.representationState(selectedAudio.representation.id);
+      await player.seekTo((edition?.audio_timestamp_ms ?? 0) / 1000, 0, 0);
+    }
+    if (!isCurrentReader()) return;
+    await updateOfflineProgress(work.id, remote);
     await discardPendingProgress(work.id);
     progressRef.current = remote;
     setProgress(remote);
-    await updateOfflineProgress(work.id, remote);
     updateProgressConflict(undefined);
     setSaveState('saved');
-    await restoreCanonical(remote);
-    setResumeMessage(resumedProgressLabel(remote.source_device));
+    setResumeMessage(remote ? resumedProgressLabel(remote.source_device) : '');
   }
 
   async function resolveEditionConflict(keepLocal: boolean) {
@@ -172,10 +202,25 @@ export function useConsumptionActions(
       const chosen = keepLocal
         ? await api.updateRepresentationState(
             conflict.local.representation_id,
-            representationStateUpdate(conflict.local, conflict.remote.revision),
+            representationStateUpdate(conflict.local, conflict.remote?.revision ?? 0),
           )
         : await api.representationState(conflict.local.representation_id);
-      if (!chosen || !isCurrentReader()) return;
+      if (!isCurrentReader()) return;
+      if (!keepLocal && (chosen?.revision ?? 0) !== (conflict.remote?.revision ?? 0)) {
+        showEditionConflict({ ...conflict, remote: chosen });
+        setNotice('The other place changed again. Choose which place to keep.');
+        return;
+      }
+      if (!progressRef.current?.resolvable) {
+        if (conflict.kind === 'epub') {
+          const restored = chosen?.epub_locator
+            ? await reader.current?.restoreLocation(chosen.epub_locator)
+            : await reader.current?.navigate(0);
+          if (!restored) throw new Error('Could not open that saved page. Both places are kept.');
+        } else {
+          await player.seekTo((chosen?.audio_timestamp_ms ?? 0) / 1000, 0, 0);
+        }
+      }
       await acknowledgeOfflineRepresentationState(
         conflict.workID,
         conflict.kind,
@@ -188,17 +233,12 @@ export function useConsumptionActions(
         epubStateRef.current = chosen;
         setEPUBState(chosen);
         applyEditionPreferences(chosen, false);
-        if (!progressRef.current?.resolvable) queueReaderRestore(chosen.epub_locator);
       } else {
         audioStateRef.current = chosen;
         setAudioState(chosen);
-        setCurrentPlaybackRate(playbackRate(chosen.playback_speed));
-        if (!progressRef.current?.resolvable) {
-          restoredAudio.current = '';
-          setAudioReady(false);
-          setInitialAudioMS(chosen.audio_timestamp_ms);
-        }
+        setCurrentPlaybackRate(playbackRate(chosen?.playback_speed));
       }
+      await rememberReadingConflict(params.id, 'edition', undefined, readerScope);
       editionConflictRef.current = undefined;
       setEditionConflict(undefined);
       setSaveState('saved');
@@ -206,7 +246,7 @@ export function useConsumptionActions(
       if (error instanceof APIError && error.status === 409 && isCurrentReader()) {
         try {
           const remote = await api.representationState(conflict.local.representation_id);
-          if (remote && isCurrentReader()) showEditionConflict({ ...conflict, remote });
+          if (isCurrentReader()) showEditionConflict({ ...conflict, remote });
         } catch (refreshError) {
           setNotice(errorMessage(refreshError));
         }
@@ -350,7 +390,24 @@ export function useConsumptionActions(
   }
 
   async function leaveReader() {
-    if (leaving.current) return;
+    function close() {
+      if (exited.current) return;
+      exited.current = true;
+      if (mode === 'listen') player.pause();
+      goBackOr(`/work/${params.id}`);
+    }
+    function closeIfPaused() {
+      if (exited.current) return true;
+      if (maySaveReadingPosition(params.id)) return false;
+      // Takeover already fenced this reader's writes. Pending local saves stay
+      // queued; leaving must never require reclaiming or overwriting the owner.
+      close();
+      return true;
+    }
+
+    // Check before the busy flag: ownership can change while an earlier Back
+    // tap is awaiting a save. A second tap must still let the paused reader out.
+    if (closeIfPaused() || leaving.current || switching.current) return;
     leaving.current = true;
     try {
       if (
@@ -360,12 +417,16 @@ export function useConsumptionActions(
         !readerInputBlocked.current &&
         readerLocation.reason !== 'restore'
       ) {
-        if (!(await saveEPUBLocation(readerLocation))) {
+        const editionSaved = await saveEPUBLocation(readerLocation);
+        if (closeIfPaused()) return;
+        if (!editionSaved) {
           setNotice('Your latest place could not be saved. Please try again before closing.');
           return;
         }
         if (alignmentID && readerLocation.sync && commitsReadingProgress(readerLocation.reason)) {
-          if (!(await saveReadingCursor(readerLocation))) {
+          const progressSaved = await saveReadingCursor(readerLocation);
+          if (closeIfPaused()) return;
+          if (!progressSaved) {
             setNotice('Your reading place could not be synced. Please try again before closing.');
             return;
           }
@@ -373,15 +434,19 @@ export function useConsumptionActions(
       } else if (mode === 'listen' && status.isLoaded && selectedAudio) {
         const timestamp = Math.round(player.currentTime * 1000);
         lastAudioSave.current = timestamp;
-        if (!(await saveListeningPosition(timestamp))) {
+        const audioSaved = await saveListeningPosition(timestamp);
+        if (closeIfPaused()) return;
+        if (!audioSaved) {
           setNotice('Your latest place could not be saved. Please try again before closing.');
           return;
         }
       }
       await canonicalSaves.current;
-      goBackOr(`/work/${params.id}`);
+      close();
+    } catch (error) {
+      if (!closeIfPaused()) setNotice(errorMessage(error));
     } finally {
-      leaving.current = false;
+      if (!exited.current) leaving.current = false;
     }
   }
 

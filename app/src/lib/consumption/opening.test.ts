@@ -51,6 +51,7 @@ test('media lookup starts before slow settings finish, without skipping authorit
       },
     },
     Platform: { OS: 'web' },
+    pendingProgress: async () => null,
     choices: () => [],
     defaultPair: () => ({}),
     pendingCanonicalProgress: (value: unknown) => value,
@@ -137,4 +138,38 @@ test('work detail overlaps independent lookups and media with a slow library res
   const value = await result;
   expect(value.progress).toBe(progress);
   expect(value.revisions).toEqual([{ id: 'media', representation: { id: 'edition' } }]);
+});
+
+test('opening uses the takeover snapshot without a second progress read', async () => {
+  const captured = {
+    alignment_id: 'alignment',
+    segment_id: 'sentence',
+    offset: 12345,
+    revision: 8,
+  };
+  const load = workflow('./load-work.ts', 'loadConsumptionWork', {
+    api: {
+      work: async () => ({ library_id: 'library' }),
+      representations: async () => [],
+      alignmentJobs: async () => [],
+      workProgress: async () => {
+        throw new Error('Takeover must not refetch a different position');
+      },
+      workPreference: async () => null,
+      readerPreferences: async () => ({}),
+    },
+    Platform: { OS: 'web' },
+    pendingProgress: async () => null,
+    choices: () => [],
+    defaultPair: () => ({}),
+    pendingCanonicalProgress: (value: unknown) => value,
+  });
+  expect(
+    (await load({ id: 'book', snapshot: { progress: captured, representation_states: [] } }))
+      .effectiveProgress,
+  ).toEqual(captured);
+  expect(
+    (await load({ id: 'book', snapshot: { progress: null, representation_states: [] } }))
+      .effectiveProgress,
+  ).toBeNull();
 });

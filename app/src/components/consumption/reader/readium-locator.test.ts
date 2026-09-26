@@ -10,6 +10,7 @@ import {
   readiumRestoreDisposition,
   readiumSearchQuery,
   readiumSearchQueries,
+  readiumCanonicalAnchor,
   segmentForEPUBLocator,
   serializeReadiumLocator,
 } from './readium-locator';
@@ -344,4 +345,43 @@ test('optimized native fallback queries match the previous selector', () => {
       ...legacyWords,
     ]);
   }
+});
+
+test('native resume uses the canonical word without a search result', () => {
+  const target = { ...segment, text: '😀 Earlier words. Saved exact word here.' };
+  const index = target.text.indexOf('exact');
+  const offset = Math.round(
+    (Array.from(target.text.slice(0, index).trimEnd()).length * 1_000_000) /
+      Array.from(target.text).length,
+  );
+  const result = readiumCanonicalAnchor(target, offset);
+  expect(result?.href).toBe(target.epub_href);
+  expect(result?.text).toEqual({
+    before: '😀 Earlier words. Saved ',
+    highlight: 'exact',
+    after: ' word here.',
+  });
+  expect(mapReadiumSelection(result!, result!.text!.highlight!, [target])?.offset).toBeGreaterThan(
+    0,
+  );
+  expect(readiumCanonicalAnchor(target, 1_000_000)?.text?.highlight).toBe('here.');
+});
+
+test('restores the reported Hatter passage without requiring a unique search word', () => {
+  const text =
+    'Alice felt dreadfully puzzled, The Hatter’s remark seemed to have no sort of meaning in it, and yet it was certainly English. “I don’t quite understand you,” she said, as politely as she could.';
+  const target = { ...segment, text, epub_href: 'OEBPS/6260297267691793459_11-h-7.htm.xhtml' };
+  const offset = Math.round(
+    (Array.from(text.slice(0, text.indexOf('was certainly')).trimEnd()).length * 1_000_000) /
+      Array.from(text).length,
+  );
+  // Repeated vocabulary leaves the old selector with only its failed phrase.
+  expect(
+    readiumSearchQueries(target, offset, [target, { ...target, id: 'duplicate' }]),
+  ).toHaveLength(1);
+  const anchor = readiumCanonicalAnchor(target, offset);
+  expect(anchor?.href).toBe(target.epub_href);
+  expect(anchor?.text?.highlight).toBe('was');
+  expect(anchor?.text?.after).toStartWith(' certainly English. “I don’t quite understand you,”');
+  expect(readiumCanonicalAnchor(target, NaN)).toBeUndefined();
 });

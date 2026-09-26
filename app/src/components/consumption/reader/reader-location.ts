@@ -100,14 +100,28 @@ export function deferredDisposal(dispose: () => void) {
     disposed = true;
     dispose();
   };
-  return {
-    track<T>(operation: () => Promise<T>) {
-      if (requested) return;
-      active += 1;
-      return operation().finally(() => {
+  let navigation = Promise.resolve();
+  function track<T>(operation: () => Promise<T>) {
+    if (requested) return;
+    active += 1;
+    return Promise.resolve()
+      .then(operation)
+      .finally(() => {
         active -= 1;
         run();
       });
+  }
+  return {
+    track,
+    navigate<T>(operation: () => Promise<T>) {
+      // Foliate replaces its iframe during navigation; never overlap those changes.
+      if (requested) return;
+      const next = navigation.then(operation);
+      navigation = next.then(
+        () => undefined,
+        () => undefined,
+      );
+      return track(() => next);
     },
     requested() {
       return requested;
@@ -135,3 +149,57 @@ export function initializeReaderView(view: {
 }
 
 const meaningful = (element: Element) => Boolean(element.textContent?.replace(/\s+/g, ' ').trim());
+
+/** JSON field order and an added segment ID do not change a DOM anchor. */
+export function sameSegmentLocator(left: unknown, right: unknown) {
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  type DOMLocator = {
+    type?: string;
+    dom_path?: string;
+    start?: { dom_path: string; node_offset: number };
+    end?: { dom_path: string; node_offset: number };
+  };
+  const a = left as DOMLocator;
+  const b = right as DOMLocator;
+  if (
+    a.type !== 'dom-element' ||
+    b.type !== 'dom-element' ||
+    !a.dom_path ||
+    a.dom_path !== b.dom_path
+  )
+    return false;
+  for (const key of ['start', 'end'] as const) {
+    if (!a[key] || !b[key]) {
+      if (a[key] !== b[key]) return false;
+    } else if (a[key].dom_path !== b[key].dom_path || a[key].node_offset !== b[key].node_offset)
+      return false;
+  }
+  return true;
+}
+
+export function readingIntentPoint(doc: Document, x: number, y: number) {
+  const selection = doc.getSelection();
+  if (selection?.rangeCount && !selection.isCollapsed) {
+    // A drag ends after the passage; resume from its document-order start.
+    const point = selection.getRangeAt(0).cloneRange();
+    point.collapse(true);
+    return point;
+  }
+  const modern = (
+    doc as Document & {
+      caretPositionFromPoint?: (
+        x: number,
+        y: number,
+      ) => { offsetNode: Node; offset: number } | null;
+    }
+  ).caretPositionFromPoint?.(x, y);
+  const legacy = (
+    doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+  ).caretRangeFromPoint?.(x, y);
+  if (legacy) return legacy;
+  if (!modern) return null;
+  const range = doc.createRange();
+  range.setStart(modern.offsetNode, modern.offset);
+  range.collapse(true);
+  return range;
+}

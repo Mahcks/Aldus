@@ -1,4 +1,5 @@
-import { useRef, type PropsWithChildren } from 'react';
+import { useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import {
   ReduceMotion,
@@ -34,16 +35,41 @@ export function Notice({
   children,
   danger,
   tone,
-}: PropsWithChildren<{ danger?: boolean; tone?: Exclude<NoticeTone, 'neutral'> }>) {
+  title,
+  icon,
+  action,
+  announcement,
+}: PropsWithChildren<{
+  danger?: boolean;
+  tone?: Exclude<NoticeTone, 'neutral'>;
+  /** A bold first line, for notices that need a headline before the explanation. */
+  title?: string;
+  /** Replaces the tone's default icon. */
+  icon?: AppIconName;
+  /** A button or link shown under the message. */
+  action?: ReactNode;
+  /** Interrupt screen-reader speech when an active interaction is stopped. */
+  announcement?: 'polite' | 'assertive';
+}>) {
   const colors = useThemeColors();
   const resolvedTone: NoticeTone = danger ? 'danger' : (tone ?? 'neutral');
   const style = NOTICE_STYLE[resolvedTone];
   const height = useSharedValue(0);
   const measured = useRef(false);
+  // On native a notice shows at its natural height until it has measured itself once. Starting
+  // collapsed there can leave it at zero height if the first measurement never arrives, and a
+  // notice the user cannot see is worse than one that appears without an animated open.
+  const [sizing, setSizing] = useState(Platform.OS === 'web');
 
   const heightStyle = useAnimatedStyle(() => ({ height: height.get() }));
 
   function handleLayout(event: LayoutChangeEvent) {
+    if (!sizing) {
+      height.set(event.nativeEvent.layout.height);
+      measured.current = true;
+      setSizing(true);
+      return;
+    }
     height.set(
       withTiming(event.nativeEvent.layout.height, {
         duration: measured.current ? 200 : 320,
@@ -55,18 +81,30 @@ export function Notice({
   }
 
   return (
-    <AnimatedView className="overflow-hidden" style={heightStyle}>
+    <AnimatedView className="overflow-hidden" style={sizing ? heightStyle : undefined}>
       <View onLayout={handleLayout}>
         <AnimatedView
           entering={reveal}
-          accessibilityRole={resolvedTone === 'danger' ? 'alert' : undefined}
-          accessibilityLiveRegion={resolvedTone === 'danger' ? 'assertive' : 'polite'}
+          accessibilityRole={
+            resolvedTone === 'danger' || announcement === 'assertive' ? 'alert' : undefined
+          }
+          accessibilityLiveRegion={
+            announcement ?? (resolvedTone === 'danger' ? 'assertive' : 'polite')
+          }
           className={`flex-row items-start gap-3 rounded-card border px-4 py-3 ${style.surface}`}
         >
           <View className="pt-0.5">
-            <AppIcon name={style.icon} size={18} color={noticeIconColor(colors, resolvedTone)} />
+            <AppIcon
+              name={icon ?? style.icon}
+              size={18}
+              color={noticeIconColor(colors, resolvedTone)}
+            />
           </View>
-          <Text className="min-w-0 flex-1 text-sm leading-5 text-ink">{children}</Text>
+          <View className="min-w-0 flex-1 gap-1">
+            {title ? <Text className="text-base font-sans-bold text-ink">{title}</Text> : null}
+            <Text className="text-sm leading-5 text-ink">{children}</Text>
+            {action ? <View className="pt-2 sm:items-start">{action}</View> : null}
+          </View>
         </AnimatedView>
       </View>
     </AnimatedView>

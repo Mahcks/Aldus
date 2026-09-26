@@ -29,6 +29,7 @@ function indexedWorkIDs() {
 mock.module('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: async (key: string) => storage.get(key) ?? null,
+    getAllKeys: async () => [...storage.keys()],
     setItem: async (key: string, value: string) => {
       if (key.endsWith('offline-work:work') && blockedWorkWrite) {
         const blocked = blockedWorkWrite;
@@ -322,4 +323,167 @@ test('progress is durable before the network responds and survives a failed requ
   release();
   expect(await failure).toBeInstanceOf(Error);
   expect(await pendingProgress('work')).toEqual(update);
+});
+
+test('offline replay keeps the originating ownership epoch and retains a superseded save', async () => {
+  const { registerReadingProof, clearReadingProof } = await import('./consumption/reading-proof');
+  try {
+    registerReadingProof('work', { device_id: 'phone', epoch: 4 });
+    globalThis.fetch = (async () => {
+      throw new TypeError('offline');
+    }) as unknown as typeof fetch;
+    await saveWorkProgress('work', update);
+    expect((await pendingProgress('work'))?.ownership).toEqual({ device_id: 'phone', epoch: 4 });
+
+    registerReadingProof('work', { device_id: 'phone', epoch: 6 });
+    let sent: any;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        sent = JSON.parse(String(init.body));
+        return new Response(JSON.stringify({ code: 'ownership_superseded', owner: null }), {
+          status: 409,
+        });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+    expect(await reconcilePendingProgress('work')).toEqual({
+      local: { ...update, ownership: { device_id: 'phone', epoch: 4 } },
+      remote: null,
+    });
+    expect(sent.ownership).toEqual({ device_id: 'phone', epoch: 4 });
+    expect((await pendingProgress('work'))?.ownership).toEqual({ device_id: 'phone', epoch: 4 });
+  } finally {
+    clearReadingProof('work');
+  }
+});
+
+test('offline reading credentials remain scoped to their original account and server', async () => {
+  const { cacheReadingProof, cachedReadingProof } =
+    await import('./consumption/reading-proof-cache');
+  await cacheReadingProof('work', { device_id: 'phone', epoch: 4 });
+  expect(await cachedReadingProof('work')).toEqual({ device_id: 'phone', epoch: 4 });
+  setStorageUserID('reader-two');
+  expect(await cachedReadingProof('work')).toBeUndefined();
+  setStorageUserID('reader-one');
+  setAPIBaseURL('http://other-server:8080');
+  expect(await cachedReadingProof('work')).toBeUndefined();
+});
+
+test('unresolved choices survive reopening and remain account/server scoped', async () => {
+  const { rememberReadingConflict, savedReadingConflicts } =
+    await import('./consumption/reading-conflict');
+  const conflict = {
+    local: { alignment_id: 'alignment', segment_id: 'local', offset: 5 },
+    remote: { alignment_id: 'alignment', segment_id: 'remote', offset: 10, revision: 2 },
+  };
+  await rememberReadingConflict('work', 'progress', conflict);
+  expect((await savedReadingConflicts('work')).progress).toEqual(conflict);
+  setStorageUserID('reader-two');
+  expect(await savedReadingConflicts('work')).toEqual({});
+  setStorageUserID('reader-one');
+  setAPIBaseURL('http://other-server:8080');
+  expect(await savedReadingConflicts('work')).toEqual({});
+  setAPIBaseURL('http://localhost:8080');
+  expect((await savedReadingConflicts('work')).progress).toEqual(conflict);
+  await rememberReadingConflict('work', 'progress', undefined);
+  expect(await savedReadingConflicts('work')).toEqual({});
+});
+
+test('concurrent native identity requests use the same persisted installation ID', async () => {
+  const { getDeviceIdentity } = await import('./device-identity.native');
+  const [first, second] = await Promise.all([getDeviceIdentity(), getDeviceIdentity()]);
+  expect(first).toEqual(second);
+  expect(first.deviceID).toBe(storage.get('aldus:device-id')!);
+});
+
+test('web edition replay shares one request and keeps a rejected position when the server has none', async () => {
+  const web = await import('./representation-outbox.web');
+  const local = {
+    representation_id: 'epub',
+    revision: 0,
+    epub_locator: '{"href":"chapter.xhtml"}',
+  } as import('@/generated/api').RepresentationState;
+  const proof = { device_id: 'old-device', epoch: 1 };
+  await web.updateOfflineRepresentationState(
+    'work',
+    'epub',
+    local,
+    true,
+    activeStorageScope(),
+    proof,
+  );
+  let release!: () => void;
+  let started!: () => void;
+  const began = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let puts = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'PUT') {
+      puts++;
+      expect(JSON.parse(String(init.body)).ownership).toEqual(proof);
+      started();
+      await blocked;
+      return new Response('conflict', { status: 409 });
+    }
+    return new Response('not found', { status: 404 });
+  }) as unknown as typeof fetch;
+  const first = web.reconcileOfflineRepresentationStates('work');
+  await began;
+  const second = web.reconcileOfflineRepresentationStates('work');
+  await flushPromises();
+  release();
+  const results = await Promise.all([first, second]);
+  expect(puts).toBe(1);
+  for (const conflicts of results)
+    expect(conflicts).toEqual([{ workID: 'work', kind: 'epub', local, remote: null }]);
+  const queued = [...storage.values()]
+    .map((value) => JSON.parse(value))
+    .find((value) => value.local);
+  expect(queued.local).toEqual(local);
+  expect(queued.ownership).toEqual(proof);
+  await web.acknowledgeOfflineRepresentationState('work', 'epub', local, null, false);
+  expect([...storage.keys()].filter((key) => key.includes('edition-outbox:'))).toHaveLength(0);
+});
+
+test('reconnect replay waits for a foreground edition acknowledgment instead of resubmitting it', async () => {
+  const web = await import('./representation-outbox.web');
+  const { serializeEditionSave } = await import('./consumption/offline-representation');
+  const local = {
+    representation_id: 'epub',
+    revision: 3,
+    epub_locator: '{"href":"chapter.xhtml"}',
+  } as import('@/generated/api').RepresentationState;
+  const saved = { ...local, revision: 4 };
+  let release!: () => void;
+  let staged!: () => void;
+  const started = new Promise<void>((resolve) => {
+    staged = resolve;
+  });
+  const response = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const foreground = serializeEditionSave('work', async () => {
+    await web.updateOfflineRepresentationState('work', 'epub', local, true);
+    staged();
+    await response;
+    await web.acknowledgeOfflineRepresentationState('work', 'epub', local, saved);
+  });
+  await started;
+  let requests = 0;
+  globalThis.fetch = (async () => {
+    requests++;
+    return new Response('unexpected replay', { status: 409 });
+  }) as unknown as typeof fetch;
+  const replay = web.reconcileOfflineRepresentationStates('work');
+  await flushPromises();
+  expect(requests).toBe(0);
+  release();
+  await foreground;
+  expect(await replay).toEqual([]);
+  expect(requests).toBe(0);
+  expect(await web.offlineRepresentationState('work', 'epub')).toEqual(saved);
 });
