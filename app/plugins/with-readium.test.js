@@ -7,6 +7,7 @@ const { patchPodfile } = require('./with-readium');
 const {
   patchSelection,
   patchVisibleResource,
+  patchSpreadReadiness,
   patchSpreadSelection,
   patchReflowableSelection,
   patchEdgeTaps,
@@ -30,6 +31,21 @@ const navigationHooks = `
     }
         spreads = EPUBSpread.makeSpreads(
         let success = await paginationView.goToIndex(spreadIndex, location: .locator(locator), options: options)
+`;
+
+const readinessHooks = `    private(set) var isSpreadLoaded = false
+    private func spreadLoadDidStart(_ body: Any) {}
+    private func spreadDidLoad(_ body: Any) {
+        Task { @MainActor in
+            isSpreadLoaded = true
+            applySettings()
+            await spreadDidLoad()
+            await delegate?.spreadViewDidLoad(self)
+            onSpreadLoadedCallbacks.complete()
+            showSpread()
+        }
+    }
+    // Aldus: keep selection state local to its spread.
 `;
 
 describe('Readium config plugin', () => {
@@ -178,10 +194,17 @@ describe('Readium config plugin', () => {
     );
     expect(restore).not.toContain('navigator.currentLocation');
     expect(restore).not.toContain('firstVisibleElementLocator');
-    expect(restore.match(/navigator.aldusVisibleResourceLocator\(\)/g)).toHaveLength(2);
+    expect(restore).toContain('Aldus restore v3:');
+    expect(restore).toContain('while visible?.href.string.split');
+    expect(restore).toContain('first != targetHref');
+    expect(restore).toContain('ProcessInfo.processInfo.systemUptime + 5');
+    expect(restore).toContain('try await Task.sleep(nanoseconds: 50_000_000)');
+    expect(restore).toContain('chapter-readiness-timeout');
+    expect(restore).not.toContain('visible-location-unavailable');
+    expect(restore.match(/navigator.aldusVisibleResourceLocator\(\)/g)).toHaveLength(3);
     expect(restore).toContain('window.readium.aldusLocatorVisible');
     expect(restore).toContain('verifiedVisible?.href.string.split');
-    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(3);
+    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(4);
     expect(restore).toContain('window.readium.aldusRestoreCFI');
     expect(restore).toContain('window.readium.aldusCFIVisible');
     expect(restore).toContain('cfi-resource-not-in-spine');
@@ -212,7 +235,71 @@ test('resource identity does not depend on text visibility or delayed cached loc
   const resource = patched.slice(0, patched.indexOf(hook));
   expect(resource).toContain('paginationView?.currentView as? EPUBSpreadView');
   expect(resource).toContain('readingOrder[spreadView.spread.leading]');
+  expect(resource).toContain('spreadView.isAldusRestoreReady');
+  const previous = patched.replace(', spreadView.isAldusRestoreReady', '');
+  expect(patchVisibleResource(previous)).toBe(patched);
   expect(resource).not.toContain('evaluateScript');
   expect(resource).not.toContain('currentLocation');
+  expect(
+    patchVisibleResource(
+      patched.replace('spreadView.isAldusRestoreReady', 'spreadView.isSpreadLoaded'),
+    ),
+  ).toBe(patched);
   expect(() => patchVisibleResource('changed toolkit')).toThrow();
 });
+
+test('native restoration waits past delayed pending navigation, including existing Pods', () => {
+  // Pinned Readium 3.5 sets isSpreadLoaded before the reflowable override awaits
+  // layout and navigates to pendingLocation. Readiness must be after that await.
+
+  const patched = patchSpreadReadiness(readinessHooks);
+  expect(patchSpreadReadiness(patched)).toBe(patched);
+  expect(patched).toContain('private(set) var isAldusRestoreReady = false');
+  expect(patched).toContain(
+    'private func spreadLoadDidStart(_ body: Any) {\n        isAldusRestoreReady = false',
+  );
+  expect(patched.indexOf('isAldusRestoreReady = true')).toBeGreaterThan(
+    patched.indexOf('await spreadDidLoad()'),
+  );
+  expect(patched.indexOf('isAldusRestoreReady = true')).toBeGreaterThan(
+    patched.indexOf('await delegate?.spreadViewDidLoad(self)'),
+  );
+  expect(patched.indexOf('isAldusRestoreReady = true')).toBeLessThan(
+    patched.indexOf('onSpreadLoadedCallbacks.complete()'),
+  );
+  expect(() =>
+    patchSpreadReadiness(
+      readinessHooks.replace('await delegate?.spreadViewDidLoad(self)', 'changed hook'),
+    ),
+  ).toThrow();
+});
+
+test.skipIf(!Bun.which('swiftc'))(
+  'patched Swift lifecycle cannot restore before pending navigation completes',
+  () => {
+    const directory = mkdtempSync(join(tmpdir(), 'aldus-restore-readiness-'));
+    try {
+      const main = join(directory, 'main.swift');
+      const executable = join(directory, 'readiness');
+      const fixture = readFileSync(
+        join(__dirname, 'fixtures/restore-readiness-main.swift'),
+        'utf8',
+      );
+      writeFileSync(
+        main,
+        fixture.replace('// PATCHED_LIFECYCLE', patchSpreadReadiness(readinessHooks)),
+      );
+      const compile = spawnSync('swiftc', ['-parse-as-library', main, '-o', executable], {
+        encoding: 'utf8',
+      });
+      if (compile.status !== 0) throw new Error(compile.stderr || 'Swift compilation failed');
+      const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 5000 });
+      expect(run.status).toBe(0);
+      expect(run.stdout).toContain(
+        'Restore readiness waits for pending navigation and delegate completion',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);

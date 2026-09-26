@@ -40,7 +40,6 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b49
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e..011e0c2 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -75,7 +74,7 @@ index 84dfd8e..011e0c2 100644
        guard let navigator = readerViewController?.navigator else { return }
        _ = await navigator.goForward(options: .animated)
      }
-@@ -271,11 +273,189 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -271,11 +273,197 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    func goBackward() {
      Task { @MainActor in
@@ -91,7 +90,7 @@ index 84dfd8e..011e0c2 100644
 +        NSError(
 +          domain: "AldusRestore",
 +          code: 1,
-+          userInfo: [NSLocalizedDescriptionKey: "Aldus restore v2: \(reason)"]
++          userInfo: [NSLocalizedDescriptionKey: "Aldus restore v3: \(reason)"]
 +        )
 +      }
 +      let hrefParts = locator.href.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
@@ -110,23 +109,31 @@ index 84dfd8e..011e0c2 100644
 +      else { throw failure("reader-unavailable") }
 +      guard let target = nitroLocatorToReadium(resource)
 +      else { throw failure("target-locator-invalid") }
++      guard let targetHref = target.href.string.split(separator: "#", maxSplits: 1).first
++      else { throw failure("target-locator-invalid") }
 +      guard let json = target.jsonString
 +      else { throw failure("target-json-unavailable") }
 +
 +      self.restorationGeneration += 1
 +      let generation = self.restorationGeneration
 +      let navigated = await navigator.go(to: target, options: .animated)
-+      // Verify the loaded resource independently of whether its opening page
-+      // has a visible text locator. Exact anchor visibility is checked below.
-+      let visible = navigator.aldusVisibleResourceLocator()
++      guard navigated else { throw failure("navigation-rejected") }
++      // Readium go(to:) accepts the jump before its queued chapter view is
++      // positioned. Wait for the target chapter, never for a text locator.
++      let deadline = ProcessInfo.processInfo.systemUptime + 5
++      var visible = navigator.aldusVisibleResourceLocator()
++      while visible?.href.string.split(separator: "#", maxSplits: 1).first != targetHref {
++        guard self.restorationGeneration == generation,
++              self.readerViewController?.navigator === navigator
++        else { return false }
++        guard ProcessInfo.processInfo.systemUptime < deadline
++        else { throw failure("chapter-readiness-timeout") }
++        try await Task.sleep(nanoseconds: 50_000_000)
++        visible = navigator.aldusVisibleResourceLocator()
++      }
 +      guard self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator
 +      else { return false }
-+      guard navigated else { throw failure("navigation-rejected") }
-+      guard let visible else { throw failure("visible-location-unavailable") }
-+      guard visible.href.string.split(separator: "#", maxSplits: 1).first
-+              == target.href.string.split(separator: "#", maxSplits: 1).first
-+      else { throw failure("visible-resource-mismatch") }
 +
 +      let verificationScript: String
 +      if let cfi {
@@ -162,7 +169,7 @@ index 84dfd8e..011e0c2 100644
 +            self.readerViewController?.navigator === navigator
 +      else { return false }
 +      guard verifiedVisible?.href.string.split(separator: "#", maxSplits: 1).first
-+              == target.href.string.split(separator: "#", maxSplits: 1).first
++              == targetHref
 +      else { throw failure("visible-resource-changed") }
 +      switch result {
 +      case .failure:
@@ -265,7 +272,7 @@ index 84dfd8e..011e0c2 100644
    func destroy() {
      if Thread.isMainThread {
        cleanup()
-@@ -389,6 +569,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -389,6 +577,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    // Cleanup
    func cleanup() {

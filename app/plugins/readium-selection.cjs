@@ -11,18 +11,52 @@ function replaceHook(source, hook, replacement) {
 
 // Resource identity must not depend on finding visible text at a chapter's start.
 function patchVisibleResource(source) {
-  if (source.includes('public func aldusVisibleResourceLocator()')) return source;
+  const oldGuard =
+    'guard let spreadView = paginationView?.currentView as? EPUBSpreadView else { return nil }';
+  const readyGuard =
+    'guard let spreadView = paginationView?.currentView as? EPUBSpreadView, spreadView.isAldusRestoreReady else { return nil }';
+  if (source.includes('public func aldusVisibleResourceLocator()')) {
+    return source
+      .replace(oldGuard, readyGuard)
+      .replace(
+        'spreadView.isSpreadLoaded else { return nil }',
+        'spreadView.isAldusRestoreReady else { return nil }',
+      );
+  }
   const hook = '    public func firstVisibleElementLocator() async -> Locator? {';
   return replaceHook(
     source,
     hook,
     `    public func aldusVisibleResourceLocator() -> Locator? {
-        guard let spreadView = paginationView?.currentView as? EPUBSpreadView else { return nil }
+        ${readyGuard}
         let resource = readingOrder[spreadView.spread.leading]
         return Locator(href: resource.url(), mediaType: resource.mediaType ?? .xhtml)
     }
 
 ${hook}`,
+  );
+}
+
+// isSpreadLoaded is set before Readium applies its delayed pendingLocation.
+// Exact restoration must wait until that initial navigation has finished.
+function patchSpreadReadiness(source) {
+  if (source.includes('private(set) var isAldusRestoreReady = false')) return source;
+  source = replaceHook(
+    source,
+    '    private(set) var isSpreadLoaded = false',
+    '    private(set) var isSpreadLoaded = false\n    private(set) var isAldusRestoreReady = false',
+  );
+  source = replaceHook(
+    source,
+    '    private func spreadLoadDidStart(_ body: Any) {}',
+    `    private func spreadLoadDidStart(_ body: Any) {
+        isAldusRestoreReady = false
+    }`,
+  );
+  return replaceHook(
+    source,
+    '            await delegate?.spreadViewDidLoad(self)\n            onSpreadLoadedCallbacks.complete()',
+    '            await delegate?.spreadViewDidLoad(self)\n            isAldusRestoreReady = true\n            onSpreadLoadedCallbacks.complete()',
   );
 }
 
@@ -318,7 +352,10 @@ if (require.main === module) {
       'Sources/Navigator/EPUB/EPUBNavigatorViewController.swift',
       (source) => patchVisibleResource(patchSelection(source)),
     ],
-    ['Sources/Navigator/EPUB/EPUBSpreadView.swift', patchSpreadSelection],
+    [
+      'Sources/Navigator/EPUB/EPUBSpreadView.swift',
+      (source) => patchSpreadReadiness(patchSpreadSelection(source)),
+    ],
     ['Sources/Navigator/EPUB/EPUBReflowableSpreadView.swift', patchReflowableSelection],
     ['Sources/Navigator/DirectionalNavigationAdapter.swift', patchEdgeTaps],
   ].map(([relativePath, patch]) => {
@@ -336,6 +373,7 @@ if (require.main === module) {
 
 module.exports = {
   patchVisibleResource,
+  patchSpreadReadiness,
   patchSelection,
   patchSpreadSelection,
   patchReflowableSelection,
