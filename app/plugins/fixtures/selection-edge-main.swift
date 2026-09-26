@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 let viewport = CGRect(x: 20, y: 40, width: 350, height: 700)
 assert(!AldusSelectionPaging.isBottomEdge(CGPoint(x: 200, y: 50), viewport: viewport))

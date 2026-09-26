@@ -1,5 +1,8 @@
 // Appended to EPUBReflowableSpreadView.swift so it belongs to the existing Pods target.
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 enum AldusSelectionPaging {
     static func isBottomEdge(_ point: CGPoint, viewport: CGRect) -> Bool {
