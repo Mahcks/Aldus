@@ -40,7 +40,7 @@ index 4255310bb96f6dd1801efa8ae3817d3da692d5f6..73560b9198cacb0511b0614d54b89b49
      val action = Runnable {
        val readiumLocator = nitroLocatorToReadium(locator) ?: return@Runnable
 diff --git a/ios/HybridReadiumView.swift b/ios/HybridReadiumView.swift
-index 84dfd8e..44f53cf 100644
+index 84dfd8e..011e0c2 100644
 --- a/ios/HybridReadiumView.swift
 +++ b/ios/HybridReadiumView.swift
 @@ -61,6 +61,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
@@ -75,7 +75,7 @@ index 84dfd8e..44f53cf 100644
        guard let navigator = readerViewController?.navigator else { return }
        _ = await navigator.goForward(options: .animated)
      }
-@@ -271,11 +273,188 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -271,11 +273,189 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    func goBackward() {
      Task { @MainActor in
@@ -116,9 +116,9 @@ index 84dfd8e..44f53cf 100644
 +      self.restorationGeneration += 1
 +      let generation = self.restorationGeneration
 +      let navigated = await navigator.go(to: target, options: .animated)
-+      // go(to:) can finish before Readium publishes its cached currentLocation.
-+      // Bind verification to the visible spread instead of that delayed notification.
-+      let visible = await navigator.firstVisibleElementLocator()
++      // Verify the loaded resource independently of whether its opening page
++      // has a visible text locator. Exact anchor visibility is checked below.
++      let visible = navigator.aldusVisibleResourceLocator()
 +      guard self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator
 +      else { return false }
@@ -157,7 +157,7 @@ index 84dfd8e..44f53cf 100644
 +          """
 +      }
 +      let result = await navigator.evaluateJavaScript(verificationScript)
-+      let verifiedVisible = await navigator.firstVisibleElementLocator()
++      let verifiedVisible = navigator.aldusVisibleResourceLocator()
 +      guard self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator
 +      else { return false }
@@ -182,8 +182,9 @@ index 84dfd8e..44f53cf 100644
 +      else { return SearchPage(results: [], hasMore: false, totalCount: nil, isSupported: true) }
 +      let generation = self.restorationGeneration
 +      let current = await navigator.firstVisibleElementLocator()
++      let resource = current ?? navigator.aldusVisibleResourceLocator()
 +      let spineIndex = self.readerViewController?.publication.readingOrder.firstIndex(where: {
-+        $0.href.removingPercentEncoding == current?.href.string.removingPercentEncoding
++        $0.href.removingPercentEncoding == resource?.href.string.removingPercentEncoding
 +      })
 +      let script = """
 +      (() => {
@@ -225,12 +226,12 @@ index 84dfd8e..44f53cf 100644
 +      if case let .success(value) = textResult,
 +         let text = try? ReadiumShared.Locator.Text(json: value),
 +         text.highlight != nil,
-+         let current {
-+        locator = current.copy(text: { $0 = text })
++         let resource {
++        locator = resource.copy(text: { $0 = text })
 +      } else {
 +        locator = current
 +      }
-+      let visible = await navigator.firstVisibleElementLocator()
++      let visible = navigator.aldusVisibleResourceLocator()
 +      guard let locator,
 +            self.restorationGeneration == generation,
 +            self.readerViewController?.navigator === navigator,
@@ -264,7 +265,7 @@ index 84dfd8e..44f53cf 100644
    func destroy() {
      if Thread.isMainThread {
        cleanup()
-@@ -389,6 +568,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
+@@ -389,6 +569,7 @@ class HybridReadiumView: HybridReadiumViewSpec {
  
    // Cleanup
    func cleanup() {

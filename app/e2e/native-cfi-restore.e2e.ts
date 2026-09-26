@@ -93,3 +93,21 @@ test('native visible range produces stable portable CFIs with distinct exact off
   expect(result.next).toContain('/4/2[text]');
   expect(result).toMatchObject({ restored: true, visible: true, invalid: null });
 });
+
+test('element-boundary CFIs restore when the first child is collapsed whitespace', async ({
+  page,
+}) => {
+  await page.setContent(
+    '<html><head></head><body><div>\n  <h2>Chapter three</h2><p>Opening text.</p></div></body></html>',
+  );
+  await page.addScriptTag({
+    content: `function A(rect){window.scrollTo(0,rect.top+scrollY);return true;} function T(){return null;} ${bundle}`,
+  });
+  expect(
+    await page.evaluate(() => {
+      const reader = (window as any).readium;
+      const cfi = 'epubcfi(/6/2!/4/2)';
+      return [reader.aldusRestoreCFI(cfi, 0), reader.aldusCFIVisible(cfi, 0)];
+    }),
+  ).toEqual([true, true]);
+});

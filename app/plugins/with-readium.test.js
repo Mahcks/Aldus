@@ -6,6 +6,7 @@ const { spawnSync } = require('node:child_process');
 const { patchPodfile } = require('./with-readium');
 const {
   patchSelection,
+  patchVisibleResource,
   patchSpreadSelection,
   patchReflowableSelection,
   patchEdgeTaps,
@@ -176,7 +177,8 @@ describe('Readium config plugin', () => {
       swift.indexOf('func destroy()'),
     );
     expect(restore).not.toContain('navigator.currentLocation');
-    expect(restore.match(/await navigator.firstVisibleElementLocator\(\)/g)).toHaveLength(2);
+    expect(restore).not.toContain('firstVisibleElementLocator');
+    expect(restore.match(/navigator.aldusVisibleResourceLocator\(\)/g)).toHaveLength(2);
     expect(restore).toContain('window.readium.aldusLocatorVisible');
     expect(restore).toContain('verifiedVisible?.href.string.split');
     expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(3);
@@ -184,7 +186,7 @@ describe('Readium config plugin', () => {
     expect(restore).toContain('window.readium.aldusCFIVisible');
     expect(restore).toContain('cfi-resource-not-in-spine');
     expect(visible).not.toContain('navigator.currentLocation');
-    expect(visible).toContain('locator = current.copy(text: { $0 = text })');
+    expect(visible).toContain('locator = resource.copy(text: { $0 = text })');
     expect(visible).toContain('visible?.href == locator.href');
     expect(visible).toContain('self.restorationGeneration == generation');
   });
@@ -201,4 +203,16 @@ describe('Readium config plugin', () => {
     expect(swift).toContain('navigator.firstVisibleElementLocator()');
     expect(swift.match(/addChild\(readerViewController!\)/g)).toHaveLength(1);
   });
+});
+
+test('resource identity does not depend on text visibility or delayed cached location', () => {
+  const hook = '    public func firstVisibleElementLocator() async -> Locator? {';
+  const patched = patchVisibleResource(hook);
+  expect(patchVisibleResource(patched)).toBe(patched);
+  const resource = patched.slice(0, patched.indexOf(hook));
+  expect(resource).toContain('paginationView?.currentView as? EPUBSpreadView');
+  expect(resource).toContain('readingOrder[spreadView.spread.leading]');
+  expect(resource).not.toContain('evaluateScript');
+  expect(resource).not.toContain('currentLocation');
+  expect(() => patchVisibleResource('changed toolkit')).toThrow();
 });

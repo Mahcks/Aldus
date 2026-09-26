@@ -9,6 +9,23 @@ function replaceHook(source, hook, replacement) {
   return source.replace(hook, replacement);
 }
 
+// Resource identity must not depend on finding visible text at a chapter's start.
+function patchVisibleResource(source) {
+  if (source.includes('public func aldusVisibleResourceLocator()')) return source;
+  const hook = '    public func firstVisibleElementLocator() async -> Locator? {';
+  return replaceHook(
+    source,
+    hook,
+    `    public func aldusVisibleResourceLocator() -> Locator? {
+        guard let spreadView = paginationView?.currentView as? EPUBSpreadView else { return nil }
+        let resource = readingOrder[spreadView.spread.leading]
+        return Locator(href: resource.url(), mediaType: resource.mediaType ?? .xhtml)
+    }
+
+${hook}`,
+  );
+}
+
 // Remove this patch when the pinned toolkit provides selection-aware paging.
 function patchSelection(source) {
   const signature =
@@ -297,7 +314,10 @@ if (require.main === module) {
   const updates = [
     ['Sources/Navigator/EPUB/Assets/Static/scripts/readium-reflowable.js', patchRestoreProbe],
     ['Sources/Navigator/EPUB/Assets/Static/scripts/readium-fixed.js', patchRestoreProbe],
-    ['Sources/Navigator/EPUB/EPUBNavigatorViewController.swift', patchSelection],
+    [
+      'Sources/Navigator/EPUB/EPUBNavigatorViewController.swift',
+      (source) => patchVisibleResource(patchSelection(source)),
+    ],
     ['Sources/Navigator/EPUB/EPUBSpreadView.swift', patchSpreadSelection],
     ['Sources/Navigator/EPUB/EPUBReflowableSpreadView.swift', patchReflowableSelection],
     ['Sources/Navigator/DirectionalNavigationAdapter.swift', patchEdgeTaps],
@@ -315,6 +335,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  patchVisibleResource,
   patchSelection,
   patchSpreadSelection,
   patchReflowableSelection,

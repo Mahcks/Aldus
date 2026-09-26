@@ -129,7 +129,9 @@ function cfiAnchorRect(CFI, cfi, spineIndex, filter) {
     } else {
       const child = range.startContainer.childNodes[range.startOffset];
       if (!child) return null;
-      range.selectNode(child);
+      // An element boundary may begin with collapsed whitespace. Measure from
+      // that exact boundary through its contents, rather than only a blank child.
+      range.setEnd(range.startContainer, range.startContainer.childNodes.length);
     }
     return (
       Array.from(range.getClientRects()).find((rect) => rect.height > 0 && rect.width >= 0) ?? null
