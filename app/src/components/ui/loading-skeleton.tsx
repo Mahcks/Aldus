@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform, useWindowDimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import Animated, {
   cancelAnimation,
   ReduceMotion,
@@ -344,18 +344,10 @@ function TabbedForm() {
   );
 }
 
-/** Mirrors the book page: cover, title block, actions, the status/collection tiles, then About. */
+/** Mirrors the book page: a side panel with the cover and actions on wide screens, a centered hero with tabs elsewhere. */
 function WorkPage() {
   const { width } = useWindowDimensions();
-  const narrow = width < 600;
-  const tileCount = Platform.OS === 'web' ? 2 : 3;
-  const tiles = (
-    <View className={`w-full flex-row gap-2 ${narrow ? '' : 'max-w-md'}`}>
-      {Array.from({ length: tileCount }, (_, tile) => (
-        <Block key={tile} className="h-[72px] flex-1 rounded-card" />
-      ))}
-    </View>
-  );
+  const contentWidth = width - (width >= 820 ? 224 : 0);
   const about = (
     <View className="gap-3">
       <Block className="h-5 w-40" />
@@ -365,45 +357,56 @@ function WorkPage() {
     </View>
   );
 
-  if (narrow) {
+  if (contentWidth >= 900) {
     return (
-      <View className="w-full gap-8">
-        <View className="w-full items-center gap-6 pt-2">
-          <Block className="h-[300px] w-[204px]" />
-          <View className="w-full items-center gap-2">
-            <Block className="h-3 w-24" />
-            <Block className="h-9 w-3/4" />
-            <Block className="h-5 w-1/2" />
-          </View>
-          <View className="w-full gap-5">
-            <View className="gap-2">
-              <Block className="h-11 w-full" />
-              <Block className="h-11 w-full" />
-            </View>
-            {tiles}
-          </View>
+      <View className="mx-auto w-full max-w-[1080px] flex-row items-start gap-14 pb-10 pt-2">
+        <View className="w-[340px] shrink-0 gap-4">
+          <Block className="aspect-[0.68] w-full" />
+          <Block className="h-11 w-full" />
+          <Block className="h-11 w-full" />
         </View>
-        {about}
+        <View className="min-w-0 flex-1 gap-8 pt-1">
+          <View className="gap-4">
+            <Block className="h-3 w-24" />
+            <Block className="h-[58px] w-3/4" />
+            <Block className="h-6 w-1/3" />
+            <View className="flex-row gap-2">
+              <Block className="h-8 w-24" />
+              <Block className="h-8 w-28" />
+            </View>
+            <View className="flex-row gap-2">
+              <Block className="h-11 w-36" />
+              <Block className="h-11 w-32" />
+            </View>
+          </View>
+          {about}
+        </View>
       </View>
     );
   }
 
   return (
-    <View className="mx-auto w-full max-w-[1000px] gap-6">
-      <View className="flex-row items-start gap-12 py-8">
+    <View className="mx-auto w-full max-w-[720px] gap-6">
+      <View className="items-center gap-4 rounded-dialog bg-line/40 px-5 pb-6 pt-8">
         <Block className="h-[300px] w-[204px]" />
-        <View className="min-w-0 flex-1 items-start gap-5 pt-2">
-          <View className="w-full gap-3">
-            <Block className="h-3 w-24" />
-            <Block className="h-11 w-3/4" />
-            <Block className="h-6 w-1/3" />
-          </View>
-          <View className="flex-row gap-2">
-            <Block className="h-11 w-48" />
-            <Block className="h-11 w-28" />
-          </View>
-          {tiles}
+        <View className="w-full items-center gap-2">
+          <Block className="h-3 w-24" />
+          <Block className="h-9 w-3/4" />
+          <Block className="h-5 w-1/2" />
         </View>
+        <View className="w-full gap-3 pt-1">
+          <Block className="h-11 w-full" />
+          <View className="flex-row gap-2">
+            <Block className="h-11 flex-1" />
+            <Block className="h-11 w-11" />
+            <Block className="h-11 w-11" />
+          </View>
+        </View>
+      </View>
+      <View className="flex-row gap-6 border-b border-line pb-3">
+        <Block className="h-4 w-14" />
+        <Block className="h-4 w-14" />
+        <Block className="h-4 w-16" />
       </View>
       {about}
     </View>

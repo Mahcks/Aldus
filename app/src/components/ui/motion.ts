@@ -51,6 +51,14 @@ export function listItemEnter(index: number) {
     .reduceMotion(ReduceMotion.System);
 }
 
+/** Page sections that follow a hero: a still fade with a light stagger, so text never travels while it is being read. */
+export function sectionFade(index: number) {
+  return FadeIn.duration(360)
+    .delay(80 + index * 70)
+    .easing(EASE_STANDARD)
+    .reduceMotion(ReduceMotion.System);
+}
+
 /** A whole section of a page arriving (Home's shelves, spotlight, greeting), one after another. */
 export function sectionEnter(index: number) {
   return FadeInDown.duration(420)

@@ -1,8 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator } from 'react-native';
 import { resolvePressStateClass } from '@/components/ui';
-import { AppIcon, type AppIconName } from '@/components/ui/icons';
-import { EASE_STANDARD, sectionEnter } from '@/components/ui/motion';
+import { AppIcon } from '@/components/ui/icons';
+import { EASE_STANDARD, sectionFade } from '@/components/ui/motion';
 import { useThemeColors } from '@/components/ui/theme';
 import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import {
@@ -23,7 +22,7 @@ export function DetailSection({
   children: ReactNode;
 }) {
   return (
-    <AnimatedView entering={sectionEnter(index)} className="gap-3">
+    <AnimatedView entering={sectionFade(index)} className="gap-3">
       {title ? (
         <Text accessibilityRole="header" className="text-lg font-sans-semibold text-ink">
           {title}
@@ -54,7 +53,7 @@ export function ProgressMeter({ percent, label }: { percent: number; label: stri
   }));
 
   return (
-    <View className="w-full max-w-md gap-2">
+    <View className="w-full gap-2">
       {clamped > 0 ? (
         <View
           accessibilityRole="progressbar"
@@ -72,47 +71,58 @@ export function ProgressMeter({ percent, label }: { percent: number; label: stri
   );
 }
 
-/** One of the small "do something with this book" actions: status, collection, download. */
-export function ActionTile({
-  icon,
+export type DetailTabKey = 'about' | 'details' | 'editions';
+
+/** Underlined tabs for the phone layout: About, Details and Editions share one panel. */
+export function DetailTabs({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { key: DetailTabKey; label: string }[];
+  active: DetailTabKey;
+  onChange: (key: DetailTabKey) => void;
+}) {
+  return (
+    <View accessibilityRole="tablist" className="flex-row gap-6 border-b border-line">
+      {tabs.map((tab) => (
+        <DetailTab
+          key={tab.key}
+          label={tab.label}
+          selected={tab.key === active}
+          onPress={() => onChange(tab.key)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function DetailTab({
   label,
-  accessibilityLabel,
-  disabled = false,
-  loading = false,
+  selected,
   onPress,
 }: {
-  icon: AppIconName;
   label: string;
-  accessibilityLabel?: string;
-  disabled?: boolean;
-  loading?: boolean;
+  selected: boolean;
   onPress: () => void;
 }) {
-  const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
-  const inactive = disabled || loading;
 
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel || label}
-      accessibilityState={{ disabled: inactive, busy: loading }}
-      disabled={inactive}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      aria-selected={selected}
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
       onPress={onPress}
-      className={`min-h-[72px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-card border border-line-subtle bg-paper px-2 py-3 ${inactive ? 'opacity-50' : ''} ${stateClass}`}
+      className={`-mb-px min-h-11 justify-center border-b-2 px-0.5 ${selected ? 'border-accent' : 'border-transparent'} ${stateClass}`}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={colors.accent} />
-      ) : (
-        <AppIcon name={icon} size={22} color={colors.accent} />
-      )}
-      <Text numberOfLines={1} className="text-xs font-sans-semibold text-ink">
+      <Text className={`text-[15px] font-sans-semibold ${selected ? 'text-accent' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>
