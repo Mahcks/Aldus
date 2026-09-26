@@ -697,6 +697,26 @@ export interface NotificationUnreadCount {
 }
 
 //////////
+// source: ownership.go
+
+export interface ReadingOwnershipProof {
+  device_id: string;
+  epoch: number /* int64 */;
+}
+export interface ReadingOwner {
+  work_id: string;
+  device_id: string;
+  label: string;
+  platform: 'web' | 'ios' | 'android' | 'other';
+  epoch: number /* int64 */;
+  updated_at: string;
+}
+export interface ReadingOwnershipConflict {
+  code: 'ownership_superseded';
+  owner?: ReadingOwner | null;
+}
+
+//////////
 // source: reader_credentials.go
 
 export interface ReaderCredential {
@@ -866,6 +886,7 @@ export interface RepresentationState {
   updated_at: string;
 }
 export interface RepresentationStateUpdate {
+  ownership?: ReadingOwnershipProof;
   epub_locator?: unknown;
   audio_timestamp_ms?: number /* int64 */;
   playback_speed?: number /* float64 */;
@@ -904,6 +925,7 @@ export interface ProgressUpdate {
   source_device: string;
 }
 export interface WorkProgressUpdate extends ProgressUpdate {
+  ownership?: ReadingOwnershipProof;
   alignment_id: string;
 }
 export interface WorkPreference {

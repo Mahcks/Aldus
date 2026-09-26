@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/mahcks/aldus/server/internal/api/contracts"
 	"github.com/mahcks/aldus/server/internal/catalog"
+	"github.com/mahcks/aldus/server/internal/ownership"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -130,7 +131,13 @@ func updateWorkProgress(store *position.Store, catalogStore *catalog.Store) http
 		if !decode(w, r, &request) {
 			return
 		}
-		value, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, request.AlignmentID, position.Update{SegmentID: request.SegmentID, Offset: request.Offset, ExpectedRevision: request.ExpectedRevision, SourceDevice: request.SourceDevice})
+		value, err := store.UpdateProgress(r.Context(), actor(r).ID, workID, request.AlignmentID, position.Update{
+			Ownership:        readingProof(request.Ownership),
+			SegmentID:        request.SegmentID,
+			Offset:           request.Offset,
+			ExpectedRevision: request.ExpectedRevision,
+			SourceDevice:     request.SourceDevice,
+		})
 		writePositionResult(w, canonicalDTO(value), err)
 	}
 }
@@ -158,8 +165,33 @@ func updateRepresentationState(store *position.Store, catalogStore *catalog.Stor
 		if !decode(w, r, &request) {
 			return
 		}
-		update := position.RepresentationUpdate{EPUBLocator: request.EPUBLocator, AudioTimestampMS: request.AudioTimestampMS, PlaybackSpeed: request.PlaybackSpeed, ReaderLayout: request.ReaderLayout, Zoom: request.Zoom, ReaderTheme: request.ReaderTheme, LineHeight: request.LineHeight, Margin: request.Margin, FontFamily: request.FontFamily, ReaderPreferencesOverride: request.ReaderPreferencesOverride, ExpectedRevision: request.ExpectedRevision}
+		update := position.RepresentationUpdate{
+			Ownership:                 readingProof(request.Ownership),
+			EPUBLocator:               request.EPUBLocator,
+			AudioTimestampMS:          request.AudioTimestampMS,
+			PlaybackSpeed:             request.PlaybackSpeed,
+			ReaderLayout:              request.ReaderLayout,
+			Zoom:                      request.Zoom,
+			ReaderTheme:               request.ReaderTheme,
+			LineHeight:                request.LineHeight,
+			Margin:                    request.Margin,
+			FontFamily:                request.FontFamily,
+			ReaderPreferencesOverride: request.ReaderPreferencesOverride,
+			ExpectedRevision:          request.ExpectedRevision,
+		}
 		value, err := store.UpdateRepresentationState(r.Context(), actor(r).ID, id, update)
 		writePositionResult(w, representationStateDTO(value), err)
 	}
+}
+
+// A present but empty proof must not become a legacy write. Epoch -1 is invalid
+// and ensures that malformed participating requests fail in the store.
+func readingProof(proof *contracts.ReadingOwnershipProof) ownership.Proof {
+	if proof == nil {
+		return ownership.Proof{}
+	}
+	if proof.DeviceID == "" && proof.Epoch == 0 {
+		return ownership.Proof{Epoch: -1}
+	}
+	return ownership.Proof{DeviceID: proof.DeviceID, Epoch: proof.Epoch}
 }

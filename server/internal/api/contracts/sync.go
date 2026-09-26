@@ -35,17 +35,18 @@ type RepresentationState struct {
 }
 
 type RepresentationStateUpdate struct {
-	EPUBLocator               json.RawMessage `json:"epub_locator,omitempty"`
-	AudioTimestampMS          *int64          `json:"audio_timestamp_ms,omitempty"`
-	PlaybackSpeed             *float64        `json:"playback_speed,omitempty"`
-	ReaderLayout              string          `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
-	Zoom                      *float64        `json:"zoom,omitempty"`
-	ReaderTheme               string          `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia' | 'night'"`
-	LineHeight                *float64        `json:"line_height,omitempty"`
-	Margin                    *float64        `json:"margin,omitempty"`
-	FontFamily                string          `json:"font_family,omitempty" tstype:"'publisher' | 'serif' | 'sans' | 'dyslexic'"`
-	ReaderPreferencesOverride *bool           `json:"reader_preferences_override,omitempty"`
-	ExpectedRevision          int64           `json:"expected_revision"`
+	Ownership                 *ReadingOwnershipProof `json:"ownership,omitempty"`
+	EPUBLocator               json.RawMessage        `json:"epub_locator,omitempty"`
+	AudioTimestampMS          *int64                 `json:"audio_timestamp_ms,omitempty"`
+	PlaybackSpeed             *float64               `json:"playback_speed,omitempty"`
+	ReaderLayout              string                 `json:"reader_layout,omitempty" tstype:"'paginated' | 'scrolled'"`
+	Zoom                      *float64               `json:"zoom,omitempty"`
+	ReaderTheme               string                 `json:"reader_theme,omitempty" tstype:"'paper' | 'sepia' | 'night'"`
+	LineHeight                *float64               `json:"line_height,omitempty"`
+	Margin                    *float64               `json:"margin,omitempty"`
+	FontFamily                string                 `json:"font_family,omitempty" tstype:"'publisher' | 'serif' | 'sans' | 'dyslexic'"`
+	ReaderPreferencesOverride *bool                  `json:"reader_preferences_override,omitempty"`
+	ExpectedRevision          int64                  `json:"expected_revision"`
 }
 
 type ReaderPreferences struct {
@@ -77,7 +78,8 @@ type ProgressUpdate struct {
 }
 
 type WorkProgressUpdate struct {
-	AlignmentID    string `json:"alignment_id"`
+	Ownership      *ReadingOwnershipProof `json:"ownership,omitempty"`
+	AlignmentID    string                 `json:"alignment_id"`
 	ProgressUpdate `tstype:",extends,required"`
 }
 

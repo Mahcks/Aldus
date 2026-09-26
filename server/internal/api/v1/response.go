@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mahcks/aldus/server/internal/api/contracts"
+	"github.com/mahcks/aldus/server/internal/ownership"
 	"github.com/mahcks/aldus/server/internal/position"
 )
 
@@ -77,7 +79,26 @@ func pageParams(r *http.Request) (int, int) {
 }
 
 func writePositionResult(w http.ResponseWriter, value any, err error) {
+	var superseded *ownership.Superseded
 	switch {
+	case errors.As(err, &superseded):
+		var owner *contracts.ReadingOwner
+		if current := superseded.Owner; current != nil {
+			owner = &contracts.ReadingOwner{
+				WorkID:    current.WorkID,
+				DeviceID:  current.DeviceID,
+				Label:     current.Label,
+				Platform:  current.Platform,
+				Epoch:     current.Epoch,
+				UpdatedAt: current.UpdatedAt,
+			}
+		}
+		writeJSON(w, http.StatusConflict, contracts.ReadingOwnershipConflict{
+			Code:  "ownership_superseded",
+			Owner: owner,
+		})
+	case errors.Is(err, ownership.ErrInvalid):
+		http.Error(w, "invalid reading ownership", http.StatusBadRequest)
 	case errors.Is(err, position.ErrNotFound):
 		http.Error(w, "position not found", http.StatusNotFound)
 	case errors.Is(err, position.ErrConflict):
