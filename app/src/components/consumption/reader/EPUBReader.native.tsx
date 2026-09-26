@@ -1,3 +1,8 @@
+import {
+  parseSelection,
+  restoreSelectionRange,
+  selectionLocator,
+} from '@/lib/consumption/resume-selection';
 import { File, Paths } from 'expo-file-system';
 import { parseSavedEPUBCFI, savedEPUBCFI } from './readium-cfi';
 import {
@@ -22,10 +27,10 @@ import {
   type SearchResult,
   type SelectionActionEvent,
 } from 'react-native-readium';
-import type { AlignmentSegment, EPUBLocator } from '@/generated/api';
+import type { AlignmentSegment, EPUBLocator, EPUBSelectionRange } from '@/generated/api';
 import {
   mapReadiumLocator,
-  mapReadiumSelection,
+  mapReadiumSelectionStart,
   parseReadiumLocator,
   preferredReadiumLocator,
   readiumLocationReason,
@@ -42,6 +47,7 @@ import { IconButton, StatusBadge } from '@/components/ui';
 import { ReaderSaveFeedback } from '@/components/consumption/reader-save-feedback';
 
 type ReaderLocation = {
+  selection?: EPUBSelectionRange;
   /** Display-only whole-book fraction; never a restore target. */
   totalProgression?: number;
   href: string;
@@ -103,6 +109,7 @@ export const EPUBReader = forwardRef<
     onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;
     onError?: (error: Error) => void;
+    onWarning?: (message: string) => void;
   }
 >(function EPUBReader(
   {
@@ -116,6 +123,7 @@ export const EPUBReader = forwardRef<
     onListenFromLocation,
     onReady,
     onError,
+    onWarning,
   },
   ref,
 ) {
@@ -133,6 +141,7 @@ export const EPUBReader = forwardRef<
   const direction = useRef<'forward' | 'backward' | undefined>(undefined);
   const locationRequest = useRef(0);
   const pendingRestore = useRef<EPUBLocator | undefined>(undefined);
+  const pendingSelection = useRef<EPUBSelectionRange | undefined>(undefined);
   const selectedPage = useRef<Locator | undefined>(undefined);
   const currentPage = useRef<Locator | undefined>(undefined);
   const selectedTextLocation = useRef<string | undefined>(undefined);
@@ -307,12 +316,22 @@ export const EPUBReader = forwardRef<
       }
     },
     restoreLocation: async (location, highlight = false) => {
+      if (location && typeof location === 'object' && 'stale_selection_file' in location)
+        return false;
       const view = reader.current;
       if (!view) {
         if (__DEV__) console.debug('Aldus native EPUB restore skipped: reader is not ready');
         return false;
       }
       const attempt = ++restoreAttempt.current;
+      const range = restoreSelectionRange(location);
+      pendingSelection.current = range;
+      const selectionTarget = range ? selectionLocator(range) : undefined;
+      if (__DEV__)
+        console.debug('Aldus native EPUB saved highlight', {
+          hasRange: Boolean(range),
+          characters: range?.text.length ?? 0,
+        });
       const saved = savedLocator(location) ?? parseSavedEPUBCFI(location);
       if (saved) {
         if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
@@ -320,7 +339,12 @@ export const EPUBReader = forwardRef<
         restoring.current = true;
         try {
           const navigationStarted = performance.now();
-          const success = await navigateAndWait(view, saved);
+          let success = await navigateAndWait(view, selectionTarget ?? saved);
+          if (!success && selectionTarget && attempt === restoreAttempt.current) {
+            pendingSelection.current = undefined;
+            success = await navigateAndWait(view, saved);
+            if (success) onWarning?.('Your place opened, but its highlight could not be restored.');
+          }
           if (
             typeof __DEV__ !== 'undefined' &&
             __DEV__ &&
@@ -331,7 +355,8 @@ export const EPUBReader = forwardRef<
               success,
             });
           }
-          if (success && saved.text?.highlight) pendingHighlight.current = saved;
+          if (success && (pendingSelection.current || saved.text?.highlight))
+            pendingHighlight.current = pendingSelection.current ? selectionTarget : saved;
           return success;
         } finally {
           if (attempt === restoreAttempt.current) restoring.current = false;
@@ -368,7 +393,15 @@ export const EPUBReader = forwardRef<
         pendingRestore.current = target;
         clearHighlight();
         const navigationStarted = performance.now();
-        const success = await navigateAndWait(view, anchor);
+        let success = await navigateAndWait(view, selectionTarget ?? anchor);
+        let highlightTarget = selectionTarget ?? anchor;
+        if (!success && selectionTarget && attempt === restoreAttempt.current) {
+          pendingRestore.current = target;
+          pendingSelection.current = undefined;
+          success = await navigateAndWait(view, anchor);
+          highlightTarget = anchor;
+          if (success) onWarning?.('Your place opened, but its highlight could not be restored.');
+        }
         if (
           typeof __DEV__ !== 'undefined' &&
           __DEV__ &&
@@ -379,7 +412,7 @@ export const EPUBReader = forwardRef<
             success,
           });
         }
-        if (success && highlight) pendingHighlight.current = anchor;
+        if (success && (highlight || selectionTarget)) pendingHighlight.current = highlightTarget;
         return success;
       } catch (cause) {
         pendingRestore.current = undefined;
@@ -472,11 +505,6 @@ export const EPUBReader = forwardRef<
       JSON.stringify(selected.locations) === JSON.stringify(locator.locations)
     )
       return;
-    selectedPage.current = undefined;
-    selectedTextLocation.current = undefined;
-    clearFeedback();
-    clearHighlight();
-    currentPage.current = locator;
     if (restoring.current && !navigation) return;
     if (navigation && !sameReadiumResource(locator.href, navigation.href)) return;
     const request = ++locationRequest.current;
@@ -506,6 +534,14 @@ export const EPUBReader = forwardRef<
       selectedPage.current = selected;
       return;
     }
+    // Delayed location callbacks can describe the already-restored page.
+    // Clear its marker only after every suppression/visibility check accepts
+    // this as a new location, never before an early return above.
+    selectedPage.current = undefined;
+    selectedTextLocation.current = undefined;
+    clearFeedback();
+    clearHighlight();
+    currentPage.current = locator;
     const restoredCFI = navigation && savedEPUBCFI(navigation.locator);
     if (restoredCFI) {
       // Verification proved the original DOM anchor, not this page's first word.
@@ -513,7 +549,12 @@ export const EPUBReader = forwardRef<
       selectedPage.current = locator;
       pendingRestore.current = undefined;
       direction.current = undefined;
-      onLocation?.({ ...restoredCFI, syncState: 'none', reason: 'restore' });
+      onLocation?.({
+        ...restoredCFI,
+        selection: pendingSelection.current,
+        syncState: 'none',
+        reason: 'restore',
+      });
       navigation.finish(true);
       return;
     }
@@ -522,7 +563,10 @@ export const EPUBReader = forwardRef<
     const savedSelection = navigation?.locator.text?.highlight ? navigation.locator : undefined;
     const readingLocator = savedSelection ?? preferredReadiumLocator(locator, visible);
     if (savedSelection) selectedPage.current = locator;
-    const sync = mapReadiumLocator(readingLocator, currentSegments);
+    const sync =
+      navigation && pendingSelection.current
+        ? mapReadiumSelectionStart(readingLocator, pendingSelection.current.text, currentSegments)
+        : mapReadiumLocator(readingLocator, currentSegments);
     if (navigation) {
       direction.current = undefined;
       lastProgression.current =
@@ -536,6 +580,7 @@ export const EPUBReader = forwardRef<
         href: readingLocator.href,
         cfi: JSON.stringify(readingLocator),
         sync: restored,
+        selection: pendingSelection.current,
         syncState: 'full',
         reason: 'restore',
       });
@@ -566,6 +611,7 @@ export const EPUBReader = forwardRef<
       href: portable?.href ?? readingLocator.href,
       cfi: portable?.cfi ?? JSON.stringify(readingLocator),
       sync,
+      selection: navigation ? pendingSelection.current : undefined,
       syncState: sync ? 'full' : 'none',
       reason: navigation ? 'restore' : disposition.reason,
     });
@@ -582,14 +628,25 @@ export const EPUBReader = forwardRef<
     selectedPage.current = currentPage.current;
     locationRequest.current += 1;
     const currentSegments = segmentsRef.current as AlignmentSegment[];
-    const sync = mapReadiumSelection(event.locator, event.selectedText, currentSegments);
+    const sync = mapReadiumSelectionStart(event.locator, event.selectedText, currentSegments);
     if (__DEV__)
       console.debug('Aldus native EPUB selection', {
         locator: event.locator,
         segmentCount: currentSegments.length,
         sync,
       });
+    const selection = parseSelection({
+      href: event.locator.href.split('#')[0],
+      text: event.selectedText.replace(/\s+/gu, ' ').trim(),
+      before: (event.locator.text?.before ?? '').replace(/\s+/gu, ' ').slice(-160),
+      after: (event.locator.text?.after ?? '').replace(/\s+/gu, ' ').slice(0, 160),
+    });
+    if (!selection) {
+      onWarning?.('Select a shorter passage to save its highlight.');
+      return;
+    }
     const location: ReaderLocation = {
+      selection,
       totalProgression: currentPage.current?.locations?.totalProgression,
       href: event.locator.href,
       cfi: JSON.stringify(event.locator),

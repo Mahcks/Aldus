@@ -561,9 +561,11 @@ test('foreground edition saves use their own acknowledged replay revision and st
       'account-changed',
       'no-manifest',
       'storage-failed',
+      'ownership-lost-after-save',
     ] as const) {
       const foreignConflict = scenario === 'foreign-conflict';
       let activeAccount = true;
+      let ownsBook = true;
       const calls: string[] = [];
       let requestStarted!: () => void;
       let finishRequest!: () => void;
@@ -600,7 +602,7 @@ test('foreground edition saves use their own acknowledged replay revision and st
         audioStateRef: { current: older },
         editionConflictRef: { current: undefined },
         progressConflictRef: { current: undefined },
-        maySaveReadingPosition: () => true,
+        maySaveReadingPosition: () => ownsBook,
         readingProofForWork: () => undefined,
         isCurrentReader: () => activeAccount,
         Platform: { OS: 'ios' },
@@ -685,6 +687,7 @@ test('foreground edition saves use their own acknowledged replay revision and st
         expect(stagedState).toMatchObject(
           kind === 'epub' ? { epub_locator: latest } : { audio_timestamp_ms: 123000 },
         );
+        if (scenario === 'ownership-lost-after-save') ownsBook = false;
         finishRequest();
       }
       const result = await saving;
@@ -695,7 +698,9 @@ test('foreground edition saves use their own acknowledged replay revision and st
         expect(result).toBe('error');
         expect(calls).toEqual(['replay', 'cache', 'cache-pending']);
       } else {
-        expect(result).toBe(foreignConflict ? 'error' : 'saved');
+        expect(result).toBe(
+          foreignConflict || scenario === 'ownership-lost-after-save' ? 'error' : 'saved',
+        );
         expect(calls).toEqual(
           foreignConflict
             ? ['replay', 'conflict']
@@ -750,4 +755,198 @@ test('an active reader does not start a competing exit save during a format swit
   reader.switching.current = false;
   await reader.leaveReader();
   expect(reader.calls).toEqual(['save-epub', 'close']);
+});
+
+test('a full selection is kept before canonical I/O and bound only after the exact save succeeds', async () => {
+  const { savedSelection } = await import('./resume-selection');
+  for (const outcome of [
+    'saved',
+    'offline',
+    'rejected',
+    'superseded',
+    'queued-superseded',
+  ] as const) {
+    const events: string[] = [];
+    const payloads: any[] = [];
+    const p = position('selected', outcome === 'offline' ? 6 : 7);
+    let releaseQueue!: () => void;
+    const queue = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    let epoch = 1;
+    const context = {
+      readerInputBlocked: { current: false },
+      readerScope: 'scope',
+      readerOrigin: 'origin',
+      representationSaveAttempt: { current: 0 },
+      representationSaves: { current: queue },
+      alignmentID: 'alignment',
+      progressRef: { current: p },
+      progressConflictRef: { current: undefined },
+      activeStorageScope: () => 'scope',
+      getAPIBaseURL: () => 'origin',
+      work: { id: 'book' },
+      maySaveReadingPosition: () => true,
+      readingProofForWork: () => ({
+        device_id: 'test',
+        epoch: outcome === 'superseded' && events.includes('canonical') ? 2 : epoch,
+      }),
+      selectedEPUB: { id: 'epub', sha256: 'hash' },
+      savedSelection,
+      offlineEPUBToCanonical: () => p,
+      api: { epubToCanonical: async () => p },
+      pendingProgress: async () => (outcome === 'offline' ? { ...p, expected_revision: 6 } : null),
+      saveRepresentation: async (_kind: string, value: any) => {
+        events.push('edition');
+        payloads.push(value);
+        return outcome === 'offline' ? 'offline' : 'saved';
+      },
+      saveCanonical: async (resolve: () => Promise<unknown>) => {
+        events.push('canonical');
+        await resolve();
+        return outcome === 'rejected' ? false : outcome === 'superseded' ? 'saved' : outcome;
+      },
+      setSaveState: () => {},
+      reader: { current: { confirmSavedPlace: () => {} } },
+      APIError,
+    };
+    const save = new Function(
+      ...Object.keys(context),
+      `${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
+    )(...Object.values(context));
+    const saving = save({
+      href: 'chapter.xhtml',
+      cfi: 'point',
+      reason: 'explicit',
+      sync: { href: 'chapter.xhtml' },
+      selection: { href: 'chapter.xhtml', text: 'The table was large', before: '', after: '' },
+    });
+    if (outcome === 'queued-superseded') epoch = 2;
+    releaseQueue();
+    const result = await saving;
+    if (outcome === 'queued-superseded') {
+      expect(result).toBe(false);
+      expect(events).toEqual([]);
+      expect(payloads).toEqual([]);
+      continue;
+    }
+    expect(payloads[0].resume_selection.range.text).toBe('The table was large');
+    expect(payloads[0].resume_selection.progress.revision).toBe(0);
+    if (outcome === 'rejected' || outcome === 'superseded') {
+      expect(result).toBe(false);
+      expect(events).toEqual(['edition', 'canonical']);
+    } else {
+      expect(result).toBe(true);
+      expect(events).toEqual(['edition', 'canonical', 'edition']);
+      expect(payloads[1].resume_selection.progress.revision).toBe(7);
+    }
+  }
+});
+
+test('conflict restoration reveals the saved highlight after native navigation succeeds', async () => {
+  const source = transpiler.transformSync(functionSource('restoreEPUBPlace'));
+  for (const succeeds of [true, false]) {
+    const events: string[] = [];
+    const target = { href: 'chapter.xhtml', resume_selection: { range: { text: 'full passage' } } };
+    const reader = {
+      current: {
+        restoreLocation: async (value: unknown, highlight: boolean) => {
+          expect(value).toBe(target);
+          expect(highlight).toBe(true);
+          events.push('restore');
+          return succeeds;
+        },
+        revealRestoredPlace: () => events.push('highlight'),
+      },
+    };
+    const restore = new Function('reader', `${source}; return restoreEPUBPlace;`)(reader);
+    expect(await restore(target, true)).toBe(succeeds);
+    expect(events).toEqual(succeeds ? ['restore', 'highlight'] : ['restore']);
+  }
+});
+
+test('choosing a saved edition restores its range at the canonical point and reveals it', async () => {
+  const source = transpiler.transformSync(
+    functionSource('restoreEPUBPlace') + functionSource('restoreCanonical'),
+  );
+  const { savedSelection, withResumeSelection } = await import('./resume-selection');
+  const media = { id: 'epub', sha256: 'hash', representation: { id: 'edition' } };
+  const canonical = { ...position('paragraph'), resolvable: true };
+  const range = { href: 'chapter.xhtml', text: 'The full saved passage', before: '', after: '' };
+  const edition = {
+    epub_locator: { resume_selection: savedSelection(range, media as never, canonical) },
+  };
+  const events: string[] = [];
+  const context = {
+    alignmentID: 'alignment',
+    mode: 'read',
+    selectedEPUB: media,
+    withResumeSelection,
+    api: {
+      canonicalToEPUB: async () => ({ href: range.href, offset: 0 }),
+      representationState: async () => {
+        throw new Error('Must use the chosen edition');
+      },
+    },
+    reader: {
+      current: {
+        restoreLocation: async (target: { resume_selection: { range: unknown } }) => {
+          expect(target.resume_selection.range).toEqual(range);
+          events.push('restore');
+          return true;
+        },
+        revealRestoredPlace: () => events.push('highlight'),
+      },
+    },
+  };
+  const restore = new Function(...Object.keys(context), `${source}; return restoreCanonical;`)(
+    ...Object.values(context),
+  );
+  await restore(canonical, edition);
+  expect(events).toEqual(['restore', 'highlight']);
+});
+
+test('late native page notifications do not erase a restored selection on the same visible page', async () => {
+  const native = readFileSync(
+    new URL('../../components/consumption/reader/EPUBReader.native.tsx', import.meta.url),
+    'utf8',
+  );
+  const source = transpiler.transformSync(functionSource('handleLocation', native));
+  const selected = { href: 'chapter.xhtml', locations: { progression: 0 } };
+  const events: string[] = [];
+  const context = {
+    pendingNavigation: { current: undefined },
+    Platform: { OS: 'ios' },
+    selectedPage: { current: selected },
+    direction: { current: undefined as string | undefined },
+    selectedTextLocation: { current: 'saved-range' },
+    clearFeedback: () => events.push('clear-feedback'),
+    clearHighlight: () => events.push('clear-highlight'),
+    currentPage: { current: selected },
+    restoring: { current: false },
+    locationRequest: { current: 0 },
+    segmentsRef: { current: [] },
+    pendingRestore: { current: undefined },
+    readiumRestoreDisposition: () => 'publish',
+    reader: { current: { currentVisibleLocation: async () => selected } },
+    savedEPUBCFI: () => ({ cfi: 'verified-visible-anchor' }),
+    __DEV__: false,
+    preferredReadiumLocator: (locator: unknown) => locator,
+    mapReadiumLocator: () => undefined,
+    lastProgression: { current: 0 },
+    readiumLocationReason: () => ({ reason: 'forward', pendingDirection: undefined }),
+    onLocation: () => events.push('publish'),
+  };
+  const onLocation = new Function(...Object.keys(context), `${source}; return handleLocation;`)(
+    ...Object.values(context),
+  );
+  // Readium fills in progression after the verified visible locator was captured.
+  await onLocation({ ...selected, locations: { progression: 0.2 } });
+  expect(events).toEqual([]);
+  expect(context.selectedTextLocation.current).toBe('saved-range');
+  expect(context.selectedPage.current).toBe(selected);
+  context.direction.current = 'forward';
+  await onLocation({ ...selected, locations: { progression: 0.3 } });
+  expect(events).toEqual(['clear-feedback', 'clear-highlight', 'publish']);
+  expect(context.selectedPage.current).toBeUndefined();
 });

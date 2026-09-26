@@ -88,3 +88,54 @@ test('missing, ambiguous and mismatched Readium evidence never becomes an approx
   }, source);
   expect(results).toEqual(Array(10).fill(false));
 });
+
+test('full captured selection restores both boundaries across inline markup and paragraphs', async ({
+  page,
+}) => {
+  const compile = (path: string) =>
+    ts.transpileModule(readFileSync(path, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+  const result = await page.evaluate(
+    ({ captureSource, helperSource, restoreSource }) => {
+      const helpers: any = {};
+      new Function('exports', helperSource)(helpers);
+      const capture: any = {};
+      new Function('exports', 'require', captureSource)(capture, () => helpers);
+      const restore: any = {};
+      new Function('exports', restoreSource)(restore);
+      document.body.innerHTML =
+        '<p>Before. 😀 The <em>table was a large one,</em> but the three were crowded.</p><p>At one corner: “No <b>room!</b>” After.</p>';
+      const first = document.querySelector('p')!.firstChild!;
+      const last = document.querySelector('b')!.firstChild!;
+      const range = document.createRange();
+      range.setStart(first, first.textContent!.indexOf('😀'));
+      range.setEnd(last, last.textContent!.length);
+      const selection = document.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const saved = capture.captureSelectionRange(document, 'chapter.xhtml');
+      selection.removeAllRanges();
+      const restored = restore.findReadiumRange(document, helpers.selectionLocator(saved));
+      return {
+        text: saved.text,
+        expected: range.toString().replace(/\s+/gu, ' ').trim(),
+        restored: restored.toString().replace(/\s+/gu, ' ').trim(),
+        sameStart:
+          restored.startContainer === range.startContainer &&
+          restored.startOffset === range.startOffset,
+        sameEnd:
+          restored.endContainer === range.endContainer && restored.endOffset === range.endOffset,
+      };
+    },
+    {
+      captureSource: compile('src/components/consumption/reader/selection-range.ts'),
+      helperSource: compile('src/lib/consumption/resume-selection.ts'),
+      restoreSource: source,
+    },
+  );
+  expect(result.text).toBe(result.expected);
+  expect(result.restored).toBe(result.expected);
+  expect(result.sameStart).toBe(true);
+  expect(result.sameEnd).toBe(true);
+});

@@ -1,3 +1,6 @@
+import type { EPUBSelectionRange } from '@/generated/api';
+import { restoreSelectionRange, selectionLocator } from '@/lib/consumption/resume-selection';
+import { captureSelectionRange } from './selection-range';
 import { canonicalResumeRange } from './canonical-range';
 import { Asset } from 'expo-asset';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
@@ -41,6 +44,7 @@ export type ReaderCapture = {
   end: RangeBoundary;
 };
 export type ReaderLocation = {
+  selection?: EPUBSelectionRange;
   /** Display-only whole-book fraction; never a restore target. */
   totalProgression?: number;
   href: string;
@@ -93,6 +97,7 @@ type Props = {
   onListenFromLocation?: (location: ReaderLocation) => void;
   onReady?: (contents: ReaderNavigationItem[]) => void;
   onError?: (error: Error) => void;
+  onWarning?: (message: string) => void;
 };
 type SyncSegment = {
   id: string;
@@ -113,6 +118,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     onLocation,
     onReady,
     onError,
+    onWarning,
   },
   ref,
 ) {
@@ -142,6 +148,8 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const onLocationRef = useRef(onLocation);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
+  const onWarningRef = useRef(onWarning);
+  onWarningRef.current = onWarning;
   const segmentsRef = useRef(segments);
   const preferencesRef = useRef(preferences);
   onLocationRef.current = onLocation;
@@ -244,10 +252,22 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         );
       },
       async restoreLocation(value, highlight = false) {
+        if (value && typeof value === 'object' && 'stale_selection_file' in value) return false;
         const view = reader.current;
         const disposal = disposalRef.current;
         if (!view || !disposal || !value || typeof value !== 'object') return false;
         restoredCursor.current = true;
+        const savedRange = restoreSelectionRange(value);
+        function highlightRange(doc: Document, fallback?: Range) {
+          const exact = savedRange ? findReadiumRange(doc, selectionLocator(savedRange)) : fallback;
+          if (savedRange && !exact)
+            onWarningRef.current?.('Your place opened, but its highlight could not be restored.');
+          const selected = doc.getSelection();
+          if (exact && (highlight || savedRange)) {
+            selected?.removeAllRanges();
+            selected?.addRange(exact);
+          }
+        }
         const location = value as {
           href?: string;
           cfi?: string;
@@ -268,7 +288,23 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
               if (!native || portable) {
                 const cfi = portable?.cfi ?? location.cfi!;
                 if (!cfi.startsWith('epubcfi(')) return false;
-                return Boolean(await view.goTo(cfi));
+                const resolved = await view.goTo(cfi);
+                if (!resolved || disposal.requested()) return false;
+                const content = view.renderer
+                  .getContents()
+                  .find(({ index }: { index: number }) => index === resolved.index);
+                if (!content?.doc) return false;
+                const href = view.book.sections[resolved.index].id;
+                cursor.current = {
+                  href,
+                  cfi,
+                  selection: savedRange,
+                  reason: 'restore',
+                  syncState: page.current?.state,
+                };
+                onLocationRef.current?.(cursor.current);
+                highlightRange(content.doc);
+                return true;
               }
               // Older native saves contain a Readium text anchor, not an EPUB CFI.
               // Resolve that exact quote in its resource; never restore by percentage.
@@ -295,13 +331,10 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
                 cfi,
                 syncState: page.current?.state,
                 reason: 'restore',
+                selection: savedRange,
               };
               onLocationRef.current?.(cursor.current);
-              if (highlight) {
-                const selected = content.doc.getSelection();
-                selected?.removeAllRanges();
-                selected?.addRange(range);
-              }
+              highlightRange(content.doc, range);
               return true;
             })) ?? false
           );
@@ -360,11 +393,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             const anchor = canonicalResumeRange(range, location.offset ?? 0);
             const cfi = view.getCFI(resolved.index, anchor);
             if (!(await view.goTo(cfi)) || disposal.requested()) return false;
-            if (highlight) {
-              const selected = content.doc.getSelection();
-              selected?.removeAllRanges();
-              selected?.addRange(anchor);
-            }
+            highlightRange(content.doc, anchor);
             if (!disposal.requested() && cursor.current) {
               cursor.current = segmentID
                 ? syncLocation(
@@ -379,6 +408,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
                     'restore',
                   )
                 : { href: location.href!, cfi, syncState: page.current?.state, reason: 'restore' };
+              cursor.current.selection = savedRange;
               onLocationRef.current?.(cursor.current);
             }
             return true;
@@ -433,16 +463,25 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             const href = view.book.sections[index]?.id;
             const current = page.current;
             if (!point || !href || !current) return;
+            const selectedRange = captureSelectionRange(doc, href);
+            if (doc.getSelection()?.toString().trim() && !selectedRange) {
+              onWarningRef.current?.('Select a shorter passage to save its highlight.');
+              return;
+            }
             const cfi = view.getCFI(index, point);
             const match = containingSegment(point, href, segmentsRef.current);
             if (!match)
               return onLocationRef.current?.({
                 href,
                 cfi,
+                selection: selectedRange,
                 syncState: current.state,
                 reason: 'explicit',
               });
-            cursor.current = syncLocation(href, cfi, match, current.state, 'explicit');
+            cursor.current = {
+              ...syncLocation(href, cfi, match, current.state, 'explicit'),
+              selection: selectedRange,
+            };
             if (__DEV__)
               console.debug('Aldus reading cursor', {
                 reason: 'explicit',

@@ -36,19 +36,25 @@ test('independent readers require takeover and the previous reader pauses', asyn
       },
     });
     expect(seeded.ok()).toBe(true);
-    const exactPlace = await seeded.json();
+    let exactPlace = await seeded.json();
     const normalizedText = segment.text.replace(/\s+/gu, ' ').trim();
     const points = Array.from(normalizedText) as string[];
     let start = Math.round(points.length / 2);
     while (points[start] === ' ') start++;
-    const expectedHighlight = points.slice(start).join('').split(' ')[0];
+    let expectedHighlight = points.slice(start).join('').split(' ')[0];
     async function expectExactHighlight(page: import('@playwright/test').Page) {
-      await expect.poll(async () => {
-        const highlights = await Promise.all(page.frames().map((frame) =>
-          frame.evaluate(() => window.getSelection()?.toString() ?? '').catch(() => ''),
-        ));
-        return highlights.includes(expectedHighlight);
-      }).toBe(true);
+      await expect
+        .poll(async () => {
+          const highlights = await Promise.all(
+            page
+              .frames()
+              .map((frame) =>
+                frame.evaluate(() => window.getSelection()?.toString() ?? '').catch(() => ''),
+              ),
+          );
+          return highlights.some((text) => text.replace(/\s+/gu, ' ').trim() === expectedHighlight);
+        })
+        .toBe(true);
     }
 
     await first.goto(consume);
@@ -60,6 +66,43 @@ test('independent readers require takeover and the previous reader pauses', asyn
     if (await initialPrompt.isVisible()) await initialPrompt.click();
     await expect(first.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
     await expectExactHighlight(first);
+    // Save a real multiword selection through the production reader and API.
+    const rangeSaved = first.waitForResponse((response) => {
+      if (response.request().method() !== 'PUT' || !response.url().endsWith('/state')) return false;
+      return Boolean(
+        response.request().postDataJSON()?.epub_locator?.resume_selection?.progress?.revision,
+      );
+    });
+    for (const frame of first.frames()) {
+      const selected = await frame
+        .evaluate((text) => {
+          const paragraph = [...document.querySelectorAll('p')].find((p) =>
+            p.textContent?.replace(/\s+/gu, ' ').trim().includes(text.replace(/\s+/gu, ' ').trim()),
+          );
+          if (!paragraph) return null;
+          const range = document.createRange();
+          const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+          const nodes: Text[] = [];
+          for (let node = walker.nextNode(); node; node = walker.nextNode())
+            nodes.push(node as Text);
+          const start = nodes.find((node) => node.data.trim())!;
+          range.setStart(start, start.data.search(/\S/u));
+          range.setEnd(nodes.at(-1)!, nodes.at(-1)!.length);
+          const selection = document.getSelection()!;
+          selection.removeAllRanges();
+          selection.addRange(range);
+          paragraph.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return range.toString().replace(/\s+/gu, ' ').trim();
+        }, segment.text)
+        .catch(() => null);
+      if (selected) {
+        expectedHighlight = selected;
+        break;
+      }
+    }
+    expect(expectedHighlight.length).toBeGreaterThan(30);
+    expect((await rangeSaved).ok()).toBe(true);
+    exactPlace = await (await first.request.get(progressURL)).json();
     const firstOwner = await (
       await first.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')
     ).json();
@@ -74,9 +117,14 @@ test('independent readers require takeover and the previous reader pauses', asyn
     await second.getByRole('button', { name: 'Continue here', exact: true }).click();
     const captured = await (await claimResponse).json();
     expect(captured.progress).toEqual(exactPlace);
+    expect(captured.owner.epoch).toBe(firstOwner.epoch + 1);
     await expect(second.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
     await expect(second.getByRole('dialog')).toHaveCount(0);
     await expectExactHighlight(second);
+    await second.reload();
+    await expect(second.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
+    await expectExactHighlight(second);
+    expect(await (await second.request.get(progressURL)).json()).toEqual(exactPlace);
     await expect(first.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({
       timeout: 25000,
     });
@@ -84,8 +132,12 @@ test('independent readers require takeover and the previous reader pauses', asyn
     const owner = await (
       await first.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')
     ).json();
-    await expect(first.getByRole('alert').filter({ hasText: 'Continued on' })).toHaveAttribute('aria-live', 'assertive');
-    expect(owner.epoch).toBe(firstOwner.epoch + 1);
+    await expect(first.getByRole('alert').filter({ hasText: 'Continued on' })).toHaveAttribute(
+      'aria-live',
+      'assertive',
+    );
+    expect(owner.epoch).toBe(captured.owner.epoch + 1);
+    expect(owner.device_id).toBe(captured.owner.device_id);
     expect(await (await first.request.get(progressURL)).json()).toEqual(exactPlace);
     await expect(first.getByRole('button', { name: 'Switch to listening' })).toHaveCount(0);
     await expect(first.getByRole('dialog')).toHaveCount(0);
@@ -100,23 +152,41 @@ test('independent readers require takeover and the previous reader pauses', asyn
 
     await first.getByRole('button', { name: 'Resume here', exact: true }).click();
     await expect(first.getByRole('dialog')).toHaveCount(0, { timeout: 30000 });
+    // Returning to the original client must preserve both ends, not just its saved start.
+    await expectExactHighlight(first);
     await expect(second.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({
       timeout: 25000,
     });
+    // Repeat the round trip without making a new selection: restoring alone
+    // must neither shorten the range nor move its canonical starting point.
+    for (const [active, previous] of [
+      [second, first],
+      [first, second],
+    ]) {
+      await active.getByRole('button', { name: 'Resume here', exact: true }).click();
+      await expect(active.getByRole('dialog')).toHaveCount(0, { timeout: 30000 });
+      await expectExactHighlight(active);
+      expect(await (await active.request.get(progressURL)).json()).toEqual(exactPlace);
+      await expect(previous.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({
+        timeout: 25000,
+      });
+    }
     const exitWrites: string[] = [];
     second.on('request', (request) => {
-      if (request.method() === 'PUT' && /\/(progress|state)$/.test(request.url())) exitWrites.push(request.url());
+      if (request.method() === 'PUT' && /\/(progress|state)$/.test(request.url()))
+        exitWrites.push(request.url());
     });
     await second.getByRole('button', { name: 'Back to work', exact: true }).click();
     await expect(second).not.toHaveURL(/\/consume\//);
     expect(exitWrites).toEqual([]);
     expect(await (await first.request.get(progressURL)).json()).toEqual(exactPlace);
-    const resolve = first.waitForRequest((request) => request.method() === 'POST' && request.url().endsWith('/resolve/epub'));
+    const resolve = first.waitForRequest(
+      (request) => request.method() === 'POST' && request.url().endsWith('/resolve/epub'),
+    );
     await first.getByRole('button', { name: 'Switch to listening' }).click();
     const restoredCursor = (await resolve).postDataJSON();
     expect(restoredCursor.offset).toBe(exactPlace.offset);
     expect(restoredCursor.locator.segment_id).toBe(exactPlace.segment_id);
-
   } finally {
     await firstContext.close();
     await secondContext.close();
@@ -227,10 +297,15 @@ test('a changed server place requires an explicit choice and handles another rev
 async function claimFixture(page: import('@playwright/test').Page, device: string) {
   const url = testServer + '/api/v1/works/' + workID + '/reading-session';
   const current = await (await page.request.get(url)).json();
-  const claimed = await page.request.post(url + '/claim', { data: {
-    device_id: device, label: device, platform: 'web',
-    request_id: device + '-' + (current?.epoch ?? 0), expected_epoch: current?.epoch ?? 0,
-  }});
+  const claimed = await page.request.post(url + '/claim', {
+    data: {
+      device_id: device,
+      label: device,
+      platform: 'web',
+      request_id: device + '-' + (current?.epoch ?? 0),
+      expected_epoch: current?.epoch ?? 0,
+    },
+  });
   expect(claimed.ok()).toBe(true);
   return (await claimed.json()).owner;
 }
@@ -241,36 +316,53 @@ test('book details and Not now never take ownership', async ({ page }) => {
   await page.goto('/work/' + workID);
   await expect(page.getByText(/Reading on Details test device/)).toBeVisible();
   const url = testServer + '/api/v1/works/' + workID + '/reading-session';
-  expect(await (await page.request.get(url)).json()).toMatchObject({ epoch: before.epoch, device_id: before.device_id });
+  expect(await (await page.request.get(url)).json()).toMatchObject({
+    epoch: before.epoch,
+    device_id: before.device_id,
+  });
   await page.goto(consume);
   await page.getByRole('button', { name: 'Not now', exact: true }).click();
   await expect(page).toHaveURL(new RegExp('/work/' + workID + '$'));
-  expect(await (await page.request.get(url)).json()).toMatchObject({ epoch: before.epoch, device_id: before.device_id });
+  expect(await (await page.request.get(url)).json()).toMatchObject({
+    epoch: before.epoch,
+    device_id: before.device_id,
+  });
 });
 
 test('a refused takeover keeps the owner and can be retried', async ({ page }) => {
   await signInAsTestAdmin(page);
   const before = await claimFixture(page, 'Transfer test device');
-  await page.route('**/reading-session/claim', (route) => route.fulfill({ status: 503, body: 'unavailable' }));
+  await page.route('**/reading-session/claim', (route) =>
+    route.fulfill({ status: 503, body: 'unavailable' }),
+  );
   await page.goto(consume);
   await page.getByRole('button', { name: 'Continue here', exact: true }).click();
   await expect(page.getByText('Couldn’t move your place here', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Next page' })).toHaveCount(0);
   const url = testServer + '/api/v1/works/' + workID + '/reading-session';
-  expect(await (await page.request.get(url)).json()).toMatchObject({ epoch: before.epoch, device_id: before.device_id });
+  expect(await (await page.request.get(url)).json()).toMatchObject({
+    epoch: before.epoch,
+    device_id: before.device_id,
+  });
   await page.unroute('**/reading-session/claim');
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
   expect((await (await page.request.get(url)).json()).epoch).toBe(before.epoch + 1);
 });
 
-test('canceling a delayed accepted claim never rolls ownership back or opens the reader', async ({ page }) => {
+test('canceling a delayed accepted claim never rolls ownership back or opens the reader', async ({
+  page,
+}) => {
   await signInAsTestAdmin(page);
   const before = await claimFixture(page, 'Delayed test device');
   let release!: () => void;
-  const held = new Promise<void>((resolve) => { release = resolve; });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   let accepted!: () => void;
-  const reached = new Promise<void>((resolve) => { accepted = resolve; });
+  const reached = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
   await page.route('**/reading-session/claim', async (route) => {
     const response = await route.fetch();
     accepted();
@@ -285,12 +377,16 @@ test('canceling a delayed accepted claim never rolls ownership back or opens the
     await expect(page.getByRole('button', { name: 'Close dialog', exact: true })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(page.getByText('Moving your place here…', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Continue here', exact: true })).toBeVisible();
     release();
     await expect(page.getByRole('button', { name: 'Next page' })).toHaveCount(0);
-    const owner = await (await page.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')).json();
+    const owner = await (
+      await page.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')
+    ).json();
     expect(owner.epoch).toBe(before.epoch + 1);
     expect(owner.device_id).not.toBe(before.device_id);
   } finally {
@@ -298,12 +394,17 @@ test('canceling a delayed accepted claim never rolls ownership back or opens the
   }
 });
 
-test('an offline browser keeps its place and offers a choice after another device takes over', async ({ page, context }) => {
+test('an offline browser keeps its place and offers a choice after another device takes over', async ({
+  page,
+  context,
+}) => {
   test.setTimeout(90000);
   await signInAsTestAdmin(page);
   await page.goto(consume);
   const takeover = page.getByRole('button', { name: 'Continue here', exact: true });
-  await expect(takeover.or(page.getByRole('button', { name: 'Next page' }))).toBeVisible({ timeout: 30000 });
+  await expect(takeover.or(page.getByRole('button', { name: 'Next page' }))).toBeVisible({
+    timeout: 30000,
+  });
   if (await takeover.isVisible()) await takeover.click();
   await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
   await page.getByRole('button', { name: 'Open table of contents' }).click();
@@ -311,19 +412,31 @@ test('an offline browser keeps its place and offers a choice after another devic
   await expect(page.getByText('Reading place saved', { exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByText('Saved on this device · Waiting to upload', { exact: true })).toBeVisible({ timeout: 30000 });
-  const queued = await page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.includes('outbox:')));
-  expect(queued.some(([, value]) => value.includes('expected_revision') || value.includes('epub_locator'))).toBe(true);
+  await expect(
+    page.getByText('Saved on this device · Waiting to upload', { exact: true }),
+  ).toBeVisible({ timeout: 30000 });
+  const queued = await page.evaluate(() =>
+    Object.entries(localStorage).filter(([key]) => key.includes('outbox:')),
+  );
+  expect(
+    queued.some(
+      ([, value]) => value.includes('expected_revision') || value.includes('epub_locator'),
+    ),
+  ).toBe(true);
   // APIRequestContext remains available while this browser surface is offline.
   await claimFixture(page, 'other-offline-test-device');
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({ timeout: 25000 });
+  await expect(page.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({
+    timeout: 25000,
+  });
   await page.getByRole('button', { name: 'Resume here', exact: true }).click();
   const confirm = page.getByRole('button', { name: 'Continue from selected place', exact: true });
   await expect(confirm).toBeVisible({ timeout: 30000 });
   await expect(confirm).toBeDisabled();
   await page.getByRole('button', { name: 'Decide later', exact: true }).click();
-  const retained = await page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.includes('outbox:')));
+  const retained = await page.evaluate(() =>
+    Object.entries(localStorage).filter(([key]) => key.includes('outbox:')),
+  );
   expect(retained.length).toBeGreaterThan(0);
 });

@@ -1,3 +1,4 @@
+import type { EPUBSelectionRange } from '@/generated/api';
 import { forwardRef, useImperativeHandle } from 'react';
 import { Text, View } from 'react-native';
 
@@ -11,6 +12,7 @@ export type ReaderCapture = {
   end: RangeBoundary;
 };
 export type ReaderLocation = {
+  selection?: EPUBSelectionRange;
   /** Display-only whole-book fraction; never a restore target. */
   totalProgression?: number;
   href: string;
@@ -66,6 +68,7 @@ export const EPUBReader = forwardRef<
     onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;
     onError?: (error: Error) => void;
+    onWarning?: (message: string) => void;
   }
 >(function EPUBReader(_, ref) {
   useImperativeHandle(

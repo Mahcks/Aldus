@@ -117,6 +117,7 @@ export function ReaderView({
             onLocation={onReaderLocation}
             onListenFromLocation={(location) => void switchToListen(location)}
             onReady={onReaderReady}
+            onWarning={setNotice}
             onError={(error) => {
               setReaderRestoreError(true);
               setNotice(error.message || 'Unable to open EPUB.');

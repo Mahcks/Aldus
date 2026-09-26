@@ -750,6 +750,30 @@ export interface CreateReaderCredentialRequest {
 }
 
 //////////
+// source: resume_selection.go
+
+/**
+ * EPUBSelectionRange is presentation metadata, never a canonical position.
+ */
+export interface EPUBSelectionRange {
+  href: string;
+  text: string;
+  before: string;
+  after: string;
+}
+/**
+ * EPUBResumeSelection travels inside the existing opaque saved EPUB locator.
+ * Progress binds aligned selections to one acknowledged revision.
+ */
+export interface EPUBResumeSelection {
+  version: number /* int */;
+  media_id: string;
+  sha256: string;
+  range: EPUBSelectionRange;
+  progress?: CanonicalPosition;
+}
+
+//////////
 // source: sources.go
 
 export interface SourceRoot {

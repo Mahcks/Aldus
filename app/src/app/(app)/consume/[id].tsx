@@ -4,11 +4,14 @@ import { PlayerView } from '@/components/consumption/PlayerView';
 import { PassageHandoff } from '@/components/consumption/PassageHandoff';
 import type { AudioChapter } from '@/generated/api';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DEFAULT_READER_PREFERENCES } from '@/components/consumption/reader/EPUBReader';
+import {
+  type ReaderLocation,
+  DEFAULT_READER_PREFERENCES,
+} from '@/components/consumption/reader/EPUBReader';
 import { ReaderSettings } from '@/components/consumption/reader-settings';
 import {
   formatAudioTime,
@@ -194,7 +197,6 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
     saveState,
     resumeMessage,
     progressConflict,
-    keepLocalProgress,
     acceptanceNetwork,
     readerLocation,
     readerTarget,
@@ -227,6 +229,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
   const {
     openReaderLocation,
     acceptRemoteProgress,
+    keepLocalReadingPlace,
     resolveEditionConflict,
     switchToListen,
     leaveReader,
@@ -246,15 +249,30 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
   const chosenPlace = choice?.conflict === placeConflict ? choice?.selected : undefined;
   const choiceDeferred = choice?.conflict === placeConflict && choice?.deferred;
   const [choiceBusy, setChoiceBusy] = useState(false);
+  const choiceInFlight = useRef(false);
+  const controlsEnabled = session.mayWrite && !choiceBusy;
+
+  function onInteractiveReaderLocation(location: ReaderLocation) {
+    // Keep the exact restored cursor, but ignore gestures already in flight.
+    if (choiceInFlight.current && location.reason !== 'restore') return;
+    onReaderLocation(location);
+  }
+
+  function leaveScreen() {
+    // A choice owns its pending save; Back must not start a second save of the old page.
+    if (choiceInFlight.current) session.backToBook();
+    else void leaveReader();
+  }
 
   async function confirmPlace() {
-    if (!chosenPlace || choiceBusy || !session.mayWrite) return;
+    if (!chosenPlace || choiceInFlight.current || !session.mayWrite) return;
+    choiceInFlight.current = true;
     setChoiceBusy(true);
     setNotice('');
     try {
       if (!(await session.checkOwnership())) return;
       if (progressConflict) {
-        if (chosenPlace === 'this-device') await keepLocalProgress();
+        if (chosenPlace === 'this-device') await keepLocalReadingPlace();
         else await acceptRemoteProgress();
       } else if (editionConflict) {
         await resolveEditionConflict(chosenPlace === 'this-device');
@@ -262,6 +280,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
     } catch (error) {
       setNotice(errorMessage(error));
     } finally {
+      choiceInFlight.current = false;
       setChoiceBusy(false);
     }
   }
@@ -310,9 +329,12 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
   ]);
 
   useEffect(() => {
-    if ((!session.mayWrite || progressConflict || editionConflict) && mode === 'listen')
+    if (
+      (!session.mayWrite || choiceBusy || progressConflict || editionConflict) &&
+      mode === 'listen'
+    )
       player.pause();
-  }, [session.mayWrite, progressConflict, editionConflict, mode, player]);
+  }, [session.mayWrite, choiceBusy, progressConflict, editionConflict, mode, player]);
 
   function selectChapter(next: AudioChapter) {
     seekToSeconds(next.start_ms / 1000);
@@ -374,12 +396,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           paddingRight: compactNative ? insets.right + 12 : undefined,
         }}
       >
-        <IconButton
-          icon="back"
-          label="Back to work"
-          kind="quiet"
-          onPress={() => void leaveReader()}
-        />
+        <IconButton icon="back" label="Back to work" kind="quiet" onPress={leaveScreen} />
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-base font-sans-bold text-ink">
             {mode === 'listen' ? 'Now playing' : work.title}
@@ -393,7 +410,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         <View className="flex-row gap-2">
           {mode === 'read' && selectedEPUB ? (
             <>
-              {readerInteractionReady && session.mayWrite ? (
+              {readerInteractionReady && controlsEnabled ? (
                 <>
                   <IconButton
                     icon="contents"
@@ -409,7 +426,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
                   />
                 </>
               ) : null}
-              {readerInteractionReady && session.mayWrite ? (
+              {readerInteractionReady && controlsEnabled ? (
                 <IconButton
                   icon="settings"
                   label={settingsOpen ? 'Close reader settings' : 'Open reader settings'}
@@ -420,7 +437,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
               ) : null}
             </>
           ) : null}
-          {session.mayWrite &&
+          {controlsEnabled &&
           selectedEPUB &&
           selectedAudio &&
           (mode === 'listen' || readerInteractionReady) ? (
@@ -457,7 +474,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           />
         </View>
       ) : null}
-      {!compactNative && mode === 'read' && readerInteractionReady && session.mayWrite ? (
+      {!compactNative && mode === 'read' && readerInteractionReady && controlsEnabled ? (
         <View className="min-h-[30px] items-center justify-center">
           {currentSaveStatus ? (
             <View className="py-1">
@@ -478,6 +495,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           )}
         </View>
       ) : null}
+      {choiceBusy && !placeConflict ? <Notice>Opening your chosen place…</Notice> : null}
       {notice && !offlineReaderNotice && !(pausedDevice && notice === OWNERSHIP_LOST_MESSAGE) ? (
         <View className="px-5 pt-3">
           <Notice danger>{notice}</Notice>
@@ -522,7 +540,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       {mode === 'read' &&
       settingsOpen &&
       readerInteractionReady &&
-      session.mayWrite &&
+      controlsEnabled &&
       !fullScreenSettings ? (
         <Animated.View entering={passageEntrance}>
           <ReaderSettings
@@ -541,7 +559,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           mode === 'read' &&
           settingsOpen &&
           readerInteractionReady &&
-          session.mayWrite
+          controlsEnabled
         }
         onClose={() => setSettingsOpen(false)}
         title="Reading settings"
@@ -559,7 +577,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         />
       </Dialog>
       <Dialog
-        visible={mode === 'read' && contentsOpen && session.mayWrite}
+        visible={mode === 'read' && contentsOpen && controlsEnabled}
         onClose={() => setContentsOpen(false)}
         title="Contents"
       >
@@ -581,7 +599,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         </View>
       </Dialog>
       <Dialog
-        visible={mode === 'read' && readerSearchOpen && session.mayWrite}
+        visible={mode === 'read' && readerSearchOpen && controlsEnabled}
         onClose={() => setReaderSearchOpen(false)}
         title="Search this book"
         wide
@@ -618,7 +636,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         </View>
       </Dialog>
       <Dialog
-        visible={mode === 'listen' && chaptersOpen && session.mayWrite}
+        visible={mode === 'listen' && chaptersOpen && controlsEnabled}
         onClose={() => setChaptersOpen(false)}
         title="Chapters"
       >
@@ -636,7 +654,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         </View>
       </Dialog>
       <Dialog
-        visible={mode === 'listen' && sleepTimerOpen && session.mayWrite}
+        visible={mode === 'listen' && sleepTimerOpen && controlsEnabled}
         onClose={() => setSleepTimerOpen(false)}
         title="Sleep timer"
       >
@@ -660,9 +678,9 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       </Dialog>
       <View
         className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}
-        pointerEvents={session.mayWrite ? 'auto' : 'none'}
-        aria-hidden={!session.mayWrite}
-        {...(Platform.OS === 'web' ? { inert: !session.mayWrite } : {})}
+        pointerEvents={controlsEnabled ? 'auto' : 'none'}
+        aria-hidden={!controlsEnabled}
+        {...(Platform.OS === 'web' ? { inert: !controlsEnabled } : {})}
       >
         <ReaderView
           mode={mode}
@@ -679,7 +697,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           compactPageSyncLabel={compactPageSyncLabel}
           syncAvailable={syncAvailable}
           syncLabel={syncLabel}
-          onReaderLocation={onReaderLocation}
+          onReaderLocation={onInteractiveReaderLocation}
           switchToListen={switchToListen}
           onReaderReady={onReaderReady}
           setReaderRestoreError={setReaderRestoreError}
@@ -733,7 +751,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
             ) : undefined
           }
           pausedReason={
-            !session.mayWrite
+            !controlsEnabled
               ? pausedDevice
                 ? pausedCopy('player', pausedDevice).reason
                 : 'Restoring your saved place…'

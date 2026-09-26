@@ -249,7 +249,8 @@ export function useConsumptionSync(
   }, [mayWrite, mode, readerLocation, selectedEPUB?.id, alignmentID]);
 
   useEffect(() => {
-    if (mayWrite && mode === 'read' && readerCommit) void saveReadingCursor(readerCommit);
+    if (mayWrite && mode === 'read' && readerCommit && !readerCommit.selection)
+      void saveReadingCursor(readerCommit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mayWrite, mode, readerCommit]);
 

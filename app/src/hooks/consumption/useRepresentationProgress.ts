@@ -140,14 +140,8 @@ export function useRepresentationProgress({
                 ownership,
               },
         );
-        if (!isCurrentReader() || !maySaveReadingPosition(work.id)) return 'error';
-        if (kind === 'epub') {
-          epubStateRef.current = next;
-          setEPUBState(next);
-        } else {
-          audioStateRef.current = next;
-          setAudioState(next);
-        }
+        // The server accepted this exact write. Acknowledge its local outbox
+        // even if takeover happened while the response was in flight.
         if (work) {
           if (staged) {
             await acknowledgeOfflineRepresentationState(
@@ -163,6 +157,14 @@ export function useRepresentationProgress({
               () => false,
             );
           }
+        }
+        if (!isCurrentReader() || !maySaveReadingPosition(work.id)) return 'error';
+        if (kind === 'epub') {
+          epubStateRef.current = next;
+          setEPUBState(next);
+        } else {
+          audioStateRef.current = next;
+          setAudioState(next);
         }
         return 'saved';
       } catch (error) {

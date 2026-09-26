@@ -1,7 +1,12 @@
-import { maySaveReadingPosition } from '@/lib/consumption/reading-proof';
+import {
+  savedSelection,
+  withResumeSelection,
+  rebindChosenSelection,
+} from '@/lib/consumption/resume-selection';
+import { maySaveReadingPosition, readingProofForWork } from '@/lib/consumption/reading-proof';
 import { rememberReadingConflict } from '@/lib/consumption/reading-conflict';
 import { activeStorageScope } from '@/lib/storage-scope';
-import type { AudioLocator, CanonicalPosition } from '@/generated/api';
+import type { AudioLocator, CanonicalPosition, RepresentationState } from '@/generated/api';
 import { Platform } from 'react-native';
 import { type ReaderLocation } from '@/components/consumption/reader/EPUBReader';
 import { commitsReadingProgress } from '@/components/consumption/reader/reader-location';
@@ -26,7 +31,7 @@ import {
   offlineCanonicalToEPUB,
   offlineEPUBToCanonical,
 } from '@/lib/consumption/offline-position';
-import { discardPendingProgress } from '@/lib/progress-outbox';
+import { discardPendingProgress, pendingProgress } from '@/lib/progress-outbox';
 import type { ConsumptionState, ConsumptionPanels, ConsumptionParams } from './useConsumptionState';
 
 export function useConsumptionActions(
@@ -115,9 +120,16 @@ export function useConsumptionActions(
     }
   }
 
-  async function saveEPUBLocation(location: ReaderLocation) {
+  async function saveEPUBLocation(location: ReaderLocation, acknowledged?: CanonicalPosition) {
     // Opening a book reads its saved position; it must not replace that position.
-    if (readerInputBlocked.current || location.reason === 'restore') return false;
+    if (readerInputBlocked.current || (location.reason === 'restore' && !acknowledged))
+      return false;
+    const originProof = location.selection && work ? readingProofForWork(work.id) : undefined;
+    function stillOwnsSelection() {
+      if (!work || !maySaveReadingPosition(work.id)) return false;
+      const proof = readingProofForWork(work.id);
+      return proof?.device_id === originProof?.device_id && proof?.epoch === originProof?.epoch;
+    }
     const saveScope = readerScope;
     const saveOrigin = readerOrigin;
     const attempt = ++representationSaveAttempt.current;
@@ -127,24 +139,123 @@ export function useConsumptionActions(
       .catch(() => {})
       .then(async () => {
         if (saveScope !== activeStorageScope() || saveOrigin !== getAPIBaseURL()) return;
-        result = await saveRepresentation('epub', {
+        // A queued selection belongs to its original claim, even after reclaiming.
+        if (location.selection && !stillOwnsSelection()) return;
+        const draftPoint =
+          location.selection && location.sync && alignmentID
+            ? offlineEPUBToCanonical(alignmentID, location.sync)
+            : undefined;
+        const locator = {
           href: location.href,
           cfi: location.cfi,
           totalProgression: location.totalProgression,
-        });
+          resume_selection:
+            location.selection && selectedEPUB
+              ? savedSelection(
+                  location.selection,
+                  selectedEPUB,
+                  draftPoint ? { ...draftPoint, revision: 0 } : undefined,
+                )
+              : undefined,
+        };
+        // Persist the range before canonical I/O, so a rejected save cannot lose it.
+        result = await saveRepresentation('epub', locator);
+        if (result !== 'error' && locator.resume_selection && location.sync && alignmentID) {
+          if (!stillOwnsSelection()) {
+            result = 'error';
+            return;
+          }
+          let requested = acknowledged;
+          const canonicalResult = acknowledged
+            ? 'saved'
+            : await saveCanonical(async () => {
+                try {
+                  requested = await api.epubToCanonical(alignmentID, location.sync!);
+                  return requested;
+                } catch (error) {
+                  if (error instanceof APIError && error.status === 0)
+                    return (requested = offlineEPUBToCanonical(alignmentID, location.sync!));
+                  throw error;
+                }
+              });
+          const current = acknowledged ?? progressRef.current;
+          if (
+            !canonicalResult ||
+            !current ||
+            !requested ||
+            current.alignment_id !== requested.alignment_id ||
+            current.segment_id !== requested.segment_id ||
+            current.offset !== requested.offset
+          ) {
+            result = 'error';
+            return;
+          }
+          const pending = await pendingProgress(work!.id, saveScope);
+          if (!stillOwnsSelection()) {
+            result = 'error';
+            return;
+          }
+          if (
+            pending &&
+            (pending.alignment_id !== current.alignment_id ||
+              pending.segment_id !== current.segment_id ||
+              pending.offset !== current.offset)
+          ) {
+            result = 'error';
+            return;
+          }
+          const binding = {
+            ...current,
+            revision: pending ? pending.expected_revision + 1 : current.revision,
+          };
+          result = await saveRepresentation('epub', {
+            ...locator,
+            resume_selection: savedSelection(location.selection!, selectedEPUB!, binding),
+          });
+          if (canonicalResult === 'offline' && result !== 'error') result = 'offline';
+        }
         if (attempt === representationSaveAttempt.current) {
-          if ((!alignmentID || !progressRef.current?.alignment_id) && !progressConflictRef.current)
+          if (
+            (location.selection || !alignmentID || !progressRef.current?.alignment_id) &&
+            !progressConflictRef.current
+          )
             setSaveState(result);
-          if (result !== 'error' && location.reason === 'explicit' && !alignmentID) {
+          if (
+            result !== 'error' &&
+            location.reason === 'explicit' &&
+            (!alignmentID || location.selection)
+          ) {
             reader.current?.confirmSavedPlace?.(location, result);
           }
         }
+      })
+      .catch((error: unknown) => {
+        result = 'error';
+        if (isCurrentReader()) {
+          setSaveState('error');
+          setNotice(errorMessage(error));
+        }
       });
     await representationSaves.current;
+    if (location.selection && result === 'error' && attempt === representationSaveAttempt.current)
+      setSaveState('error');
     return result !== 'error';
   }
 
-  async function restoreCanonical(next: CanonicalPosition) {
+  async function restoreEPUBPlace(target: unknown, highlight = false) {
+    const view = reader.current;
+    if (!view) return false;
+    if (!(await view.restoreLocation(target, highlight)) || reader.current !== view) return false;
+    // Initial loading reveals through useReaderRestoration; conflict choices
+    // restore an already-open reader and do not rerun that readiness effect.
+    view.revealRestoredPlace?.();
+    return true;
+  }
+
+  async function restoreCanonical(
+    next: CanonicalPosition,
+    chosenEdition?: RepresentationState | null,
+  ) {
     if (!alignmentID || !next.resolvable || next.alignment_id !== alignmentID) {
       throw new Error(
         'This saved place cannot be opened with the selected editions. Both places are kept.',
@@ -152,13 +263,40 @@ export function useConsumptionActions(
     }
     if (mode === 'read') {
       const target = await api.canonicalToEPUB(alignmentID, next);
-      if (!(await reader.current?.restoreLocation(target, true))) {
+      let edition = chosenEdition;
+      if (edition === undefined) {
+        edition = selectedEPUB
+          ? await api.representationState(selectedEPUB.representation.id)
+          : null;
+      }
+      if (
+        !(await restoreEPUBPlace(
+          withResumeSelection(target, edition?.epub_locator, selectedEPUB, next),
+          true,
+        ))
+      ) {
         throw new Error('Could not open that saved place. Both places are kept.');
       }
     } else {
       const target = await api.canonicalToAudio(alignmentID, next);
       await player.seekTo(target.timestamp_ms / 1000, 0, 0);
     }
+  }
+
+  async function keepLocalReadingPlace() {
+    const localEdition = epubStateRef.current;
+    await state.keepLocalProgress();
+    if (progressConflictRef.current || !progressRef.current) return;
+    const locator = rebindChosenSelection(
+      localEdition?.epub_locator,
+      selectedEPUB,
+      progressRef.current,
+    );
+    if (locator && (await saveRepresentation('epub', locator)) === 'error') {
+      setNotice('Your place is saved, but its highlight is still waiting to save.');
+      return;
+    }
+    await restoreCanonical(progressRef.current);
   }
 
   async function acceptRemoteProgress() {
@@ -176,7 +314,9 @@ export function useConsumptionActions(
       const edition = await api.representationState(selectedEPUB.representation.id);
       if (
         !edition?.epub_locator ||
-        !(await reader.current?.restoreLocation(edition.epub_locator))
+        !(await restoreEPUBPlace(
+          withResumeSelection(edition.epub_locator, edition.epub_locator, selectedEPUB),
+        ))
       ) {
         throw new Error('Could not open the server’s saved page. Both places are kept.');
       }
@@ -211,10 +351,14 @@ export function useConsumptionActions(
         setNotice('The other place changed again. Choose which place to keep.');
         return;
       }
-      if (!progressRef.current?.resolvable) {
+      if (conflict.kind === 'epub' && mode === 'read' && progressRef.current?.resolvable) {
+        await restoreCanonical(progressRef.current, chosen);
+      } else if (!progressRef.current?.resolvable) {
         if (conflict.kind === 'epub') {
           const restored = chosen?.epub_locator
-            ? await reader.current?.restoreLocation(chosen.epub_locator)
+            ? await restoreEPUBPlace(
+                withResumeSelection(chosen.epub_locator, chosen.epub_locator, selectedEPUB),
+              )
             : await reader.current?.navigate(0);
           if (!restored) throw new Error('Could not open that saved page. Both places are kept.');
         } else {
@@ -275,7 +419,7 @@ export function useConsumptionActions(
         throw error;
       }
     });
-    if (result && location.reason === 'explicit')
+    if (result && location.reason === 'explicit' && !location.selection)
       reader.current?.confirmSavedPlace?.(location, result);
     return result;
   }
@@ -348,6 +492,10 @@ export function useConsumptionActions(
         });
       progressRef.current = next;
       setProgress(next);
+      if (location.selection && !(await saveEPUBLocation(location, next))) {
+        setNotice('Your place is kept, but the selected passage could not be saved. Try again.');
+        return;
+      }
       setAudioReady(false);
       pendingAudioHandoff.current = { audioID, timestampMS: target.timestamp_ms };
       restoredAudio.current = '';
@@ -481,7 +629,9 @@ export function useConsumptionActions(
       progressRef.current = next;
       setProgress(next);
       player.pause();
-      queueReaderRestore(target);
+      queueReaderRestore(
+        withResumeSelection(target, epubStateRef.current?.epub_locator, selectedEPUB, next),
+      );
       setMode('read');
       setNotice('');
       setSyncAvailable(true);
@@ -495,7 +645,15 @@ export function useConsumptionActions(
         if (canonical && target) {
           await saveCanonical(canonical);
           player.pause();
-          queueReaderRestore(target);
+          queueReaderRestore(
+            withResumeSelection(
+              target,
+              epubStateRef.current?.epub_locator,
+              selectedEPUB,
+              progressRef.current,
+              await pendingProgress(work.id, readerScope),
+            ),
+          );
           setMode('read');
           setNotice('Offline mode · changes will sync when Aldus is reachable.');
           setSyncAvailable(true);
@@ -573,6 +731,7 @@ export function useConsumptionActions(
     openReaderLocation,
     saveEPUBLocation,
     restoreCanonical,
+    keepLocalReadingPlace,
     acceptRemoteProgress,
     resolveEditionConflict,
     saveReadingCursor,

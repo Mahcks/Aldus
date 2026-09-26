@@ -1,3 +1,4 @@
+import { withResumeSelection } from '@/lib/consumption/resume-selection';
 import { savedReadingConflicts } from '@/lib/consumption/reading-conflict';
 import { loadConsumptionWork } from '@/lib/consumption/load-work';
 import type { ReadingClaim } from '@/generated/api';
@@ -294,7 +295,15 @@ export function useConsumptionLoading(
               ? canonicalResumeTargets(stored.alignment, canonical)
               : undefined;
             if (loadEPUB) {
-              queueReaderRestore(targets ? targets.epub : stored.epub_state?.epub_locator);
+              queueReaderRestore(
+                withResumeSelection(
+                  targets ? targets.epub : stored.epub_state?.epub_locator,
+                  stored.epub_state?.epub_locator,
+                  selectedEPUBChoice,
+                  canonical,
+                  await pendingProgress(params.id),
+                ),
+              );
             }
             if (loadAudio) {
               setInitialAudioMS(
@@ -384,7 +393,15 @@ export function useConsumptionLoading(
           try {
             const targets = canonicalResumeTargets(nextAlignment, canonical);
             if (!canceled) {
-              if (loadEPUB) queueReaderRestore(targets.epub);
+              if (loadEPUB)
+                queueReaderRestore(
+                  withResumeSelection(
+                    targets.epub,
+                    nextEPUBState?.epub_locator,
+                    selectedEPUB,
+                    canonical,
+                  ),
+                );
               if (loadAudio) setInitialAudioMS(targets.audio.timestamp_ms);
               setSyncAvailable(true);
               setResumeMessage(
@@ -405,7 +422,14 @@ export function useConsumptionLoading(
             }
           }
         } else {
-          if (loadEPUB) queueReaderRestore(nextEPUBState?.epub_locator);
+          if (loadEPUB)
+            queueReaderRestore(
+              withResumeSelection(
+                nextEPUBState?.epub_locator,
+                nextEPUBState?.epub_locator,
+                selectedEPUB,
+              ),
+            );
           if (loadAudio) setInitialAudioMS(nextAudioState?.audio_timestamp_ms);
         }
       } catch (error) {

@@ -85,7 +85,11 @@ export function mapReadiumLocator(
       }),
   );
   if (matches.length !== 1) return undefined;
-  return { href: matches[0].epub_href, locator: matches[0].epub_locator, offset: 0 };
+  return {
+    href: matches[0].epub_href,
+    locator: { ...(matches[0].epub_locator as object), segment_id: matches[0].id },
+    offset: 0,
+  };
 }
 
 export function readiumLocationReason(
@@ -134,10 +138,38 @@ export function mapReadiumSelection(
   if (resolved.length === 1)
     return {
       href: resolved[0].segment.epub_href,
-      locator: resolved[0].segment.epub_locator,
+      locator: {
+        ...(resolved[0].segment.epub_locator as object),
+        segment_id: resolved[0].segment.id,
+      },
       offset: Math.min(1_000_000, resolved[0].offset),
     };
   return undefined;
+}
+
+/** A multi-paragraph selection still synchronizes from its first word. */
+export function mapReadiumSelectionStart(
+  locator: Locator,
+  text: string,
+  segments: AlignmentSegment[],
+) {
+  const complete = mapReadiumSelection(locator, text, segments);
+  if (complete) return complete;
+  const selected = text.replace(/\s+/gu, ' ').trim();
+  const first = selected.match(/^\S+/u)?.[0];
+  if (!first) return undefined;
+  return mapReadiumSelection(
+    {
+      ...locator,
+      text: {
+        before: locator.text?.before,
+        highlight: first,
+        after: selected.slice(first.length) + (locator.text?.after ?? ''),
+      },
+    },
+    first,
+    segments,
+  );
 }
 
 export function readiumSearchQuery(segment: AlignmentSegment, offset: number) {

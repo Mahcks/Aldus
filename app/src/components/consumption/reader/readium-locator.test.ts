@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { offlineEPUBToCanonical } from '@/lib/consumption/offline-position';
 import type { AlignmentSegment } from '@/generated/api';
 import {
   deserializeReadiumLocator,
   mapReadiumLocator,
   mapReadiumSelection,
+  mapReadiumSelectionStart,
   preferredReadiumLocator,
   readiumLocationReason,
   readiumResumeDecorations,
@@ -94,7 +96,7 @@ describe('Readium spike locator', () => {
     };
     expect(mapReadiumLocator(locator, [segment])).toEqual({
       href: segment.epub_href,
-      locator: segment.epub_locator,
+      locator: { ...(segment.epub_locator as object), segment_id: segment.id },
       offset: 0,
     });
     expect(mapReadiumLocator(locator, [segment, { ...segment, id: 'duplicate' }])).toBeUndefined();
@@ -102,7 +104,11 @@ describe('Readium spike locator', () => {
       mapReadiumLocator({ ...locator, text: { after: 'ALICE was beginning—to get very tired!' } }, [
         segment,
       ]),
-    ).toEqual({ href: segment.epub_href, locator: segment.epub_locator, offset: 0 });
+    ).toEqual({
+      href: segment.epub_href,
+      locator: { ...(segment.epub_locator as object), segment_id: segment.id },
+      offset: 0,
+    });
     expect(
       segmentForEPUBLocator({ href: segment.epub_href, locator: segment.epub_locator, offset: 0 }, [
         segment,
@@ -155,7 +161,7 @@ describe('Readium spike locator', () => {
     };
     expect(mapReadiumSelection(locator, 'a', [bottle, next])).toEqual({
       href: bottle.epub_href,
-      locator: bottle.epub_locator,
+      locator: { ...(bottle.epub_locator as object), segment_id: bottle.id },
       offset: expect.any(Number),
     });
   });
@@ -179,7 +185,7 @@ describe('Readium spike locator', () => {
     };
     expect(mapReadiumSelection(locator, 'After', [previous, next])).toEqual({
       href: next.epub_href,
-      locator: next.epub_locator,
+      locator: { ...(next.epub_locator as object), segment_id: next.id },
       offset: 0,
     });
   });
@@ -202,7 +208,7 @@ describe('Readium spike locator', () => {
     };
     expect(mapReadiumSelection(locator, 'However', [segment, next])).toEqual({
       href: next.epub_href,
-      locator: next.epub_locator,
+      locator: { ...(next.epub_locator as object), segment_id: next.id },
       offset: 0,
     });
   });
@@ -240,7 +246,7 @@ describe('Readium spike locator', () => {
     };
     expect(mapReadiumSelection(locator, locator.text.highlight, lines)).toEqual({
       href: segment.epub_href,
-      locator: lines[1].epub_locator,
+      locator: { ...(lines[1].epub_locator as object), segment_id: lines[1].id },
       offset: expect.any(Number),
     });
   });
@@ -384,4 +390,27 @@ test('restores the reported Hatter passage without requiring a unique search wor
   expect(anchor?.text?.highlight).toBe('was');
   expect(anchor?.text?.after).toStartWith(' certainly English. “I don’t quite understand you,”');
   expect(readiumCanonicalAnchor(target, NaN)).toBeUndefined();
+});
+
+test('a selection spanning paragraphs keeps canonical progress at the first selected word', () => {
+  const a = { ...segment, id: 'first', text: 'Before. The table was a large one.' };
+  const b = { ...segment, id: 'second', text: 'The three were crowded together.' };
+  const text = 'The table was a large one. The three were crowded together.';
+  const point = mapReadiumSelectionStart(
+    {
+      href: a.epub_href,
+      type: 'application/xhtml+xml',
+      text: { before: 'Before. ', highlight: text },
+    },
+    text,
+    [a, b],
+  );
+  expect(point?.offset).toBeGreaterThan(0);
+  expect(point?.locator).toEqual({ ...(a.epub_locator as object), segment_id: a.id });
+  if (!point) throw new Error('Expected a mapped selection start');
+  expect(offlineEPUBToCanonical('alignment', point)).toEqual({
+    alignment_id: 'alignment',
+    segment_id: a.id,
+    offset: point.offset,
+  });
 });
