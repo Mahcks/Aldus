@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
+	"github.com/mahcks/aldus/server/internal/ownership"
 )
 
 func (s *Store) RepresentationState(ctx context.Context, userID, representationID string) (RepresentationState, error) {
@@ -26,6 +27,26 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 		return RepresentationState{}, fmt.Errorf("begin representation-state update: %w", err)
 	}
 	defer tx.Rollback()
+
+	if update.Ownership != (ownership.Proof{}) {
+		// Lock before resolving the representation's work: this must be the first
+		// database operation in the deferred write transaction.
+		if err := ownership.LockTx(ctx, tx, userID, ""); err != nil {
+			return RepresentationState{}, err
+		}
+		var workID string
+		err := tx.QueryRowContext(ctx, `SELECT work_id FROM representations WHERE id = ?`, representationID).Scan(&workID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return RepresentationState{}, ErrNotFound
+		}
+		if err != nil {
+			return RepresentationState{}, fmt.Errorf("resolve ownership work: %w", err)
+		}
+		if err := ownership.CheckTx(ctx, tx, userID, workID, update.Ownership); err != nil {
+			return RepresentationState{}, err
+		}
+	}
+
 	queries := s.queries.WithTx(tx)
 	var currentRevision int64
 	currentRevision, err = queries.GetRepresentationStateRevision(ctx, dbsql.GetRepresentationStateRevisionParams{UserID: userID, RepresentationID: representationID})
@@ -65,12 +86,20 @@ func (s *Store) UpdateRepresentationState(ctx context.Context, userID, represent
 		audio = sql.NullInt64{Int64: *update.AudioTimestampMS, Valid: true}
 	}
 	err = queries.UpsertRepresentationState(ctx, dbsql.UpsertRepresentationStateParams{
-		UserID: userID, RepresentationID: representationID, EpubLocator: epub,
-		AudioTimestampMs: audio, PlaybackSpeedMilli: speed,
-		ReaderLayout: sql.NullString{String: update.ReaderLayout, Valid: update.ReaderLayout != ""}, ZoomMilli: zoom,
-		ReaderTheme: sql.NullString{String: update.ReaderTheme, Valid: update.ReaderTheme != ""}, LineHeightMilli: lineHeight, MarginMilli: margin,
-		FontFamily: sql.NullString{String: update.FontFamily, Valid: update.FontFamily != ""}, ReaderPreferencesOverride: nullableBool(update.ReaderPreferencesOverride),
-		Revision: currentRevision + 1, UpdatedAt: now.Format(time.RFC3339Nano),
+		UserID:                    userID,
+		RepresentationID:          representationID,
+		EpubLocator:               epub,
+		AudioTimestampMs:          audio,
+		PlaybackSpeedMilli:        speed,
+		ReaderLayout:              sql.NullString{String: update.ReaderLayout, Valid: update.ReaderLayout != ""},
+		ZoomMilli:                 zoom,
+		ReaderTheme:               sql.NullString{String: update.ReaderTheme, Valid: update.ReaderTheme != ""},
+		LineHeightMilli:           lineHeight,
+		MarginMilli:               margin,
+		FontFamily:                sql.NullString{String: update.FontFamily, Valid: update.FontFamily != ""},
+		ReaderPreferencesOverride: nullableBool(update.ReaderPreferencesOverride),
+		Revision:                  currentRevision + 1,
+		UpdatedAt:                 now.Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return RepresentationState{}, fmt.Errorf("save representation state: %w", err)

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/mahcks/aldus/server/internal/ownership"
 )
 
 const OffsetMax = 1_000_000
@@ -43,6 +45,7 @@ type RepresentationState struct {
 	UpdatedAt                 time.Time       `json:"updated_at"`
 }
 type RepresentationUpdate struct {
+	Ownership                 ownership.Proof `json:"-"`
 	EPUBLocator               json.RawMessage `json:"epub_locator,omitempty"`
 	AudioTimestampMS          *int64          `json:"audio_timestamp_ms,omitempty"`
 	PlaybackSpeed             *float64        `json:"playback_speed,omitempty"`
@@ -84,11 +87,12 @@ type AudioLocator struct {
 	TimestampMS int64  `json:"timestamp_ms"`
 }
 type Update struct {
-	SegmentID        string `json:"segment_id"`
-	Offset           int    `json:"offset"`
-	ExpectedRevision int64  `json:"expected_revision"`
-	SourceDevice     string `json:"source_device"`
-	SourceDeviceID   string `json:"-"`
+	Ownership        ownership.Proof `json:"-"`
+	SegmentID        string          `json:"segment_id"`
+	Offset           int             `json:"offset"`
+	ExpectedRevision int64           `json:"expected_revision"`
+	SourceDevice     string          `json:"source_device"`
+	SourceDeviceID   string          `json:"-"`
 }
 type Alignment struct {
 	ID          string    `json:"id"`

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
+	"github.com/mahcks/aldus/server/internal/ownership"
 )
 
 type Store struct {
@@ -109,6 +110,10 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 		return Canonical{}, fmt.Errorf("begin progress update: %w", err)
 	}
 	defer tx.Rollback()
+
+	if err := ownership.CheckTx(ctx, tx, userID, workID, update.Ownership); err != nil {
+		return Canonical{}, err
+	}
 	queries := s.queries.WithTx(tx)
 
 	var validWork string
@@ -159,13 +164,26 @@ func (s *Store) UpdateProgress(ctx context.Context, userID, workID, alignmentID 
 	resolvable := true
 	p.Resolvable = &resolvable
 	err = queries.UpsertProgress(ctx, dbsql.UpsertProgressParams{
-		UserID: userID, WorkID: p.WorkID, AlignmentID: p.AlignmentID, SegmentID: p.SegmentID,
-		Offset: int64(p.Offset), Revision: p.Revision, UpdatedAt: p.UpdatedAt.Format(time.RFC3339Nano), SourceDevice: p.SourceDevice, SourceDeviceID: p.SourceDeviceID,
+		UserID:         userID,
+		WorkID:         p.WorkID,
+		AlignmentID:    p.AlignmentID,
+		SegmentID:      p.SegmentID,
+		Offset:         int64(p.Offset),
+		Revision:       p.Revision,
+		UpdatedAt:      p.UpdatedAt.Format(time.RFC3339Nano),
+		SourceDevice:   p.SourceDevice,
+		SourceDeviceID: p.SourceDeviceID,
 	})
 	if err != nil {
 		return Canonical{}, fmt.Errorf("save progress: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO user_work_statuses(user_id,work_id,status,updated_at) VALUES(?,?,'reading',?) ON CONFLICT(user_id,work_id) DO UPDATE SET status='reading',updated_at=excluded.updated_at WHERE user_work_statuses.status='want_to_read'`, userID, workID, p.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+  INSERT INTO user_work_statuses (user_id, work_id, status, updated_at)
+  VALUES (?, ?, 'reading', ?)
+  ON CONFLICT(user_id, work_id) DO UPDATE SET
+   status = 'reading',
+   updated_at = excluded.updated_at
+  WHERE user_work_statuses.status = 'want_to_read'`, userID, workID, p.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
 		return Canonical{}, fmt.Errorf("update reading status: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
