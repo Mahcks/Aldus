@@ -13,6 +13,10 @@ const {
   patchEdgeTaps,
 } = require('./readium-selection.cjs');
 
+// The first Swift compilation on a fresh hosted runner can exceed one minute.
+const swiftCompileTimeout = 180_000;
+const swiftTestTimeout = swiftCompileTimeout + 10_000;
+
 const podfile = `require 'react-native/scripts/react_native_pods'
 
 target 'Aldus' do
@@ -60,17 +64,21 @@ describe('Readium config plugin', () => {
         const compile = spawnSync(
           'swiftc',
           [join(__dirname, 'readium-selection-gesture.swift'), main, '-o', executable],
-          { encoding: 'utf8', timeout: 60_000 },
+          { encoding: 'utf8', timeout: swiftCompileTimeout },
         );
-        if (compile.status !== 0) throw new Error(compile.stderr || 'Swift compilation failed');
-        const run = spawnSync(executable, [], { encoding: 'utf8' });
+        if (compile.error) throw compile.error;
+        if (compile.status !== 0)
+          throw new Error(
+            compile.stderr || `Swift compilation failed (${compile.signal ?? compile.status})`,
+          );
+        const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 5000 });
         expect(run.status).toBe(0);
         expect(run.stdout).toContain('Selection edge geometry passed');
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
     },
-    90_000,
+    swiftTestTimeout,
   );
 
   test('replaces the old gesture-only patch in existing Pods', () => {
@@ -292,9 +300,13 @@ test.skipIf(!Bun.which('swiftc'))(
       );
       const compile = spawnSync('swiftc', ['-parse-as-library', main, '-o', executable], {
         encoding: 'utf8',
-        timeout: 60_000,
+        timeout: swiftCompileTimeout,
       });
-      if (compile.status !== 0) throw new Error(compile.stderr || 'Swift compilation failed');
+      if (compile.error) throw compile.error;
+      if (compile.status !== 0)
+        throw new Error(
+          compile.stderr || `Swift compilation failed (${compile.signal ?? compile.status})`,
+        );
       const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 5000 });
       expect(run.status).toBe(0);
       expect(run.stdout).toContain(
@@ -304,5 +316,5 @@ test.skipIf(!Bun.which('swiftc'))(
       rmSync(directory, { recursive: true, force: true });
     }
   },
-  90_000,
+  swiftTestTimeout,
 );
