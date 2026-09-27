@@ -49,8 +49,7 @@ On your Mac, with this version of the repository checked out and your iPhone
 connected, run these commands from the repository root:
 
 ```sh
-bun install --cwd app
-make ios-dev
+make ios
 ```
 
 Select your iPhone and Apple development team if prompted. This regenerates the
@@ -61,7 +60,7 @@ config plugins. A Metro reload cannot change an installed app's identity.
 Start the development server from the machine hosting your checkout:
 
 ```sh
-make expo-dev
+make expo
 ```
 
 Open **Aldus Dev** to connect to it. Use the same Wi-Fi network and a reachable

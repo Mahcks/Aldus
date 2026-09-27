@@ -88,6 +88,27 @@ export function acknowledgeOfflineRepresentationState(
   });
 }
 
+// Remove only the exact rejected stage. Preserve any earlier offline intent.
+export function rejectOfflineRepresentationState(
+  workID: string,
+  kind: 'epub' | 'audio',
+  submitted: RepresentationState,
+  _previous: RepresentationState | null,
+  scope = activeStorageScope(),
+) {
+  return serializeProgressMutation(async () => {
+    const key = await storageKey(scope, workID, kind);
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return;
+    const pending: PendingEdition = JSON.parse(raw);
+    if (JSON.stringify(pending.local) !== JSON.stringify(submitted)) return;
+    if (pending.attempt) {
+      const { attempt, ...record } = pending;
+      await AsyncStorage.setItem(key, JSON.stringify({ ...record, ...attempt }));
+    } else await AsyncStorage.removeItem(key);
+  });
+}
+
 const reconciliations = new Map<string, Promise<RepresentationConflict | null>>();
 
 export async function reconcileOfflineRepresentationStates(

@@ -1,7 +1,7 @@
 import type { ReadingClaim } from '@/generated/api';
 import { router } from 'expo-router';
 import { AppState, Platform } from 'react-native';
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { APIError, api } from '@/lib/api';
 import { getDeviceIdentity } from '@/lib/device-identity';
 import {
@@ -39,9 +39,10 @@ export function useReadingSession(workID: string) {
   const [snapshot, setSnapshot] = useState<ReadingClaim>();
   const requests = useRef(new Map<number, string>());
   const stateRef = useRef(state);
-  useEffect(() => {
+  useLayoutEffect(() => {
     stateRef.current = state;
   }, [state]);
+  const foregroundBlocked = useRef(false);
 
   const claimAttempt = state.kind === 'claiming' && state.step === 'server' ? state.attempt : 0;
   const claimOwnerEpoch = state.kind === 'claiming' ? (state.owner?.epoch ?? 0) : 0;
@@ -148,7 +149,36 @@ export function useReadingSession(workID: string) {
   useEffect(() => {
     if (!activeDeviceID || !activeEpoch) return;
     let running = false;
+    let cancelled = false;
+    let foregroundAttempt = 0;
+    async function refreshForeground() {
+      const current = stateRef.current;
+      if (current.kind !== 'active' && current.kind !== 'checking') return;
+      const attempt = ++foregroundAttempt;
+      foregroundBlocked.current = true;
+      pauseReadingProof(workID);
+      dispatch({ type: 'foreground' });
+      let checked = false;
+      try {
+        await api.refreshReadingSession(workID, current.proof);
+        checked = true;
+      } catch (error) {
+        // A disconnected phone may still read its downloaded book. A server
+        // rejection must never be treated as permission to resume.
+        checked = error instanceof APIError && error.status === 0;
+        if (error instanceof OwnershipSupersededError)
+          reportOwnershipLost(workID, error.owner, current.proof);
+      }
+      if (cancelled || attempt !== foregroundAttempt || AppState.currentState !== 'active') return;
+      if (checked) {
+        dispatch({ type: 'foreground-checked', proof: current.proof });
+      }
+    }
     async function refresh() {
+      if (stateRef.current.kind === 'checking' && AppState.currentState === 'active') {
+        await refreshForeground();
+        return;
+      }
       if (running) return;
       running = true;
       try {
@@ -162,18 +192,23 @@ export function useReadingSession(workID: string) {
     }
     const timer = setInterval(() => void refresh(), HEARTBEAT_MS);
     const foreground = AppState.addEventListener('change', (value) => {
-      if (value === 'active') void refresh();
+      if (value === 'active') void refreshForeground();
+      else foregroundAttempt += 1;
     });
     return () => {
+      cancelled = true;
       foreground.remove();
       clearInterval(timer);
     };
-  }, [activeDeviceID, activeEpoch, checkOwnership]);
+  }, [activeDeviceID, activeEpoch, checkOwnership, workID]);
 
   useEffect(
     () =>
       subscribeOwnershipLost((lostWorkID, owner) => {
-        if (lostWorkID === workID) dispatch({ type: 'lost', owner });
+        if (lostWorkID === workID) {
+          foregroundBlocked.current = true;
+          dispatch({ type: 'lost', owner });
+        }
       }),
     [workID],
   );
@@ -189,7 +224,13 @@ export function useReadingSession(workID: string) {
     [workID],
   );
   useEffect(() => {
-    if (heldProof) registerReadingProof(workID, heldProof, mayWritePosition(state));
+    if (state.kind !== 'checking') foregroundBlocked.current = false;
+    if (heldProof)
+      registerReadingProof(
+        workID,
+        heldProof,
+        mayWritePosition(state) && !foregroundBlocked.current,
+      );
     else pauseReadingProof(workID);
   }, [workID, heldProof, state]);
 
@@ -206,6 +247,8 @@ export function useReadingSession(workID: string) {
     snapshot,
     showsContent: showsContent(state),
     mayWrite: mayWritePosition(state),
+    checkingOwnership: state.kind === 'checking',
+    canInteract: () => !foregroundBlocked.current && mayWritePosition(stateRef.current),
     takeoverView: takeoverViewFor(state),
     pausedDevice: pausedDeviceOf(state),
     continueHere: useCallback(() => dispatch({ type: 'continue' }), []),

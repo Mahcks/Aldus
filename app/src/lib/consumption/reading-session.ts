@@ -36,6 +36,7 @@ export type SessionState =
       reason: FailureReason;
       proof?: ReadingOwnershipProof;
     }
+  | { kind: 'checking'; proof: ReadingOwnershipProof; attempt: number }
   | { kind: 'active'; proof: ReadingOwnershipProof; attempt: number }
   | { kind: 'paused'; owner: ReadingOwner | null; attempt: number };
 
@@ -53,7 +54,9 @@ export type SessionEvent =
   | { type: 'retry' }
   | { type: 'cancel' }
   | { type: 'lost'; owner: ReadingOwner | null }
-  | { type: 'resume' };
+  | { type: 'resume' }
+  | { type: 'foreground' }
+  | { type: 'foreground-checked'; proof: ReadingOwnershipProof };
 
 export const initialSessionState: SessionState = { kind: 'starting' };
 
@@ -80,6 +83,15 @@ function claiming(
 
 export function readingSessionReducer(state: SessionState, event: SessionEvent): SessionState {
   switch (event.type) {
+    case 'foreground':
+      return state.kind === 'active' ? { ...state, kind: 'checking' } : state;
+    case 'foreground-checked':
+      return state.kind === 'checking' &&
+        state.proof.device_id === event.proof.device_id &&
+        state.proof.epoch === event.proof.epoch
+        ? { ...state, kind: 'active' }
+        : state;
+
     case 'owner-loaded': {
       if (state.kind !== 'starting') return state;
       const { owner, deviceID } = event;
@@ -170,6 +182,7 @@ export function readingSessionReducer(state: SessionState, event: SessionEvent):
     }
     case 'lost':
       return state.kind === 'active' ||
+        state.kind === 'checking' ||
         (state.kind === 'claiming' && state.step === 'restore') ||
         (state.kind === 'failed' && state.proof)
         ? { kind: 'paused', owner: event.owner, attempt: state.attempt + 1 }

@@ -712,3 +712,72 @@ test('edition replay retains an uncertain earlier write while newer offline edit
     expect(remote).toMatchObject({ revision: 2, epub_locator: { cfi: 'latest' } });
   }
 });
+
+test('a rejected live gesture leaves no canonical replay after takeover', async () => {
+  const { OwnershipSupersededError } = await import('./consumption/reading-proof');
+  globalThis.fetch = (async () =>
+    Response.json(
+      { code: 'ownership_superseded', owner: null },
+      { status: 409 },
+    )) as unknown as typeof fetch;
+  await expect(
+    saveWorkProgress('refused-live-turn', {
+      ...update,
+      ownership: { device_id: 'phone', epoch: 2 },
+    }),
+  ).rejects.toBeInstanceOf(OwnershipSupersededError);
+  expect(await pendingProgress('refused-live-turn')).toBeNull();
+});
+
+test('rejected live edition saves discard only their stage and preserve earlier offline intent', async () => {
+  const native = await import('./offline-library.native');
+  const web = await import('./representation-outbox.web');
+  for (const platform of [native, web]) {
+    for (const pending of [false, true]) {
+      const workID = `reject-${platform === web ? 'web' : 'native'}-${pending}`;
+      const previous = {
+        representation_id: workID,
+        revision: 3,
+        updated_at: '',
+        epub_locator: { cfi: 'previous' },
+      };
+      const submitted = { ...previous, epub_locator: { cfi: 'rejected-page-turn' } };
+      const proof = { device_id: 'phone', epoch: 2 };
+      storage.set(
+        `aldus:${activeStorageScope()}:offline-work:${workID}`,
+        JSON.stringify({ work: { id: workID }, epub_state: previous, epubs: [], audio: [] }),
+      );
+      if (pending)
+        await platform.updateOfflineRepresentationState(
+          workID,
+          'epub',
+          previous,
+          true,
+          activeStorageScope(),
+          proof,
+        );
+      await platform.updateOfflineRepresentationState(
+        workID,
+        'epub',
+        submitted,
+        true,
+        activeStorageScope(),
+        proof,
+      );
+      await platform.rejectOfflineRepresentationState(workID, 'epub', submitted, previous);
+      let writes = 0;
+      globalThis.fetch = (async (_input, init) => {
+        writes++;
+        const body = JSON.parse(String(init?.body));
+        expect(body.epub_locator).toEqual(previous.epub_locator);
+        return Response.json({ ...previous, revision: 4 });
+      }) as typeof fetch;
+      expect(await platform.reconcileOfflineRepresentationStates(workID)).toEqual([]);
+      expect(writes).toBe(pending ? 1 : 0);
+      if (platform === native)
+        expect((await platform.offlineRepresentationState(workID, 'epub'))?.epub_locator).toEqual(
+          previous.epub_locator,
+        );
+    }
+  }
+});

@@ -562,10 +562,13 @@ test('foreground edition saves use their own acknowledged replay revision and st
       'no-manifest',
       'storage-failed',
       'ownership-lost-after-save',
+      'ownership-lost-before-send',
+      'ownership-rejected',
     ] as const) {
       const foreignConflict = scenario === 'foreign-conflict';
       let activeAccount = true;
       let ownsBook = true;
+      class Superseded extends Error {}
       const calls: string[] = [];
       let requestStarted!: () => void;
       let finishRequest!: () => void;
@@ -606,6 +609,7 @@ test('foreground edition saves use their own acknowledged replay revision and st
         readingProofForWork: () => undefined,
         isCurrentReader: () => activeAccount,
         Platform: { OS: 'ios' },
+        OwnershipSupersededError: Superseded,
         reconcileOfflineRepresentationStates: async () => {
           calls.push('replay');
           if (scenario === 'account-changed') activeAccount = false;
@@ -634,6 +638,7 @@ test('foreground edition saves use their own acknowledged replay revision and st
             else expect(update.audio_timestamp_ms).toBe(123000);
             requestStarted();
             await response;
+            if (scenario === 'ownership-rejected') throw new Superseded();
             return { ...acknowledged, revision: 3 };
           },
           representationState: async () => {
@@ -652,7 +657,11 @@ test('foreground edition saves use their own acknowledged replay revision and st
           calls.push(pending ? 'cache-pending' : 'cache-saved');
           if (scenario === 'storage-failed') throw new Error('Storage unavailable');
           if (pending) stagedState = state;
+          if (scenario === 'ownership-lost-before-send') ownsBook = false;
           return scenario !== 'no-manifest';
+        },
+        rejectOfflineRepresentationState: async () => {
+          calls.push('rejected');
         },
         acknowledgeOfflineRepresentationState: async (
           _workID: string,
@@ -681,7 +690,14 @@ test('foreground edition saves use their own acknowledged replay revision and st
         value: unknown,
       ) => Promise<string>;
       const saving = save(kind, kind === 'epub' ? latest : 123000);
-      if (!['account-changed', 'foreign-conflict', 'storage-failed'].includes(scenario)) {
+      if (
+        ![
+          'account-changed',
+          'foreign-conflict',
+          'storage-failed',
+          'ownership-lost-before-send',
+        ].includes(scenario)
+      ) {
         await started;
         expect(calls).toEqual(['replay', 'cache', 'cache-pending', 'put']);
         expect(stagedState).toMatchObject(
@@ -694,6 +710,13 @@ test('foreground edition saves use their own acknowledged replay revision and st
       if (scenario === 'account-changed') {
         expect(result).toBe('error');
         expect(calls).toEqual(['replay']);
+      } else if (scenario === 'ownership-lost-before-send' || scenario === 'ownership-rejected') {
+        expect(result).toBe('error');
+        expect(calls).toEqual(
+          scenario === 'ownership-rejected'
+            ? ['replay', 'cache', 'cache-pending', 'put', 'rejected']
+            : ['replay', 'cache', 'cache-pending', 'rejected'],
+        );
       } else if (scenario === 'storage-failed') {
         expect(result).toBe('error');
         expect(calls).toEqual(['replay', 'cache', 'cache-pending']);

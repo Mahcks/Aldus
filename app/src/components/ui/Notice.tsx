@@ -7,6 +7,7 @@ import {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { IconButton } from './Button';
 import { AppIcon, type AppIconName } from './icons';
 import { EASE_STANDARD, reveal } from './motion';
 import { useThemeColors, type ThemeColors } from './theme';
@@ -39,6 +40,7 @@ export function Notice({
   icon,
   action,
   announcement,
+  onDismiss,
 }: PropsWithChildren<{
   danger?: boolean;
   tone?: Exclude<NoticeTone, 'neutral'>;
@@ -50,6 +52,8 @@ export function Notice({
   action?: ReactNode;
   /** Interrupt screen-reader speech when an active interaction is stopped. */
   announcement?: 'polite' | 'assertive';
+  /** Adds a close button, for messages the user can safely put away. */
+  onDismiss?: () => void;
 }>) {
   const colors = useThemeColors();
   const resolvedTone: NoticeTone = danger ? 'danger' : (tone ?? 'neutral');
@@ -100,6 +104,11 @@ export function Notice({
             <Text className="text-sm leading-5 text-ink">{children}</Text>
             {action ? <View className="pt-2 sm:items-start">{action}</View> : null}
           </View>
+          {onDismiss ? (
+            <View className="-my-2 -mr-3">
+              <IconButton icon="close" label="Dismiss message" kind="quiet" onPress={onDismiss} />
+            </View>
+          ) : null}
         </AnimatedView>
       </View>
     </AnimatedView>

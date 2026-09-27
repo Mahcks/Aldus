@@ -267,3 +267,19 @@ it('offline reopening restores with its last confirmed epoch and never claims a 
   expect(active).toMatchObject({ kind: 'active', proof });
   expect(run([{ type: 'lost', owner: owner({ epoch: 5 }) }], active).kind).toBe('paused');
 });
+
+it('foreground verification blocks input without dropping the reader or accepting an old claim', () => {
+  const proof = { device_id: 'phone', epoch: 8 };
+  const active: SessionState = { kind: 'active', proof, attempt: 3 };
+  const checking = readingSessionReducer(active, { type: 'foreground' });
+  expect(showsContent(checking)).toBe(true);
+  expect(mayWritePosition(checking)).toBe(false);
+  expect(takeoverViewFor(checking)).toBeUndefined();
+  expect(
+    readingSessionReducer(checking, { type: 'foreground-checked', proof: { ...proof, epoch: 7 } }),
+  ).toBe(checking);
+  expect(readingSessionReducer(checking, { type: 'foreground-checked', proof })).toEqual(active);
+  const paused = readingSessionReducer(checking, { type: 'lost', owner: owner() });
+  expect(paused.kind).toBe('paused');
+  expect(readingSessionReducer(paused, { type: 'foreground-checked', proof })).toBe(paused);
+});

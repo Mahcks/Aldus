@@ -1,4 +1,4 @@
-.PHONY: fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev ios-acceptance ecosystem-acceptance koreader-acceptance koreader-acceptance-check generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
+.PHONY: expo server ios fixture demo-media seed-alice dev dev-app dev-docs dev-server web-dev expo-dev ios-dev ios-acceptance ecosystem-acceptance koreader-acceptance koreader-acceptance-check generate generate-check format format-check build test lint acceptance backup restore docker docker-alignment release-smoke release-status release-prepare release release-all demo-deploy ios-testflight ios-testflight-remote ios-external ios-release
 
 SQLC_VERSION := v1.31.1
 TYGO_VERSION := v0.2.21
@@ -14,7 +14,7 @@ seed-alice:
 	cd server && ALDUS_ENV=development go run ./cmd/seed-alice --data-dir ../data --fixture-dir ../test-fixtures/alice/media --artifact ../test-fixtures/alice/automatic/hybrid-whisperx/alignment.json
 
 dev:
-	@$(MAKE) -j2 dev-server dev-app
+	@$(MAKE) -j2 server dev-app
 
 dev-app:
 	cd app && EXPO_PUBLIC_API_URL=$${EXPO_PUBLIC_API_URL:-http://localhost:8080} bun run start
@@ -22,13 +22,17 @@ dev-app:
 dev-docs:
 	cd docs && bun run dev
 
-dev-server:
+dev-server: server
+
+server:
 	@LAN_ORIGINS=$$(ip -4 -o addr show scope global | awk '{split($$4, address, "/"); printf ",http://%s:8081", address[1]}'); \
 	cd server && PATH="$(CURDIR)/.tools/alignment-venv/bin:$$PATH" ALDUS_ALIGNMENT_MODEL_DIR=$${ALDUS_ALIGNMENT_MODEL_DIR:-$(CURDIR)/.tools/alignment-models} ALDUS_ENV=$${ALDUS_ENV:-development} ALDUS_LOG_LEVEL=$${ALDUS_LOG_LEVEL:-debug} ALDUS_ADDR=:8080 ALDUS_DATA_DIR=../data ALDUS_BACKUP_DIR=../backups ALDUS_FIXTURE_DIR=../test-fixtures/alice/media ALDUS_SOURCE_ROOTS=$${ALDUS_SOURCE_ROOTS:-$(CURDIR)/library-media,$(CURDIR)/test-fixtures/alice/media} ALDUS_ALLOWED_ORIGINS=$${ALDUS_ALLOWED_ORIGINS:-http://localhost:8081$$LAN_ORIGINS} go run ./cmd/app
 
 web-dev: dev-app
 
-expo-dev:
+expo-dev: expo
+
+expo:
 	@API_URL="$$EXPO_PUBLIC_API_URL"; \
 	 if test -n "$$API_URL"; then PACKAGER_HOST=$$(printf '%s\n' "$$API_URL" | sed -E 's,https?://([^:/]+).*,\1,'); \
 	 elif command -v ip >/dev/null; then PACKAGER_HOST=$$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($$i=="src") {print $$(i+1); exit}}'); \
@@ -39,7 +43,9 @@ expo-dev:
 	 echo "Starting Aldus for http://$$PACKAGER_HOST:8080"; \
 	 cd app && EXPO_PUBLIC_API_URL="$$API_URL" EXPO_PUBLIC_WEB_API_URL=$${EXPO_PUBLIC_WEB_API_URL:-http://localhost:8080} REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
 
-ios-dev:
+ios-dev: ios
+
+ios:
 	cd app && bun install --frozen-lockfile && bun run ios:device
 
 ios-acceptance:
@@ -157,3 +163,6 @@ docker-cuda-legacy:
 .PHONY: alignment-gpu-check
 alignment-gpu-check:
 	./scripts/check-alignment-gpu.sh "$(IMAGE)"
+
+# Optional commands for this checkout; never required by shared workflows.
+-include Makefile.local

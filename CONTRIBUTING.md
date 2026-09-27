@@ -25,10 +25,10 @@ The development server uses `.tools/alignment-venv/bin/python3` when that local 
 
 | Command | Does |
 | --- | --- |
-| `make dev-server` | Run the Go server on port 8080 |
+| `make server` | Run the Go server on port 8080 |
 | `make dev-app` | Run the Expo development server |
-| `make expo-dev` | Run Metro for an installed native development client |
-| `make ios-dev` | Install dependencies, build, and install the iOS development client |
+| `make expo` | Run Metro for an installed native development client |
+| `make ios` | Install dependencies, build, and install the iOS development client |
 | `make dev-docs` | Run the Starlight documentation site |
 | `make demo-media` | Fetch and verify the public-domain demo catalog |
 | `make generate` | Regenerate sqlc and public TypeScript contracts |
@@ -37,7 +37,7 @@ The development server uses `.tools/alignment-venv/bin/python3` when that local 
 | `make build` | Build the production web app and Go server |
 | `make docker` | Build the production container locally |
 
-For an iPhone development build, first update the source checkout on your Mac, connect the phone, and run `make ios-dev` from the repository root. It installs the locked dependencies, updates the native project and CocoaPods, then builds and installs the client. Keep `make expo-dev` running to serve the development app. JavaScript-only changes normally need a reload; native dependencies, reader patches, and native configuration require `make ios-dev` again. Updating the Docker image updates the server and web app separately.
+For an iPhone development build, first update the source checkout on your Mac, connect the phone, and run `make ios` from the repository root. It installs the locked dependencies, updates the native project and CocoaPods, then builds and installs the client. Keep `make expo` running to serve the development app. JavaScript-only changes normally need a reload; native dependencies, reader patches, and native configuration require `make ios` again. Updating the Docker image updates the server and web app separately.
 
 The repository has four main parts:
 

@@ -155,6 +155,9 @@ export function createProgressOutbox(
         await acknowledge(workID, keyScope, update, saved, scope);
         return saved;
       } catch (error) {
+        // This request was explicitly refused, not lost in transit. Do not
+        // replay a stale-device gesture as an offline saved-place conflict.
+        if (error instanceof OwnershipSupersededError) await discard(workID, keyScope);
         if (!(error instanceof APIError) || error.status !== 0) throw error;
         return null;
       }

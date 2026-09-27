@@ -37,6 +37,7 @@ for (const fails of [false, true]) {
       chosenPlace: 'this-device',
       session: {
         mayWrite: true,
+        canInteract: () => true,
         checkOwnership: async () => true,
         backToBook: () => {
           exits++;

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { resolvePressStateClass } from '@/components/ui';
 import { AppIcon } from '@/components/ui/icons';
-import { EASE_STANDARD, sectionFade } from '@/components/ui/motion';
+import { EASE_STANDARD } from '@/components/ui/motion';
 import { useThemeColors } from '@/components/ui/theme';
 import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
 import {
@@ -12,24 +12,16 @@ import {
 } from 'react-native-reanimated';
 
 /** A titled block of the book page that eases in after the hero, one after another. */
-export function DetailSection({
-  index,
-  title,
-  children,
-}: {
-  index: number;
-  title?: string;
-  children: ReactNode;
-}) {
+export function DetailSection({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <AnimatedView entering={sectionFade(index)} className="gap-3">
+    <View className="gap-3">
       {title ? (
         <Text accessibilityRole="header" className="text-lg font-sans-semibold text-ink">
           {title}
         </Text>
       ) : null}
       {children}
-    </AnimatedView>
+    </View>
   );
 }
 

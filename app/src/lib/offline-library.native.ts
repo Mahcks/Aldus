@@ -528,6 +528,46 @@ export async function acknowledgeOfflineRepresentationState(
   });
 }
 
+// A refused online gesture is not an offline edit. Restore the staged
+// predecessor without acknowledging or discarding any earlier uncertain write.
+export function rejectOfflineRepresentationState(
+  workID: string,
+  kind: 'epub' | 'audio',
+  submitted: RepresentationState,
+  previous: RepresentationState | null,
+  scope = activeStorageScope(),
+) {
+  return serialize(async () => {
+    const value = await offlineWork(workID, scope);
+    const field = kind === 'epub' ? 'epub_state' : 'audio_state';
+    if (
+      !value?.pending_representation_states?.[kind] ||
+      JSON.stringify(value[field]) !== JSON.stringify(submitted)
+    )
+      return;
+    const attempt = value.pending_representation_attempts?.[kind];
+    await AsyncStorage.setItem(
+      key(scope, workID),
+      JSON.stringify({
+        ...value,
+        [field]: attempt?.local ?? previous,
+        pending_representation_states: {
+          ...value.pending_representation_states,
+          [kind]: Boolean(attempt),
+        },
+        pending_representation_ownership: {
+          ...value.pending_representation_ownership,
+          [kind]: attempt?.ownership,
+        },
+        pending_representation_attempts: {
+          ...value.pending_representation_attempts,
+          [kind]: undefined,
+        },
+      }),
+    );
+  });
+}
+
 const reconciliations = new Map<string, Promise<RepresentationConflict[]>>();
 
 export async function reconcileOfflineRepresentationStates(

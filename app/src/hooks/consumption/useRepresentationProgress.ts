@@ -2,12 +2,17 @@ import { serializeEditionSave } from '@/lib/consumption/offline-representation';
 import { useEffect, useRef, type RefObject } from 'react';
 import type { RepresentationState, Work } from '@/generated/api';
 import type { MediaChoice } from '@/lib/consumption/consumption';
-import { maySaveReadingPosition, readingProofForWork } from '@/lib/consumption/reading-proof';
+import {
+  maySaveReadingPosition,
+  readingProofForWork,
+  OwnershipSupersededError,
+} from '@/lib/consumption/reading-proof';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { activeStorageScope } from '@/lib/storage-scope';
 import {
   offlineRepresentationState,
   acknowledgeOfflineRepresentationState,
+  rejectOfflineRepresentationState,
   reconcileOfflineRepresentationStates,
   updateOfflineRepresentationState,
   type RepresentationConflict,
@@ -122,7 +127,17 @@ export function useRepresentationProgress({
             saveScope,
             ownership,
           );
-          if (!isCurrentReader() || !maySaveReadingPosition(work.id)) return 'error';
+          if (!isCurrentReader() || !maySaveReadingPosition(work.id)) {
+            if (staged)
+              await rejectOfflineRepresentationState(
+                work.id,
+                kind,
+                local,
+                state ?? null,
+                saveScope,
+              );
+            return 'error';
+          }
         }
         const next = await api.updateRepresentationState(
           selected.representation.id,
@@ -168,6 +183,11 @@ export function useRepresentationProgress({
         }
         return 'saved';
       } catch (error) {
+        if (error instanceof OwnershipSupersededError) {
+          if (staged)
+            await rejectOfflineRepresentationState(work.id, kind, local, state ?? null, saveScope);
+          return 'error';
+        }
         if (error instanceof APIError && error.status === 409 && work && isCurrentReader()) {
           try {
             const remote = await api.representationState(selected.representation.id);

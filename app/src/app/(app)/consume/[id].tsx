@@ -254,7 +254,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
 
   function onInteractiveReaderLocation(location: ReaderLocation) {
     // Keep the exact restored cursor, but ignore gestures already in flight.
-    if (choiceInFlight.current && location.reason !== 'restore') return;
+    if (location.reason !== 'restore' && (choiceInFlight.current || !session.canInteract())) return;
     onReaderLocation(location);
   }
 
@@ -286,6 +286,8 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
   }
 
   const { pausedDevice, bindRepresentations, contentReady, contentFailed } = session;
+  // The takeover dialog already shows a resume in progress, so the paused notice steps aside.
+  const resumeInFlight = session.state.kind === 'claiming';
   const selectedEPUBRepresentationID = selectedEPUB?.representation.id ?? '';
   const selectedAudioRepresentationID = selectedAudio?.representation.id ?? '';
 
@@ -389,7 +391,9 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       {choiceBusy && !placeConflict ? <Notice>Opening your chosen place…</Notice> : null}
       {notice && !offlineReaderNotice && !(pausedDevice && notice === OWNERSHIP_LOST_MESSAGE) ? (
         <View className="px-5 pt-3">
-          <Notice danger>{notice}</Notice>
+          <Notice danger onDismiss={() => setNotice('')}>
+            {notice}
+          </Notice>
         </View>
       ) : null}
       {(progressConflict || editionConflict) && session.mayWrite && choiceDeferred ? (
@@ -714,7 +718,12 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         </View>
         {/* Status changes must not repaginate the mounted reader after restore. */}
         <View pointerEvents="box-none" className="absolute inset-x-0 top-0">
-          {pausedDevice && mode === 'read' ? (
+          {session.checkingOwnership ? (
+            <View className="px-4 pt-4">
+              <Notice tone="info">Checking where you left off…</Notice>
+            </View>
+          ) : null}
+          {pausedDevice && mode === 'read' && !resumeInFlight ? (
             <View className="mx-auto w-full max-w-[680px] px-4 pb-3 pt-3">
               <PausedElsewhereNotice
                 surface="reader"
@@ -751,7 +760,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           handleSkipForward={handleSkipForward}
           handlePlayPause={handlePlayPause}
           pausedNotice={
-            pausedDevice ? (
+            pausedDevice && !resumeInFlight ? (
               <PausedElsewhereNotice
                 surface="player"
                 device={pausedDevice}

@@ -85,14 +85,14 @@ bunx expo prebuild --platform ios
 cd ios
 pod install --repo-update
 cd ../..
-make ios-dev
+make ios
 ```
 
 On the WSL development host:
 
 ```sh
-make dev-server
-EXPO_PUBLIC_API_URL=http://192.168.86.28:8080 make expo-dev
+make server
+EXPO_PUBLIC_API_URL=http://192.168.86.28:8080 make expo
 ```
 
 Sign in on the iPhone, then open `aldus://reader-spike`. Verify Alice Chapter 1 renders, forward/back respond, a saved location survives **Reopen saved**, **Go to known position** moves, and selecting a complete aligned passage followed by **Capture for sync** produces a canonical segment in the diagnostics.

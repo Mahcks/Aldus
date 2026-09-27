@@ -204,7 +204,7 @@ describe('Readium config plugin', () => {
     expect(restore.match(/navigator.aldusVisibleResourceLocator\(\)/g)).toHaveLength(3);
     expect(restore).toContain('window.readium.aldusLocatorVisible');
     expect(restore).toContain('verifiedVisible?.href.string.split');
-    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(4);
+    expect(restore.match(/self.restorationGeneration == generation/g)).toHaveLength(5);
     expect(restore).toContain('window.readium.aldusRestoreCFI');
     expect(restore).toContain('window.readium.aldusCFIVisible');
     expect(restore).toContain('cfi-resource-not-in-spine');

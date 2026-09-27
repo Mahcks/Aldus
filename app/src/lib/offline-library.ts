@@ -24,6 +24,7 @@ export {
   offlineRepresentationState,
   updateOfflineRepresentationState,
   acknowledgeOfflineRepresentationState,
+  rejectOfflineRepresentationState,
   reconcileOfflineRepresentationStates,
 } from './representation-outbox.web';
 

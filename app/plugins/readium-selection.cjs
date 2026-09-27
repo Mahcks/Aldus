@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { patchRestoreProbe } = require('./readium-restore.cjs');
+const { patchHighlightRects } = require('./readium-highlight.cjs');
 
 function replaceHook(source, hook, replacement) {
   if (!source.includes(hook)) {
@@ -346,8 +347,14 @@ function patchEdgeTaps(source) {
 if (require.main === module) {
   const root = process.argv[2];
   const updates = [
-    ['Sources/Navigator/EPUB/Assets/Static/scripts/readium-reflowable.js', patchRestoreProbe],
-    ['Sources/Navigator/EPUB/Assets/Static/scripts/readium-fixed.js', patchRestoreProbe],
+    [
+      'Sources/Navigator/EPUB/Assets/Static/scripts/readium-reflowable.js',
+      (source) => patchHighlightRects(patchRestoreProbe(source)),
+    ],
+    [
+      'Sources/Navigator/EPUB/Assets/Static/scripts/readium-fixed.js',
+      (source) => patchHighlightRects(patchRestoreProbe(source)),
+    ],
     [
       'Sources/Navigator/EPUB/EPUBNavigatorViewController.swift',
       (source) => patchVisibleResource(patchSelection(source)),

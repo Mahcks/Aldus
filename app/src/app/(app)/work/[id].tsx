@@ -35,7 +35,7 @@ import { formatDuration } from '@/lib/format';
 import { getDeviceIdentity } from '@/lib/device-identity';
 import { activeElsewhereHint } from '@/lib/consumption/handoff-copy';
 import { PROMPT_WINDOW_SECONDS } from '@/lib/consumption/reading-session';
-import { fadeIn, layoutShift } from '@/components/ui/motion';
+import { fadeIn } from '@/components/ui/motion';
 import {
   ReadingStatusDialog,
   readingStatusLabel,
@@ -136,7 +136,6 @@ export default function WorkScreen() {
   const [collectionBusy, setCollectionBusy] = useState(false);
   const [collectionError, setCollectionError] = useState('');
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [descriptionToggled, setDescriptionToggled] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTabKey>('about');
   const [activeElsewhere, setActiveElsewhere] = useState<ReadingOwner | null>(null);
 
@@ -648,7 +647,7 @@ export default function WorkScreen() {
     ) : null;
 
   const descriptionBody = description ? (
-    <AnimatedView layout={descriptionToggled ? layoutShift : undefined} className="gap-1">
+    <View className="gap-1">
       <Text
         numberOfLines={descriptionExpanded ? undefined : split ? 6 : 5}
         className="max-w-[64ch] text-base leading-7 text-muted"
@@ -660,14 +659,11 @@ export default function WorkScreen() {
           <Button
             label={descriptionExpanded ? 'Show less' : 'Show more'}
             kind="quiet"
-            onPress={() => {
-              setDescriptionToggled(true);
-              setDescriptionExpanded((current) => !current);
-            }}
+            onPress={() => setDescriptionExpanded((current) => !current)}
           />
         </View>
       ) : null}
-    </AnimatedView>
+    </View>
   ) : canEdit ? (
     <View className="gap-2">
       <Text className="max-w-[64ch] text-base text-muted">
@@ -770,23 +766,15 @@ export default function WorkScreen() {
             {downloadButton}
           </View>
         </View>
-        <DetailSection index={1} title="About this book">
-          {descriptionBody}
-        </DetailSection>
-        {editionsBody ? (
-          <DetailSection index={2} title="Editions">
-            {editionsBody}
-          </DetailSection>
-        ) : null}
+        <DetailSection title="About this book">{descriptionBody}</DetailSection>
+        {editionsBody ? <DetailSection title="Editions">{editionsBody}</DetailSection> : null}
         {factsBody ? (
-          <DetailSection index={3} title="Details">
+          <DetailSection title="Details">
             <View className="max-w-lg">{factsBody}</View>
           </DetailSection>
         ) : null}
         {requestBody ? (
-          <DetailSection index={4} title="Get another format">
-            {requestBody}
-          </DetailSection>
+          <DetailSection title="Get another format">{requestBody}</DetailSection>
         ) : null}
       </View>
     </View>
@@ -846,11 +834,7 @@ export default function WorkScreen() {
         {activeTab === 'details' ? factsBody : null}
         {activeTab === 'editions' ? editionsBody : null}
       </AnimatedView>
-      {requestBody ? (
-        <DetailSection index={1} title="Get another format">
-          {requestBody}
-        </DetailSection>
-      ) : null}
+      {requestBody ? <DetailSection title="Get another format">{requestBody}</DetailSection> : null}
     </View>
   );
 
