@@ -124,10 +124,12 @@ export function mapReadiumSelection(
     const text = fold(segment.text);
     const match = selectionMatch(text, selected, before, after);
     if (match.indexes.length !== 1) return [];
+    const offset = originalTextOffset(segment.text, match.indexes[0]);
+    if (offset === undefined) return [];
     return [
       {
         segment,
-        offset: canonicalTextOffset(text.slice(0, match.indexes[0]), text),
+        offset,
         contextual: match.contextual,
       },
     ];
@@ -155,21 +157,45 @@ export function mapReadiumSelectionStart(
 ) {
   const complete = mapReadiumSelection(locator, text, segments);
   if (complete) return complete;
-  const selected = text.replace(/\s+/gu, ' ').trim();
-  const first = selected.match(/^\S+/u)?.[0];
-  if (!first) return undefined;
-  return mapReadiumSelection(
-    {
-      ...locator,
-      text: {
-        before: locator.text?.before,
-        highlight: first,
-        after: selected.slice(first.length) + (locator.text?.after ?? ''),
-      },
-    },
-    first,
-    segments,
-  );
+  const selected = fold(text);
+  const before = fold(locator.text?.before ?? '');
+  const href = normalizeHref(locator.href);
+  const matches = segments.flatMap((segment) => {
+    if (!segment.highlightable || normalizeHref(segment.epub_href) !== href) return [];
+    const value = fold(segment.text);
+    const points = [];
+    for (const { index } of value.matchAll(/\S+/gu)) {
+      const remainder = value.slice(index);
+      if (!selected.startsWith(remainder) || selected[remainder.length] !== ' ') continue;
+      const prefix = value.slice(0, index).trim();
+      if (before && prefix && !before.endsWith(prefix) && !prefix.endsWith(before)) continue;
+      const offset = originalTextOffset(segment.text, index);
+      if (offset !== undefined)
+        points.push({
+          href: segment.epub_href,
+          locator: { ...(segment.epub_locator as object), segment_id: segment.id },
+          offset,
+        });
+    }
+    return points;
+  });
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Matching may expand ligatures; canonical offsets still count the original text. */
+function originalTextOffset(value: string, foldedIndex: number) {
+  const text = value.replace(/\s+/gu, ' ').trim();
+  let index = 0;
+  // ponytail: prefix normalization is quadratic in sentence length; build an offset map if long segments become costly.
+  for (const character of text) {
+    if (
+      !/^\p{M}/u.test(text.slice(index)) &&
+      text.slice(0, index).normalize('NFKC').toLocaleLowerCase().length === foldedIndex
+    ) {
+      return canonicalTextOffset(text.slice(0, index), text);
+    }
+    index += character.length;
+  }
 }
 
 export function readiumSearchQuery(segment: AlignmentSegment, offset: number) {
@@ -274,9 +300,9 @@ const fold = (value: string) =>
 function selectionMatch(text: string, selected: string, before: string, after: string) {
   for (const window of [80, 40, 20, 8]) {
     const anchors = [
-      joinText(before.slice(-window), selected),
-      joinText(selected, after.slice(0, window)),
-    ];
+      before ? joinText(before.slice(-window), selected) : '',
+      after ? joinText(selected, after.slice(0, window)) : '',
+    ].filter(Boolean);
     for (const anchor of anchors) {
       const indexes = occurrences(text, anchor).map((index) =>
         anchor.startsWith(selected) ? index : index + anchor.length - selected.length,

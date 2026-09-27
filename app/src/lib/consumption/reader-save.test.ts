@@ -912,7 +912,7 @@ test('late native page notifications do not erase a restored selection on the sa
     'utf8',
   );
   const source = transpiler.transformSync(functionSource('handleLocation', native));
-  const selected = { href: 'chapter.xhtml', locations: { progression: 0 } };
+  const selected = { href: 'chapter.xhtml#epubcfi(/6/2!/4/2:1)', locations: { progression: 0 } };
   const events: string[] = [];
   const context = {
     pendingNavigation: { current: undefined },
@@ -931,7 +931,7 @@ test('late native page notifications do not erase a restored selection on the sa
     reader: { current: { currentVisibleLocation: async () => selected } },
     savedEPUBCFI: () => ({ cfi: 'verified-visible-anchor' }),
     __DEV__: false,
-    preferredReadiumLocator: (locator: unknown) => locator,
+    preferredReadiumLocator: (locator: unknown, visible: unknown) => visible ?? locator,
     mapReadiumLocator: () => undefined,
     lastProgression: { current: 0 },
     readiumLocationReason: () => ({ reason: 'forward', pendingDirection: undefined }),
@@ -946,7 +946,150 @@ test('late native page notifications do not erase a restored selection on the sa
   expect(context.selectedTextLocation.current).toBe('saved-range');
   expect(context.selectedPage.current).toBe(selected);
   context.direction.current = 'forward';
-  await onLocation({ ...selected, locations: { progression: 0.3 } });
+  await onLocation({ href: 'chapter.xhtml', locations: { progression: 0.3 } });
   expect(events).toEqual(['clear-feedback', 'clear-highlight', 'publish']);
   expect(context.selectedPage.current).toBeUndefined();
+
+  // Saving a new selection uses currentPage as its visible-page baseline.
+  // Readium's reported chapter-only locator cannot identify that page.
+  expect(context.currentPage.current.href).toBe(selected.href);
+  expect(context.currentPage.current.locations.progression).toBe(0.3);
+  context.selectedPage.current = context.currentPage.current;
+  context.selectedTextLocation.current = 'new-saved-range';
+  events.length = 0;
+  await onLocation({ href: 'chapter.xhtml', locations: { progression: 0.31 } });
+  expect(events).toEqual([]);
+  expect(context.selectedTextLocation.current).toBe('new-saved-range');
+});
+
+test('native restore diagnostics retain anchors without dumping publication text', () => {
+  const native = readFileSync(
+    new URL('../../components/consumption/reader/EPUBReader.native.tsx', import.meta.url),
+    'utf8',
+  );
+  const source = transpiler.transformSync(functionSource('locatorDiagnostic', native));
+  const summarize = new Function(`${source}; return locatorDiagnostic;`)();
+  const summary = summarize({
+    href: 'chapter.xhtml#epubcfi(/6/2!/4/2:9)',
+    locations: { progression: 0.2 },
+    text: { highlight: 'x'.repeat(100000), before: 'private prefix', after: 'private suffix' },
+  });
+  expect(summary.href).toBe('chapter.xhtml#epubcfi(/6/2!/4/2:9)');
+  expect(summary.highlightCharacters).toBe(100000);
+  expect(JSON.stringify(summary).length).toBeLessThan(250);
+  expect(JSON.stringify(summary)).not.toContain('private');
+  expect(summarize(undefined)).toBeUndefined();
+});
+
+test('web selection completion saves without click and suppresses the following duplicate click', () => {
+  const web = readFileSync(
+    new URL('../../components/consumption/reader/EPUBReader.web.tsx', import.meta.url),
+    'utf8',
+  );
+  const source = transpiler.transformSync(functionSource('saveReadingIntent', web));
+  const saves: unknown[] = [];
+  let selected: { href: string; text: string } | undefined = {
+    href: 'chapter.xhtml',
+    text: 'A passage selected halfway through the chapter.',
+  };
+  const context = {
+    disposed: false,
+    product: true,
+    doc: { getSelection: () => ({ isCollapsed: !selected, toString: () => selected?.text ?? '' }) },
+    readingIntentPoint: () => ({}),
+    view: { book: { sections: [{ id: 'chapter.xhtml' }] }, getCFI: () => 'selection-start' },
+    index: 0,
+    page: { current: { state: 'none' } },
+    captureSelectionRange: () => selected,
+    containingSegment: () => undefined,
+    pinnedCursor: { current: false },
+    cursor: { current: undefined },
+    __DEV__: false,
+    segmentsRef: { current: [] },
+    onLocationRef: { current: (location: unknown) => saves.push(location) },
+  };
+  const complete = new Function(
+    ...Object.keys(context),
+    `let completedSelection; ${source}; return saveReadingIntent;`,
+  )(...Object.values(context));
+  complete({ type: 'pointerup', clientX: 100, clientY: 200 });
+  expect(saves).toEqual([
+    {
+      href: 'chapter.xhtml',
+      cfi: 'selection-start',
+      selection: selected,
+      syncState: 'none',
+      reason: 'explicit',
+    },
+  ]);
+  expect(context.pinnedCursor.current).toBe(true);
+  complete({ type: 'click', clientX: 100, clientY: 200 });
+  expect(saves).toHaveLength(1);
+  selected = { href: 'chapter.xhtml', text: 'A longer keyboard selection.' };
+  complete({ type: 'keyup' });
+  expect(saves).toHaveLength(2);
+  selected = undefined;
+  complete({ type: 'pointerup', clientX: 100, clientY: 200 });
+  complete({ type: 'keyup' });
+  expect(saves).toHaveLength(2);
+});
+
+test('an unmapped aligned selection is retained without a synchronized success confirmation', async () => {
+  const { savedSelection } = await import('./resume-selection');
+  const states: string[] = [];
+  const notices: string[] = [];
+  const payloads: unknown[] = [];
+  let confirmed = false;
+  const context = {
+    readerInputBlocked: { current: false },
+    readerScope: 'scope',
+    readerOrigin: 'origin',
+    representationSaveAttempt: { current: 0 },
+    representationSaves: { current: Promise.resolve() },
+    alignmentID: 'alignment',
+    progressRef: { current: position('earlier', 4) },
+    progressConflictRef: { current: undefined },
+    activeStorageScope: () => 'scope',
+    getAPIBaseURL: () => 'origin',
+    work: { id: 'book' },
+    maySaveReadingPosition: () => true,
+    readingProofForWork: () => ({ device_id: 'phone', epoch: 1 }),
+    selectedEPUB: { id: 'epub', sha256: 'hash' },
+    savedSelection,
+    saveRepresentation: async (_kind: string, value: unknown) => {
+      payloads.push(value);
+      return 'saved';
+    },
+    saveCanonical: async () => {
+      throw new Error('Unmapped text must never create a canonical point');
+    },
+    setSaveState: (value: string) => states.push(value),
+    setNotice: (value: string) => notices.push(value),
+    reader: {
+      current: {
+        confirmSavedPlace: () => {
+          confirmed = true;
+        },
+      },
+    },
+  };
+  const save = new Function(
+    ...Object.keys(context),
+    `${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
+  )(...Object.values(context));
+  expect(
+    await save({
+      href: 'chapter.xhtml',
+      cfi: 'selected',
+      reason: 'explicit',
+      selection: { href: 'chapter.xhtml', text: 'Entire selected passage', before: '', after: '' },
+    }),
+  ).toBe(false);
+  expect(payloads).toHaveLength(1);
+  expect(payloads[0]).toMatchObject({
+    resume_selection: { range: { text: 'Entire selected passage' } },
+  });
+  expect(confirmed).toBe(false);
+  expect(states.at(-1)).toBe('error');
+  expect(notices[0]).toContain('could not be synchronized');
 });

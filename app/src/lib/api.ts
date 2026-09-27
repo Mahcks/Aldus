@@ -104,6 +104,7 @@ import {
   OwnershipSupersededError,
   ownershipConflictFrom,
   readingProofForRepresentation,
+  readingWorkForRepresentation,
   readingProofForWork,
   reportOwnershipLost,
 } from './consumption/reading-proof';
@@ -754,21 +755,25 @@ export const api = {
   epubToCanonical: (id: string, locator: EPUBLocator) =>
     request<CanonicalPosition>(`/alignments/${id}/resolve/epub`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify(locator),
     }),
   audioToCanonical: (id: string, locator: AudioLocator) =>
     request<CanonicalPosition>(`/alignments/${id}/resolve/audio`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify(locator),
     }),
   canonicalToEPUB: (id: string, position: CanonicalPosition) =>
     request<EPUBLocator>(`/alignments/${id}/locators/epub`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify(position),
     }),
   canonicalToAudio: (id: string, position: CanonicalPosition) =>
     request<AudioLocator>(`/alignments/${id}/locators/audio`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify(position),
     }),
   updateWorkProgress: async (id: string, body: WorkProgressUpdate) => {
@@ -778,6 +783,7 @@ export const api = {
       () =>
         request<CanonicalPosition>(`/works/${id}/progress`, {
           method: 'PUT',
+          signal: AbortSignal.timeout(15_000),
           body: JSON.stringify(update),
         }),
       update.ownership,
@@ -807,13 +813,14 @@ export const api = {
     const proof =
       writesPosition && !('ownership' in body) ? readingProofForRepresentation(id) : undefined;
     return fenced(
-      proof?.workID,
+      proof?.workID ?? (writesPosition ? readingWorkForRepresentation(id) : undefined),
       () =>
         request<RepresentationState>(`/representations/${id}/state`, {
           method: 'PUT',
+          signal: AbortSignal.timeout(15_000),
           body: JSON.stringify(proof ? { ownership: proof.proof, ...body } : body),
         }),
-      proof?.proof,
+      'ownership' in body ? body.ownership : proof?.proof,
     );
   },
   readingSession: (workID: string) =>
@@ -821,14 +828,20 @@ export const api = {
   claimReadingSession: (workID: string, body: ClaimReadingSessionRequest) =>
     request<ReadingClaim>(`/works/${workID}/reading-session/claim`, {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       body: JSON.stringify(body),
     }),
   refreshReadingSession: (workID: string, proof: ReadingOwnershipProof) =>
-    request<ReadingOwner>(`/works/${workID}/reading-session/heartbeat`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(10_000),
-      body: JSON.stringify(proof),
-    }),
+    fenced(
+      workID,
+      () =>
+        request<ReadingOwner>(`/works/${workID}/reading-session/heartbeat`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify(proof),
+        }),
+      proof,
+    ),
   readerPreferences: () => request<ReaderPreferences>('/reader-preferences'),
   updateReaderPreferences: (body: ReaderPreferencesUpdate) =>
     request<ReaderPreferences>('/reader-preferences', {

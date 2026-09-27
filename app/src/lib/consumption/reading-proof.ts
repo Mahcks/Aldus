@@ -69,6 +69,17 @@ export function readingProofForRepresentation(representationID: string) {
   return undefined;
 }
 
+/** Find the open book without replacing the proof carried by a queued save. */
+export function readingWorkForRepresentation(representationID: string) {
+  for (const registration of registrations.values()) {
+    if (
+      registrationFor(registration.workID) === registration &&
+      registration.representationIDs.has(representationID)
+    )
+      return registration.workID;
+  }
+}
+
 // Keep a blocked registration after unmount: late callbacks must not downgrade
 // into legacy, unfenced writes simply because their screen has closed.
 export function pauseReadingProof(workID: string) {

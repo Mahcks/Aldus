@@ -66,7 +66,7 @@ test('independent readers require takeover and the previous reader pauses', asyn
     if (await initialPrompt.isVisible()) await initialPrompt.click();
     await expect(first.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
     await expectExactHighlight(first);
-    // Save a real multiword selection through the production reader and API.
+    // Completing a selection without a click must save the range and canonical start.
     const rangeSaved = first.waitForResponse((response) => {
       if (response.request().method() !== 'PUT' || !response.url().endsWith('/state')) return false;
       return Boolean(
@@ -88,10 +88,11 @@ test('independent readers require takeover and the previous reader pauses', asyn
           const start = nodes.find((node) => node.data.trim())!;
           range.setStart(start, start.data.search(/\S/u));
           range.setEnd(nodes.at(-1)!, nodes.at(-1)!.length);
+          paragraph.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
           const selection = document.getSelection()!;
           selection.removeAllRanges();
           selection.addRange(range);
-          paragraph.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          paragraph.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
           return range.toString().replace(/\s+/gu, ' ').trim();
         }, segment.text)
         .catch(() => null);
@@ -103,9 +104,29 @@ test('independent readers require takeover and the previous reader pauses', asyn
     expect(expectedHighlight.length).toBeGreaterThan(30);
     expect((await rangeSaved).ok()).toBe(true);
     exactPlace = await (await first.request.get(progressURL)).json();
+    // Reproduce a delayed pagination event after the exact selection was saved.
+    // It must not replace the start/range with the end of the visible passage.
+    await first.evaluate(() => {
+      const view = document.querySelector('foliate-view') as any;
+      for (const { doc, index } of view.renderer.getContents()) {
+        const selected = doc.getSelection();
+        if (!selected?.rangeCount || selected.isCollapsed) continue;
+        const range = selected.getRangeAt(0).cloneRange();
+        range.collapse(false);
+        view.dispatchEvent(
+          new CustomEvent('relocate', {
+            detail: { range, cfi: view.getCFI(index, range), reason: 'snap' },
+          }),
+        );
+        return;
+      }
+      throw new Error('Expected an active saved selection');
+    });
     const firstOwner = await (
       await first.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')
     ).json();
+
+    const activeReaderBounds = await first.locator('foliate-view').boundingBox();
 
     await signInAsTestAdmin(second);
     await second.goto(consume);
@@ -128,6 +149,10 @@ test('independent readers require takeover and the previous reader pauses', asyn
     await expect(first.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({
       timeout: 25000,
     });
+
+    // The pause notice must not move or resize the publication. Reflow after
+    // native restore can otherwise move the verified passage and save that jump.
+    expect(await first.locator('foliate-view').boundingBox()).toEqual(activeReaderBounds);
 
     const owner = await (
       await first.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')
@@ -440,3 +465,86 @@ test('an offline browser keeps its place and offers a choice after another devic
   );
   expect(retained.length).toBeGreaterThan(0);
 });
+
+for (const width of [390, 1024, 1440]) {
+  test(`reader notices preserve publication geometry at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await signInAsTestAdmin(page);
+    await page.goto(consume);
+    const next = page.getByRole('button', { name: 'Next page', exact: true });
+    const claim = page.getByRole('button', { name: 'Continue here', exact: true });
+    await expect(next.or(claim)).toBeVisible({ timeout: 30000 });
+    if (await claim.isVisible()) await claim.click();
+    await expect(next).toBeEnabled({ timeout: 30000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const before = await page.locator('foliate-view').boundingBox();
+    await expect(page.getByText(/^Page \d+( of \d+ in chapter)?$/)).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath(`reader-footer-${width}.png`),
+      animations: 'disabled',
+    });
+    await page.route('**/api/v1/representations/*/state', async (route) => {
+      if (route.request().method() !== 'PUT') return route.continue();
+      await route.fulfill({
+        status: 500,
+        contentType: 'text/plain',
+        body: 'Test saved-place warning',
+      });
+    });
+    await next.click();
+    await expect(page.getByText('Test saved-place warning', { exact: true })).toBeVisible();
+    expect(await page.locator('foliate-view').boundingBox()).toEqual(before);
+  });
+}
+
+for (const target of ['progress', 'state']) {
+  test(`saving continues after the server accepts ${target} but its response is lost`, async ({
+    page,
+  }) => {
+    await signInAsTestAdmin(page);
+    await page.goto(consume);
+    const next = page.getByRole('button', { name: 'Next page', exact: true });
+    const claim = page.getByRole('button', { name: 'Continue here', exact: true });
+    await expect(next.or(claim)).toBeVisible({ timeout: 30000 });
+    if (await claim.isVisible()) await claim.click();
+    await expect(next).toBeEnabled({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Open table of contents' }).click();
+    await page
+      .getByRole('button', { name: 'CHAPTER I. Down the Rabbit-Hole', exact: true })
+      .click();
+    await expect(page.getByText('Reading place saved', { exact: true })).toBeVisible();
+    let dropped = false;
+    let accepted!: () => void;
+    const committed = new Promise<void>((resolve) => {
+      accepted = resolve;
+    });
+    await page.route(`**/${target}`, async (route) => {
+      if (route.request().method() !== 'PUT' || dropped) return route.continue();
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      dropped = true;
+      await route.abort('failed');
+      accepted();
+    });
+    await next.click();
+    await committed;
+    const url = testServer + '/api/v1/works/' + workID + '/progress';
+    const previous = await (await page.request.get(url)).json();
+    await next.click();
+    await expect
+      .poll(async () => (await (await page.request.get(url)).json()).revision)
+      .toBeGreaterThan(previous.revision);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            Object.entries(localStorage).filter(
+              ([key]) => key.includes('outbox:') && !key.endsWith(':index'),
+            ).length,
+        ),
+      )
+      .toBe(0);
+    await expect(page.getByText('Reading place saved', { exact: true })).toBeVisible();
+  });
+}

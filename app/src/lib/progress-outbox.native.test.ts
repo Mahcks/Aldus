@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, expect, mock, spyOn, test } from 'bun:test';
 
 const storage = new Map<string, string>();
 let blockedIndexWrite: { started: () => void; wait: Promise<void> } | undefined;
@@ -486,4 +486,229 @@ test('reconnect replay waits for a foreground edition acknowledgment instead of 
   expect(await replay).toEqual([]);
   expect(requests).toBe(0);
   expect(await web.offlineRepresentationState('work', 'epub')).toEqual(saved);
+});
+
+test('lost progress acknowledgments recover without conflict and permit the next save', async () => {
+  const { registerReadingProof, clearReadingProof } = await import('./consumption/reading-proof');
+  for (const replayFirst of [true, false]) {
+    const workID = `lost-response-${replayFirst}`;
+    const proof = { device_id: 'phone', epoch: 12 };
+    registerReadingProof(workID, proof);
+    let remote = { ...update, revision: 0 };
+    let loseResponse = true;
+    const revisions: number[] = [];
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).endsWith('/heartbeat')) return Response.json(proof);
+      if (init?.method !== 'PUT') return Response.json(remote);
+      const body = JSON.parse(String(init.body));
+      revisions.push(body.expected_revision);
+      if (body.expected_revision !== remote.revision)
+        return new Response('conflict', { status: 409 });
+      remote = { ...body, revision: remote.revision + 1 };
+      if (loseResponse) {
+        loseResponse = false;
+        throw new TypeError('response lost after commit');
+      }
+      return Response.json(remote);
+    }) as typeof fetch;
+    try {
+      expect(await saveWorkProgress(workID, update)).toBeNull();
+      if (replayFirst) expect(await reconcilePendingProgress(workID)).toBeNull();
+      const next = await saveWorkProgress(workID, { ...update, offset: 750_000 });
+      expect(next).toMatchObject({ offset: 750_000, revision: 2 });
+      expect(revisions).toEqual([0, 0, 1]);
+      expect(await pendingProgress(workID)).toBeNull();
+    } finally {
+      clearReadingProof(workID);
+    }
+  }
+});
+
+test('lost-response recovery preserves a different place or superseded ownership', async () => {
+  const { registerReadingProof, clearReadingProof } = await import('./consumption/reading-proof');
+  for (const scenario of ['different-place', 'different-owner', 'later-revision']) {
+    const workID = `lost-${scenario}`;
+    const proof = { device_id: 'phone', epoch: 2 };
+    registerReadingProof(workID, proof);
+    globalThis.fetch = (async () => {
+      throw new TypeError('offline');
+    }) as unknown as typeof fetch;
+    try {
+      await saveWorkProgress(workID, update);
+      const remote = {
+        ...update,
+        offset: scenario === 'different-place' ? 1 : update.offset,
+        revision: scenario === 'later-revision' ? 2 : 1,
+      };
+      globalThis.fetch = (async (input, init) => {
+        if (String(input).endsWith('/heartbeat'))
+          return Response.json({ code: 'ownership_superseded', owner: null }, { status: 409 });
+        if (init?.method === 'PUT') return new Response('conflict', { status: 409 });
+        return Response.json(remote);
+      }) as typeof fetch;
+      expect(await reconcilePendingProgress(workID)).toMatchObject({ remote });
+      expect(await pendingProgress(workID)).not.toBeNull();
+    } finally {
+      clearReadingProof(workID);
+    }
+  }
+});
+
+test('edition replay acknowledges identical accepted content on web and native', async () => {
+  const native = await import('./offline-library.native');
+  const web = await import('./representation-outbox.web');
+  for (const platform of [native, web]) {
+    for (const different of [false, true]) {
+      const workID = `edition-recovery-${platform === web ? 'web' : 'native'}-${different}`;
+      const local = {
+        representation_id: workID,
+        revision: 3,
+        updated_at: '',
+        epub_locator: {
+          href: 'chapter.xhtml',
+          cfi: 'exact',
+          resume_selection: { range: { text: 'Full passage' } },
+        },
+      };
+      const proof = { device_id: 'phone', epoch: 10 };
+      storage.set(
+        `aldus:${activeStorageScope()}:offline-work:${workID}`,
+        JSON.stringify({ work: { id: workID }, epubs: [], audio: [] }),
+      );
+      expect(
+        await platform.updateOfflineRepresentationState(
+          workID,
+          'epub',
+          local,
+          true,
+          activeStorageScope(),
+          proof,
+        ),
+      ).toBe(true);
+      const remote = {
+        ...local,
+        revision: 4,
+        epub_locator: {
+          resume_selection: local.epub_locator.resume_selection,
+          cfi: different ? 'other' : 'exact',
+          href: 'chapter.xhtml',
+        },
+      };
+      globalThis.fetch = (async (input, init) => {
+        if (String(input).endsWith('/heartbeat')) return Response.json(proof);
+        return init?.method === 'PUT'
+          ? new Response('conflict', { status: 409 })
+          : Response.json(remote);
+      }) as typeof fetch;
+      const conflicts = await platform.reconcileOfflineRepresentationStates(workID);
+      expect(conflicts).toHaveLength(different ? 1 : 0);
+      if (!different) {
+        expect(await platform.offlineRepresentationState(workID, 'epub')).toMatchObject({
+          revision: 4,
+        });
+        expect(await platform.reconcileOfflineRepresentationStates(workID)).toEqual([]);
+      }
+    }
+  }
+});
+
+test('a stalled progress write times out, retains intent, and releases the queue for another book', async () => {
+  const controller = new AbortController();
+  const deadline = spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+  let started!: () => void;
+  const fetching = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  globalThis.fetch = (async (_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      init!.signal!.addEventListener('abort', () => reject(controller.signal.reason), {
+        once: true,
+      });
+      started();
+    })) as typeof fetch;
+  try {
+    const stalled = saveWorkProgress('stalled-book', update);
+    await fetching;
+    const next = saveWorkProgress('next-book', update);
+    controller.abort();
+    expect(await stalled).toBeNull();
+    globalThis.fetch = (async () =>
+      Response.json({ ...update, revision: 1 })) as unknown as typeof fetch;
+    deadline.mockRestore();
+    expect(await next).toMatchObject({ revision: 1 });
+    expect(await pendingProgress('stalled-book')).toMatchObject(update);
+    expect(await pendingProgress('next-book')).toBeNull();
+  } finally {
+    deadline.mockRestore();
+  }
+});
+
+test('reconnect preserves newer offline progress after an earlier reply was lost', async () => {
+  const proof = { device_id: 'phone', epoch: 22 };
+  const workID = 'lost-then-offline';
+  let online = true;
+  let remote = { ...update, revision: 0 };
+  globalThis.fetch = (async (input, init) => {
+    if (!online) throw new TypeError('offline');
+    if (String(input).endsWith('/heartbeat')) return Response.json(proof);
+    if (init?.method !== 'PUT') return Response.json(remote);
+    const body = JSON.parse(String(init.body));
+    if (body.expected_revision !== remote.revision)
+      return new Response('conflict', { status: 409 });
+    remote = { ...body, revision: remote.revision + 1 };
+    if (remote.revision === 1) {
+      online = false;
+      throw new TypeError('reply lost');
+    }
+    return Response.json(remote);
+  }) as typeof fetch;
+  await saveWorkProgress(workID, { ...update, ownership: proof });
+  await saveWorkProgress(workID, { ...update, ownership: proof, offset: 500_000 });
+  await saveWorkProgress(workID, { ...update, ownership: proof, offset: 750_000 });
+  online = true;
+  expect(await reconcilePendingProgress(workID)).toBeNull();
+  expect(remote).toMatchObject({ revision: 2, offset: 750_000 });
+  expect(await pendingProgress(workID)).toBeNull();
+});
+
+test('edition replay retains an uncertain earlier write while newer offline edits accumulate', async () => {
+  const native = await import('./offline-library.native');
+  const web = await import('./representation-outbox.web');
+  for (const platform of [native, web]) {
+    const workID = `edition-offline-${platform === web ? 'web' : 'native'}`;
+    const proof = { device_id: 'phone', epoch: 23 };
+    const local = {
+      representation_id: workID,
+      revision: 0,
+      updated_at: '',
+      epub_locator: { cfi: 'first' },
+    };
+    storage.set(
+      `aldus:${activeStorageScope()}:offline-work:${workID}`,
+      JSON.stringify({ work: { id: workID }, epubs: [], audio: [] }),
+    );
+    for (const cfi of ['first', 'second', 'latest']) {
+      await platform.updateOfflineRepresentationState(
+        workID,
+        'epub',
+        { ...local, epub_locator: { cfi } },
+        true,
+        activeStorageScope(),
+        proof,
+      );
+    }
+    let remote = { ...local, revision: 1 };
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).endsWith('/heartbeat')) return Response.json(proof);
+      if (init?.method !== 'PUT') return Response.json(remote);
+      const body = JSON.parse(String(init.body));
+      if (body.expected_revision !== remote.revision)
+        return new Response('conflict', { status: 409 });
+      remote = { ...body, representation_id: workID, revision: remote.revision + 1 };
+      return Response.json(remote);
+    }) as typeof fetch;
+    expect(await platform.reconcileOfflineRepresentationStates(workID)).toEqual([]);
+    expect(await platform.reconcileOfflineRepresentationStates(workID)).toEqual([]);
+    expect(remote).toMatchObject({ revision: 2, epub_locator: { cfi: 'latest' } });
+  }
 });

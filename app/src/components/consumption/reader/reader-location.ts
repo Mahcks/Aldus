@@ -181,9 +181,25 @@ export function readingIntentPoint(doc: Document, x: number, y: number) {
   const selection = doc.getSelection();
   if (selection?.rangeCount && !selection.isCollapsed) {
     // A drag ends after the passage; resume from its document-order start.
-    const point = selection.getRangeAt(0).cloneRange();
-    point.collapse(true);
-    return point;
+    const selected = selection.getRangeAt(0);
+    const root = selected.commonAncestorContainer;
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null = root.nodeType === Node.TEXT_NODE ? root : walker.nextNode();
+    while (node) {
+      const text = node as Text;
+      const start = node === selected.startContainer ? selected.startOffset : 0;
+      const end = node === selected.endContainer ? selected.endOffset : text.length;
+      for (let offset = start; offset < end; offset++) {
+        if (!/\s/u.test(text.data[offset]) && selected.comparePoint(node, offset) === 0) {
+          const point = doc.createRange();
+          point.setStart(node, offset);
+          point.collapse(true);
+          return point;
+        }
+      }
+      node = walker.nextNode();
+    }
+    return null;
   }
   const modern = (
     doc as Document & {

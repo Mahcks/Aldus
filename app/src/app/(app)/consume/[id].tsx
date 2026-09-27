@@ -384,6 +384,26 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
         ? saveStatusView('on-device', mode).label
         : saveLabel || resumeMessage || (offlineReaderNotice ? 'Offline' : '');
 
+  const consumptionNotices = (
+    <>
+      {choiceBusy && !placeConflict ? <Notice>Opening your chosen place…</Notice> : null}
+      {notice && !offlineReaderNotice && !(pausedDevice && notice === OWNERSHIP_LOST_MESSAGE) ? (
+        <View className="px-5 pt-3">
+          <Notice danger>{notice}</Notice>
+        </View>
+      ) : null}
+      {(progressConflict || editionConflict) && session.mayWrite && choiceDeferred ? (
+        <View className="gap-2 px-5 py-3">
+          <Notice tone="warning">Both places are kept. Saving is paused until you choose.</Notice>
+          <Button
+            label="Choose saved place"
+            onPress={() => setChoice({ conflict: placeConflict })}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+
   return (
     <View className="flex-1 bg-canvas">
       <View
@@ -454,16 +474,6 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           ) : null}
         </View>
       </View>
-      {pausedDevice && mode === 'read' ? (
-        <View className="mx-auto w-full max-w-[680px] px-4 pb-3 pt-3">
-          <PausedElsewhereNotice
-            surface="reader"
-            device={pausedDevice}
-            resuming={session.state.kind === 'claiming'}
-            onResume={session.resume}
-          />
-        </View>
-      ) : null}
       {process.env.EXPO_PUBLIC_ALDUS_IOS_ACCEPTANCE === '1' ? (
         <View className="border-b border-line bg-paper px-3 py-1">
           <Button
@@ -474,9 +484,9 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           />
         </View>
       ) : null}
-      {!compactNative && mode === 'read' && readerInteractionReady && controlsEnabled ? (
-        <View className="min-h-[30px] items-center justify-center">
-          {currentSaveStatus ? (
+      {!compactNative && mode === 'read' ? (
+        <View className="h-8 shrink-0 items-center justify-center">
+          {!readerInteractionReady || !controlsEnabled ? null : currentSaveStatus ? (
             <View className="py-1">
               <ProgressStatus mode={mode} state={currentSaveStatus} />
             </View>
@@ -495,25 +505,9 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           )}
         </View>
       ) : null}
-      {choiceBusy && !placeConflict ? <Notice>Opening your chosen place…</Notice> : null}
-      {notice && !offlineReaderNotice && !(pausedDevice && notice === OWNERSHIP_LOST_MESSAGE) ? (
-        <View className="px-5 pt-3">
-          <Notice danger>{notice}</Notice>
-        </View>
-      ) : null}
+      {mode === 'listen' ? consumptionNotices : null}
       {(progressConflict || editionConflict) && session.mayWrite ? (
         <>
-          {choiceDeferred ? (
-            <View className="gap-2 px-5 py-3">
-              <Notice tone="warning">
-                Both places are kept. Saving is paused until you choose.
-              </Notice>
-              <Button
-                label="Choose saved place"
-                onPress={() => setChoice({ conflict: placeConflict })}
-              />
-            </View>
-          ) : null}
           <PlaceChoiceDialog
             visible={!choiceDeferred}
             otherDevice={{
@@ -676,46 +670,62 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           ))}
         </View>
       </Dialog>
-      <View
-        className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}
-        pointerEvents={controlsEnabled ? 'auto' : 'none'}
-        aria-hidden={!controlsEnabled}
-        {...(Platform.OS === 'web' ? { inert: !controlsEnabled } : {})}
-      >
-        <ReaderView
-          mode={mode}
-          selectedEPUB={selectedEPUB}
-          epubSource={epubSource}
-          readerInteractionReady={readerInteractionReady}
-          compactNative={compactNative}
-          reader={reader}
-          alignment={alignment}
-          readerPreferences={readerPreferences}
-          canListenFromReader={canListenFromReader}
-          progressStatus={progressStatus}
-          alignmentID={alignmentID}
-          compactPageSyncLabel={compactPageSyncLabel}
-          syncAvailable={syncAvailable}
-          syncLabel={syncLabel}
-          onReaderLocation={onInteractiveReaderLocation}
-          switchToListen={switchToListen}
-          onReaderReady={onReaderReady}
-          setReaderRestoreError={setReaderRestoreError}
-          setNotice={setNotice}
-          readerHelper={readerHelper}
-          mediaLoading={mediaLoading}
-          work={work}
-          readerRestoreError={readerRestoreError}
-          readerTarget={readerTarget}
-          canRetryRestore={canRetryRestore}
-          restoreReader={restoreReader}
-          leaveReader={leaveReader}
-          paused={Boolean(pausedDevice)}
-        />
-        {pausedDevice ? (
-          // Fades toward the page color, so text recedes the same way in light and dark themes.
-          <View pointerEvents="none" className="absolute inset-0 bg-canvas/70" />
-        ) : null}
+      <View className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}>
+        <View
+          className="min-h-0 flex-1"
+          pointerEvents={controlsEnabled ? 'auto' : 'none'}
+          aria-hidden={!controlsEnabled}
+          {...(Platform.OS === 'web' ? { inert: !controlsEnabled } : {})}
+        >
+          <ReaderView
+            mode={mode}
+            selectedEPUB={selectedEPUB}
+            epubSource={epubSource}
+            readerInteractionReady={readerInteractionReady}
+            compactNative={compactNative}
+            reader={reader}
+            alignment={alignment}
+            readerPreferences={readerPreferences}
+            canListenFromReader={canListenFromReader}
+            progressStatus={progressStatus}
+            alignmentID={alignmentID}
+            compactPageSyncLabel={compactPageSyncLabel}
+            syncAvailable={syncAvailable}
+            syncLabel={syncLabel}
+            onReaderLocation={onInteractiveReaderLocation}
+            switchToListen={switchToListen}
+            onReaderReady={onReaderReady}
+            setReaderRestoreError={setReaderRestoreError}
+            setNotice={setNotice}
+            readerHelper={readerHelper}
+            mediaLoading={mediaLoading}
+            work={work}
+            readerRestoreError={readerRestoreError}
+            readerTarget={readerTarget}
+            canRetryRestore={canRetryRestore}
+            restoreReader={restoreReader}
+            leaveReader={leaveReader}
+            paused={Boolean(pausedDevice)}
+          />
+          {pausedDevice ? (
+            // Fades toward the page color, so text recedes the same way in light and dark themes.
+            <View pointerEvents="none" className="absolute inset-0 bg-canvas/70" />
+          ) : null}
+        </View>
+        {/* Status changes must not repaginate the mounted reader after restore. */}
+        <View pointerEvents="box-none" className="absolute inset-x-0 top-0">
+          {pausedDevice && mode === 'read' ? (
+            <View className="mx-auto w-full max-w-[680px] px-4 pb-3 pt-3">
+              <PausedElsewhereNotice
+                surface="reader"
+                device={pausedDevice}
+                resuming={session.state.kind === 'claiming'}
+                onResume={session.resume}
+              />
+            </View>
+          ) : null}
+          {consumptionNotices}
+        </View>
       </View>
       {mode === 'listen' ? (
         <PlayerView

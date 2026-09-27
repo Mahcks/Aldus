@@ -139,3 +139,35 @@ test('only an exact, uniquely anchored visible quote confirms restoration', () =
     else globalThis.document = previousDocument;
   }
 });
+
+test('range navigation uses its first fragment rather than the union across pages', () => {
+  const source =
+    'const readium={scrollToLocator:function(t){let e=T(t);return!!e&&function(t){return A(t.getBoundingClientRect())}(e)}};';
+  // In an RTL column layout the later fragment is to the left of the start.
+  // The old union-based jump chooses that later page and fails start verification.
+  const first = { left: 800, right: 950, top: 400, bottom: 420, width: 150, height: 20 };
+  const later = { left: 400, right: 550, top: 0, bottom: 20, width: 150, height: 20 };
+  let range = {
+    getClientRects: () => [{ width: 0, height: 0 }, first, later],
+    getBoundingClientRect: () => ({ ...first, left: later.left, width: 550 }),
+  };
+  const scrolls = [];
+  const navigate = new Function(
+    'T',
+    'A',
+    `${patchRestoreProbe(source)}; return readium.scrollToLocator;`,
+  )(
+    () => range,
+    (rect) => {
+      scrolls.push(rect);
+      return true;
+    },
+  );
+  expect(navigate({})).toBe(true);
+  expect(scrolls).toEqual([first]);
+  range = { getClientRects: () => [] };
+  expect(navigate({})).toBe(false);
+  range = null;
+  expect(navigate({})).toBe(false);
+  expect(scrolls).toHaveLength(1);
+});

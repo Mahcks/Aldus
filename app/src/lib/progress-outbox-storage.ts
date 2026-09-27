@@ -6,6 +6,19 @@ import { activeStorageScope, scopedStorageKey } from './storage-scope';
 const key = (scope: string, workID: string) => scopedStorageKey(`progress-outbox:${workID}`, scope);
 const indexKey = (scope: string) => scopedStorageKey('progress-outbox:index', scope);
 let mutations = Promise.resolve();
+type StoredProgress = WorkProgressUpdate & { pending_attempt?: WorkProgressUpdate };
+
+function updateFrom(raw: string | null) {
+  const stored = parseStoredJSON<StoredProgress>(raw);
+  if (!stored) return null;
+  const { pending_attempt: _, ...update } = stored;
+  return update;
+}
+
+export async function pendingAttempt(workID: string, scope: string) {
+  return parseStoredJSON<StoredProgress>(await AsyncStorage.getItem(key(scope, workID)))
+    ?.pending_attempt;
+}
 
 export function serializeProgressMutation<T>(mutation: () => Promise<T>) {
   const result = mutations.then(mutation);
@@ -34,7 +47,7 @@ async function track(scope: string, workID: string, pending: boolean) {
 
 export async function readPendingProgress(workID: string, scope: string) {
   const raw = await AsyncStorage.getItem(key(scope, workID));
-  const progress = parseStoredJSON<WorkProgressUpdate>(raw);
+  const progress = updateFrom(raw);
   if (raw && !progress) {
     await AsyncStorage.removeItem(key(scope, workID));
     await track(scope, workID, false);
@@ -53,7 +66,7 @@ export function pendingProgress(workID: string, scope = activeStorageScope()) {
 
 // Manifest mutations must not wait for the outbox queue: replay updates the manifest.
 export async function pendingProgressSnapshot(workID: string, scope: string) {
-  return parseStoredJSON<WorkProgressUpdate>(await AsyncStorage.getItem(key(scope, workID)));
+  return updateFrom(await AsyncStorage.getItem(key(scope, workID)));
 }
 
 export function discardPendingProgress(workID: string, scope = activeStorageScope()) {
@@ -65,7 +78,11 @@ export async function storePendingProgress(
   workID: string,
   update: WorkProgressUpdate,
   scope: string,
+  attempt?: WorkProgressUpdate,
 ) {
-  await AsyncStorage.setItem(key(scope, workID), JSON.stringify(update));
+  await AsyncStorage.setItem(
+    key(scope, workID),
+    JSON.stringify({ ...update, pending_attempt: attempt }),
+  );
   await track(scope, workID, true);
 }

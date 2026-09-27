@@ -160,6 +160,16 @@ export function useConsumptionActions(
         };
         // Persist the range before canonical I/O, so a rejected save cannot lose it.
         result = await saveRepresentation('epub', locator);
+        if (result !== 'error' && location.selection && alignmentID && !location.sync) {
+          result = 'error';
+          if (attempt === representationSaveAttempt.current) {
+            setSaveState('error');
+            setNotice(
+              'Your highlight was kept, but this passage could not be synchronized. Select its first words again to save your reading place.',
+            );
+          }
+          return;
+        }
         if (result !== 'error' && locator.resume_selection && location.sync && alignmentID) {
           if (!stillOwnsSelection()) {
             result = 'error';

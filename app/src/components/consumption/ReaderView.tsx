@@ -123,8 +123,15 @@ export function ReaderView({
               setNotice(error.message || 'Unable to open EPUB.');
             }}
           />
-          {!compactNative && !paused ? (
-            <SafeAreaView edges={['bottom']}>
+          {!compactNative ? (
+            <SafeAreaView
+              edges={['bottom']}
+              pointerEvents={paused ? 'none' : 'auto'}
+              accessibilityElementsHidden={paused}
+              importantForAccessibility={paused ? 'no-hide-descendants' : 'auto'}
+              aria-hidden={paused}
+              style={paused ? { opacity: 0 } : undefined}
+            >
               <View className="min-h-[62px] w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line py-2.5">
                 <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
                 <Button

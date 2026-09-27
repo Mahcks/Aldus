@@ -139,3 +139,55 @@ test('full captured selection restores both boundaries across inline markup and 
   expect(result.sameStart).toBe(true);
   expect(result.sameEnd).toBe(true);
 });
+
+test('native paragraph spaces restore without weakening word or ambiguity checks', async ({
+  page,
+}) => {
+  const result = await page.evaluate((source) => {
+    const exports: any = {};
+    new Function('exports', source)(exports);
+    const doc = new DOMParser().parseFromString(
+      '<p>Already on it.</p><p>The following paragraph.</p><p>ab c</p>',
+      'text/html',
+    );
+    const find = (highlight: string) => exports.findReadiumRange(doc, { text: { highlight } });
+    const native = find('it. The following');
+    const web = find('it.The following');
+    const wrong = find('a bc');
+    doc.body.insertAdjacentHTML(
+      'beforeend',
+      '<p>Already on it.</p><p>The following paragraph.</p>',
+    );
+    return {
+      native: native?.toString(),
+      web: web?.toString(),
+      wrong: Boolean(wrong),
+      ambiguous: Boolean(find('it. The following')),
+    };
+  }, source);
+  expect(result).toEqual({
+    native: 'it.The following',
+    web: 'it.The following',
+    wrong: false,
+    ambiguous: false,
+  });
+});
+
+test('native restore proof accepts paragraph separators but rejects altered word spacing', async ({
+  page,
+}) => {
+  const { locatorStartVisible } = await import('../plugins/readium-restore.cjs');
+  const result = await page.evaluate((source) => {
+    const verify = new Function(`return (${source})`)();
+    document.body.innerHTML = '<p>Already on it.</p><p>The following paragraph.</p><p>ab c</p>';
+    const [first, second, third] = document.querySelectorAll('p');
+    const range = document.createRange();
+    range.setStart(first.firstChild!, 11);
+    range.setEnd(second.firstChild!, 13);
+    const native = verify(range, { text: { highlight: 'it. The following' } });
+    const web = verify(range, { text: { highlight: 'it.The following' } });
+    range.selectNodeContents(third);
+    return { native, web, wrong: verify(range, { text: { highlight: 'a bc' } }) };
+  }, locatorStartVisible.toString());
+  expect(result).toEqual({ native: true, web: true, wrong: false });
+});

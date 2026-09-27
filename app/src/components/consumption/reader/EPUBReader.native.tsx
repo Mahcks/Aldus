@@ -95,6 +95,18 @@ function savedLocator(value: unknown) {
   }
 }
 
+// Keep reader diagnostics bounded: an upstream locator can contain a whole chapter.
+function locatorDiagnostic(locator?: Locator) {
+  if (!locator) return undefined;
+  return {
+    href: locator.href,
+    locations: locator.locations,
+    highlightCharacters: locator.text?.highlight?.length ?? 0,
+    beforeCharacters: locator.text?.before?.length ?? 0,
+    afterCharacters: locator.text?.after?.length ?? 0,
+  };
+}
+
 export const EPUBReader = forwardRef<
   EPUBReaderHandle,
   {
@@ -150,6 +162,8 @@ export const EPUBReader = forwardRef<
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const restoring = useRef(false);
   const restoreAttempt = useRef(0);
+  const restoreCompletedAt = useRef<number | undefined>(undefined);
+  const readerSize = useRef({ width: 0, height: 0 });
   const pendingNavigation = useRef<
     { href: string; locator: Locator; finish: (success: boolean) => void } | undefined
   >(undefined);
@@ -324,6 +338,7 @@ export const EPUBReader = forwardRef<
         return false;
       }
       const attempt = ++restoreAttempt.current;
+      restoreCompletedAt.current = undefined;
       const range = restoreSelectionRange(location);
       pendingSelection.current = range;
       const selectionTarget = range ? selectionLocator(range) : undefined;
@@ -334,7 +349,11 @@ export const EPUBReader = forwardRef<
         });
       const saved = savedLocator(location) ?? parseSavedEPUBCFI(location);
       if (saved) {
-        if (__DEV__) console.debug('Aldus native EPUB restoring saved Readium locator', saved);
+        if (__DEV__)
+          console.debug(
+            'Aldus native EPUB restoring saved Readium locator',
+            locatorDiagnostic(saved),
+          );
         clearHighlight();
         restoring.current = true;
         try {
@@ -474,6 +493,16 @@ export const EPUBReader = forwardRef<
             finish(false, 'visible-location-unavailable');
             return;
           }
+          if (__DEV__)
+            console.debug('Aldus native EPUB restore verified', {
+              attempt: restoreAttempt.current,
+              durationMS: Math.round(performance.now() - started),
+              target: locatorDiagnostic(locator),
+              visible: locatorDiagnostic(visible),
+              size: readerSize.current,
+              preferences: readiumPreferences,
+            });
+          restoreCompletedAt.current = performance.now();
           await handleLocation(visible, navigation);
         } catch (error) {
           if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -541,7 +570,12 @@ export const EPUBReader = forwardRef<
     selectedTextLocation.current = undefined;
     clearFeedback();
     clearHighlight();
-    currentPage.current = locator;
+    // Selection callbacks need the verified visible page, not Readium's
+    // chapter-only notification, to recognize delayed events on the same page.
+    currentPage.current = {
+      ...preferredReadiumLocator(locator, visible),
+      locations: locator.locations,
+    };
     const restoredCFI = navigation && savedEPUBCFI(navigation.locator);
     if (restoredCFI) {
       // Verification proved the original DOM anchor, not this page's first word.
@@ -589,7 +623,16 @@ export const EPUBReader = forwardRef<
     }
     if (__DEV__)
       console.debug('Aldus native EPUB location', {
-        locator: visible ?? locator,
+        locator: locatorDiagnostic(visible ?? locator),
+        reported: locatorDiagnostic(locator),
+        previousSelected: locatorDiagnostic(selected),
+        direction: direction.current,
+        attempt: restoreAttempt.current,
+        sinceRestoreMS:
+          restoreCompletedAt.current == null
+            ? undefined
+            : Math.round(performance.now() - restoreCompletedAt.current),
+        size: readerSize.current,
         segmentCount: currentSegments.length,
         sync,
       });
@@ -631,7 +674,7 @@ export const EPUBReader = forwardRef<
     const sync = mapReadiumSelectionStart(event.locator, event.selectedText, currentSegments);
     if (__DEV__)
       console.debug('Aldus native EPUB selection', {
-        locator: event.locator,
+        locator: locatorDiagnostic(event.locator),
         segmentCount: currentSegments.length,
         sync,
       });
@@ -684,7 +727,21 @@ export const EPUBReader = forwardRef<
 
   return (
     <View className="min-h-0 flex-1 bg-paper">
-      <View className="min-h-0 flex-1">
+      <View
+        className="min-h-0 flex-1"
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          if (readerSize.current.width === width && readerSize.current.height === height) return;
+          if (__DEV__)
+            console.debug('Aldus native EPUB viewport changed', {
+              previous: readerSize.current,
+              next: { width, height },
+              attempt: restoreAttempt.current,
+              restoring: restoring.current,
+            });
+          readerSize.current = { width, height };
+        }}
+      >
         <ReadiumView
           key={fileURL}
           ref={reader}

@@ -6,6 +6,7 @@ import { getDeviceIdentity } from './device-identity';
 import { activeStorageScope, scopedStorageKey } from './storage-scope';
 import { serializeProgressMutation } from './progress-outbox-storage';
 import {
+  acknowledgedEditionSave,
   representationStateUpdate,
   serializeEditionSave,
 } from './consumption/offline-representation';
@@ -27,6 +28,7 @@ type PendingEdition = {
   kind: 'epub' | 'audio';
   local: RepresentationState;
   ownership?: ReadingOwnershipProof;
+  attempt?: { local: RepresentationState; ownership?: ReadingOwnershipProof };
 };
 
 async function prefix(scope: string) {
@@ -48,8 +50,14 @@ export function updateOfflineRepresentationState(
 ) {
   if (!pending) return Promise.resolve(false);
   return serializeProgressMutation(async () => {
-    const record: PendingEdition = { workID, kind, local: state, ownership };
-    await AsyncStorage.setItem(await storageKey(scope, workID, kind), JSON.stringify(record));
+    const key = await storageKey(scope, workID, kind);
+    const raw = await AsyncStorage.getItem(key);
+    const previous: PendingEdition | null = raw ? JSON.parse(raw) : null;
+    const attempt =
+      previous?.attempt ??
+      (previous ? { local: previous.local, ownership: previous.ownership } : undefined);
+    const record: PendingEdition = { workID, kind, local: state, ownership, attempt };
+    await AsyncStorage.setItem(key, JSON.stringify(record));
     return true;
   });
 }
@@ -74,6 +82,7 @@ export function acknowledgeOfflineRepresentationState(
       await AsyncStorage.removeItem(key);
     } else if (saved && rebaseNewer && pending.local.revision === submitted.revision) {
       pending.local.revision = saved.revision;
+      delete pending.attempt;
       await AsyncStorage.setItem(key, JSON.stringify(pending));
     }
   });
@@ -95,9 +104,12 @@ export async function reconcileOfflineRepresentationStates(
     if (scope !== activeStorageScope() || origin !== getAPIBaseURL()) break;
     let pending = reconciliations.get(key);
     if (!pending) {
-      pending = reconcileRecord(key, scope, origin, workID).finally(() =>
-        reconciliations.delete(key),
-      );
+      pending = (async () => {
+        const conflict = await reconcileRecord(key, scope, origin, workID);
+        if (conflict) return conflict;
+        // An older uncertain write may have rebased the latest offline edit.
+        return reconcileRecord(key, scope, origin, workID);
+      })().finally(() => reconciliations.delete(key));
       reconciliations.set(key, pending);
     }
     const conflict = await pending;
@@ -120,7 +132,8 @@ async function reconcileRecord(
   return serializeEditionSave(record.workID, async () => {
     const latestRaw = await serializeProgressMutation(() => AsyncStorage.getItem(key));
     if (!latestRaw || !stillActive()) return null;
-    const record: PendingEdition = JSON.parse(latestRaw);
+    const latest: PendingEdition = JSON.parse(latestRaw);
+    const record = latest.attempt ? { ...latest, ...latest.attempt } : latest;
     try {
       const saved = await api.updateRepresentationState(record.local.representation_id, {
         ...representationStateUpdate(record.local, record.local.revision),
@@ -144,6 +157,23 @@ async function reconcileRecord(
         const remote = await api
           .representationState(record.local.representation_id)
           .catch(() => undefined);
+        if (
+          error instanceof APIError &&
+          remote &&
+          stillActive() &&
+          (await acknowledgedEditionSave(record.workID, record.local, remote, record.ownership))
+        ) {
+          if (stillActive())
+            await acknowledgeOfflineRepresentationState(
+              record.workID,
+              record.kind,
+              record.local,
+              remote,
+              true,
+              scope,
+            );
+          return null;
+        }
         const currentRaw = await serializeProgressMutation(() => AsyncStorage.getItem(key));
         if (remote !== undefined && currentRaw && stillActive()) {
           const current: PendingEdition = JSON.parse(currentRaw);

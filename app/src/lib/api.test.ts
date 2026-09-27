@@ -308,3 +308,58 @@ describe('session ownership of failures', () => {
     onUnauthorized();
   });
 });
+
+describe('reader request deadlines', () => {
+  it('bounds position writes, mapping and takeover requests so save queues can recover', async () => {
+    const operations = [
+      () =>
+        api.updateWorkProgress('deadline-book', {
+          alignment_id: 'a',
+          segment_id: 's',
+          offset: 0,
+          expected_revision: 0,
+          source_device: 'web',
+          ownership: undefined,
+        }),
+      () =>
+        api.updateRepresentationState('deadline-edition', {
+          epub_locator: { href: 'chapter.xhtml' },
+          expected_revision: 0,
+          ownership: undefined,
+        }),
+      () => api.epubToCanonical('a', { href: 'chapter.xhtml', locator: {}, offset: 0 }),
+      () => api.audioToCanonical('a', { resource: 'audio', timestamp_ms: 0 }),
+      () => api.canonicalToEPUB('a', { alignment_id: 'a', segment_id: 's', offset: 0 }),
+      () => api.canonicalToAudio('a', { alignment_id: 'a', segment_id: 's', offset: 0 }),
+      () =>
+        api.claimReadingSession('deadline-book', {
+          device_id: 'd',
+          label: 'Web',
+          platform: 'web',
+          request_id: 'r',
+          expected_epoch: 0,
+        }),
+    ];
+    for (const operation of operations) {
+      const controller = new AbortController();
+      const timeout = spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+      let started!: () => void;
+      const fetching = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      globalThis.fetch = (async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init!.signal!.addEventListener('abort', () => reject(controller.signal.reason), {
+            once: true,
+          });
+          started();
+        })) as typeof fetch;
+      const pending = operation();
+      await fetching;
+      expect(timeout).toHaveBeenCalledWith(15_000);
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ status: 0 });
+      timeout.mockRestore();
+    }
+  });
+});

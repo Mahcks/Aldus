@@ -40,7 +40,7 @@ expo-dev:
 	 cd app && EXPO_PUBLIC_API_URL="$$API_URL" EXPO_PUBLIC_WEB_API_URL=$${EXPO_PUBLIC_WEB_API_URL:-http://localhost:8080} REACT_NATIVE_PACKAGER_HOSTNAME="$$PACKAGER_HOST" bun run start:dev-client
 
 ios-dev:
-	cd app && bun run ios:device
+	cd app && bun install --frozen-lockfile && bun run ios:device
 
 ios-acceptance:
 	DEVICE="$(DEVICE)" ./scripts/ios-acceptance.sh

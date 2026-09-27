@@ -1,4 +1,4 @@
-import { useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
+import { useRef, type PropsWithChildren, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import {
@@ -56,20 +56,15 @@ export function Notice({
   const style = NOTICE_STYLE[resolvedTone];
   const height = useSharedValue(0);
   const measured = useRef(false);
-  // On native a notice shows at its natural height until it has measured itself once. Starting
-  // collapsed there can leave it at zero height if the first measurement never arrives, and a
-  // notice the user cannot see is worse than one that appears without an animated open.
-  const [sizing, setSizing] = useState(Platform.OS === 'web');
+  // Only the web animates a notice open. On native it appears in place at its natural height:
+  // an animated height collapses or overlaps the page beneath, and the native reader view does
+  // not reflow in step with it.
+  const animated = Platform.OS === 'web';
 
   const heightStyle = useAnimatedStyle(() => ({ height: height.get() }));
 
   function handleLayout(event: LayoutChangeEvent) {
-    if (!sizing) {
-      height.set(event.nativeEvent.layout.height);
-      measured.current = true;
-      setSizing(true);
-      return;
-    }
+    if (!animated) return;
     height.set(
       withTiming(event.nativeEvent.layout.height, {
         duration: measured.current ? 200 : 320,
@@ -81,10 +76,10 @@ export function Notice({
   }
 
   return (
-    <AnimatedView className="overflow-hidden" style={sizing ? heightStyle : undefined}>
+    <AnimatedView className="overflow-hidden" style={animated ? heightStyle : undefined}>
       <View onLayout={handleLayout}>
         <AnimatedView
-          entering={reveal}
+          entering={animated ? reveal : undefined}
           accessibilityRole={
             resolvedTone === 'danger' || announcement === 'assertive' ? 'alert' : undefined
           }

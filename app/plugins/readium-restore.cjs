@@ -14,7 +14,20 @@ function locatorStartVisible(range, locator, diagnostics = false) {
   const text = locator?.text;
   if (text?.highlight) {
     const quote = normalize(text.highlight);
-    if (!quote || normalize(range.toString()) !== quote) return fail('quote-mismatch');
+    let exactQuote = normalize(range.toString()) === quote;
+    if (!exactQuote && range.cloneContents) {
+      // Native selection adds paragraph breaks; accept them only at real block
+      // boundaries, never by deleting spaces inside words.
+      const contents = range.cloneContents();
+      for (const block of contents.querySelectorAll(
+        'p, div, li, blockquote, h1, h2, h3, h4, h5, h6, td, th, br',
+      )) {
+        block.before(document.createTextNode(' '));
+        block.after(document.createTextNode(' '));
+      }
+      exactQuote = normalize(contents.textContent || '') === quote;
+    }
+    if (!quote || !exactQuote) return fail('quote-mismatch');
     const context = range.cloneRange();
     if (text.before) {
       context.selectNodeContents(document.body);
@@ -207,12 +220,18 @@ function patchRestoreProbe(source) {
   // Fail on a toolkit upgrade instead of guessing at renamed bundle internals.
   const hook =
     'scrollToLocator:function(t){let e=T(t);return!!e&&function(t){return A(t.getBoundingClientRect())}(e)}';
+  // Scrolling the union of a multi-line/multi-column range can land on a
+  // different page than its start. Use the same first visible-sized rectangle
+  // as locatorStartVisible; retain Readium's own scrolling/pagination function.
+  const startHook =
+    'scrollToLocator:function(t){let e=T(t);if(!e)return false;let r=Array.from(e.getClientRects()).find(r=>r.width>0&&r.height>0);return!!r&&A(r)}';
+  source = source.replace(startHook, hook);
   if (source.split(hook).length !== 2) {
     throw new Error('Readium locator resolver changed; review the restore visibility probe.');
   }
   return source.replace(
     hook,
-    `${hook},${marker}{return (${locatorStartVisible.toString()})(T(locator), locator, diagnostics);}${cfiProbeSource()}`,
+    `${startHook},${marker}{return (${locatorStartVisible.toString()})(T(locator), locator, diagnostics);}${cfiProbeSource()}`,
   );
 }
 

@@ -170,7 +170,7 @@ for (const kind of ['epub', 'audio'] as const) {
   });
 }
 
-test('late replay response retains a newer local edit and rebases it on the successful write', async () => {
+test('late replay response rebases and drains a newer local edit without duplicate writes', async () => {
   const local = queueEdition();
   let release!: () => void;
   let started!: () => void;
@@ -195,12 +195,13 @@ test('late replay response retains a newer local edit and rebases it on the succ
   const duplicate = reconcileOfflineRepresentationStates();
   release();
   await Promise.all([replay, duplicate]);
-  expect(writes).toBe(1);
+  expect(writes).toBe(2);
   const stored = await offlineWork('work');
   expect(stored?.epub_state?.epub_locator).toEqual(newer.epub_locator);
-  expect(stored?.epub_state?.revision).toBe(5);
-  expect(stored?.pending_representation_states?.epub).toBe(true);
+  expect(stored?.epub_state?.revision).toBe(6);
+  expect(stored?.pending_representation_states?.epub).toBe(false);
   await reconcileOfflineRepresentationStates();
+  expect(writes).toBe(2);
   expect((await offlineWork('work'))?.pending_representation_states?.epub).toBe(false);
   expect((await offlineWork('work'))?.epub_state?.epub_locator).toEqual(newer.epub_locator);
 });

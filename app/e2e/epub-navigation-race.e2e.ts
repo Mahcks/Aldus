@@ -187,3 +187,28 @@ test('dragging a passage saves its start instead of the release point in either 
   expect(positions.backward).toBe(0);
   expect(positions.click).toBe(positions.end);
 });
+
+test('selection at a paragraph end maps from the first selected text without losing the range', async ({
+  page,
+}) => {
+  const result = await page.evaluate((source) => {
+    const exports: any = {};
+    new Function('exports', source)(exports);
+    document.body.innerHTML = '<p>Already on it.</p>\n<p>  The <em>following</em> paragraph.</p>';
+    const [first, next] = document.querySelectorAll('p');
+    const range = document.createRange();
+    range.setStart(first.firstChild!, first.textContent!.length);
+    range.setEnd(next.lastChild!, next.lastChild!.textContent!.length);
+    const selected = document.getSelection()!;
+    selected.removeAllRanges();
+    selected.addRange(range);
+    const before = selected.toString();
+    const point = exports.readingIntentPoint(document, 0, 0);
+    return {
+      start: point.startOffset,
+      node: point.startContainer.textContent,
+      unchanged: selected.toString() === before,
+    };
+  }, lifecycle);
+  expect(result).toEqual({ start: 2, node: '  The ', unchanged: true });
+});

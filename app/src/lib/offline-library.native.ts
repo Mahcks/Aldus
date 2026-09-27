@@ -16,6 +16,7 @@ import { offlineCompletion } from './catalog/work-completion';
 import { offlineAudioChapters } from './consumption/offline-chapters';
 import {
   representationStateUpdate,
+  acknowledgedEditionSave,
   serializeEditionSave,
 } from './consumption/offline-representation';
 import { APIError, api } from './api';
@@ -47,6 +48,9 @@ export type OfflineWork = {
   epub_state: RepresentationState | null;
   audio_state: RepresentationState | null;
   pending_representation_ownership?: Partial<Record<'epub' | 'audio', ReadingOwnershipProof>>;
+  pending_representation_attempts?: Partial<
+    Record<'epub' | 'audio', { local: RepresentationState; ownership?: ReadingOwnershipProof }>
+  >;
   pending_representation_states?: Partial<Record<'epub' | 'audio', boolean>>;
   audio_chapters: Record<string, AudioChapter[]>;
   audio_duration_ms?: Record<string, number>;
@@ -324,6 +328,7 @@ async function performDownload(owner: {
       if (previous.pending_representation_states?.audio) stored.audio_state = previous.audio_state;
       stored.pending_representation_states = previous.pending_representation_states;
       stored.pending_representation_ownership = previous.pending_representation_ownership;
+      stored.pending_representation_attempts = previous.pending_representation_attempts;
     }
     await AsyncStorage.setItem(key(scope, value.work.id), JSON.stringify(stored));
     await AsyncStorage.removeItem(pendingKey(scope, value.work.id));
@@ -446,11 +451,23 @@ export async function updateOfflineRepresentationState(
     if (scope !== activeStorageScope()) return false;
     const value = await offlineWork(workID, scope);
     if (!value) return false;
+    const previous = kind === 'epub' ? value.epub_state : value.audio_state;
+    const attempt =
+      pending && value.pending_representation_states?.[kind] && previous
+        ? (value.pending_representation_attempts?.[kind] ?? {
+            local: previous,
+            ownership: value.pending_representation_ownership?.[kind],
+          })
+        : undefined;
     await AsyncStorage.setItem(
       key(scope, workID),
       JSON.stringify({
         ...value,
         [kind === 'epub' ? 'epub_state' : 'audio_state']: state,
+        pending_representation_attempts: {
+          ...value.pending_representation_attempts,
+          [kind]: attempt,
+        },
         pending_representation_ownership: {
           ...value.pending_representation_ownership,
           [kind]: ownership,
@@ -498,6 +515,10 @@ export async function acknowledgeOfflineRepresentationState(
       JSON.stringify({
         ...value,
         [field]: next,
+        pending_representation_attempts: {
+          ...value.pending_representation_attempts,
+          [kind]: undefined,
+        },
         pending_representation_states: {
           ...value.pending_representation_states,
           [kind]: !unchanged,
@@ -524,7 +545,12 @@ export async function reconcileOfflineRepresentationStates(
     if (!pending) {
       pending = serializeEditionSave(work.work.id, async () => {
         const current = await offlineWork(work.work.id, scope);
-        return current ? reconcileRepresentationStates(scope, current) : [];
+        if (!current) return [];
+        const conflicts = await reconcileRepresentationStates(scope, current);
+        if (conflicts.length) return conflicts;
+        // Drain the newer edit after acknowledging an older uncertain write.
+        const latest = await offlineWork(work.work.id, scope);
+        return latest ? reconcileRepresentationStates(scope, latest) : [];
       }).finally(() => {
         reconciliations.delete(id);
       });
@@ -541,13 +567,15 @@ async function reconcileRepresentationStates(scope: string, work: OfflineWork) {
   const stillActive = () => origin === getAPIBaseURL() && scope === activeStorageScope();
   for (const kind of ['epub', 'audio'] as const) {
     if (!work.pending_representation_states?.[kind]) continue;
-    const local = kind === 'epub' ? work.epub_state : work.audio_state;
+    const attempt = work.pending_representation_attempts?.[kind];
+    const local = attempt?.local ?? (kind === 'epub' ? work.epub_state : work.audio_state);
+    const ownership = attempt ? attempt.ownership : work.pending_representation_ownership?.[kind];
     if (!local) continue;
     try {
       if (!stillActive()) return conflicts;
       const saved = await api.updateRepresentationState(local.representation_id, {
         ...representationStateUpdate(local, local.revision),
-        ownership: work.pending_representation_ownership?.[kind],
+        ownership,
       });
       if (!stillActive()) return conflicts;
       await acknowledgeOfflineRepresentationState(work.work.id, kind, local, saved, true, scope);
@@ -560,6 +588,21 @@ async function reconcileRepresentationStates(scope: string, work: OfflineWork) {
         try {
           const remote = await api.representationState(local.representation_id);
           if (!stillActive()) return conflicts;
+          if (
+            error instanceof APIError &&
+            (await acknowledgedEditionSave(work.work.id, local, remote, ownership))
+          ) {
+            if (stillActive())
+              await acknowledgeOfflineRepresentationState(
+                work.work.id,
+                kind,
+                local,
+                remote,
+                true,
+                scope,
+              );
+            continue;
+          }
           const current = await serialize(async () => {
             const latest = await offlineWork(work.work.id, scope);
             if (!latest?.pending_representation_states?.[kind]) return null;

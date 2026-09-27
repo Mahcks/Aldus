@@ -414,3 +414,36 @@ test('a selection spanning paragraphs keeps canonical progress at the first sele
     offset: point.offset,
   });
 });
+
+test('cross-paragraph starts use the complete leading passage and reject genuine ambiguity', () => {
+  const first = { ...segment, id: 'first', text: 'Already on it.' };
+  const next = { ...segment, id: 'next', text: 'Next paragraph.' };
+  const other = { ...segment, id: 'other', text: 'Already did it.' };
+  const text = `${first.text} ${next.text}`;
+  const locator = {
+    href: first.epub_href,
+    type: 'application/xhtml+xml',
+    text: { highlight: text },
+  };
+  expect(mapReadiumSelectionStart(locator, text, [first, next, other])?.locator).toEqual({
+    ...(first.epub_locator as object),
+    segment_id: first.id,
+  });
+  expect(
+    mapReadiumSelectionStart(locator, text, [first, next, { ...first, id: 'duplicate' }]),
+  ).toBeUndefined();
+});
+
+test('native exact offsets round-trip across length-changing Unicode normalization', () => {
+  for (const prefix of ['ﬃ word', 'İ word', 'e\u0301 word', '😀 ﬃ']) {
+    const value = { ...segment, text: `${prefix} target remains here.` };
+    const locator = {
+      href: value.epub_href,
+      type: 'application/xhtml+xml',
+      text: { before: `${prefix} `, highlight: 'target', after: ' remains here.' },
+    };
+    const mapped = mapReadiumSelection(locator, 'target', [value]);
+    expect(mapped).toBeDefined();
+    expect(readiumCanonicalAnchor(value, mapped!.offset)?.text?.highlight).toBe('target');
+  }
+});

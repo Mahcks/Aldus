@@ -129,6 +129,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   // via its own dedicated tokens.
   const colors = useThemeColors();
   const [ready, setReady] = useState(false);
+  const [positionLabel, setPositionLabel] = useState('');
   const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
   const disposalRef = useRef<ReturnType<typeof deferredDisposal>>(null);
@@ -144,7 +145,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const relocated = useRef(false);
   // Foliate can emit layout/scroll events after goTo resolves. Preserve the saved cursor
   // until a user gesture or explicit navigation begins.
-  const restoredCursor = useRef(false);
+  const pinnedCursor = useRef(false);
   const onLocationRef = useRef(onLocation);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
@@ -217,7 +218,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         if (!view || !disposal || (!location && location !== 0)) return false;
         return (
           (await disposal.navigate(async () => {
-            restoredCursor.current = false;
+            pinnedCursor.current = false;
             direction.current = 'forward';
             return Boolean(await view.goTo(location));
           })) ?? false
@@ -256,7 +257,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         const view = reader.current;
         const disposal = disposalRef.current;
         if (!view || !disposal || !value || typeof value !== 'object') return false;
-        restoredCursor.current = true;
+        pinnedCursor.current = true;
         const savedRange = restoreSelectionRange(value);
         function highlightRange(doc: Document, fallback?: Range) {
           const exact = savedRange ? findReadiumRange(doc, selectionLocator(savedRange)) : fallback;
@@ -428,8 +429,9 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     page.current = undefined;
     direction.current = 'initial';
     relocated.current = false;
-    restoredCursor.current = false;
+    pinnedCursor.current = false;
     setReady(false);
+    setPositionLabel('');
     void import('foliate-js/view.js')
       .then(async () => {
         if (disposed || !host.current) return;
@@ -442,11 +444,13 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           if (product) {
             applyReaderStyles(doc, preferencesRef.current);
           }
+          let completedSelection: string | undefined;
           for (const event of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
             doc.addEventListener(
               event,
               () => {
-                restoredCursor.current = false;
+                pinnedCursor.current = false;
+                completedSelection = undefined;
               },
               { passive: true },
             );
@@ -457,9 +461,16 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             if (selected?.rangeCount && !selected.isCollapsed)
               selection.current = { index, range: selected.getRangeAt(0).cloneRange() };
           });
-          doc.addEventListener('click', (event: MouseEvent) => {
+          function saveReadingIntent(event: MouseEvent | KeyboardEvent) {
             if (disposed || !product) return;
-            const point = readingIntentPoint(doc, event.clientX, event.clientY);
+            // Completing a drag or keyboard selection need not produce a click.
+            // Ordinary pointer releases remain click-to-place, not extra saves.
+            if (event.type !== 'click' && doc.getSelection()?.isCollapsed !== false) return;
+            const point = readingIntentPoint(
+              doc,
+              'clientX' in event ? event.clientX : 0,
+              'clientY' in event ? event.clientY : 0,
+            );
             const href = view.book.sections[index]?.id;
             const current = page.current;
             if (!point || !href || !current) return;
@@ -469,17 +480,17 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
               return;
             }
             const cfi = view.getCFI(index, point);
+            const selectionKey = selectedRange ? JSON.stringify({ cfi, selectedRange }) : undefined;
+            if (selectionKey && selectionKey === completedSelection) return;
+            completedSelection = selectionKey;
             const match = containingSegment(point, href, segmentsRef.current);
-            if (!match)
-              return onLocationRef.current?.({
-                href,
-                cfi,
-                selection: selectedRange,
-                syncState: current.state,
-                reason: 'explicit',
-              });
+            // A selected/clicked anchor is exact, just like a restored anchor.
+            // Pagination can emit late snap events without another user action.
+            pinnedCursor.current = true;
             cursor.current = {
-              ...syncLocation(href, cfi, match, current.state, 'explicit'),
+              ...(match
+                ? syncLocation(href, cfi, match, current.state, 'explicit')
+                : { href, cfi, syncState: current.state, reason: 'explicit' as const }),
               selection: selectedRange,
             };
             if (__DEV__)
@@ -487,14 +498,31 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
                 reason: 'explicit',
                 href,
                 boundary: boundary(point),
-                segment_id: match.id,
-                offset: match.offset,
+                segment_id: match?.id,
+                offset: match?.offset,
               });
             onLocationRef.current?.(cursor.current);
-          });
+          }
+          doc.addEventListener('pointerup', saveReadingIntent);
+          doc.addEventListener('keyup', saveReadingIntent);
+          doc.addEventListener('click', saveReadingIntent);
         });
         view.addEventListener('relocate', ({ detail }: CustomEvent) => {
           if (disposed) return;
+          const pages = Math.max(0, view.renderer.pages - 2);
+          if (detail.pageItem?.label) setPositionLabel(`Page ${detail.pageItem.label}`);
+          else if (
+            preferencesRef.current.layout === 'paginated' &&
+            Number.isFinite(pages) &&
+            pages > 0
+          ) {
+            const currentPage = Math.max(1, Math.min(pages, Math.floor(view.renderer.page)));
+            setPositionLabel(`Page ${currentPage} of ${pages} in chapter`);
+          } else if (detail.location?.total > 0) {
+            setPositionLabel(
+              `Location ${Math.min(detail.location.total, detail.location.current + 1)} of ${detail.location.total}`,
+            );
+          }
           const range = detail.range as Range | undefined;
           const index = range ? activeContentIndex(range, view.renderer.getContents()) : undefined;
           if (!range || index == null) return;
@@ -507,7 +535,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             containingSegment(range, href, segmentsRef.current) ??
             leadingSegment(range, href, segmentsRef.current);
           const commit =
-            !restoredCursor.current &&
+            !pinnedCursor.current &&
             Boolean(visible) &&
             commitsFoliateRelocation(detail.reason, relocated.current, navigationDirection);
           if (visible) relocated.current = true;
@@ -518,7 +546,12 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             : undefined;
           cursor.current = relocationCursor(cursor.current, visibleLocation, href, commit);
           const location: ReaderLocation = cursor.current
-            ? { ...cursor.current, cfi: detail.cfi, syncState: state, reason }
+            ? {
+                ...cursor.current,
+                cfi: pinnedCursor.current ? cursor.current.cfi : detail.cfi,
+                syncState: state,
+                reason,
+              }
             : { href, cfi: detail.cfi, syncState: state, reason };
           location.totalProgression = detail.fraction;
           if (__DEV__)
@@ -584,7 +617,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
 
     const operation = disposal.navigate(async () => {
       // Foliate may emit relocation synchronously. Record the gesture before navigation.
-      restoredCursor.current = false;
+      pinnedCursor.current = false;
       direction.current = nextDirection;
       if (nextDirection === 'forward') await view.goRight();
       else await view.goLeft();
@@ -616,19 +649,24 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             kind="quiet"
             onPress={() => turnPage('backward')}
           />
-          <Text
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={
-              statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
-            }
-            numberOfLines={1}
-            className="flex-shrink text-center text-xs text-muted"
-          >
-            {statusLabel ??
-              (product
-                ? 'Your place is saved as you turn pages.'
-                : 'Highlight a passage in Alice, then click Capture selection.')}
-          </Text>
+          <View className="min-w-0 flex-1 items-center">
+            <Text className="text-xs text-ink" numberOfLines={1}>
+              {positionLabel || 'Opening your place…'}
+            </Text>
+            <Text
+              accessibilityLiveRegion="polite"
+              accessibilityLabel={
+                statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
+              }
+              numberOfLines={1}
+              className="flex-shrink text-center text-xs text-muted"
+            >
+              {statusLabel ??
+                (product
+                  ? 'Your place is saved as you turn pages.'
+                  : 'Highlight a passage in Alice, then click Capture selection.')}
+            </Text>
+          </View>
           <IconButton
             icon="nextPage"
             label="Next page"

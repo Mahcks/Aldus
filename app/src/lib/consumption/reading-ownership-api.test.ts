@@ -211,3 +211,30 @@ it('a rejected old queued proof cannot pause the newer claim', async () => {
     unsubscribe();
   }
 });
+
+it('explicit edition saves and heartbeat recovery pause only their originating claim', async () => {
+  for (const kind of ['edition', 'heartbeat']) {
+    for (const currentEpoch of [4, 6]) {
+      registerReadingProof('work', { device_id: 'phone', epoch: currentEpoch });
+      bindReadingRepresentations('work', ['epub']);
+      respond(409, { code: 'ownership_superseded', owner: null });
+      const lost = mock(() => {});
+      const unsubscribe = subscribeOwnershipLost(lost);
+      try {
+        const proof = { device_id: 'phone', epoch: 4 };
+        const operation =
+          kind === 'edition'
+            ? api.updateRepresentationState('epub', {
+                epub_locator: { href: 'chapter.xhtml' },
+                expected_revision: 2,
+                ownership: proof,
+              })
+            : api.refreshReadingSession('work', proof);
+        await expect(operation).rejects.toBeInstanceOf(OwnershipSupersededError);
+        expect(lost).toHaveBeenCalledTimes(currentEpoch === 4 ? 1 : 0);
+      } finally {
+        unsubscribe();
+      }
+    }
+  }
+});
