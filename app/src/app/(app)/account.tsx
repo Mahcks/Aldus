@@ -392,7 +392,9 @@ export default function AccountScreen() {
           ))}
         </View>
       ) : (
-        <EmptyState title="No library memberships">Ask a library owner to add this account.</EmptyState>
+        <EmptyState title="No library memberships">
+          Ask a library owner to add this account.
+        </EmptyState>
       )}
     </Section>
   );
@@ -403,7 +405,9 @@ export default function AccountScreen() {
         <SettingRow description="Read with KOReader or browse your books from any OPDS app.">
           {!createdCredential?.secret ? (
             <Button
-              label={readerConnectionsOpen ? 'Hide reader connections' : 'Manage reader connections'}
+              label={
+                readerConnectionsOpen ? 'Hide reader connections' : 'Manage reader connections'
+              }
               kind="secondary"
               onPress={() => setReaderConnectionsOpen((open) => !open)}
             />
@@ -520,7 +524,9 @@ export default function AccountScreen() {
         <View className="gap-1 pt-4">
           <Text className="text-sm font-sans-semibold text-ink">{version}</Text>
           <Text className="text-sm leading-5 text-muted">
-            {'Aldus does not send diagnostics automatically.\nYou choose what to share with support.'}
+            {
+              'Aldus does not send diagnostics automatically.\nYou choose what to share with support.'
+            }
           </Text>
         </View>
       </View>

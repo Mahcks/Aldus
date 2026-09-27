@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { continueReadingHere, signInAsTestAdmin } from './auth';
 
 const artwork =
   '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="sienna"/></svg>';
@@ -13,7 +13,11 @@ for (const width of [390, 1024, 1440]) {
     await page.route('**/works/alice-gutenberg-11-work', async (route) => {
       const response = await route.fetch();
       await route.fulfill({
-        json: { ...(await response.json()), cover_url: '/api/covers/test-library' },
+        json: {
+          ...(await response.json()),
+          cover_url: '/api/covers/test-library',
+          audiobook_cover_url: '/api/covers/test-library',
+        },
       });
     });
     await page.route('**/api/covers/test-library', (route) =>
@@ -48,6 +52,7 @@ for (const width of [390, 1024, 1440]) {
     // Listening still works from the book's page — the player's own cover
     // logic is exact-progress-adjacent code, out of scope here.
     await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
+    await continueReadingHere(page, 'listen');
     await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
     missingArtwork = true;
     await page.goto('/work/alice-gutenberg-11-work');

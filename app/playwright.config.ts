@@ -7,6 +7,8 @@ export default defineConfig({
   testMatch: '**/*.e2e.ts',
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
+  // The real-server tests share an account and book, including its ownership lease.
+  workers: 1,
   use: {
     baseURL: process.env.ALDUS_ECOSYSTEM_WEB_URL || 'http://127.0.0.1:18081',
     trace: 'retain-on-failure',

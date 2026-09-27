@@ -1,5 +1,26 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin, testServer } from './auth';
+import { continueReadingHere, signInAsTestAdmin, testServer } from './auth';
+
+test('a fresh EPUB opens its cover without writing an opening position', async ({ page }) => {
+  await signInAsTestAdmin(page);
+  await page.route('**/reading-session/claim', async (route) => {
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), progress: null, representation_states: [] },
+    });
+  });
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && /\/(progress|state)$/.test(request.url()))
+      writes.push(request.url());
+  });
+  await page.goto('/consume/alice-gutenberg-11-work?mode=read');
+  await continueReadingHere(page);
+  await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
+  expect(writes).toEqual([]);
+});
 
 for (const width of [390, 1024, 1440]) {
   test(`reader labels and confirmed save status at ${width}px`, async ({ page }) => {

@@ -293,6 +293,7 @@ export function useConsumptionActions(
     } else {
       const target = await api.canonicalToAudio(alignmentID, next);
       await player.seekTo(target.timestamp_ms / 1000, 0, 0);
+      lastAudioSave.current = target.timestamp_ms;
     }
   }
 
@@ -336,6 +337,7 @@ export function useConsumptionActions(
     } else if (selectedAudio) {
       const edition = await api.representationState(selectedAudio.representation.id);
       await player.seekTo((edition?.audio_timestamp_ms ?? 0) / 1000, 0, 0);
+      lastAudioSave.current = edition?.audio_timestamp_ms ?? 0;
     }
     if (!isCurrentReader()) return;
     await updateOfflineProgress(work.id, remote);
@@ -376,6 +378,8 @@ export function useConsumptionActions(
           if (!restored) throw new Error('Could not open that saved page. Both places are kept.');
         } else {
           await player.seekTo((chosen?.audio_timestamp_ms ?? 0) / 1000, 0, 0);
+          // Restoring an acknowledged choice is not a new playback save.
+          lastAudioSave.current = chosen?.audio_timestamp_ms ?? 0;
         }
       }
       await acknowledgeOfflineRepresentationState(

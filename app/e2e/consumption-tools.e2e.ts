@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { continueReadingHere, signInAsTestAdmin } from './auth';
 
 test('reader search and sleep timer work through the extracted hooks', async ({ page }) => {
   await signInAsTestAdmin(page);
   await page.goto('/consume/alice-gutenberg-11-work?mode=read');
+  await continueReadingHere(page, 'read');
   const searchButton = page.getByRole('button', { name: 'Search inside book' });
   await expect(searchButton).toBeVisible({ timeout: 30_000 });
   await searchButton.click();
@@ -23,6 +24,7 @@ test('reader search and sleep timer work through the extracted hooks', async ({ 
   await expect(searchDialog).toHaveCount(0);
 
   await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
+  await continueReadingHere(page, 'listen');
   const timerButton = page.getByRole('button', { name: 'Set sleep timer', exact: true });
   await expect(timerButton).toBeEnabled({ timeout: 30_000 });
   await timerButton.click();
@@ -40,6 +42,7 @@ test('reader search and sleep timer work through the extracted hooks', async ({ 
 test('reading settings persist defaults separately from an edition override', async ({ page }) => {
   await signInAsTestAdmin(page);
   await page.goto('/consume/alice-gutenberg-11-work?mode=read');
+  await continueReadingHere(page, 'read');
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });
   await settings.click();
@@ -61,7 +64,8 @@ test('reading settings persist defaults separately from an edition override', as
   const saveEdition = page.waitForResponse(
     (response) =>
       /\/representations\/[^/]+\/state$/.test(response.url()) &&
-      response.request().method() === 'PUT',
+      response.request().method() === 'PUT' &&
+      response.request().postDataJSON().font_family === 'serif',
   );
   await page.getByRole('radio', { name: 'Serif', exact: true }).click();
   const edition = await saveEdition;

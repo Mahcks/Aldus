@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { continueReadingHere, signInAsTestAdmin } from './auth';
 
 test('legacy native saved place restores exactly on web without alignment or startup writes', async ({
   page,
@@ -13,6 +13,20 @@ test('legacy native saved place restores exactly on web without alignment or sta
   await page.route(`${work}/preference`, (route) => route.fulfill({ json: null }));
   let saved: { href: string; cfi: string } | undefined;
   let writes = 0;
+  await page.route('**/reading-session/claim', async (route) => {
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    await route.fulfill({
+      response,
+      json: {
+        ...(await response.json()),
+        progress: null,
+        representation_states: saved
+          ? [{ representation_id: 'alice-gutenberg-11-epub', revision: 1, epub_locator: saved }]
+          : [],
+      },
+    });
+  });
   await page.route('**/representations/*/state', async (route) => {
     if (route.request().method() === 'PUT') writes++;
     await route.fulfill({
@@ -26,6 +40,7 @@ test('legacy native saved place restores exactly on web without alignment or sta
   });
   const url = '/consume/alice-gutenberg-11-work?mode=read';
   await page.goto(url);
+  await continueReadingHere(page, 'read');
   await expect(page.getByRole('button', { name: 'Open table of contents' })).toBeVisible({
     timeout: 30000,
   });
@@ -67,6 +82,7 @@ test('legacy native saved place restores exactly on web without alignment or sta
   await page.goto('/libraries');
   writes = 0;
   await page.goto(url);
+  await continueReadingHere(page, 'read');
   await expect(page.getByRole('button', { name: 'Open reader settings' })).toBeVisible({
     timeout: 30000,
   });

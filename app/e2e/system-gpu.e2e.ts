@@ -4,6 +4,7 @@ import type { AlignmentGpuStatus } from '../src/generated/api';
 for (const width of [390, 1024, 1440]) {
   test(`System uses real diagnostic results at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     const unchecked: AlignmentGpuStatus = {
       accelerator: 'cuda',
       acceleratorLabel: 'CUDA',
@@ -71,9 +72,13 @@ for (const width of [390, 1024, 1440]) {
           accelerator: 'cpu',
           acceleratorLabel: 'CPU',
           gpuTest: { state: 'not_applicable' },
-          alignment: outcome === 4
-            ? { readiness: 'not_ready', issues: ["Runtime check failed: No module named 'torch'"] }
-            : { readiness: 'ready', issues: [] },
+          alignment:
+            outcome === 4
+              ? {
+                  readiness: 'not_ready',
+                  issues: ["Runtime check failed: No module named 'torch'"],
+                }
+              : { readiness: 'ready', issues: [] },
         };
       }
       await route.fulfill({ json });
@@ -103,6 +108,7 @@ for (const width of [390, 1024, 1440]) {
       }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Check readiness', exact: true }).click();
+    await expect(page.getByText('Ready', { exact: true })).toHaveCount(1);
     await expect(page.getByText('Ready', { exact: true })).toBeVisible();
     await expect(page.getByText('Cached English model is missing.', { exact: true })).toHaveCount(
       0,
@@ -113,10 +119,15 @@ for (const width of [390, 1024, 1440]) {
     await expect(page.getByText('No GPU is required.', { exact: false })).toBeVisible();
     await expect(page.getByText('GPU test', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Detected GPU', { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Runtime check failed: No module named 'torch'", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Runtime check failed: No module named 'torch'", { exact: true }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Check readiness', exact: true }).click();
+    await expect(page.getByText('Ready', { exact: true })).toHaveCount(1);
     await expect(page.getByText('Ready', { exact: true })).toBeVisible();
-    await expect(page.getByText("Runtime check failed: No module named 'torch'", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText("Runtime check failed: No module named 'torch'", { exact: true }),
+    ).toHaveCount(0);
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-system-cpu.png` });
   });
 }

@@ -1,14 +1,13 @@
 import { expect, test } from '@playwright/test';
 
-test('request filters reject late responses, recover offline and stop polling history', async ({
+test('request filters apply to delayed data, recover offline and stop polling completed requests', async ({
   page,
 }) => {
-  let activeCalls = 0;
-  let historyCalls = 0;
-  let failHistory = true;
-  let releaseActive: () => void = () => {};
+  let calls = 0;
+  let fail = true;
+  let releaseRequests: () => void = () => {};
   const delayed = new Promise<void>((resolve) => {
-    releaseActive = resolve;
+    releaseRequests = resolve;
   });
   const stamp = new Date().toISOString();
   const title = (state: string) => ({
@@ -30,33 +29,31 @@ test('request filters reject late responses, recover offline and stop polling hi
     if (path === '/me/notifications') json = { items: [], unread_count: 0 };
     if (path === '/me/notifications/unread-count') json = { count: 0 };
     if (path === '/libraries/family/title-requests/page') {
-      if (url.searchParams.get('filter') === 'active') {
-        activeCalls++;
-        if (activeCalls === 1) await delayed;
-        json = { items: [title('wanted')] };
-      } else {
-        historyCalls++;
-        if (failHistory) {
-          await route.abort('failed');
-          return;
-        }
-        json = { items: [title('failed')] };
+      expect(url.searchParams.get('filter')).toBe('all');
+      calls++;
+      if (fail) {
+        await route.abort('failed');
+        return;
       }
+      await delayed;
+      json = { items: [title('failed')] };
     }
     await route.fulfill({ json });
   });
   await page.goto('/activity');
-  await expect.poll(() => activeCalls).toBe(1);
-  await page.getByRole('radio', { name: 'History', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Retry requests', exact: true })).toBeVisible();
-  failHistory = false;
+  fail = false;
   await page.getByRole('button', { name: 'Retry requests', exact: true }).click();
+  await expect.poll(() => calls).toBe(2);
+  await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
+  await page.getByRole('radio', { name: 'History', exact: true }).click();
+  releaseRequests();
   await expect(page.getByText('Past request', { exact: true })).toBeVisible();
-  releaseActive();
+  await expect(page.getByRole('button', { name: 'Filter: History', exact: true })).toBeVisible();
   await expect(page.getByText('Active request', { exact: true })).toHaveCount(0);
   await page.clock.install();
-  const calls = historyCalls;
+  const before = calls;
   await page.clock.fastForward(30_000);
-  expect(historyCalls).toBe(calls);
+  expect(calls).toBe(before);
   await expect(page.getByText('Past request', { exact: true })).toBeVisible();
 });

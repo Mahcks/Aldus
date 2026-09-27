@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin, testServer } from './auth';
+import { continueReadingHere, signInAsTestAdmin, testServer } from './auth';
 
 const markerURL = `${testServer}/api/v1/epub-security-marker`;
 
@@ -123,6 +123,7 @@ test('book-authored active content cannot escape the web reader', async ({ page 
   const media = (await mediaResponse.json()) as { id: string };
 
   await page.goto(`/consume/${work.id}?mode=read&epub=${media.id}`);
+  await continueReadingHere(page, 'read');
   await expect(page.getByRole('button', { name: 'Open reader settings' })).toBeVisible({
     timeout: 30_000,
   });

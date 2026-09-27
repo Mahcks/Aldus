@@ -20,7 +20,9 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByText('Reading place saved')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel('Reading place saved', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
 
   await settings.click();
   await expect(page.getByText('Typography', { exact: true })).toBeVisible();
@@ -61,7 +63,9 @@ test('an administrator can read, listen, and configure KOReader safely', async (
     else await route.continue();
   });
   await page.getByRole('button', { name: 'Switch to listening' }).click();
-  await expect(page.getByText(/Offline mode/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('alert').filter({ hasText: /Offline mode/ })).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible({ timeout: 30_000 });
   await page.unroute('**/works/alice-gutenberg-11-work/progress');
 

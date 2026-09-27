@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { continueReadingHere, signInAsTestAdmin } from './auth';
 
 const destinations = [
   { path: '/home', layout: 'home-feed' },
@@ -42,6 +42,7 @@ for (const width of [390, 1024, 1440]) {
       } finally {
         release();
       }
+      if (layout === 'player') await continueReadingHere(page, 'listen');
       await expect(page.getByTestId(`loading-${layout}`)).toHaveCount(0, { timeout: 20_000 });
     });
   }

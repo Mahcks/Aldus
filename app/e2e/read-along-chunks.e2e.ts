@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { continueReadingHere, signInAsTestAdmin } from './auth';
 import { readAlongChunks } from '../src/lib/consumption/read-along';
-import type { AlignmentSegment } from '../src/generated/api';
+import { offlineAudioToCanonical } from '../src/lib/consumption/offline-position';
+import type { Alignment, AlignmentSegment } from '../src/generated/api';
 
 for (const exact of [true, false]) {
   for (const width of [390, 1024, 1440]) {
@@ -10,10 +11,32 @@ for (const exact of [true, false]) {
     }, testInfo) => {
       await page.setViewportSize({ width, height: 844 });
       await signInAsTestAdmin(page);
-      await page.route('**/works/alice-gutenberg-11-work/progress', (route) =>
-        route.fulfill({ json: null }),
+      await page.route('**/reading-session/claim', async (route) => {
+        const response = await route.fetch();
+        expect(response.ok()).toBe(true);
+        await route.fulfill({
+          response,
+          json: { ...(await response.json()), progress: null, representation_states: [] },
+        });
+      });
+      const saved = new Map<string, Record<string, unknown>>();
+      await page.route(
+        /\/works\/alice-gutenberg-11-work\/progress$|\/representations\/[^/]+\/state$/,
+        async (route) => {
+          const request = route.request();
+          const key = new URL(request.url()).pathname;
+          if (request.method() === 'PUT') {
+            const body = request.postDataJSON();
+            saved.set(key, {
+              ...body,
+              representation_id: key.split('/').at(-2),
+              revision: body.expected_revision + 1,
+              resolvable: true,
+            });
+          }
+          await route.fulfill({ json: saved.get(key) ?? null });
+        },
       );
-      await page.route('**/representations/*/state', (route) => route.fulfill({ json: null }));
       const text =
         'Alice walked through the garden and listened carefully to the curious story as the afternoon sunlight fell across the path and the flowers swayed gently beside her in the breeze. She stopped to ask another question before continuing on her way.';
       const words = text.split(' ');
@@ -43,14 +66,22 @@ for (const exact of [true, false]) {
             word_timings: undefined,
           }))
         : [];
+      let fixtureAlignment: Alignment;
       await page.route('**/api/v1/alignments/*', async (route) => {
         const response = await route.fetch();
         const alignment = await response.json();
+        fixtureAlignment = {
+          ...alignment,
+          segments: [{ ...segment, ordinal: 0 }, ...followingSegments].map((item) => ({
+            ...alignment.segments[0],
+            ...item,
+          })),
+        };
+        await route.fulfill({ json: fixtureAlignment });
+      });
+      await page.route('**/alignments/*/resolve/audio', async (route) => {
         await route.fulfill({
-          json: {
-            ...alignment,
-            segments: [{ ...alignment.segments[0], ...segment, ordinal: 0 }, ...followingSegments],
-          },
+          json: offlineAudioToCanonical(fixtureAlignment, route.request().postDataJSON()),
         });
       });
       await page.addInitScript(() => {
@@ -63,6 +94,7 @@ for (const exact of [true, false]) {
         };
       });
       await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
+      await continueReadingHere(page, 'listen');
       await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled({
         timeout: 30_000,
       });

@@ -41,6 +41,11 @@ test.afterAll(async ({ request }) => {
   else service?.kill();
 });
 
+test.afterEach(async ({ page }) => {
+  // Ownership watches remain pending when the browser closes after a test.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
 const book = {
   title: "Alice's Adventures in Wonderland",
   author: 'Lewis Carroll',
@@ -221,11 +226,18 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
     expect(ready.requested_by).toBe('reader');
     expect(ready.work_id).toBeTruthy();
     // Activity must update in place; no reload or tab switch.
-    await expect(page.getByRole('button', { name: 'Read', exact: true })).toBeVisible({
+    await expect(
+      page
+        .getByTestId(`title-request-${created.id}`)
+        .getByRole('button', { name: `Read ${book.title} now`, exact: true }),
+    ).toBeVisible({
       timeout: 20_000,
     });
     await page.screenshot({ path: `../artifacts/requests/${width}-request-ready.png` });
-    await page.getByRole('button', { name: 'Read', exact: true }).click();
+    await page
+      .getByTestId(`title-request-${created.id}`)
+      .getByRole('button', { name: `Read ${book.title} now`, exact: true })
+      .click();
     await expect(page).toHaveURL(new RegExp(`/consume/${ready.work_id}.*mode=read`));
     await expect(page.getByRole('button', { name: 'Open reader settings' })).toBeVisible({
       timeout: 30_000,
@@ -319,8 +331,11 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
     expect((await advanceAudio()).work_id).toBe(ready.work_id);
     expect((await (await request.get(`${fixture.url}/stats`)).json()).adds).toBe(initialAdds + 2);
     await page.goto(`/activity?request=${audioRequest.id}&library=${library}&format=audiobook`);
-    // Activity lists the newest request first; the URL assertion binds this action to its work.
-    await page.getByRole('button', { name: 'Listen', exact: true }).first().click();
+    // Bind the action to this request, even when other libraries contain the same title.
+    await page
+      .getByTestId(`title-request-${audioRequest.id}`)
+      .getByRole('button', { name: `Listen to ${book.title} now`, exact: true })
+      .click();
     await expect(page).toHaveURL(new RegExp(`/consume/${ready.work_id}.*mode=listen`));
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await expect(play).toBeEnabled({ timeout: 30_000 });

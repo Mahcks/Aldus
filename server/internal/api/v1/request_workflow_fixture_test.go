@@ -22,6 +22,7 @@ import (
 	"github.com/mahcks/aldus/server/internal/database"
 	"github.com/mahcks/aldus/server/internal/ingest"
 	"github.com/mahcks/aldus/server/internal/notification"
+	"github.com/mahcks/aldus/server/internal/ownership"
 	"github.com/mahcks/aldus/server/internal/position"
 	"github.com/mahcks/aldus/server/internal/source"
 )
@@ -202,7 +203,20 @@ func TestRequestWorkflowFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(Dependencies{AlignmentJobs: alignments, Auth: accounts, Catalog: catalog.New(db), Collections: collection.New(db), Position: position.New(db), Ingest: media, Sources: sources, Acquisitions: acquisitions, AcquisitionPolicies: policies, TitleRequests: titles, Notifications: inbox})
+	handler := Handler(Dependencies{
+		AlignmentJobs:       alignments,
+		Auth:                accounts,
+		Catalog:             catalog.New(db),
+		Collections:         collection.New(db),
+		Position:            position.New(db),
+		Ownership:           ownership.New(db),
+		Ingest:              media,
+		Sources:             sources,
+		Acquisitions:        acquisitions,
+		AcquisitionPolicies: policies,
+		TitleRequests:       titles,
+		Notifications:       inbox,
+	})
 	stopped := make(chan struct{})
 	var stop sync.Once
 	mux := http.NewServeMux()

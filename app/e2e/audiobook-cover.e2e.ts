@@ -93,6 +93,7 @@ for (const theme of ['light', 'dark'] as const) {
           return;
         }
         let json: unknown = [];
+        if (path === '/libraries/family/title-requests/page') json = { items: [] };
         if (path === '/works/book/covers/search' && holdSearch) {
           await new Promise<void>((resolve) => {
             releaseSearch = resolve;

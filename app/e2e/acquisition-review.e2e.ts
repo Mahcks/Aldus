@@ -461,6 +461,8 @@ test('destination failures, stale selections and library changes cannot redirect
   await expect(dialog.getByRole('button', { name: 'Import book', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('tab', { name: 'Other', exact: true }).click();
+  await expect(page.getByText('Other proposal', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review proposal', exact: true })).toHaveCount(1);
   await page.getByRole('button', { name: 'Review proposal', exact: true }).click();
   await expect(
     dialog.getByText('This book is no longer in this library. Choose another destination.'),

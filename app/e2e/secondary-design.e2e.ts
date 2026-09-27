@@ -8,6 +8,15 @@ for (const width of [390, 1024, 1440]) {
       let json: unknown = [];
       if (path === '/auth/me') json = { id: 'owner', username: 'alex', admin: true };
       if (path === '/setup/status') json = { available: false };
+      if (path === '/system/alignment')
+        json = {
+          accelerator: 'cpu',
+          acceleratorLabel: 'CPU',
+          detectedGpu: 'Not checked',
+          gpuTest: { state: 'not_applicable' },
+          alignment: { readiness: 'unknown', issues: [] },
+          lastCheckedAt: null,
+        };
       if (path === '/genre-tags')
         json = [{ id: 'fantasy', label: 'Fantasy', icon: 'read', keywords: ['fantasy fiction'] }];
       if (path === '/genre-tags/unmatched-subjects')

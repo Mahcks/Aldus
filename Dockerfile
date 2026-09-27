@@ -101,7 +101,8 @@ ENV HF_HOME=/opt/aldus-models \
 # Preload the shared models so alignment jobs need no network downloads.
 RUN <<'SH'
 set -e
-python <<'PYTHON'
+for attempt in 1 2 3; do
+if python <<'PYTHON'
 import nltk
 import whisperx
 
@@ -119,6 +120,12 @@ whisperx.load_model(
 )
 whisperx.load_align_model(language_code="en", device="cpu")
 PYTHON
+then
+    break
+fi
+test "$attempt" -lt 3 || exit 1
+sleep "$((attempt * 5))"
+done
 chown -R aldus:aldus /opt/aldus-models
 SH
 

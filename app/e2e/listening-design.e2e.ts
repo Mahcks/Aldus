@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestAdmin } from './auth';
+import { continueReadingHere, signInAsTestAdmin } from './auth';
 
 for (const width of [390, 1024, 1440]) {
   test(`listening keeps text and the header mode switch available at ${width}px`, async ({
@@ -23,6 +23,7 @@ for (const width of [390, 1024, 1440]) {
       });
     });
     await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
+    await continueReadingHere(page, 'listen');
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await expect(play).toBeEnabled({ timeout: 30_000 });
     const text = page.getByLabel('Read along text', { exact: true });
@@ -131,6 +132,14 @@ for (const width of [390, 1024, 1440]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await signInAsTestAdmin(page);
+    await page.route('**/reading-session/claim', async (route) => {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), progress: null },
+      });
+    });
     await page.route('**/works/alice-gutenberg-11-work/representations', async (route) => {
       const response = await route.fetch();
       const editions = await response.json();
@@ -145,6 +154,7 @@ for (const width of [390, 1024, 1440]) {
       route.fulfill({ json: null }),
     );
     await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
+    await continueReadingHere(page, 'listen');
     const play = page.getByRole('button', { name: 'Play', exact: true });
     await expect(play).toBeEnabled({ timeout: 30_000 });
     await expect(page.getByLabel('Read along text', { exact: true })).toHaveCount(0);
@@ -190,6 +200,14 @@ for (const width of [390, 1024, 1440]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await signInAsTestAdmin(page);
+    await page.route('**/reading-session/claim', async (route) => {
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), progress: null },
+      });
+    });
     // A tall book jacket, as many audiobooks ship: it must not be trimmed into a square.
     const jacket =
       '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#3b1a5a"/><text x="100" y="40" text-anchor="middle" fill="#f7d878" font-size="26">TITLE</text><text x="100" y="280" text-anchor="middle" fill="#f7d878" font-size="14">AUTHOR</text></svg>';
@@ -212,6 +230,7 @@ for (const width of [390, 1024, 1440]) {
       route.fulfill({ json: null }),
     );
     await page.goto('/consume/alice-gutenberg-11-work?mode=listen');
+    await continueReadingHere(page, 'listen');
     await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeEnabled({
       timeout: 30_000,
     });

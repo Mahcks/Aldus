@@ -288,7 +288,8 @@ export default function ActivityScreen() {
       .titleRequest(params.library, params.request)
       .then((request) => {
         if (!current) return;
-        setViewFilter(requestGroup(request));
+        // A followed request must stay visible when it becomes ready or fails.
+        setViewFilter('all');
         setExpandedFormat(
           `${request.id}:${params.format || request.formats[0]?.format || 'ebook'}`,
         );
@@ -383,7 +384,7 @@ export default function ActivityScreen() {
     if (!group.administrative && group.requestID) {
       const request = requests.find((candidate) => candidate.id === group.requestID);
       if (request) {
-        setViewFilter(requestGroup(request));
+        setViewFilter('all');
         if (group.format) void toggleRequestHistory(request, group.format, true);
         return;
       }
@@ -580,6 +581,7 @@ export default function ActivityScreen() {
               {visibleRequests.map((request, requestIndex) => (
                 <AnimatedView
                   key={request.id}
+                  testID={`title-request-${request.id}`}
                   entering={listItemEnter(requestIndex)}
                   exiting={fadeOut}
                   layout={layoutShift}

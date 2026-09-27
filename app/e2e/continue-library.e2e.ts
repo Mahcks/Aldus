@@ -15,7 +15,7 @@ for (const width of [390, 1024, 1440]) {
       in_progress: true,
       completion_percent: 20 + index,
       last_mode: index === 1 || index % 2 === 0 ? 'listen' : 'read',
-      readable: true,
+      readable: index !== 2,
       listenable: index !== 1,
       cover_url: '/api/covers/continue-fallback',
       audiobook_cover_url: '/api/media/audio-cover/cover',
@@ -35,8 +35,13 @@ for (const width of [390, 1024, 1440]) {
         },
       });
     });
-    await page.route('**/api/media/audio-cover/cover', route => route.fulfill({ status: 404 }));
-    await page.route('**/api/covers/continue-fallback', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="sienna"/></svg>' }));
+    await page.route('**/api/media/audio-cover/cover', (route) => route.fulfill({ status: 404 }));
+    await page.route('**/api/covers/continue-fallback', (route) =>
+      route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="sienna"/></svg>',
+      }),
+    );
     await page.goto('/home');
     await expect(
       page.getByRole('button', { name: 'Continue listening', exact: true }),
@@ -50,7 +55,9 @@ for (const width of [390, 1024, 1440]) {
     expect(Math.abs(coverBounds!.width - coverBounds!.height)).toBeLessThan(2);
     await expect(page.getByText(/\d+ books? in progress/)).toHaveCount(0);
     const audiobookCover = page.getByLabel('Cover for Started book 3', { exact: true });
-    await expect(audiobookCover.locator('img[src$="/api/covers/continue-fallback"]')).toHaveCount(1);
+    await expect(audiobookCover.locator('img[src$="/api/covers/continue-fallback"]')).toHaveCount(
+      1,
+    );
     const audiobookBounds = await audiobookCover.boundingBox();
     expect(Math.abs(audiobookBounds!.width - audiobookBounds!.height)).toBeLessThan(2);
     await second.click();
@@ -76,14 +83,20 @@ for (const width of [390, 1024, 1440]) {
     );
     const list = page.getByRole('main');
     await expect(async () => {
-      await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      await list.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
       expect(requests.some((url) => url.searchParams.get('offset') === '24')).toBe(true);
     }).toPass({ timeout: 10000 });
     await expect(async () => {
-      await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      await list.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
       await expect(page.getByRole('link', { name: /^Started book 30 by / })).toBeInViewport();
     }).toPass({ timeout: 10000 });
-    await list.evaluate((element) => { element.scrollTop = 0; });
+    await list.evaluate((element) => {
+      element.scrollTop = 0;
+    });
     await page.getByRole('link', { name: /^Started book 2 by / }).click();
     await expect(page).toHaveURL(/consume\/started-2\?mode=read/);
   });

@@ -461,16 +461,8 @@ export function useConsumptionLoading(
     return () => {
       canceled = true;
     };
-    // Selection changes reload media; progress revision changes must not reload active playback.
+    // Opening or switching editions restores current progress. Saving the first
+    // canonical position must not reload media and seek active playback backward.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    work,
-    mode,
-    epubID,
-    audioID,
-    jobs,
-    progress?.alignment_id,
-    progress?.resolvable,
-    queueReaderRestore,
-  ]);
+  }, [work, mode, epubID, audioID, jobs, queueReaderRestore]);
 }

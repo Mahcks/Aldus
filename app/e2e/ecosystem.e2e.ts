@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { continueReadingHere } from './auth';
 
 const username = process.env.ALDUS_ECOSYSTEM_USERNAME || 'ecosystem-admin';
 const password = process.env.ALDUS_ECOSYSTEM_PASSWORD || 'aldus-ecosystem-123';
@@ -20,6 +21,7 @@ test('web participates in the KOReader progress handoff', async ({ page }) => {
   await page.goto('/work/alice-gutenberg-11-work');
   const openReader = phase === 'seed' ? 'Start reading' : /^(Continue reading|Read instead|Read)$/;
   await page.getByRole('button', { name: openReader }).click();
+  await continueReadingHere(page);
   await expect(page.getByRole('button', { name: 'Next page' })).toBeVisible({ timeout: 30_000 });
 
   if (phase === 'verify') {

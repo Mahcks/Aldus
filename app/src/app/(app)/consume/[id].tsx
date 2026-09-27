@@ -255,8 +255,19 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
   const controlsEnabled = session.mayWrite && !choiceBusy;
 
   function onInteractiveReaderLocation(location: ReaderLocation) {
+    // Opening a fresh publication has no saved target: its initial relocation
+    // supplies the location required to finish restoration. It cannot save.
+    const openingLocation =
+      location.reason === 'relocate' &&
+      session.state.kind === 'claiming' &&
+      session.state.step === 'restore';
     // Keep the exact restored cursor, but ignore gestures already in flight.
-    if (location.reason !== 'restore' && (choiceInFlight.current || !session.canInteract())) return;
+    if (
+      location.reason !== 'restore' &&
+      !openingLocation &&
+      (choiceInFlight.current || !session.canInteract())
+    )
+      return;
     onReaderLocation(location);
   }
 
