@@ -28,11 +28,12 @@ import { useConsumptionLoading } from '@/hooks/consumption/useConsumptionLoading
 import { useConsumptionSync } from '@/hooks/consumption/useConsumptionSync';
 import { useReadingSession, type ReadingSession } from '@/hooks/consumption/useReadingSession';
 import { PausedElsewhereNotice } from '@/components/consumption/handoff/PausedElsewhereNotice';
-import { ProgressStatus } from '@/components/consumption/handoff/HandoffStatus';
 import { PlaceChoiceDialog } from '@/components/consumption/handoff/PlaceChoiceDialog';
 import type { SavedPlaceOption, SaveStatusState } from '@/lib/consumption/handoff-copy';
 import { TakeoverDialog } from '@/components/consumption/handoff/TakeoverDialog';
 import { pausedCopy, saveStatusView } from '@/lib/consumption/handoff-copy';
+import { ResumeToast } from '@/components/consumption/ResumeToast';
+import type { NarrationSync } from '@/components/consumption/SyncIndicator';
 import { api, errorMessage } from '@/lib/api';
 
 type Mode = 'read' | 'listen';
@@ -353,13 +354,6 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
     );
 
   const syncLabel = synchronizationLabel(jobs, epubID, audioID);
-  const pageSyncLabel =
-    readerLocation?.syncState === 'full'
-      ? 'Synchronized here'
-      : readerLocation?.syncState === 'partial'
-        ? 'Partially synchronized'
-        : 'Synchronization unavailable here';
-
   const compactPageSyncLabel =
     readerLocation?.syncState === 'full'
       ? 'Synchronized'
@@ -373,12 +367,18 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
 
+  // Opening a book restores the server's place, so an idle state means in sync unless offline.
   let currentSaveStatus: SaveStatusState | undefined;
   if (placeConflict || pausedDevice) currentSaveStatus = 'paused';
   else if (saveState === 'offline') currentSaveStatus = 'on-device';
   else if (saveState !== 'idle') currentSaveStatus = saveState;
   const saveLabel = progressSaveLabel(saveState, mode);
   const offlineReaderNotice = compactNative && mode === 'read' && notice.startsWith('Offline mode');
+  const saveIndicator: SaveStatusState =
+    currentSaveStatus ?? (notice.startsWith('Offline mode') ? 'on-device' : 'saved');
+  const narrationSync: NarrationSync | undefined = alignmentID
+    ? (readerLocation?.syncState ?? 'none')
+    : undefined;
   const progressStatus =
     pausedDevice || placeConflict
       ? saveStatusView('paused', mode).label
@@ -486,27 +486,6 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
             disabled={acceptanceNetwork.busy}
             onPress={() => void acceptanceNetwork.toggle()}
           />
-        </View>
-      ) : null}
-      {!compactNative && mode === 'read' ? (
-        <View className="h-8 shrink-0 items-center justify-center">
-          {!readerInteractionReady || !controlsEnabled ? null : currentSaveStatus ? (
-            <View className="py-1">
-              <ProgressStatus mode={mode} state={currentSaveStatus} />
-            </View>
-          ) : (
-            <Text
-              accessibilityLiveRegion="polite"
-              className="text-xs font-sans-semibold text-muted"
-            >
-              {progressStatus ||
-                (mode === 'read' && alignmentID
-                  ? pageSyncLabel
-                  : syncAvailable
-                    ? 'Synchronized here'
-                    : syncLabel)}
-            </Text>
-          )}
         </View>
       ) : null}
       {mode === 'listen' ? consumptionNotices : null}
@@ -710,7 +689,12 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
             restoreReader={restoreReader}
             leaveReader={leaveReader}
             paused={Boolean(pausedDevice)}
+            saveIndicator={saveIndicator}
+            narrationSync={narrationSync}
           />
+          {!compactNative && mode === 'read' && readerInteractionReady && controlsEnabled ? (
+            <ResumeToast message={resumeMessage} />
+          ) : null}
           {pausedDevice ? (
             // Fades toward the page color, so text recedes the same way in light and dark themes.
             <View pointerEvents="none" className="absolute inset-0 bg-canvas/70" />

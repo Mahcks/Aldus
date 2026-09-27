@@ -1,7 +1,7 @@
 import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { Alignment, Work } from '@/generated/api';
+import { useMemo } from 'react';
 import { ActivityIndicator, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   EPUBReader,
   type EPUBReaderHandle,
@@ -12,7 +12,9 @@ import {
 import { BookCover, coverPresentation } from '@/components/catalog/bookshelf';
 import { type MediaChoice } from '@/lib/consumption/consumption';
 import { Button, EmptyState } from '@/components/ui';
-import { useThemeColors } from '@/components/ui/theme';
+import { SyncIndicator, type NarrationSync } from './SyncIndicator';
+import type { SaveStatusState } from '@/lib/consumption/handoff-copy';
+import { useIsDarkTheme, useThemeColors } from '@/components/ui/theme';
 import { Text, View } from '@/components/ui/tw';
 
 // Keep the web publication mounted during handoff; native releases it while listening.
@@ -46,6 +48,9 @@ type ReaderViewProps = {
   leaveReader: () => Promise<void>;
   /** Another device has the book: the web listen footer is hidden and the native status becomes a warning. */
   paused?: boolean;
+  /** Web: what to show in the pager's status slot. */
+  saveIndicator?: SaveStatusState;
+  narrationSync?: NarrationSync;
 };
 
 export function ReaderView({
@@ -77,8 +82,19 @@ export function ReaderView({
   restoreReader,
   leaveReader,
   paused = false,
+  saveIndicator,
+  narrationSync,
 }: ReaderViewProps) {
   const colors = useThemeColors();
+  const dark = useIsDarkTheme();
+  // "Paper" is the app's own page: in the dark app it reads as a dark page instead of a white slab.
+  const pagePreferences = useMemo(
+    () =>
+      dark && readerPreferences.theme === 'paper'
+        ? { ...readerPreferences, theme: 'night' as const }
+        : readerPreferences,
+    [dark, readerPreferences],
+  );
   return (
     <View className={mode === 'read' ? 'min-h-0 flex-1' : 'hidden'}>
       {(Platform.OS === 'web' || mode === 'read') && selectedEPUB && epubSource ? (
@@ -99,9 +115,24 @@ export function ReaderView({
             source={epubSource}
             product
             segments={alignment?.segments}
-            preferences={readerPreferences}
+            preferences={pagePreferences}
             compactChrome={compactNative}
             statusTone={paused ? 'warning' : undefined}
+            statusSlot={
+              !compactNative && saveIndicator ? (
+                <SyncIndicator save={saveIndicator} narration={narrationSync} />
+              ) : undefined
+            }
+            trailing={
+              !compactNative && !paused ? (
+                <Button
+                  label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                  icon="listen"
+                  disabled={!canListenFromReader || !readerInteractionReady}
+                  onPress={() => void switchToListen()}
+                />
+              ) : undefined
+            }
             statusLabel={
               compactNative
                 ? canListenFromReader && !paused
@@ -123,26 +154,6 @@ export function ReaderView({
               setNotice(error.message || 'Unable to open EPUB.');
             }}
           />
-          {!compactNative ? (
-            <SafeAreaView
-              edges={['bottom']}
-              pointerEvents={paused ? 'none' : 'auto'}
-              accessibilityElementsHidden={paused}
-              importantForAccessibility={paused ? 'no-hide-descendants' : 'auto'}
-              aria-hidden={paused}
-              style={paused ? { opacity: 0 } : undefined}
-            >
-              <View className="min-h-[62px] w-full shrink-0 flex-row items-center justify-between gap-3 border-t border-line py-2.5">
-                <Text className="flex-1 text-[13px] leading-[19px] text-muted">{readerHelper}</Text>
-                <Button
-                  label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
-                  icon="listen"
-                  disabled={!canListenFromReader || !readerInteractionReady}
-                  onPress={() => void switchToListen()}
-                />
-              </View>
-            </SafeAreaView>
-          ) : null}
         </View>
       ) : (
         <View className="flex-1 items-center justify-center p-8">

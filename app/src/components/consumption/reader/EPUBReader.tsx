@@ -1,5 +1,5 @@
 import type { EPUBSelectionRange } from '@/generated/api';
-import { forwardRef, useImperativeHandle } from 'react';
+import { forwardRef, useImperativeHandle, type ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
 export type RangeBoundary = { dom_path: string; node_offset: number };
@@ -64,6 +64,10 @@ export const EPUBReader = forwardRef<
     statusLabel?: string;
     /** A warning tone renders the native footer status as a badge, e.g. while another device has the book. */
     statusTone?: 'warning';
+    /** Replaces the web pager's status text, e.g. with a sync indicator. */
+    statusSlot?: ReactNode;
+    /** An action placed at the end of the web pager row. */
+    trailing?: ReactNode;
     onLocation?: (location: ReaderLocation) => void;
     onListenFromLocation?: (location: ReaderLocation) => void;
     onReady?: (contents: ReaderNavigationItem[]) => void;

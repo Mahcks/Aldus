@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { DEFAULT_READER_PREFERENCES, type ReaderPreferences } from './reader/EPUBReader';
-import { lightColors as colors } from '@/components/ui/theme';
+import { lightColors as colors, useIsDarkTheme } from '@/components/ui/theme';
 import { stepPreference } from '@/lib/consumption/reader-settings-values';
 import { Button, IconButton, resolvePressStateClass } from '@/components/ui';
 import { Pressable, Text, View } from '@/components/ui/tw';
@@ -56,7 +56,14 @@ export function ReaderSettings({
 }: Props) {
   const { height } = useWindowDimensions();
   const dense = Boolean(compact && height < 760);
-  const theme = themes.find((option) => option.value === value.theme) ?? themes[0];
+  const dark = useIsDarkTheme();
+  // Paper is the app's own page, so in the dark app its swatch and preview are dark too.
+  const options = themes.map((option) =>
+    dark && option.value === 'paper'
+      ? { ...option, background: colors.readerNightPaper, ink: colors.readerNightInk }
+      : option,
+  );
+  const theme = options.find((option) => option.value === value.theme) ?? options[0];
   const changed =
     value.zoom !== resetValue.zoom ||
     value.lineHeight !== resetValue.lineHeight ||
@@ -243,7 +250,7 @@ export function ReaderSettings({
                 accessibilityLabel="Page color"
                 className="flex-row gap-2"
               >
-                {themes.map((option) => (
+                {options.map((option) => (
                   <ThemeChoice
                     key={option.value}
                     label={option.label}

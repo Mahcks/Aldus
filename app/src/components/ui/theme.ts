@@ -49,7 +49,7 @@ export const lightColors = {
   readerNightPaper: '#171410',
   readerNightInk: '#eee6d8',
   readerSelection: '#d39a57',
-  readerNightSelection: '#80512f',
+  readerNightSelection: '#4d4126',
 };
 
 /**
@@ -103,6 +103,11 @@ export const darkColors: typeof lightColors = {
 export type ThemeColors = typeof lightColors;
 
 /** Reactive palette for the current color scheme — follows system/user dark mode. */
+/** Whether the app is currently showing its dark palette. */
+export function useIsDarkTheme(): boolean {
+  return useEffectiveScheme() === 'dark';
+}
+
 export function useThemeColors(): ThemeColors {
   const scheme = useEffectiveScheme();
   return scheme === 'dark' ? darkColors : lightColors;

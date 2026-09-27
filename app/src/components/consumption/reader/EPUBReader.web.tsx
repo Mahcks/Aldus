@@ -3,7 +3,14 @@ import { restoreSelectionRange, selectionLocator } from '@/lib/consumption/resum
 import { captureSelectionRange } from './selection-range';
 import { canonicalResumeRange } from './canonical-range';
 import { Asset } from 'expo-asset';
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { ActivityIndicator, StyleSheet, View as RNView } from 'react-native';
 import { IconButton } from '@/components/ui';
 import { lightColors, useThemeColors } from '@/components/ui/theme';
@@ -93,6 +100,8 @@ type Props = {
   compactChrome?: boolean;
   statusLabel?: string;
   statusTone?: 'warning';
+  statusSlot?: ReactNode;
+  trailing?: ReactNode;
   onLocation?: (location: ReaderLocation) => void;
   onListenFromLocation?: (location: ReaderLocation) => void;
   onReady?: (contents: ReaderNavigationItem[]) => void;
@@ -115,6 +124,8 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     preferences = DEFAULT_READER_PREFERENCES,
     compactChrome,
     statusLabel,
+    statusSlot,
+    trailing,
     onLocation,
     onReady,
     onError,
@@ -130,6 +141,10 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const colors = useThemeColors();
   const [ready, setReady] = useState(false);
   const [positionLabel, setPositionLabel] = useState('');
+  // Display only: how far through the whole book the visible page is.
+  const [progression, setProgression] = useState<number>();
+  // Whole-book position, like the "158 / 346" the native reader shows.
+  const [bookPosition, setBookPosition] = useState<{ current: number; total: number }>();
   const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
   const disposalRef = useRef<ReturnType<typeof deferredDisposal>>(null);
@@ -554,6 +569,13 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
               }
             : { href, cfi: detail.cfi, syncState: state, reason };
           location.totalProgression = detail.fraction;
+          setProgression(detail.fraction);
+          if (detail.location?.total > 0) {
+            setBookPosition({
+              current: Math.min(detail.location.total, detail.location.current + 1),
+              total: detail.location.total,
+            });
+          }
           if (__DEV__)
             console.debug('Aldus relocation', {
               href,
@@ -634,7 +656,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
 
   return (
     <View className="relative min-h-[560px] flex-1">
-      <RNView ref={host} style={styles.book} />
+      <RNView ref={host} style={[styles.book, { backgroundColor: pageBackground(preferences) }]} />
       {!ready ? (
         <View className="absolute inset-0 items-center justify-center gap-3 bg-paper">
           <ActivityIndicator color={colors.accent} />
@@ -642,30 +664,52 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
         </View>
       ) : null}
       {compactChrome || preferences.layout !== 'scrolled' ? (
-        <View className="min-h-12 shrink-0 flex-row items-center justify-between border-t border-line bg-paper px-2">
+        <View className="min-h-[72px] shrink-0 flex-row items-center gap-1 border-t border-line bg-paper px-2">
           <IconButton
             icon="previousPage"
             label="Previous page"
             kind="quiet"
             onPress={() => turnPage('backward')}
           />
-          <View className="min-w-0 flex-1 items-center">
-            <Text className="text-xs text-ink" numberOfLines={1}>
+          <View className="min-w-0 flex-1 items-center gap-1.5 py-2">
+            <Text className="text-xs font-sans-semibold text-ink" numberOfLines={1}>
               {positionLabel || 'Opening your place…'}
             </Text>
-            <Text
-              accessibilityLiveRegion="polite"
-              accessibilityLabel={
-                statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
-              }
-              numberOfLines={1}
-              className="flex-shrink text-center text-xs text-muted"
-            >
-              {statusLabel ??
-                (product
-                  ? 'Your place is saved as you turn pages.'
-                  : 'Highlight a passage in Alice, then click Capture selection.')}
-            </Text>
+            {positionLabel && (bookPosition || progression !== undefined) ? (
+              <Text className="text-[11px] text-muted" numberOfLines={1}>
+                {bookPosition ? `${bookPosition.current} of ${bookPosition.total} pages` : ''}
+                {bookPosition && progression !== undefined ? ' · ' : ''}
+                {progression !== undefined
+                  ? `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%`
+                  : ''}
+              </Text>
+            ) : null}
+            {progression !== undefined ? (
+              <View
+                accessibilityElementsHidden
+                className="h-[3px] w-[280px] max-w-full overflow-hidden rounded-pill bg-line"
+              >
+                <View
+                  className="h-full bg-accent"
+                  style={{ width: `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%` }}
+                />
+              </View>
+            ) : null}
+            {statusSlot ?? (
+              <Text
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={
+                  statusLabel ? `Synchronization status: ${statusLabel}` : 'Page navigation'
+                }
+                numberOfLines={1}
+                className="flex-shrink text-center text-xs text-muted"
+              >
+                {statusLabel ??
+                  (product
+                    ? 'Your place is saved as you turn pages.'
+                    : 'Highlight a passage in Alice, then click Capture selection.')}
+              </Text>
+            )}
           </View>
           <IconButton
             icon="nextPage"
@@ -673,6 +717,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             kind="quiet"
             onPress={() => turnPage('forward')}
           />
+          {trailing ? <View className="pl-3 pr-1">{trailing}</View> : null}
         </View>
       ) : null}
     </View>
@@ -827,6 +872,12 @@ function boundary(range: Range, end = false) {
   return { dom_path: domPath(node), node_offset: offset };
 }
 
+/** The color behind the page, matching the chosen reader theme so no light edge shows around a dark page. */
+function pageBackground(preferences: ReaderPreferences) {
+  if (preferences.theme === 'night') return lightColors.readerNightPaper;
+  return preferences.theme === 'sepia' ? lightColors.canvas : lightColors.paper;
+}
+
 function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
   const style =
     doc.querySelector<HTMLStyleElement>('#aldus-reader-style') ??
@@ -852,7 +903,7 @@ function applyReaderStyles(doc: Document, preferences: ReaderPreferences) {
     preferences.fontFamily === 'dyslexic'
       ? `@font-face { font-family: 'OpenDyslexic'; src: url('${openDyslexicURL}') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }`
       : '';
-  style.textContent = `${fontFace} html { color: ${ink}; background: ${background}; } body { ${fontFamily} font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } a { color: inherit; } ::selection { background: ${selection}; color: ${ink}; }`;
+  style.textContent = `${fontFace} html { color: ${ink}; background: ${background}; --theme-bg-color: ${background}; } body { ${fontFamily} font-size: ${1.08 * preferences.zoom}rem; line-height: ${preferences.lineHeight}; padding-inline: clamp(1rem, 4vw, ${preferences.margin + 1.5}rem); } p { max-width: 68ch; margin-inline: auto; text-align: start; } a { color: inherit; } ${night ? `body, body * { color: ${ink} !important; }` : ''} ::selection { background: ${selection}; color: ${ink}; }`;
 }
 
 function serializeRange(view: any, index: number, range: Range): ReaderCapture {
