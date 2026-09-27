@@ -434,11 +434,11 @@ test('an offline browser keeps its place and offers a choice after another devic
   await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30000 });
   await page.getByRole('button', { name: 'Open table of contents' }).click();
   await page.getByRole('button', { name: 'CHAPTER I. Down the Rabbit-Hole' }).click();
-  await expect(page.getByText('Reading place saved', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Reading place saved', { exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Next page' }).click();
   await expect(
-    page.getByText('Saved on this device · Waiting to upload', { exact: true }),
+    page.getByLabel('Saved on this device · Waiting to upload', { exact: true }),
   ).toBeVisible({ timeout: 30000 });
   const queued = await page.evaluate(() =>
     Object.entries(localStorage).filter(([key]) => key.includes('outbox:')),
@@ -512,7 +512,7 @@ for (const target of ['progress', 'state']) {
     await page
       .getByRole('button', { name: 'CHAPTER I. Down the Rabbit-Hole', exact: true })
       .click();
-    await expect(page.getByText('Reading place saved', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Reading place saved', { exact: true })).toBeVisible();
     let dropped = false;
     let accepted!: () => void;
     const committed = new Promise<void>((resolve) => {
@@ -545,7 +545,7 @@ for (const target of ['progress', 'state']) {
         ),
       )
       .toBe(0);
-    await expect(page.getByText('Reading place saved', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Reading place saved', { exact: true })).toBeVisible();
   });
 }
 

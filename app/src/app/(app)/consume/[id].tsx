@@ -29,10 +29,11 @@ import { useConsumptionSync } from '@/hooks/consumption/useConsumptionSync';
 import { useReadingSession, type ReadingSession } from '@/hooks/consumption/useReadingSession';
 import { PausedElsewhereNotice } from '@/components/consumption/handoff/PausedElsewhereNotice';
 import { PlaceChoiceDialog } from '@/components/consumption/handoff/PlaceChoiceDialog';
-import type { SavedPlaceOption, SaveStatusState } from '@/lib/consumption/handoff-copy';
+import type { SavedPlaceOption } from '@/lib/consumption/handoff-copy';
 import { TakeoverDialog } from '@/components/consumption/handoff/TakeoverDialog';
 import { pausedCopy, saveStatusView } from '@/lib/consumption/handoff-copy';
 import { ResumeToast } from '@/components/consumption/ResumeToast';
+import { readerSaveIndicator } from '@/lib/consumption/reader-status';
 import type { NarrationSync } from '@/components/consumption/SyncIndicator';
 import { api, errorMessage } from '@/lib/api';
 
@@ -367,15 +368,20 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       ? 'Move to synchronized text to continue listening.'
       : 'Synchronization is unavailable in this section.';
 
-  // Opening a book restores the server's place, so an idle state means in sync unless offline.
-  let currentSaveStatus: SaveStatusState | undefined;
-  if (placeConflict || pausedDevice) currentSaveStatus = 'paused';
-  else if (saveState === 'offline') currentSaveStatus = 'on-device';
-  else if (saveState !== 'idle') currentSaveStatus = saveState;
   const saveLabel = progressSaveLabel(saveState, mode);
   const offlineReaderNotice = compactNative && mode === 'read' && notice.startsWith('Offline mode');
-  const saveIndicator: SaveStatusState =
-    currentSaveStatus ?? (notice.startsWith('Offline mode') ? 'on-device' : 'saved');
+  const saveIndicator = readerSaveIndicator(
+    saveState,
+    controlsEnabled && readerInteractionReady && !placeConflict,
+    Boolean(
+      readerLocation &&
+      readerLocation.reason !== 'restore' &&
+      readerLocation !== actions.settledEPUBSave?.location,
+    ),
+    readerLocation === actions.settledEPUBSave?.location
+      ? actions.settledEPUBSave?.result
+      : undefined,
+  );
   const narrationSync: NarrationSync | undefined = alignmentID
     ? (readerLocation?.syncState ?? 'none')
     : undefined;

@@ -5,6 +5,8 @@ import { useThemeColors, type ThemeColors } from '@/components/ui/theme';
 import { AnimatedView, Text, View } from '@/components/ui/tw';
 import { saveStatusView, type SaveStatusState } from '@/lib/consumption/handoff-copy';
 
+export type ReaderSaveStatus = SaveStatusState | 'idle';
+
 export type NarrationSync = 'full' | 'partial' | 'none';
 
 type Tone = 'success' | 'neutral' | 'warning' | 'danger' | 'info';
@@ -17,7 +19,8 @@ const TONE_CLASS: Record<Tone, { surface: string; text: string }> = {
   info: { surface: 'bg-info-soft', text: 'text-info' },
 };
 
-const SAVE_DISPLAY: Record<SaveStatusState, { label: string; icon?: AppIconName; tone: Tone }> = {
+const SAVE_DISPLAY: Record<ReaderSaveStatus, { label: string; icon?: AppIconName; tone: Tone }> = {
+  idle: { label: 'Ready to read', tone: 'neutral' },
   saving: { label: 'Saving…', tone: 'neutral' },
   saved: { label: 'Synced', icon: 'check', tone: 'success' },
   'on-device': { label: 'Saved on this device', icon: 'cloudUpload', tone: 'neutral' },
@@ -59,7 +62,7 @@ export function SyncIndicator({
   save,
   narration,
 }: {
-  save: SaveStatusState;
+  save: ReaderSaveStatus;
   narration?: NarrationSync;
 }) {
   const colors = useThemeColors();
@@ -70,7 +73,7 @@ export function SyncIndicator({
     <View className="flex-row flex-wrap items-center justify-center gap-2">
       <View
         accessibilityLiveRegion="polite"
-        accessibilityLabel={saveStatusView(save, 'read').label}
+        accessibilityLabel={save === 'idle' ? display.label : saveStatusView(save, 'read').label}
         className={`h-7 flex-row items-center gap-1.5 rounded-pill px-3 ${saveClass.surface}`}
       >
         <AnimatedView key={save} entering={popIn} className="items-center justify-center">

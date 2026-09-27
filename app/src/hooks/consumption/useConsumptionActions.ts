@@ -40,6 +40,8 @@ export function useConsumptionActions(
   params: ConsumptionParams,
 ) {
   const {
+    settledEPUBSave,
+    setSettledEPUBSave,
     work,
     mode,
     setMode,
@@ -249,6 +251,7 @@ export function useConsumptionActions(
     await representationSaves.current;
     if (location.selection && result === 'error' && attempt === representationSaveAttempt.current)
       setSaveState('error');
+    if (attempt === representationSaveAttempt.current) setSettledEPUBSave({ location, result });
     return result !== 'error';
   }
 
@@ -738,6 +741,7 @@ export function useConsumptionActions(
     }
   }
   return {
+    settledEPUBSave,
     openReaderLocation,
     saveEPUBLocation,
     restoreCanonical,

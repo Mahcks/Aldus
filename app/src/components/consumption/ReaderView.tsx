@@ -1,7 +1,7 @@
 import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { Alignment, Work } from '@/generated/api';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform } from 'react-native';
+import { ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import {
   EPUBReader,
   type EPUBReaderHandle,
@@ -11,9 +11,8 @@ import {
 } from './reader/EPUBReader';
 import { BookCover, coverPresentation } from '@/components/catalog/bookshelf';
 import { type MediaChoice } from '@/lib/consumption/consumption';
-import { Button, EmptyState } from '@/components/ui';
-import { SyncIndicator, type NarrationSync } from './SyncIndicator';
-import type { SaveStatusState } from '@/lib/consumption/handoff-copy';
+import { Button, IconButton, EmptyState } from '@/components/ui';
+import { SyncIndicator, type NarrationSync, type ReaderSaveStatus } from './SyncIndicator';
 import { useIsDarkTheme, useThemeColors } from '@/components/ui/theme';
 import { Text, View } from '@/components/ui/tw';
 
@@ -49,7 +48,7 @@ type ReaderViewProps = {
   /** Another device has the book: the web listen footer is hidden and the native status becomes a warning. */
   paused?: boolean;
   /** Web: what to show in the pager's status slot. */
-  saveIndicator?: SaveStatusState;
+  saveIndicator?: ReaderSaveStatus;
   narrationSync?: NarrationSync;
 };
 
@@ -85,6 +84,7 @@ export function ReaderView({
   saveIndicator,
   narrationSync,
 }: ReaderViewProps) {
+  const { width } = useWindowDimensions();
   const colors = useThemeColors();
   const dark = useIsDarkTheme();
   // "Paper" is the app's own page: in the dark app it reads as a dark page instead of a white slab.
@@ -125,12 +125,21 @@ export function ReaderView({
             }
             trailing={
               !compactNative && !paused ? (
-                <Button
-                  label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
-                  icon="listen"
-                  disabled={!canListenFromReader || !readerInteractionReady}
-                  onPress={() => void switchToListen()}
-                />
+                width < 600 ? (
+                  <IconButton
+                    label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                    icon="listen"
+                    disabled={!canListenFromReader || !readerInteractionReady}
+                    onPress={() => void switchToListen()}
+                  />
+                ) : (
+                  <Button
+                    label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                    icon="listen"
+                    disabled={!canListenFromReader || !readerInteractionReady}
+                    onPress={() => void switchToListen()}
+                  />
+                )
               ) : undefined
             }
             statusLabel={

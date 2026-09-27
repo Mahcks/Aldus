@@ -143,7 +143,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const [positionLabel, setPositionLabel] = useState('');
   // Display only: how far through the whole book the visible page is.
   const [progression, setProgression] = useState<number>();
-  // Whole-book position, like the "158 / 346" the native reader shows.
+  // Fixed-size whole-book locations, independent of screen pagination.
   const [bookPosition, setBookPosition] = useState<{ current: number; total: number }>();
   const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
@@ -447,6 +447,8 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
     pinnedCursor.current = false;
     setReady(false);
     setPositionLabel('');
+    setProgression(undefined);
+    setBookPosition(undefined);
     void import('foliate-js/view.js')
       .then(async () => {
         if (disposed || !host.current) return;
@@ -677,7 +679,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             </Text>
             {positionLabel && (bookPosition || progression !== undefined) ? (
               <Text className="text-[11px] text-muted" numberOfLines={1}>
-                {bookPosition ? `${bookPosition.current} of ${bookPosition.total} pages` : ''}
+                {bookPosition ? `Location ${bookPosition.current} of ${bookPosition.total}` : ''}
                 {bookPosition && progression !== undefined ? ' · ' : ''}
                 {progression !== undefined
                   ? `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%`
@@ -717,7 +719,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             kind="quiet"
             onPress={() => turnPage('forward')}
           />
-          {trailing ? <View className="pl-3 pr-1">{trailing}</View> : null}
+          {trailing ? <View className="min-[600px]:pl-3 min-[600px]:pr-1">{trailing}</View> : null}
         </View>
       ) : null}
     </View>

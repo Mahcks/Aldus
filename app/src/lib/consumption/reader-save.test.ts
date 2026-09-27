@@ -835,7 +835,7 @@ test('a full selection is kept before canonical I/O and bound only after the exa
     };
     const save = new Function(
       ...Object.keys(context),
-      `${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
+      `const setSettledEPUBSave = () => {}; ${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
     )(...Object.values(context));
     const saving = save({
       href: 'chapter.xhtml',
@@ -1098,7 +1098,7 @@ test('an unmapped aligned selection is retained without a synchronized success c
   };
   const save = new Function(
     ...Object.keys(context),
-    `${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
+    `const setSettledEPUBSave = () => {}; ${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
   )(...Object.values(context));
   expect(
     await save({
@@ -1115,4 +1115,56 @@ test('an unmapped aligned selection is retained without a synchronized success c
   expect(confirmed).toBe(false);
   expect(states.at(-1)).toBe('error');
   expect(notices[0]).toContain('could not be synchronized');
+});
+
+test('only the latest completed ebook save settles the visible save indicator', async () => {
+  let releaseFirst!: () => void;
+  let releaseSecond!: () => void;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const secondGate = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  let settled: unknown;
+  let calls = 0;
+  const context = {
+    readerInputBlocked: { current: false },
+    readerScope: 'scope',
+    readerOrigin: 'origin',
+    representationSaveAttempt: { current: 0 },
+    representationSaves: { current: Promise.resolve() },
+    alignmentID: undefined,
+    progressRef: { current: null },
+    progressConflictRef: { current: undefined },
+    activeStorageScope: () => 'scope',
+    getAPIBaseURL: () => 'origin',
+    work: { id: 'book' },
+    isCurrentReader: () => true,
+    saveRepresentation: async () => {
+      await (++calls === 1 ? firstGate : secondGate);
+      return 'saved';
+    },
+    setSaveState: () => {},
+    setNotice: () => {},
+    errorMessage: String,
+    setSettledEPUBSave: (value: unknown) => {
+      settled = value;
+    },
+  };
+  const save = new Function(
+    ...Object.keys(context),
+    `${transpiler.transformSync(functionSource('saveEPUBLocation'))}; return saveEPUBLocation;`,
+  )(...Object.values(context));
+  const first = { href: 'chapter.xhtml', cfi: 'first', reason: 'page' };
+  const second = { ...first, cfi: 'second' };
+  const firstSave = save(first);
+  const secondSave = save(second);
+  expect(settled).toBeUndefined();
+  releaseFirst();
+  await firstSave;
+  expect(settled).toBeUndefined();
+  releaseSecond();
+  await secondSave;
+  expect(settled).toEqual({ location: second, result: 'saved' });
 });

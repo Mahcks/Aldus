@@ -14,6 +14,8 @@ import { audioPassage, readyJob, type MediaChoice } from '@/lib/consumption/cons
 import { api } from '@/lib/api';
 import { type RepresentationConflict } from '@/lib/offline-library';
 
+import type { ReaderLocation } from '@/components/consumption/reader/EPUBReader';
+
 type Mode = 'read' | 'listen';
 export type ConsumptionParams = {
   id: string;
@@ -65,6 +67,10 @@ export function useConsumptionState(
   const lastAudioSave = useRef(-1);
   const representationSaves = useRef<Promise<void>>(Promise.resolve());
   const audioSaves = useRef<Promise<void>>(Promise.resolve());
+  const [settledEPUBSave, setSettledEPUBSave] = useState<{
+    location: ReaderLocation;
+    result: 'saved' | 'offline' | 'error';
+  }>();
   const representationSaveAttempt = useRef(0);
   const switching = useRef(false);
   const leaving = useRef(false);
@@ -314,6 +320,8 @@ export function useConsumptionState(
     progressRef,
     saveState,
     setSaveState,
+    settledEPUBSave,
+    setSettledEPUBSave,
     resumeMessage,
     setResumeMessage,
     progressConflict,
