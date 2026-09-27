@@ -1,20 +1,20 @@
-Aldus: requests, downloads, and connection recovery
+Aldus: reading handoff and highlights
 
-For these checks, use an Aldus server updated to 0.1.0-beta.20. Acquisition checks need a configured provider and download client; skip those if your household does not use them. Only request content you have permission to download.
+Update your Aldus server to 0.1.0-beta.22 before testing this build. Use the same account and book on your iPhone and in the web app.
 
-1. Connection recovery
-With Wi-Fi on, try opening Aldus while your server is unavailable. You should get a useful connection message instead of an endless loading screen. Bring the server back and retry; your account and library should still be accessible.
+1. Move between devices
+Select a passage on the web, continue on your iPhone, then move back to the web. Repeat a few times. The previous device should pause promptly, and the receiving device should open the same passage without changing its saved place.
 
-2. Find and request a book
-In Discover, search for a title you know your configured sources offer. Request an ebook or audiobook. Activity should clearly show the format and what happens next. Repeated searches should stay grouped when you open the updates.
+2. Try the handoff timing
+Turn a page just as you continue on the other device, and try returning to Aldus after it was in the background. Reading should pause during the transfer. A delayed page turn should not overwrite the other device's position or create an unnecessary saved-place conflict.
 
-3. Approve and follow requests (administrators)
-In Acquisitions, switch between all requests, awaiting approval, active requests, and history. Approve a request from a member who needs approval. Follow it through download and import, then open the book from Library. If no release is found, it should show that Aldus is still watching.
+3. Highlight across paragraphs
+Select text within one paragraph and across several paragraphs. Move between web and iPhone. The whole passage should remain highlighted, with iPhone highlights following individual text lines.
 
-4. Check connections and download clients (administrators)
-Review Connections on your iPhone, save your settings, and test them. Search-source results, download-client connectivity, and completed-file access should be explained separately. If you use SABnzbd, try a permitted download and check that it finishes repair/unpacking before appearing in Library. With qBittorrent, check that importing a book leaves seeding intact.
+4. Save and restore
+Turn pages, close the book, and reopen it. Check that the save indicator only confirms a completed save. Web reading-position labels should remain visible; page counts may differ between devices because their layouts differ.
 
-5. Check everyday reading
-Open an ebook, turn a few pages, close it, and reopen it. Try an audiobook too. Download a book and reopen it with the server unavailable. Your saved place should be preserved.
+5. Switch formats and read offline
+For a matched ebook and audiobook, try Read → Listen → Read. Download an ebook, make the server unavailable, and reopen it. After reconnecting, check your saved place. If you read different places offline and on another device, both should remain available until you choose where to continue.
 
-Please send TestFlight feedback with the screen, steps, expected result, and what happened. Include a screenshot when useful, but hide passwords and API keys. Tell us your server version and download client if relevant.
+Please send TestFlight feedback with your iPhone model, the steps, the expected result, and what happened. Include a screenshot when useful, but hide passwords and API keys.

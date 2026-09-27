@@ -54,7 +54,7 @@ There's nothing to download or build beyond that — every tagged release is a r
 mkdir -p aldus/library-media aldus/downloads && cd aldus
 
 # Grab this release's setup file
-ALDUS_VERSION=0.1.0-beta.21
+ALDUS_VERSION=0.1.0-beta.22
 curl -fL "https://github.com/Mahcks/Aldus/releases/download/v${ALDUS_VERSION}/compose.yml" -o compose.yml
 printf 'ALDUS_VERSION=%s\n' "$ALDUS_VERSION" > .env
 
@@ -68,7 +68,7 @@ Want to confirm it started cleanly before opening the browser? `docker compose p
 
 > Planning to let anyone outside your own home use this? A couple of settings need to change first — see [Using Aldus away from your server](#using-aldus-away-from-your-server) before you share the link.
 
-> **Current beta note:** `0.1.0-beta.21` matches your books to their audiobooks entirely on CPU by default, and also publishes an optional, faster NVIDIA image — see [Optional NVIDIA acceleration](#optional-nvidia-acceleration). Image downloads are large, so first startup time depends on your connection.
+> **Current beta note:** `0.1.0-beta.22` matches your books to their audiobooks entirely on CPU by default, and also publishes an optional, faster NVIDIA image — see [Optional NVIDIA acceleration](#optional-nvidia-acceleration). Image downloads are large, so first startup time depends on your connection.
 
 Prefer to look before installing anything? [demo.aldus.media](https://demo.aldus.media) runs the current build against a small public-domain catalog — no account required.
 
@@ -212,7 +212,7 @@ The standard Aldus image includes WhisperX and builds every book's exact read/li
 To speed it up, install the NVIDIA driver and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), then run one command:
 
 ```sh
-curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.21/compose.gpu.yml -o compose.gpu.yml
+curl -fL https://github.com/Mahcks/Aldus/releases/download/v0.1.0-beta.22/compose.gpu.yml -o compose.gpu.yml
 docker compose -f compose.yml -f compose.gpu.yml up -d --pull always
 ```
 
