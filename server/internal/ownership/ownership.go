@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mahcks/aldus/server/internal/auth"
@@ -44,7 +45,11 @@ type Claim struct {
 	ExpectedEpoch int64
 }
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db       *sql.DB
+	watchMu  sync.Mutex
+	watchers map[watchKey]map[chan struct{}]struct{}
+}
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
@@ -222,6 +227,7 @@ func (s *Store) ClaimWithSnapshot(ctx context.Context, actor auth.User, workID s
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit reading takeover: %w", err)
 	}
+	s.notify(actor.ID, workID)
 	return &Session{
 		WorkID:    workID,
 		DeviceID:  claim.DeviceID,

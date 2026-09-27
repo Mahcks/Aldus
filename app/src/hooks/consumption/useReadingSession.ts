@@ -23,6 +23,7 @@ import {
 } from '@/lib/consumption/reading-session';
 import { randomID } from '@/lib/random-id';
 import { cachedReadingProof, cacheReadingProof } from '@/lib/consumption/reading-proof-cache';
+import { watchReadingOwnership } from '@/lib/consumption/reading-watch';
 
 const HEARTBEAT_MS = 15_000;
 
@@ -50,6 +51,11 @@ export function useReadingSession(workID: string) {
   const heldProof = 'proof' in state ? state.proof : undefined;
   const activeDeviceID = heldProof?.device_id;
   const activeEpoch = heldProof?.epoch;
+  const observingOwner = state.kind === 'paused';
+  const watchedDeviceID =
+    activeDeviceID ?? (state.kind === 'paused' ? (state.owner?.device_id ?? '') : undefined);
+  const watchedEpoch =
+    activeEpoch ?? (state.kind === 'paused' ? (state.owner?.epoch ?? 0) : undefined);
   const pendingAttempt = state.kind === 'claiming' ? state.attempt : 0;
 
   useEffect(() => {
@@ -201,6 +207,34 @@ export function useReadingSession(workID: string) {
       clearInterval(timer);
     };
   }, [activeDeviceID, activeEpoch, checkOwnership, workID]);
+
+  useEffect(() => {
+    if (watchedDeviceID === undefined || watchedEpoch === undefined) return;
+    let controller: AbortController | undefined;
+    const restart = () => {
+      controller?.abort();
+      controller = undefined;
+      if (Platform.OS !== 'web' && AppState.currentState !== 'active') return;
+      if (Platform.OS === 'web' && document.visibilityState === 'hidden') return;
+      controller = new AbortController();
+      void watchReadingOwnership(
+        workID,
+        { device_id: watchedDeviceID, epoch: watchedEpoch },
+        controller.signal,
+        observingOwner
+          ? (owner) => dispatch({ type: 'owner-observed', owner, epoch: watchedEpoch })
+          : undefined,
+      );
+    };
+    const subscription = AppState.addEventListener('change', restart);
+    if (Platform.OS === 'web') document.addEventListener('visibilitychange', restart);
+    restart();
+    return () => {
+      controller?.abort();
+      subscription.remove();
+      if (Platform.OS === 'web') document.removeEventListener('visibilitychange', restart);
+    };
+  }, [workID, watchedDeviceID, watchedEpoch, observingOwner]);
 
   useEffect(
     () =>

@@ -131,6 +131,7 @@ export class APIError extends Error {
     public status: number,
     message: string,
     public reference?: string,
+    public retryAfterMS?: number,
   ) {
     super(reference ? `${message} (reference ${reference})` : message);
   }
@@ -202,6 +203,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status,
         message,
         response.status >= 500 ? response.headers.get('X-Request-ID') || undefined : undefined,
+        response.status === 429
+          ? Math.max(0, Number(response.headers.get('Retry-After')) || 15) * 1000
+          : undefined,
       );
     }
     if (response.status === 204) return undefined as T;
@@ -218,7 +222,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   } finally {
     const finished = Date.now();
-    if (typeof __DEV__ !== 'undefined' && __DEV__ && finished - started >= 1000) {
+    if (
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      finished - started >= 1000 &&
+      !path.includes('/reading-session/watch?')
+    ) {
       // No credentials, payloads, or query strings. Metro shows where a slow
       // request spent its time, including network failures and JSON decoding.
       console.info('Aldus: slow API request', {
@@ -825,6 +834,31 @@ export const api = {
   },
   readingSession: (workID: string) =>
     request<ReadingOwner | null>(`/works/${workID}/reading-session`),
+  watchReadingSession: async (workID: string, epoch: number, signal: AbortSignal) => {
+    const origin = getAPIBaseURL();
+    const generation = sessionGeneration(origin);
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+    const timeout = setTimeout(abort, 35_000);
+    try {
+      const owner = await request<ReadingOwner | null>(
+        `/works/${workID}/reading-session/watch?epoch=${epoch}`,
+        { signal: controller.signal },
+      );
+      if (generation !== sessionGeneration(origin) || origin !== getAPIBaseURL())
+        throw new APIError(409, 'The active account changed.');
+      return owner;
+    } catch (error) {
+      if (generation !== sessionGeneration(origin) || origin !== getAPIBaseURL())
+        throw new APIError(409, 'The active account changed.');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', abort);
+    }
+  },
   claimReadingSession: (workID: string, body: ClaimReadingSessionRequest) =>
     request<ReadingClaim>(`/works/${workID}/reading-session/claim`, {
       method: 'POST',

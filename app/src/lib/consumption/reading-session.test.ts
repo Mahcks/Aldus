@@ -283,3 +283,30 @@ it('foreground verification blocks input without dropping the reader or acceptin
   expect(paused.kind).toBe('paused');
   expect(readingSessionReducer(paused, { type: 'foreground-checked', proof })).toBe(paused);
 });
+
+it('paused readers follow newer ownership without resuming or changing an in-flight claim', () => {
+  const paused: SessionState = { kind: 'paused', owner: owner(), attempt: 1 };
+  const updated = readingSessionReducer(paused, {
+    type: 'owner-observed',
+    epoch: 3,
+    owner: owner({ epoch: 4 }),
+  });
+  expect(updated.kind).toBe('paused');
+  expect(mayWritePosition(updated)).toBe(false);
+  const claiming = readingSessionReducer(updated, { type: 'resume' });
+  expect(claiming.kind === 'claiming' && claiming.owner?.epoch).toBe(4);
+  expect(
+    readingSessionReducer(claiming, {
+      type: 'owner-observed',
+      epoch: 4,
+      owner: owner({ epoch: 5 }),
+    }),
+  ).toBe(claiming);
+  expect(
+    readingSessionReducer(updated, {
+      type: 'owner-observed',
+      epoch: 3,
+      owner: owner({ epoch: 2 }),
+    }),
+  ).toBe(updated);
+});

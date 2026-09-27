@@ -55,6 +55,7 @@ export type SessionEvent =
   | { type: 'cancel' }
   | { type: 'lost'; owner: ReadingOwner | null }
   | { type: 'resume' }
+  | { type: 'owner-observed'; owner: ReadingOwner | null; epoch: number }
   | { type: 'foreground' }
   | { type: 'foreground-checked'; proof: ReadingOwnershipProof };
 
@@ -83,6 +84,10 @@ function claiming(
 
 export function readingSessionReducer(state: SessionState, event: SessionEvent): SessionState {
   switch (event.type) {
+    case 'owner-observed':
+      return state.kind === 'paused' && (state.owner?.epoch ?? 0) === event.epoch
+        ? { ...state, owner: event.owner }
+        : state;
     case 'foreground':
       return state.kind === 'active' ? { ...state, kind: 'checking' } : state;
     case 'foreground-checked':

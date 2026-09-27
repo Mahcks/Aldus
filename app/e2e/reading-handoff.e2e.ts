@@ -552,6 +552,7 @@ for (const target of ['progress', 'state']) {
 test('a page turn before takeover notification does not become an offline conflict', async ({
   page,
 }) => {
+  await page.route('**/reading-session/watch?*', (route) => route.fulfill({ status: 404 }));
   await signInAsTestAdmin(page);
   await page.goto(consume);
   const next = page.getByRole('button', { name: 'Next page', exact: true });
@@ -590,5 +591,39 @@ test('a page turn before takeover notification does not become an offline confli
   await page.unroute('**/reading-session/heartbeat');
   await page.getByRole('button', { name: 'Resume here', exact: true }).click();
   await expect(next).toBeEnabled({ timeout: 30000 });
+  await expect(page.getByText('Two saved places', { exact: true })).toHaveCount(0);
+});
+
+test('committed takeover pauses an active reader through the watch without heartbeat polling', async ({
+  page,
+}) => {
+  await signInAsTestAdmin(page);
+  // Disable timer/focus ownership checks: only the watch can announce takeover.
+  await page.route('**/reading-session/heartbeat', (route) => route.abort());
+  const watching = page.waitForRequest((request) =>
+    request.url().includes('/reading-session/watch?'),
+  );
+  await page.goto(consume);
+  const next = page.getByRole('button', { name: 'Next page', exact: true });
+  const claim = page.getByRole('button', { name: 'Continue here', exact: true });
+  await expect(next.or(claim)).toBeVisible({ timeout: 30000 });
+  if (await claim.isVisible()) await claim.click();
+  await expect(next).toBeEnabled({ timeout: 30000 });
+  await watching;
+  const sessionURL = `${testServer}/api/v1/works/${workID}/reading-session`;
+  const owner = await (await page.request.get(sessionURL)).json();
+  const takeover = await page.request.post(`${sessionURL}/claim`, {
+    data: {
+      device_id: crypto.randomUUID(),
+      label: 'watch takeover',
+      platform: 'web',
+      request_id: crypto.randomUUID(),
+      expected_epoch: owner.epoch,
+    },
+  });
+  expect(takeover.ok()).toBe(true);
+  await expect(page.getByRole('button', { name: 'Resume here', exact: true })).toBeVisible({
+    timeout: 2000,
+  });
   await expect(page.getByText('Two saved places', { exact: true })).toHaveCount(0);
 });

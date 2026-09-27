@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,6 +18,7 @@ import (
 
 func registerOwnershipRoutes(router chi.Router, store *ownership.Store) {
 	router.Get("/works/{workID}/reading-session", readingSession(store))
+	router.Get("/works/{workID}/reading-session/watch", watchReadingSession(store))
 	router.Post("/works/{workID}/reading-session/claim", claimReadingSession(store))
 	router.Post("/works/{workID}/reading-session/heartbeat", refreshReadingSession(store))
 }
@@ -99,5 +102,28 @@ func writeOwnershipResult(w http.ResponseWriter, value *ownership.Session, err e
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	default:
 		writeJSON(w, http.StatusOK, readingOwnerDTO(value))
+	}
+}
+
+// A completed JSON response avoids streaming/proxy buffering on native clients.
+func watchReadingSession(store *ownership.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		epoch, err := strconv.ParseInt(r.URL.Query().Get("epoch"), 10, 64)
+		if err != nil || epoch < 0 || epoch > 9007199254740991 {
+			http.Error(w, "invalid reading epoch", http.StatusBadRequest)
+			return
+		}
+
+		value, err := store.Watch(r.Context(), actor(r), chi.URLParam(r, "workID"), epoch, 25*time.Second)
+		if r.Context().Err() != nil {
+			return
+		}
+		if errors.Is(err, ownership.ErrWatchLimit) {
+			w.Header().Set("Retry-After", "15")
+			http.Error(w, "too many reading watches", http.StatusTooManyRequests)
+			return
+		}
+		writeOwnershipResult(w, value, err)
 	}
 }

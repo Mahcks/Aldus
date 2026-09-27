@@ -77,3 +77,44 @@ func TestPositionOwnershipHTTP(t *testing.T) {
 		}
 	}
 }
+
+func TestReadingWatchHTTP(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "watch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	positions := position.New(db)
+	if err := positions.SeedFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := auth.New(db, auth.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := accounts.Setup(ctx, auth.Credentials{Username: "reader", Password: "a-secure-test-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owners := ownership.New(db)
+	handler := Handler(Dependencies{Auth: accounts, Catalog: catalog.New(db), Position: positions, Ownership: owners})
+	for _, query := range []string{"", "-1", "no", "9007199254740992"} {
+		response := request(t, handler, session.Token, http.MethodGet, "/works/fixture-work/reading-session/watch?epoch="+query, "")
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("invalid epoch %q: %d", query, response.Code)
+		}
+	}
+	response := request(t, handler, session.Token, http.MethodGet, "/works/fixture-work/reading-session/watch?epoch=9", "")
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("watch: %d %s", response.Code, response.Body.String())
+	}
+	response = request(t, handler, "", http.MethodGet, "/works/fixture-work/reading-session/watch?epoch=9", "")
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous watch: %d", response.Code)
+	}
+	response = request(t, handler, session.Token, http.MethodGet, "/works/missing/reading-session/watch?epoch=9", "")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing work: %d", response.Code)
+	}
+}
