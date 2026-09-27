@@ -104,6 +104,10 @@ test('independent readers require takeover and the previous reader pauses', asyn
     expect(expectedHighlight.length).toBeGreaterThan(30);
     expect((await rangeSaved).ok()).toBe(true);
     exactPlace = await (await first.request.get(progressURL)).json();
+    await expect(first.getByLabel('Reading place saved', { exact: true })).toBeVisible();
+    const editionURL = testServer + '/api/v1/representations/alice-gutenberg-11-epub/state';
+    const savedEdition = await (await first.request.get(editionURL)).json();
+    await first.clock.install();
     // Reproduce a delayed pagination event after the exact selection was saved.
     // It must not replace the start/range with the end of the visible passage.
     await first.evaluate(() => {
@@ -122,6 +126,9 @@ test('independent readers require takeover and the previous reader pauses', asyn
       }
       throw new Error('Expected an active saved selection');
     });
+    // Advance beyond the edition-save debounce: passive layout must make no new save.
+    await first.clock.runFor(1200);
+    expect(await (await first.request.get(editionURL)).json()).toEqual(savedEdition);
     const firstOwner = await (
       await first.request.get(testServer + '/api/v1/works/' + workID + '/reading-session')
     ).json();

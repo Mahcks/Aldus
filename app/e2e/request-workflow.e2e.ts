@@ -32,7 +32,13 @@ test.beforeAll(async () => {
     output += data.toString();
   });
   await expect
-    .poll(() => Boolean(fixture), { timeout: 45_000, message: 'Start isolated request service' })
+    .poll(
+      () => {
+        if (service.exitCode !== null) throw new Error(`Request service exited:\n${output}`);
+        return Boolean(fixture);
+      },
+      { timeout: 45_000, message: 'Start isolated request service' },
+    )
     .toBe(true);
 });
 

@@ -557,7 +557,9 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             commitsFoliateRelocation(detail.reason, relocated.current, navigationDirection);
           if (visible) relocated.current = true;
           direction.current = directionAfterRelocation(navigationDirection, Boolean(visible));
-          const reason = commit ? 'explicit' : 'relocate';
+          // A delayed layout event must not re-save an exact restored/selected anchor.
+          let reason: ReaderLocation['reason'] = commit ? 'explicit' : 'relocate';
+          if (pinnedCursor.current) reason = 'restore';
           const visibleLocation = visible
             ? syncLocation(href, detail.cfi, visible, state, reason)
             : undefined;

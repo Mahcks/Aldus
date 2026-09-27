@@ -60,7 +60,7 @@ describe('Readium config plugin', () => {
         const compile = spawnSync(
           'swiftc',
           [join(__dirname, 'readium-selection-gesture.swift'), main, '-o', executable],
-          { encoding: 'utf8' },
+          { encoding: 'utf8', timeout: 60_000 },
         );
         if (compile.status !== 0) throw new Error(compile.stderr || 'Swift compilation failed');
         const run = spawnSync(executable, [], { encoding: 'utf8' });
@@ -70,6 +70,7 @@ describe('Readium config plugin', () => {
         rmSync(directory, { recursive: true, force: true });
       }
     },
+    90_000,
   );
 
   test('replaces the old gesture-only patch in existing Pods', () => {
@@ -291,6 +292,7 @@ test.skipIf(!Bun.which('swiftc'))(
       );
       const compile = spawnSync('swiftc', ['-parse-as-library', main, '-o', executable], {
         encoding: 'utf8',
+        timeout: 60_000,
       });
       if (compile.status !== 0) throw new Error(compile.stderr || 'Swift compilation failed');
       const run = spawnSync(executable, [], { encoding: 'utf8', timeout: 5000 });
@@ -302,4 +304,5 @@ test.skipIf(!Bun.which('swiftc'))(
       rmSync(directory, { recursive: true, force: true });
     }
   },
+  90_000,
 );

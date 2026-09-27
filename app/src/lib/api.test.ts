@@ -160,7 +160,10 @@ describe('API transport', () => {
   it('uses server-owned backup names for download and deletion', async () => {
     const calls: { url: string; method: string }[] = [];
     globalThis.fetch = (async (input, init) => {
-      calls.push({ url: String(input), method: init?.method || 'GET' });
+      calls.push({
+        url: new URL(String(input), 'https://aldus.test').pathname,
+        method: init?.method || 'GET',
+      });
       if (init?.method === 'DELETE') return new Response(null, { status: 204 });
       return new Response('backup', { headers: { 'Content-Type': 'application/gzip' } });
     }) as typeof fetch;
