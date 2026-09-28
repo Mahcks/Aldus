@@ -212,6 +212,40 @@ export interface AlignmentJob {
 }
 
 //////////
+// source: audiobook_metadata.go
+
+export interface AudiobookRecordingDetails {
+  publisher: string;
+  language: string;
+  release_date: string;
+  runtime_minutes: number /* int */;
+  format: string;
+}
+export interface AudiobookMetadataValues {
+  narrators: string[];
+  description: string;
+}
+export interface AudiobookMetadataPreview {
+  recording: AudiobookRecordingDetails;
+  asin: string;
+  region: string;
+  title: string;
+  authors: string[];
+  runtime_minutes: number /* int */;
+  format: string;
+  current: AudiobookMetadataValues;
+  values: AudiobookMetadataValues;
+}
+export interface AudiobookMetadataCorrection {
+  recording: AudiobookRecordingDetails;
+  asin: string;
+  region: string;
+  fields: string[];
+  expected: AudiobookMetadataValues;
+  values: AudiobookMetadataValues;
+}
+
+//////////
 // source: auth.go
 
 export interface User {
@@ -395,6 +429,8 @@ export interface UnmatchedGenreSubjectPage {
   has_more: boolean;
 }
 export interface WorkSummary {
+  missing_metadata?: string[];
+  narrators?: string[];
   series?: string;
   series_position?: string;
   id: string;
@@ -624,6 +660,26 @@ export interface GpuTestResult {
 export interface AlignmentReadiness {
   readiness: 'unknown' | 'ready' | 'not_ready';
   issues: string[];
+}
+
+//////////
+// source: file_metadata.go
+
+export interface FileMetadataValues {
+  values: MetadataValues;
+  series: string;
+  series_position: string;
+  narrators: string[];
+}
+export interface FileMetadataPreview {
+  asin: string;
+  current: FileMetadataValues;
+  suggested: FileMetadataValues;
+}
+export interface ApplyFileMetadataRequest {
+  fields: string[];
+  expected: FileMetadataValues;
+  values: FileMetadataValues;
 }
 
 //////////
@@ -1088,6 +1144,7 @@ export interface RequestLibrary {
 // source: title_search.go
 
 export interface TitleSearchResult {
+  description?: string;
   work_id?: string;
   library_id?: string;
   title: string;
@@ -1116,4 +1173,11 @@ export interface TrendingSection {
  */
 export interface TrendingDetail {
   description: string;
+}
+/**
+ * TitleSearchReport is opt-in; legacy clients continue receiving the result array.
+ */
+export interface TitleSearchReport {
+  results: TitleSearchResult[];
+  external_status: string;
 }

@@ -1,4 +1,9 @@
 import type {
+  TitleSearchReport,
+  AudiobookMetadataPreview,
+  AudiobookMetadataCorrection,
+  FileMetadataPreview,
+  ApplyFileMetadataRequest,
   MetadataPreview,
   ApplyMetadataRequest,
   CatalogGroupPage,
@@ -287,6 +292,25 @@ async function acceptSession(session: Session, origin: string) {
 }
 
 export const api = {
+  audiobookMetadata: (workID: string, representationID: string, asin: string, region: string) =>
+    request<AudiobookMetadataPreview>(
+      `/works/${workID}/representations/${representationID}/metadata/audiobook?${new URLSearchParams({ asin, region })}`,
+    ),
+  applyAudiobookMetadata: (
+    workID: string,
+    representationID: string,
+    body: AudiobookMetadataCorrection,
+  ) =>
+    request<void>(`/works/${workID}/representations/${representationID}/metadata/audiobook`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  fileMetadata: (mediaID: string) => request<FileMetadataPreview>(`/media/${mediaID}/metadata`),
+  applyFileMetadata: (mediaID: string, body: ApplyFileMetadataRequest) =>
+    request<void>(`/media/${mediaID}/metadata/apply`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   setupStatus: (signal?: AbortSignal) => request<SetupStatus>('/setup/status', { signal }),
   setup: (body: SetupRequest) => {
     const origin = getAPIBaseURL();
@@ -408,6 +432,16 @@ export const api = {
     const params = new URLSearchParams({ q: query });
     if (libraryID) params.set('library_id', libraryID);
     return request<TitleSearchResult[]>(`/search/titles?${params}`);
+  },
+  searchTitleReport: async (query: string, localOnly: boolean, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ q: query, report: '1' });
+    if (localOnly) params.set('scope', 'local');
+    const value = await request<TitleSearchReport | TitleSearchResult[]>(
+      `/search/titles?${params}`,
+      { signal },
+    );
+    // Older servers ignore the opt-in report and return the original array.
+    return Array.isArray(value) ? { results: value, external_status: 'unknown' } : value;
   },
   trending: (libraryID = '') => {
     const params = new URLSearchParams();
@@ -561,6 +595,7 @@ export const api = {
     ),
   browseWorks: (
     options: {
+      metadataMissing?: string;
       libraryID?: string;
       series?: string;
       narrator?: string;
@@ -573,6 +608,7 @@ export const api = {
     } = {},
   ) => {
     const query = new URLSearchParams();
+    if (options.metadataMissing) query.set('metadata_missing', options.metadataMissing);
     if (options.libraryID) query.set('library_id', options.libraryID);
     if (options.series) query.set('series', options.series);
     if (options.narrator) query.set('narrator', options.narrator);

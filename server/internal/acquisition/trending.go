@@ -43,6 +43,7 @@ type TrendingSection struct {
 }
 
 type trendingItem struct {
+	Description    string
 	Title          string
 	Author         string
 	CoverURL       string
@@ -58,7 +59,6 @@ type cachedTrending struct {
 type cachedDescription struct {
 	value   string
 	expires time.Time
-	err     error
 }
 
 // Trending returns what's popular to read right now: Open Library's
@@ -81,7 +81,10 @@ func (s *Store) Trending(ctx context.Context, actor auth.User, libraryID ...stri
 		return nil, err
 	}
 
-	var sections []TrendingSection
+	sections, err := s.localDiscoverySections(ctx, actor, selectedLibrary)
+	if err != nil {
+		return nil, err
+	}
 	if items := s.openLibraryTrending(ctx); len(items) > 0 {
 		sections = append(sections, TrendingSection{
 			Source: "open_library",
@@ -107,6 +110,40 @@ func (s *Store) Trending(ctx context.Context, actor auth.User, libraryID ...stri
 			})
 		}
 	}
+	ids := []string{}
+	seen := map[string]bool{}
+	for _, section := range sections {
+		if strings.HasPrefix(section.Source, "local_") {
+			continue
+		}
+		for _, item := range section.Items {
+			if item.WorkID != "" && !seen[item.WorkID] {
+				seen[item.WorkID] = true
+				ids = append(ids, item.WorkID)
+			}
+		}
+	}
+	if len(ids) > 0 {
+		works, _, err := catalog.New(s.db).BrowseWorks(ctx, actor, catalog.BrowseOptions{LibraryID: selectedLibrary, WorkIDs: ids, Limit: 100})
+		if err != nil {
+			return nil, err
+		}
+		byID := map[string]catalog.WorkSummary{}
+		for _, work := range works {
+			byID[work.ID] = work
+		}
+		for i := range sections {
+			for j := range sections[i].Items {
+				item := &sections[i].Items[j]
+				if work, ok := byID[item.WorkID]; ok {
+					item.Readable = work.Readable
+					item.Listenable = work.Listenable
+					item.Synchronized = work.Synchronized
+					item.CoverURL = work.CoverURL
+				}
+			}
+		}
+	}
 	if len(sections) == 0 {
 		return nil, ErrUnavailable
 	}
@@ -124,7 +161,7 @@ func (s *Store) Detail(ctx context.Context, source, id string) (string, error) {
 	s.descriptionMu.Lock()
 	if cached, ok := s.descriptionCache[id]; ok && time.Now().Before(cached.expires) {
 		s.descriptionMu.Unlock()
-		return cached.value, cached.err
+		return cached.value, nil
 	}
 	s.descriptionMu.Unlock()
 
@@ -132,39 +169,47 @@ func (s *Store) Detail(ctx context.Context, source, id string) (string, error) {
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	ttl := 30 * time.Minute
 	if err != nil {
-		ttl = time.Minute
+		return "", err
 	}
+	ttl := 30 * time.Minute
 	s.descriptionMu.Lock()
 	if len(s.descriptionCache) >= 128 {
 		clear(s.descriptionCache)
 	}
-	s.descriptionCache[id] = cachedDescription{value: value, expires: time.Now().Add(ttl), err: err}
+	s.descriptionCache[id] = cachedDescription{value: value, expires: time.Now().Add(ttl)}
 	s.descriptionMu.Unlock()
 	return value, err
 }
 
 func (s *Store) trendingCatalogIndex(ctx context.Context, actor auth.User, libraryID string) (map[string]TitleSearchResult, error) {
 	index := make(map[string]TitleSearchResult)
-	store := catalog.New(s.db)
-	for offset := 0; ; {
-		works, more, err := store.BrowseWorks(ctx, actor, catalog.BrowseOptions{LibraryID: libraryID, Sort: "title", Limit: 100, Offset: offset})
-		if err != nil {
-			return nil, fmt.Errorf("browse local catalog for trending: %w", err)
+	ambiguous := make(map[string]bool)
+	identities, err := catalog.New(s.db).DiscoveryIdentities(ctx, actor, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	for _, work := range identities {
+		keys := []string{exactTitleKey(work.Title, work.Author)}
+		if work.ProviderID != "" {
+			keys = append(keys, "open_library:"+work.ProviderID)
 		}
-		for _, work := range works {
-			index[exactTitleKey(work.Title, work.Author)] = TitleSearchResult{
-				WorkID: work.ID, LibraryID: work.LibraryID, Title: work.Title, Author: work.Author,
-				CoverURL: work.CoverURL, Readable: work.Readable, Listenable: work.Listenable, Synchronized: work.Synchronized,
+		for _, key := range keys {
+			if _, exists := index[key]; exists || ambiguous[key] {
+				delete(index, key)
+				ambiguous[key] = true
+				continue
+			}
+			index[key] = TitleSearchResult{
+				WorkID:         work.ID,
+				LibraryID:      work.LibraryID,
+				Title:          work.Title,
+				Author:         work.Author,
+				ExternalSource: "open_library",
+				ExternalID:     work.ProviderID,
 			}
 		}
-		if !more || len(works) == 0 {
-			break
-		}
-		offset += len(works)
 	}
-
 	return index, nil
 }
 
@@ -172,15 +217,31 @@ func (s *Store) trendingCatalogIndex(ctx context.Context, actor auth.User, libra
 // (see title_search.go) so a trending title already in the library, or
 // already requested, shows the same state a text search for it would.
 func matchTrendingItems(items []trendingItem, catalogIndex map[string]TitleSearchResult, requests []titleRequestProjection) []TitleSearchResult {
+	items = items[:min(len(items), 20)]
 	results := make([]TitleSearchResult, 0, len(items))
 	for _, item := range items {
 		key := exactTitleKey(item.Title, item.Author)
-		result, owned := catalogIndex[key]
+		result, owned := catalogIndex[item.ExternalSource+":"+item.ExternalID]
 		if !owned {
-			result = TitleSearchResult{Title: item.Title, Author: item.Author, CoverURL: item.CoverURL, ExternalSource: item.ExternalSource, ExternalID: item.ExternalID}
+			result, owned = catalogIndex[key]
+			if owned && result.ExternalID != "" && item.ExternalID != "" && (result.ExternalSource != item.ExternalSource || result.ExternalID != item.ExternalID) {
+				owned = false
+			}
+		}
+		if !owned {
+			result = TitleSearchResult{
+				Title:          item.Title,
+				Author:         item.Author,
+				CoverURL:       item.CoverURL,
+				Description:    item.Description,
+				ExternalSource: item.ExternalSource,
+				ExternalID:     item.ExternalID,
+			}
 		}
 		for _, request := range requests {
-			if exactTitleKey(request.Title, request.Author) == key {
+			sameID := item.ExternalID != "" && request.ExternalID != "" && item.ExternalSource == request.ExternalSource && item.ExternalID == request.ExternalID
+			textFallback := (item.ExternalID == "" || request.ExternalID == "") && exactTitleKey(request.Title, request.Author) == key
+			if sameID || textFallback {
 				applyRequestState(&result, request)
 			}
 		}
@@ -335,9 +396,10 @@ func nytBestsellersFrom(ctx context.Context, client *http.Client, endpoint strin
 	var modern struct {
 		Results struct {
 			Books []struct {
-				Title     string `json:"title"`
-				Author    string `json:"author"`
-				BookImage string `json:"book_image"`
+				Title       string `json:"title"`
+				Author      string `json:"author"`
+				BookImage   string `json:"book_image"`
+				Description string `json:"description"`
 			} `json:"books"`
 		} `json:"results"`
 	}
@@ -348,7 +410,13 @@ func nytBestsellersFrom(ctx context.Context, client *http.Client, endpoint strin
 			if title == "" {
 				continue
 			}
-			items = append(items, trendingItem{Title: titleCase(title), Author: strings.TrimSpace(book.Author), CoverURL: strings.TrimSpace(book.BookImage)})
+			description := []rune(strings.TrimSpace(book.Description))
+			items = append(items, trendingItem{
+				Title:       titleCase(title),
+				Author:      strings.TrimSpace(book.Author),
+				CoverURL:    strings.TrimSpace(book.BookImage),
+				Description: string(description[:min(len(description), maxDescriptionRunes)]),
+			})
 		}
 		return items, nil
 	}
@@ -356,8 +424,9 @@ func nytBestsellersFrom(ctx context.Context, client *http.Client, endpoint strin
 	var legacy struct {
 		Results []struct {
 			BookDetails []struct {
-				Title  string `json:"title"`
-				Author string `json:"author"`
+				Title       string `json:"title"`
+				Author      string `json:"author"`
+				Description string `json:"description"`
 			} `json:"book_details"`
 		} `json:"results"`
 	}
@@ -374,7 +443,12 @@ func nytBestsellersFrom(ctx context.Context, client *http.Client, endpoint strin
 		if title == "" {
 			continue
 		}
-		items = append(items, trendingItem{Title: titleCase(title), Author: strings.TrimSpace(detail.Author)})
+		description := []rune(strings.TrimSpace(detail.Description))
+		items = append(items, trendingItem{
+			Title:       titleCase(title),
+			Author:      strings.TrimSpace(detail.Author),
+			Description: string(description[:min(len(description), maxDescriptionRunes)]),
+		})
 	}
 	return items, nil
 }

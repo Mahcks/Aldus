@@ -158,3 +158,41 @@ func TestAbridgedAudioLowersPairBelowLikelyThreshold(t *testing.T) {
 		t.Fatalf("abridged score = %d, want below likely threshold", score)
 	}
 }
+
+func TestConsumerSearchKeepsAuthorAndISBNMatchesWithoutWeakeningReleaseMatching(t *testing.T) {
+	client := &Client{http: &http.Client{Transport: metadataRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"docs":[{"key":"/works/OL1W","title":"Alice's Adventures in Wonderland","author_name":["Lewis Carroll"],"isbn":["9780141439761"]}]}`))}, nil
+	})}}
+	store := NewStore(nil, client)
+	for _, query := range []string{"Lewis Carroll", "9780141439761", "0141439769", "Alice Carroll"} {
+		got, err := store.consumerMetadata(context.Background(), query)
+		if err != nil || len(got) != 1 || got[0].ID != "OL1W" {
+			t.Fatalf("consumer query %q = %#v, %v", query, got, err)
+		}
+	}
+	got, err := client.metadata(context.Background(), "Lewis Carroll")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("release title guard changed: %#v, %v", got, err)
+	}
+}
+
+func TestCanceledSearchDoesNotPoisonSharedCache(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	client := &Client{http: &http.Client{Transport: metadataRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			cancel()
+			return nil, context.Canceled
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"docs":[{"key":"/works/OL1W","title":"Alice","author_name":["Lewis Carroll"]}]}`))}, nil
+	})}}
+	store := NewStore(nil, client)
+	if _, err := store.consumerMetadata(ctx, "Alice"); err == nil {
+		t.Fatal("cancellation ignored")
+	}
+	values, err := store.consumerMetadata(context.Background(), "Alice")
+	if err != nil || len(values) != 1 || calls != 2 {
+		t.Fatalf("canceled result cached: %#v, %v calls=%d", values, err, calls)
+	}
+}

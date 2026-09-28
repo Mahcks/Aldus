@@ -45,7 +45,7 @@ func TestOpenLibraryTrendingFromParsesWorksAndSkipsBlankTitles(t *testing.T) {
 
 func TestNYTBestsellersFromParsesModernAndLegacyShapes(t *testing.T) {
 	modern := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"OK","results":{"list_name":"Hardcover Fiction","books":[{"rank":1,"title":"THE ROAD","author":"Cormac McCarthy","book_image":"https://example.com/road.jpg"},{"rank":2,"title":"  "}]}}`))
+		_, _ = w.Write([]byte(`{"status":"OK","results":{"list_name":"Hardcover Fiction","books":[{"rank":1,"title":"THE ROAD","author":"Cormac McCarthy","book_image":"https://example.com/road.jpg","description":"A father and son travel together."},{"rank":2,"title":"  "}]}}`))
 	}))
 	defer modern.Close()
 	got, err := nytBestsellersFrom(context.Background(), modern.Client(), modern.URL)
@@ -74,6 +74,14 @@ func TestNYTBestsellersFromParsesModernAndLegacyShapes(t *testing.T) {
 	defer failing.Close()
 	if _, err := nytBestsellersFrom(context.Background(), failing.Client(), failing.URL); err == nil {
 		t.Fatal("an invalid API key was not reported")
+	}
+}
+
+func TestTrendingPreservesProviderDescriptionWithoutInventingIdentity(t *testing.T) {
+	items := []trendingItem{{Title: "The Road", Author: "Cormac McCarthy", Description: "A father and son travel together."}}
+	results := matchTrendingItems(items, nil, nil)
+	if len(results) != 1 || results[0].Description != items[0].Description || results[0].ExternalID != "" {
+		t.Fatalf("provider description lost: %#v", results)
 	}
 }
 
@@ -142,9 +150,26 @@ func TestTrendingCatalogIndexKeysByExactTitle(t *testing.T) {
 	if !ok || result.WorkID == "" {
 		t.Fatalf("index = %#v", index)
 	}
+
+	if _, err := catalog.New(db).CreateWork(ctx, auth.User{ID: "reader"}, "visible", "Atomic Habits", "James Clear"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO work_metadata_sources(work_id,field,source,provider_work_id,value,updated_at) VALUES(?,'title','open_library','OL1W','"Atomic Habits"','2026-01-01')`, result.WorkID); err != nil {
+		t.Fatal(err)
+	}
+	index, err = store.trendingCatalogIndex(ctx, auth.User{ID: "reader"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := index[exactTitleKey("Atomic Habits", "James Clear")]; exists {
+		t.Fatal("ambiguous title picked an arbitrary work")
+	}
+	if index["open_library:OL1W"].WorkID != result.WorkID {
+		t.Fatal("exact provider identity lost")
+	}
 }
 
-func TestTrendingFailureCachesAndCredentialRotation(t *testing.T) {
+func TestDetailFailuresRemainRetryableAndTrendingCredentialRotation(t *testing.T) {
 	calls := 0
 	client := &Client{http: &http.Client{Transport: metadataRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		calls++
@@ -156,13 +181,13 @@ func TestTrendingFailureCachesAndCredentialRotation(t *testing.T) {
 			t.Fatalf("cached failure became success: %v", err)
 		}
 	}
-	if calls != 1 {
-		t.Fatalf("description failure was not cached: %d", calls)
+	if calls != 2 {
+		t.Fatalf("description retry did not reach provider: %d", calls)
 	}
 	store.nytBestsellers(context.Background(), "old-key", "fiction")
 	store.nytBestsellers(context.Background(), "old-key", "fiction")
 	store.nytBestsellers(context.Background(), "new-key", "fiction")
-	if calls != 3 {
+	if calls != 4 {
 		t.Fatalf("new credential did not bypass old failure: %d", calls)
 	}
 }

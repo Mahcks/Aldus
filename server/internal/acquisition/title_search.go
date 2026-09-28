@@ -12,6 +12,7 @@ import (
 )
 
 type TitleSearchResult struct {
+	Description           string
 	WorkID                string
 	LibraryID             string
 	Title                 string
@@ -42,11 +43,36 @@ func (s *Store) SearchTitles(ctx context.Context, actor auth.User, query string,
 	if query == "" || len(query) > 200 {
 		return nil, ErrInvalid
 	}
-	var metadata []Metadata
-	if s.client != nil {
-		metadata = s.searchMetadata(ctx, s.client, query)
+	report, err := s.SearchTitleReport(ctx, actor, query, false, libraryID...)
+	return report.Results, err
+}
+
+type TitleSearchReport struct {
+	Results        []TitleSearchResult
+	ExternalStatus string
+}
+
+// Local-only requests let clients show the user's books before waiting on a provider.
+func (s *Store) SearchTitleReport(ctx context.Context, actor auth.User, query string, localOnly bool, libraryID ...string) (TitleSearchReport, error) {
+	query = strings.TrimSpace(query)
+	if query == "" || len(query) > 200 {
+		return TitleSearchReport{}, ErrInvalid
 	}
-	return s.searchTitles(ctx, actor, query, metadata, libraryID...)
+	var metadata []Metadata
+	status := "not_requested"
+	if !localOnly {
+		var err error
+		metadata, err = s.consumerMetadata(ctx, query)
+		status = "ok"
+		if err != nil {
+			if ctx.Err() != nil {
+				return TitleSearchReport{}, ctx.Err()
+			}
+			status = "unavailable"
+		}
+	}
+	results, err := s.searchTitles(ctx, actor, query, metadata, libraryID...)
+	return TitleSearchReport{Results: results, ExternalStatus: status}, err
 }
 
 func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string, metadata []Metadata, libraryID ...string) ([]TitleSearchResult, error) {
@@ -54,7 +80,7 @@ func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string,
 	if len(libraryID) > 0 {
 		selectedLibrary = strings.TrimSpace(libraryID[0])
 	}
-	works, _, err := catalog.New(s.db).BrowseWorks(ctx, actor, catalog.BrowseOptions{LibraryID: selectedLibrary, Query: query, Sort: "title", Limit: 50})
+	works, _, err := catalog.New(s.db).BrowseWorks(ctx, actor, catalog.BrowseOptions{LibraryID: selectedLibrary, Query: query, Sort: "relevance", Limit: 50})
 	if err != nil {
 		return nil, fmt.Errorf("search local titles: %w", err)
 	}
@@ -64,7 +90,16 @@ func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string,
 	}
 	results := make([]TitleSearchResult, 0, len(works)+len(metadata))
 	for _, work := range works {
-		results = append(results, TitleSearchResult{WorkID: work.ID, LibraryID: work.LibraryID, Title: work.Title, Author: work.Author, CoverURL: work.CoverURL, Readable: work.Readable, Listenable: work.Listenable, Synchronized: work.Synchronized})
+		results = append(results, TitleSearchResult{
+			WorkID:       work.ID,
+			LibraryID:    work.LibraryID,
+			Title:        work.Title,
+			Author:       work.Author,
+			CoverURL:     work.CoverURL,
+			Readable:     work.Readable,
+			Listenable:   work.Listenable,
+			Synchronized: work.Synchronized,
+		})
 	}
 
 	for _, request := range requests {
@@ -146,7 +181,14 @@ func (s *Store) searchTitles(ctx context.Context, actor auth.User, query string,
 			}
 		}
 		if match < 0 {
-			results = append(results, TitleSearchResult{WorkID: request.WorkID, Title: request.Title, Author: request.Author, CoverURL: request.CoverURL, ExternalSource: request.ExternalSource, ExternalID: request.ExternalID})
+			results = append(results, TitleSearchResult{
+				WorkID:         request.WorkID,
+				Title:          request.Title,
+				Author:         request.Author,
+				CoverURL:       request.CoverURL,
+				ExternalSource: request.ExternalSource,
+				ExternalID:     request.ExternalID,
+			})
 			match = len(results) - 1
 		}
 		applyRequestState(&results[match], request)

@@ -26,6 +26,7 @@ import { useThemeColors } from '@/components/ui/theme';
 import { workHref, workQuickActions } from '@/lib/catalog/work-actions';
 
 export const browseSorts = [
+  ['relevance', 'Best match'],
   ['recent', 'Recently added'],
   ['updated', 'Recently updated'],
   ['title', 'Title A–Z'],

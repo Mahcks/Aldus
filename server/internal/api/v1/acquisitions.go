@@ -164,7 +164,21 @@ func discoverTrending(store *acquisition.Store) http.HandlerFunc {
 		for i, value := range values {
 			items := make([]contracts.TitleSearchResult, len(value.Items))
 			for j, item := range value.Items {
-				items[j] = contracts.TitleSearchResult{WorkID: item.WorkID, LibraryID: item.LibraryID, Title: item.Title, Author: item.Author, CoverURL: item.CoverURL, ExternalSource: item.ExternalSource, ExternalID: item.ExternalID, Readable: item.Readable, Listenable: item.Listenable, Synchronized: item.Synchronized, EbookRequestState: item.EbookRequestState, AudiobookRequestState: item.AudiobookRequestState}
+				items[j] = contracts.TitleSearchResult{
+					Description:           item.Description,
+					WorkID:                item.WorkID,
+					LibraryID:             item.LibraryID,
+					Title:                 item.Title,
+					Author:                item.Author,
+					CoverURL:              item.CoverURL,
+					ExternalSource:        item.ExternalSource,
+					ExternalID:            item.ExternalID,
+					Readable:              item.Readable,
+					Listenable:            item.Listenable,
+					Synchronized:          item.Synchronized,
+					EbookRequestState:     item.EbookRequestState,
+					AudiobookRequestState: item.AudiobookRequestState,
+				}
 			}
 			sections[i] = contracts.TrendingSection{Source: value.Source, Title: value.Title, Items: items}
 		}

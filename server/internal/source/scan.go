@@ -575,6 +575,8 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 	}
 	var pkg struct {
 		Title       string   `xml:"metadata>title"`
+		Description string   `xml:"metadata>description"`
+		Subjects    []string `xml:"metadata>subject"`
 		Creators    []string `xml:"metadata>creator"`
 		Language    string   `xml:"metadata>language"`
 		Identifiers []string `xml:"metadata>identifier"`
@@ -600,7 +602,16 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 	if err := decodeZip(opf, &pkg); err != nil || len(pkg.Items) == 0 || len(pkg.Refs) == 0 {
 		return nil, errors.New("invalid EPUB package or spine")
 	}
-	out := map[string]any{"title": strings.TrimSpace(pkg.Title), "creators": pkg.Creators, "language": strings.TrimSpace(pkg.Language), "identifiers": pkg.Identifiers, "publisher": strings.TrimSpace(pkg.Publisher), "date": strings.TrimSpace(pkg.Date)}
+	out := map[string]any{
+		"title":       strings.TrimSpace(pkg.Title),
+		"creators":    pkg.Creators,
+		"language":    strings.TrimSpace(pkg.Language),
+		"identifiers": pkg.Identifiers,
+		"publisher":   strings.TrimSpace(pkg.Publisher),
+		"date":        strings.TrimSpace(pkg.Date),
+		"description": strings.TrimSpace(pkg.Description),
+		"subjects":    pkg.Subjects,
+	}
 	coverID := ""
 	for _, m := range pkg.Meta {
 		key := m.Name
@@ -638,7 +649,18 @@ func inspectEPUB(path string, max int64) (map[string]any, error) {
 	return out, nil
 }
 func inspectAudio(ctx context.Context, path string) (map[string]any, error) {
-	output, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type:format=duration:format_tags=title,artist,album,album_artist,composer,narrator,series,track,disc,date,publisher", "-of", "json", path).Output()
+	const entries = "stream=codec_type:format=duration:" +
+		"format_tags=title,artist,album,album_artist,albumartist,composer,narrator,narrated_by," +
+		"series,series_index,series-part,series_part,mvnm,mvin,track,disc,date,publisher," +
+		"description,comment,language,lang,isbn,asin,audible_asin,genre,subject"
+	command := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-select_streams", "a:0",
+		"-show_entries", entries,
+		"-of", "json",
+		path,
+	)
+	output, err := boundedProbeOutput(command)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +680,19 @@ func inspectAudio(ctx context.Context, path string) (map[string]any, error) {
 	if err != nil || duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
 		return nil, errors.New("invalid audio duration")
 	}
-	return map[string]any{"duration_ms": int64(duration * 1000), "tags": result.Format.Tags}, nil
+	tags, conflicts := normalizeAudioTags(result.Format.Tags)
+	metadata := map[string]any{
+		"duration_ms":   int64(duration * 1000),
+		"tags":          tags,
+		"raw_tags":      result.Format.Tags,
+		"tag_conflicts": conflicts,
+	}
+	for _, field := range conflicts {
+		if field == "series" || field == "series_index" {
+			metadata["series_conflict"] = true
+		}
+	}
+	return metadata, nil
 }
 func readZip(file *zip.File, max int64) ([]byte, error) {
 	if file == nil || int64(file.UncompressedSize64) > max {

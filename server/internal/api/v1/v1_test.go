@@ -240,6 +240,8 @@ func TestRouteContract(t *testing.T) {
 		"DELETE /works/{workID}/covers/{coverID}",
 	)
 	want = append(want, "GET /media/{mediaID}/chapters")
+	want = append(want, "GET /media/{mediaID}/metadata", "POST /media/{mediaID}/metadata/apply",
+		"GET /works/{workID}/representations/{representationID}/metadata/audiobook", "POST /works/{workID}/representations/{representationID}/metadata/audiobook")
 	want = append(want, "GET /system/diagnostics", "GET /system/alignment", "POST /system/alignment/test")
 	want = append(want, "GET /system/backups", "POST /system/backups", "GET /system/backups/{name}", "DELETE /system/backups/{name}")
 	want = append(want, "DELETE /auth/me")

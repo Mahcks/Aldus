@@ -654,7 +654,7 @@ export default function WorkScreen() {
       >
         {description}
       </Text>
-      {description.length > 360 ? (
+      {description ? (
         <View className="-ml-2 self-start">
           <Button
             label={descriptionExpanded ? 'Show less' : 'Show more'}

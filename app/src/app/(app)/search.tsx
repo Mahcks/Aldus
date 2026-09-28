@@ -123,6 +123,8 @@ function DiscoverDetailDialog({
   result,
   description,
   descriptionLoading,
+  descriptionError,
+  onRetryDescription,
   onLibraryChange,
   canChooseRelease,
   onChooseRelease,
@@ -131,6 +133,8 @@ function DiscoverDetailDialog({
   result: TitleSearchResult;
   description: string;
   descriptionLoading: boolean;
+  descriptionError: string;
+  onRetryDescription: () => void;
   onLibraryChange: (libraryID: string) => void;
   canChooseRelease: boolean;
   onChooseRelease: () => void;
@@ -172,9 +176,18 @@ function DiscoverDetailDialog({
         </View>
         {descriptionLoading ? (
           <LoadingState layout="text" label="Loading description…" />
+        ) : descriptionError ? (
+          <ErrorState
+            title="Couldn’t load the description"
+            action={<Button label="Retry description" kind="quiet" onPress={onRetryDescription} />}
+          >
+            {descriptionError}
+          </ErrorState>
         ) : description ? (
           <Text className="text-sm leading-6 text-muted">{description}</Text>
-        ) : null}
+        ) : (
+          <Text className="text-sm text-muted">No description is available for this book yet.</Text>
+        )}
       </View>
     </Dialog>
   );
@@ -189,6 +202,7 @@ export default function SearchScreen() {
   const [retry, setRetry] = useState(0);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
+  const [externalStatus, setExternalStatus] = useState('');
   const [destinations, setDestinations] = useState<AcquisitionDestination[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryID, setLibraryID] = useState('');
@@ -202,6 +216,8 @@ export default function SearchScreen() {
   const [detailTarget, setDetailTarget] = useState<TitleSearchResult>();
   const [detailDescription, setDetailDescription] = useState('');
   const [detailDescriptionLoading, setDetailDescriptionLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [detailRetry, setDetailRetry] = useState(0);
   const [advancedTarget, setAdvancedTarget] = useState<TitleSearchResult>();
   const [advancedResults, setAdvancedResults] = useState<AcquisitionResult[]>([]);
   const [searchReport, setSearchReport] = useState<AcquisitionSearchReport>();
@@ -274,27 +290,52 @@ export default function SearchScreen() {
     useCallback(() => {
       let active = true;
       if (!trimmedQuery || !auth.user?.id) return;
-      const timer = setTimeout(async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
         setLoading(true);
         setError('');
-        try {
-          const values = await api.searchTitles(trimmedQuery);
-          if (active) {
-            setResults(values);
+        setExternalStatus('loading');
+        let remoteDone = false;
+        let localLoaded = false;
+        const localRequest = api
+          .searchTitleReport(trimmedQuery, true, controller.signal)
+          .then((report) => {
+            if (!active || remoteDone) return;
+            localLoaded = true;
+            setResults(report.results);
+            setLoading(false);
             setOffline(false);
-          }
-        } catch (value) {
-          if (active) {
-            setOffline(value instanceof APIError && value.status === 0);
-            setError(errorMessage(value));
-          }
-        } finally {
-          if (active) setLoading(false);
-        }
+          })
+          .catch(() => {
+            // The combined request below still supplies local results if this request fails.
+          });
+        void api
+          .searchTitleReport(trimmedQuery, false, controller.signal)
+          .then((report) => {
+            if (!active) return;
+            remoteDone = true;
+            setResults(report.results);
+            setExternalStatus(report.external_status);
+            setOffline(false);
+          })
+          .catch(async (value) => {
+            await localRequest;
+            if (!active) return;
+            if (localLoaded) {
+              setExternalStatus('unavailable');
+            } else {
+              setOffline(value instanceof APIError && value.status === 0);
+              setError(errorMessage(value));
+            }
+          })
+          .finally(() => {
+            if (active) setLoading(false);
+          });
       }, 300);
       return () => {
         clearTimeout(timer);
         active = false;
+        controller.abort();
       };
       // Retry deliberately repeats an unchanged query after a network failure.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -307,6 +348,7 @@ export default function SearchScreen() {
     setOffline(false);
     setResults([]);
     setError('');
+    setExternalStatus('');
     setLoading(Boolean(value.trim()));
   }
 
@@ -348,7 +390,8 @@ export default function SearchScreen() {
 
   useEffect(() => {
     let active = true;
-    setDetailDescription('');
+    setDetailDescription(detailTarget?.description || '');
+    setDetailError('');
     const source = detailTarget?.external_source;
     const id = detailTarget?.external_id;
     setDetailDescriptionLoading(source === 'open_library' && Boolean(id));
@@ -358,7 +401,9 @@ export default function SearchScreen() {
         .then((detail) => {
           if (active) setDetailDescription(detail.description);
         })
-        .catch(() => {})
+        .catch((value) => {
+          if (active) setDetailError(errorMessage(value));
+        })
         .finally(() => {
           if (active) setDetailDescriptionLoading(false);
         });
@@ -366,7 +411,12 @@ export default function SearchScreen() {
     return () => {
       active = false;
     };
-  }, [detailTarget?.external_source, detailTarget?.external_id]);
+  }, [
+    detailTarget?.external_source,
+    detailTarget?.external_id,
+    detailTarget?.description,
+    detailRetry,
+  ]);
 
   async function openAdvanced(result: TitleSearchResult) {
     const generation = ++advancedGeneration.current;
@@ -466,6 +516,22 @@ export default function SearchScreen() {
         onChangeText={search}
         placeholder="Search by title, author, or ISBN"
       />
+      {trimmedQuery && externalStatus === 'loading' && !loading ? (
+        <LoadingState layout="text" label="Searching beyond your library…" />
+      ) : null}
+      {trimmedQuery && externalStatus === 'unavailable' ? (
+        <Notice
+          action={
+            <Button
+              label="Retry search"
+              kind="quiet"
+              onPress={() => setRetry((value) => value + 1)}
+            />
+          }
+        >
+          Books outside your library couldn’t be searched. Your library results are still shown.
+        </Notice>
+      ) : null}
       {!trimmedQuery ? (
         trendingLoading ? (
           <LoadingState layout="title-list" label="Finding what's popular…" />
@@ -537,9 +603,16 @@ export default function SearchScreen() {
         </AnimatedView>
       ) : loading ? (
         <LoadingState layout="title-list" label="Finding books…" />
-      ) : results.length === 0 ? (
+      ) : results.length === 0 && externalStatus === 'loading' ? null : results.length === 0 ? (
         <AnimatedView entering={fadeIn}>
-          <EmptyState icon="search" title="No matching books">
+          <EmptyState
+            icon="search"
+            title={
+              externalStatus === 'unavailable'
+                ? 'No matching books in your library'
+                : 'No matching books'
+            }
+          >
             Try another title, author, or ISBN.
           </EmptyState>
         </AnimatedView>
@@ -562,6 +635,8 @@ export default function SearchScreen() {
           result={detailTarget}
           description={detailDescription}
           descriptionLoading={detailDescriptionLoading}
+          descriptionError={detailError}
+          onRetryDescription={() => setDetailRetry((value) => value + 1)}
           onLibraryChange={setLibraryID}
           canChooseRelease={acquisitionEnabled && canChooseReleaseFor(detailTarget) && !offline}
           onChooseRelease={() => void openAdvanced(detailTarget)}

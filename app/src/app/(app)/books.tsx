@@ -282,6 +282,8 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
       return;
     }
     paging.current = true;
+    if (!inProgress && !q && value.trim()) setSort('relevance');
+    if (!inProgress && !value.trim() && sort === 'relevance') setSort('recent');
     setQuery(value);
     setOffset(0);
     setWorks([]);

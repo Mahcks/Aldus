@@ -188,6 +188,34 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 			}
 		}
 		if errors.Is(err, sql.ErrNoRows) {
+			// A parser upgrade can change inferred identity without changing the
+			// accepted files. Keep that decision and its acquisition references.
+			var acceptedID string
+			lookupErr := tx.QueryRowContext(ctx, `
+				SELECT g.id
+				FROM import_groups g
+				JOIN import_items i ON i.group_id = g.id
+				WHERE g.library_id = ? AND g.decision = 'accepted' AND i.source_entry_id = ?
+			`, libraryID, first.ID).Scan(&acceptedID)
+			if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+				return lookupErr
+			}
+			if lookupErr == nil {
+				unchanged, checkErr := proposalFilesUnchanged(ctx, tx, acceptedID, items)
+				if checkErr != nil {
+					return checkErr
+				}
+				if unchanged {
+					err = tx.QueryRowContext(ctx, `
+						SELECT id,revision,content_key,decision FROM import_groups WHERE id = ?
+					`, acceptedID).Scan(&id, &oldRevision, &oldContent, &decision)
+					if err == nil {
+						_, err = tx.ExecContext(ctx, `UPDATE import_groups SET logical_key = ? WHERE id = ?`, logical, id)
+					}
+				}
+			}
+		}
+		if errors.Is(err, sql.ErrNoRows) {
 			id, err = randomID()
 			if err != nil {
 				return err
@@ -201,7 +229,16 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 			revision++
 		}
 		if oldContent != "" && oldContent != contentKey {
-			decision = ""
+			unchanged := false
+			if decision == "accepted" {
+				unchanged, err = proposalFilesUnchanged(ctx, tx, id, items)
+				if err != nil {
+					return err
+				}
+			}
+			if !unchanged {
+				decision = ""
+			}
 		}
 		if decision != "" {
 			state = "obsolete"
@@ -247,6 +284,43 @@ func (s *Store) GenerateProposals(ctx context.Context, libraryID string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// Accepted decisions bind files, not the current parser's optional metadata.
+// Compare the complete entry/hash set; new, missing, or changed files need review.
+func proposalFilesUnchanged(ctx context.Context, tx *sql.Tx, groupID string, items []proposalEntry) (bool, error) {
+	expected := make(map[string]string, len(items))
+	for _, item := range items {
+		expected[item.ID] = item.Hash
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT source_entry_id, evidence_json FROM import_items WHERE group_id = ?
+	`, groupID)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var id, raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			return false, err
+		}
+		var evidence struct {
+			SHA256 string `json:"sha256"`
+		}
+		if err := json.Unmarshal([]byte(raw), &evidence); err != nil {
+			return false, err
+		}
+		if evidence.SHA256 == "" || expected[id] != evidence.SHA256 {
+			return false, nil
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return count == len(items), nil
 }
 
 func (s *Store) Proposals(ctx context.Context, actor auth.User, libraryID string) ([]Proposal, error) {
@@ -457,7 +531,11 @@ func metadataString(values map[string]any, key string) string {
 	}
 	return ""
 }
+
 func firstString(value any) string {
+	if values, ok := value.([]string); ok && len(values) > 0 {
+		return strings.TrimSpace(values[0])
+	}
 	if values, ok := value.([]any); ok && len(values) > 0 {
 		if v, ok := values[0].(string); ok {
 			return strings.TrimSpace(v)
@@ -465,6 +543,7 @@ func firstString(value any) string {
 	}
 	return ""
 }
+
 func suggestExisting(ctx context.Context, tx *sql.Tx, libraryID, title, author string) string {
 	rows, err := tx.QueryContext(ctx, `SELECT id,title,COALESCE(author,'') FROM works WHERE library_id=? ORDER BY id`, libraryID)
 	if err != nil {

@@ -1,3 +1,5 @@
+import { AudiobookMetadataReview } from '@/components/catalog/AudiobookMetadataReview';
+import { FileMetadataReview } from '@/components/catalog/FileMetadataReview';
 import { formatMediaSize as formatBytes } from '@/lib/format';
 import { narratorNamesError } from '@/lib/catalog/catalog-metadata';
 import type { Library, Media, Representation } from '@/generated/api';
@@ -39,6 +41,8 @@ export default function RepresentationScreen() {
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [metadataMediaID, setMetadataMediaID] = useState('');
+  const [audiobookLookup, setAudiobookLookup] = useState<{ asin: string }>();
 
   async function load() {
     if (!id) return;
@@ -84,6 +88,11 @@ export default function RepresentationScreen() {
   const canEdit = Boolean(
     auth.user?.admin || library?.role === 'owner' || library?.role === 'editor',
   );
+
+  const settingsDirty =
+    label !== representation.label ||
+    kind !== representation.kind ||
+    narrators !== (representation.narrators ?? []).join('\n');
 
   async function upload() {
     const result = await DocumentPicker.getDocumentAsync({
@@ -208,6 +217,25 @@ export default function RepresentationScreen() {
         </Section>
       ) : null}
 
+      {canEdit && kind !== 'epub' ? (
+        <Section title="Audiobook details">
+          <Text className="text-sm leading-6 text-muted">
+            Find narrator credits and a full description for this recording using its Audible
+            identifier.
+          </Text>
+          <View className="items-start">
+            <Button
+              label="Find audiobook details"
+              disabled={settingsDirty || saving}
+              kind="secondary"
+              onPress={() => setAudiobookLookup({ asin: '' })}
+            />
+          </View>
+        </Section>
+      ) : null}
+      {canEdit && settingsDirty ? (
+        <Notice>Save file settings before reviewing metadata.</Notice>
+      ) : null}
       <Section
         title="Uploaded files"
         action={
@@ -238,6 +266,14 @@ export default function RepresentationScreen() {
               <Text className={shared.itemMeta}>
                 {formatBytes(item.size_bytes)} · {new Date(item.created_at).toLocaleString()}
               </Text>
+              {canEdit ? (
+                <Button
+                  label="Review details from file"
+                  disabled={settingsDirty || saving}
+                  kind="secondary"
+                  onPress={() => setMetadataMediaID(item.id)}
+                />
+              ) : null}
               <TechnicalDetails
                 rows={[
                   { label: 'SHA-256', value: item.sha256, copyable: true },
@@ -249,6 +285,32 @@ export default function RepresentationScreen() {
         )}
       </Section>
 
+      {metadataMediaID ? (
+        <FileMetadataReview
+          key={metadataMediaID}
+          mediaID={metadataMediaID}
+          onClose={() => setMetadataMediaID('')}
+          onApplied={load}
+          onAudiobookLookup={
+            kind !== 'epub'
+              ? (asin) => {
+                  setMetadataMediaID('');
+                  setAudiobookLookup({ asin });
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {audiobookLookup ? (
+        <AudiobookMetadataReview
+          workID={representation.work_id}
+          representationID={representation.id}
+          recordingLabel={representation.label}
+          initialASIN={audiobookLookup.asin}
+          onClose={() => setAudiobookLookup(undefined)}
+          onApplied={load}
+        />
+      ) : null}
       {canEdit ? (
         <Section title="Remove edition">
           <Text className="text-sm text-muted">

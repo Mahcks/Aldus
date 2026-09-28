@@ -1315,9 +1315,7 @@ func (s *Store) SelectDiscovery(ctx context.Context, actor auth.User, libraryID,
 		return Request{}, ErrNotFound
 	}
 
-	if result.Metadata.Description == "" && result.Metadata.OpenLibraryID != "" {
-		result.Metadata.Description, _ = s.client.workDescription(ctx, result.Metadata.OpenLibraryID)
-	}
+	s.enrichSelectedDescription(ctx, &result.Metadata)
 
 	request, err := s.Create(ctx, actor, libraryID, discovery.SourceID, discovery.Query)
 	if err != nil {
@@ -1391,9 +1389,7 @@ func (s *Store) SelectPairDiscovery(ctx context.Context, actor auth.User, librar
 	}
 
 	for _, selected := range []*selectedDiscoveryResult{&first, &second} {
-		if selected.Metadata.Description == "" && selected.Metadata.OpenLibraryID != "" {
-			selected.Metadata.Description, _ = s.client.workDescription(ctx, selected.Metadata.OpenLibraryID)
-		}
+		s.enrichSelectedDescription(ctx, &selected.Metadata)
 	}
 
 	pairID, err := randomID()

@@ -43,6 +43,9 @@ func (s *Store) searchMetadata(ctx context.Context, client *Client, query string
 	s.metadataMu.Unlock()
 
 	value, err := client.metadata(ctx, query)
+	if ctx.Err() != nil {
+		return nil
+	}
 	ttl := 30 * time.Minute
 	if err != nil {
 		ttl = time.Minute
@@ -81,6 +84,10 @@ func (c *Client) metadata(ctx context.Context, query string) ([]Metadata, error)
 }
 
 func metadataFrom(ctx context.Context, client *http.Client, endpoint, query string) ([]Metadata, error) {
+	return metadataResultsFrom(ctx, client, endpoint, query, true)
+}
+
+func metadataResultsFrom(ctx context.Context, client *http.Client, endpoint, query string, strict bool) ([]Metadata, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -113,7 +120,7 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 	queryKey := normalizedWords(query)
 	values := make([]Metadata, 0, len(payload.Docs))
 	for _, doc := range payload.Docs {
-		if derivativeKind(doc.Title) != derivativeKind(query) {
+		if strict && derivativeKind(doc.Title) != derivativeKind(query) {
 			continue
 		}
 		result := Metadata{
@@ -124,11 +131,14 @@ func metadataFrom(ctx context.Context, client *http.Client, endpoint, query stri
 			RatingsCount: doc.Ratings,
 			Description:  firstSentence(doc.FirstSentence),
 		}
-		if titleSimilarity(queryKey, normalizedWords(result.Title)) < .5 && result.RatingsCount < 10 {
+		if strict && titleSimilarity(queryKey, normalizedWords(result.Title)) < .5 && result.RatingsCount < 10 {
 			continue
 		}
 		if len(doc.Authors) > 0 {
 			result.Author = strings.TrimSpace(doc.Authors[0])
+			if !strict {
+				result.Author = strings.TrimSpace(strings.Join(doc.Authors, ", "))
+			}
 		}
 		if len(doc.ISBNs) > 0 {
 			result.ISBN = strings.TrimSpace(doc.ISBNs[0])
@@ -419,4 +429,37 @@ func appendUnique(values []string, additions ...string) []string {
 		}
 	}
 	return values
+}
+
+// consumerMetadata preserves provider matches for authors and identifiers. Release
+// selection still uses metadata's conservative title and author checks.
+func (s *Store) consumerMetadata(ctx context.Context, query string) ([]Metadata, error) {
+	if s.client == nil {
+		return nil, ErrUnavailable
+	}
+	key := "consumer:" + strings.ToLower(strings.Join(strings.Fields(query), " "))
+	s.metadataMu.Lock()
+	cached, ok := s.metadataCache[key]
+	s.metadataMu.Unlock()
+	if ok && time.Now().Before(cached.expires) {
+		return cached.value, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	endpoint := "https://openlibrary.org/search.json?limit=25&fields=key,cover_i,title,author_name,first_publish_year,isbn,edition_count,ratings_count&q=" + url.QueryEscape(query)
+	values, err := metadataResultsFrom(ctx, s.client.http, endpoint, query, false)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return nil, err
+	}
+	ttl := 30 * time.Minute
+	s.metadataMu.Lock()
+	if len(s.metadataCache) >= 64 {
+		clear(s.metadataCache)
+	}
+	s.metadataCache[key] = cachedMetadata{value: values, expires: time.Now().Add(ttl)}
+	s.metadataMu.Unlock()
+	return values, err
 }

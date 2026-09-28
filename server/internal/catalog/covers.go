@@ -139,7 +139,7 @@ func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metada
 			language=CASE WHEN work_metadata.language='' THEN excluded.language ELSE work_metadata.language END,
 			subjects=CASE WHEN work_metadata.subjects='' THEN excluded.subjects ELSE work_metadata.subjects END,
 			updated_at=excluded.updated_at`,
-		workID, openLibraryCoverURL(metadata.CoverID), metadata.Description, metadata.ISBN, metadata.FirstPublishYear, metadata.Publisher, metadata.Language, strings.Join(metadata.Subjects, ","), now); err != nil {
+		workID, metadataCoverURLOrEmpty(metadata.CoverID), metadata.Description, metadata.ISBN, metadata.FirstPublishYear, metadata.Publisher, metadata.Language, strings.Join(metadata.Subjects, ","), now); err != nil {
 		return fmt.Errorf("save refreshed metadata: %w", err)
 	}
 	if len(metadata.Subjects) > 0 {
@@ -155,15 +155,28 @@ func (s *Store) saveRefreshedMetadata(ctx context.Context, workID string, metada
 			}
 		}
 	}
-	coverRecordID, err := randomID()
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO work_covers(id,work_id,source,source_id,image_url,created_at) SELECT ?,?,'open_library',?,?,? FROM works WHERE id=? AND selected_cover_id IS NULL ON CONFLICT(work_id,source,source_id) DO NOTHING`, coverRecordID, workID, metadata.CoverID, openLibraryCoverURL(metadata.CoverID), now, workID); err != nil {
-		return fmt.Errorf("save refreshed cover: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE works SET selected_cover_id=(SELECT id FROM work_covers WHERE work_id=? AND source='open_library' AND source_id=?),updated_at=? WHERE id=? AND selected_cover_id IS NULL`, workID, metadata.CoverID, now, workID); err != nil {
-		return fmt.Errorf("select refreshed cover: %w", err)
+	if metadata.CoverID != "" {
+		coverRecordID, err := randomID()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+            INSERT INTO work_covers (id, work_id, source, source_id, image_url, created_at)
+            SELECT ?, ?, 'open_library', ?, ?, ?
+            FROM works
+            WHERE id=? AND selected_cover_id IS NULL
+            ON CONFLICT(work_id,source,source_id) DO NOTHING`, coverRecordID, workID, metadata.CoverID, openLibraryCoverURL(metadata.CoverID), now, workID); err != nil {
+			return fmt.Errorf("save refreshed cover: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+            UPDATE works
+            SET selected_cover_id=(
+                SELECT id FROM work_covers
+                WHERE work_id=? AND source='open_library' AND source_id=?
+            ), updated_at=?
+            WHERE id=? AND selected_cover_id IS NULL`, workID, metadata.CoverID, now, workID); err != nil {
+			return fmt.Errorf("select refreshed cover: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err
@@ -180,7 +193,7 @@ func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, search
 	if response.StatusCode != http.StatusOK {
 		return refreshedMetadata{}, fmt.Errorf("search Open Library: unexpected status %d", response.StatusCode)
 	}
-	candidates, err := parseOpenLibraryCovers(io.LimitReader(response.Body, 2<<20))
+	candidates, err := parseOpenLibraryMetadata(io.LimitReader(response.Body, 2<<20), false)
 	if err != nil {
 		return refreshedMetadata{}, fmt.Errorf("decode Open Library search: %w", err)
 	}
@@ -191,7 +204,7 @@ func refreshOpenLibraryMetadata(ctx context.Context, client *http.Client, search
 			break
 		}
 	}
-	if selected.SourceID == "" || selected.WorkID == "" {
+	if selected.WorkID == "" {
 		return refreshedMetadata{}, ErrNotFound
 	}
 	description, err := openLibraryDescription(ctx, client, workEndpoint(selected.WorkID))
@@ -377,6 +390,10 @@ func openLibraryGET(ctx context.Context, client *http.Client, endpoint string) (
 }
 
 func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
+	return parseOpenLibraryMetadata(reader, true)
+}
+
+func parseOpenLibraryMetadata(reader io.Reader, requireCover bool) ([]CoverCandidate, error) {
 	var result openLibraryResult
 	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return nil, err
@@ -384,11 +401,22 @@ func parseOpenLibraryCovers(reader io.Reader) ([]CoverCandidate, error) {
 	candidates := make([]CoverCandidate, 0, len(result.Docs))
 	seen := make(map[int]bool)
 	for _, doc := range result.Docs {
-		if doc.CoverID <= 0 || seen[doc.CoverID] {
+		if requireCover && (doc.CoverID <= 0 || seen[doc.CoverID]) {
 			continue
 		}
 		seen[doc.CoverID] = true
-		candidate := CoverCandidate{Source: "open_library", SourceID: strconv.Itoa(doc.CoverID), WorkID: strings.TrimPrefix(doc.Key, "/works/"), ImageURL: openLibraryCoverURL(strconv.Itoa(doc.CoverID)), Title: doc.Title, FirstPublishYear: doc.FirstPublishYear}
+		candidate := CoverCandidate{
+			Source:           "open_library",
+			SourceID:         strconv.Itoa(doc.CoverID),
+			WorkID:           strings.TrimPrefix(doc.Key, "/works/"),
+			ImageURL:         openLibraryCoverURL(strconv.Itoa(doc.CoverID)),
+			Title:            doc.Title,
+			FirstPublishYear: doc.FirstPublishYear,
+		}
+		if doc.CoverID <= 0 {
+			candidate.SourceID = ""
+			candidate.ImageURL = ""
+		}
 		if len(doc.Authors) > 0 {
 			candidate.Author = doc.Authors[0]
 		}
@@ -679,4 +707,11 @@ func (s *Store) coverSelectionColumn(ctx context.Context, workID, format string)
 	default:
 		return "", ErrInvalid
 	}
+}
+
+func metadataCoverURLOrEmpty(id string) string {
+	if id == "" {
+		return ""
+	}
+	return openLibraryCoverURL(id)
 }

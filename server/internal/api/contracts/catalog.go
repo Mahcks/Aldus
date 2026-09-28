@@ -83,6 +83,8 @@ type UnmatchedGenreSubjectPage struct {
 	HasMore bool                    `json:"has_more"`
 }
 type WorkSummary struct {
+	MissingMetadata      []string  `json:"missing_metadata,omitempty"`
+	Narrators            []string  `json:"narrators,omitempty"`
 	Series               string    `json:"series,omitempty"`
 	SeriesPosition       string    `json:"series_position,omitempty"`
 	ID                   string    `json:"id"`

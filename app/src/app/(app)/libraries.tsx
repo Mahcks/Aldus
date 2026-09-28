@@ -223,6 +223,13 @@ export default function Libraries() {
     router.push(`/library/${target.id}?open=${panel}`);
   }
 
+  function openManageMetadata() {
+    const target = manageTarget;
+    setManageTarget(null);
+    if (!target) return;
+    router.push(`/library/${target.id}/metadata`);
+  }
+
   function openManageSources() {
     const target = manageTarget;
     setManageTarget(null);
@@ -351,6 +358,7 @@ export default function Libraries() {
       >
         <View>
           <ManagementRow icon="add" label="Add work" onPress={() => openManagePanel('work')} />
+          <ManagementRow icon="search" label="Metadata" onPress={openManageMetadata} />
           <ManagementRow icon="users" label="Members" onPress={() => openManagePanel('members')} />
           <ManagementRow icon="folder" label="Sources" onPress={openManageSources} />
           <ManagementRow

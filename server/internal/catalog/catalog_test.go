@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -592,5 +593,51 @@ func TestDisabledCoOwnerCannotReplaceEnabledOwner(t *testing.T) {
 	}
 	if err := store.RemoveMember(ctx, admin, library.ID, other.ID); err != nil {
 		t.Fatalf("remove disabled co-owner: %v", err)
+	}
+}
+
+func TestBrowseSearchMetadataAndRanksBeforePagination(t *testing.T) {
+	ctx := context.Background()
+	store, accounts, admin := testCatalog(t)
+	library, err := store.CreateLibrary(ctx, admin, "Search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := store.CreateWork(ctx, admin, library.ID, "Dune", "Frank Herbert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE works SET series_name='Dune Chronicles',series_key='dune chronicles' WHERE id=?`, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO work_metadata(work_id,isbn,updated_at) VALUES(?,'978-0441172719','2026-01-01')`, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	representation, err := store.CreateRepresentation(ctx, admin, target.ID, "audio", "Audiobook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO representation_narrators(representation_id,ordinal,name,name_key) VALUES(?,0,'Simon Vance','simon vance')`, representation.ID); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 55; i++ {
+		if _, err := store.CreateWork(ctx, admin, library.ID, fmt.Sprintf("A Dune Companion %02d", i), "Other author"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, query := range []string{"Dune", "Dune Chronicles", "Simon Vance", "9780441172719"} {
+		works, _, err := store.BrowseWorks(ctx, admin, BrowseOptions{Query: query, Sort: "relevance", Limit: 1})
+		if err != nil || len(works) != 1 || works[0].ID != target.ID {
+			t.Fatalf("query %q: %#v %v", query, works, err)
+		}
+	}
+	outsider := createUser(t, accounts, admin, "search-outsider")
+	works, _, err := store.BrowseWorks(ctx, outsider, BrowseOptions{Query: "Simon Vance"})
+	if err != nil || len(works) != 0 {
+		t.Fatalf("narrator leaked to outsider: %#v %v", works, err)
+	}
+	works, _, err = store.BrowseWorks(ctx, admin, BrowseOptions{WorkIDs: []string{target.ID}})
+	if err != nil || len(works) != 1 || works[0].ID != target.ID {
+		t.Fatalf("bounded identity lookup: %#v %v", works, err)
 	}
 }

@@ -13,6 +13,8 @@ import (
 
 func registerWorkRoutes(router chi.Router, store *catalog.Store, media *ingest.Store, tags *genretag.Store) {
 	registerMetadataRoutes(router, store)
+	registerFileMetadataRoutes(router, store, media)
+	registerAudiobookMetadataRoutes(router, store)
 	router.Get("/works", browseWorks(store))
 	router.Get("/catalog/{kind}", catalogGroups(store))
 	router.Get("/libraries/{libraryID}/works", listWorks(store))
@@ -146,7 +148,8 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit, offset := pageParams(r)
 		values, hasMore, err := s.BrowseWorks(r.Context(), actor(r), catalog.BrowseOptions{
-			Series: r.URL.Query().Get("series"), Narrator: r.URL.Query().Get("narrator"), LibraryID: r.URL.Query().Get("library_id"), Query: r.URL.Query().Get("q"),
+			MetadataMissing: r.URL.Query().Get("metadata_missing"),
+			Series:          r.URL.Query().Get("series"), Narrator: r.URL.Query().Get("narrator"), LibraryID: r.URL.Query().Get("library_id"), Query: r.URL.Query().Get("q"),
 			Sort: r.URL.Query().Get("sort"), Availability: r.URL.Query().Get("availability"), Status: r.URL.Query().Get("status"),
 			Limit: limit, Offset: offset,
 		})
@@ -157,6 +160,8 @@ func browseWorks(s *catalog.Store) http.HandlerFunc {
 		items := make([]contracts.WorkSummary, len(values))
 		for i, value := range values {
 			items[i] = contracts.WorkSummary{
+				MissingMetadata:      value.MissingMetadata,
+				Narrators:            value.Narrators,
 				Series:               value.Series,
 				SeriesPosition:       catalog.SeriesPosition(value.SeriesOrder),
 				ID:                   value.ID,

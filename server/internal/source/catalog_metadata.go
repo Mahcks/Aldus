@@ -14,8 +14,10 @@ func catalogMetadata(metadata map[string]any) (string, string, []string) {
 	switch value := tags["narrator"].(type) {
 	case string:
 		if strings.TrimSpace(value) != "" {
-			names = []string{value}
+			names = splitMetadataNames(value)
 		}
+	case []string:
+		names = value
 	case []any:
 		for _, v := range value {
 			narrator, ok := v.(string)

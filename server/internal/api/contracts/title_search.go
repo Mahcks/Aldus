@@ -1,6 +1,7 @@
 package contracts
 
 type TitleSearchResult struct {
+	Description           string `json:"description,omitempty"`
 	WorkID                string `json:"work_id,omitempty"`
 	LibraryID             string `json:"library_id,omitempty"`
 	Title                 string `json:"title"`
@@ -27,4 +28,10 @@ type TrendingSection struct {
 // for a not-yet-owned Discover result.
 type TrendingDetail struct {
 	Description string `json:"description"`
+}
+
+// TitleSearchReport is opt-in; legacy clients continue receiving the result array.
+type TitleSearchReport struct {
+	Results        []TitleSearchResult `json:"results"`
+	ExternalStatus string              `json:"external_status"`
 }

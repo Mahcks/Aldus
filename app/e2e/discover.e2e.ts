@@ -72,7 +72,7 @@ test('Discover keeps equivalent searches and ignores descriptions from closed bo
     page.getByRole('button', { name: 'First book by Author', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Finding books…', { exact: true })).toHaveCount(0);
-  expect(searches).toBe(1);
+  await expect.poll(() => searches).toBe(2);
 });
 
 for (const width of [390, 1024, 1440]) {
@@ -198,3 +198,66 @@ for (const width of [390, 1024, 1440]) {
     expect(selections).toBe(2);
   });
 }
+
+test('Discover shows local books while the provider waits and retries provider failures', async ({
+  page,
+}) => {
+  const local = {
+    work_id: 'local',
+    library_id: 'library',
+    title: 'Local Alice',
+    author: 'Lewis Carroll',
+    readable: true,
+  };
+  const remote = {
+    title: 'Remote Alice',
+    author: 'Lewis Carroll',
+    external_source: 'open_library',
+    external_id: 'OL1W',
+  };
+  let releaseRemote!: () => void;
+  const barrier = new Promise<void>((resolve) => {
+    releaseRemote = resolve;
+  });
+  let remoteCalls = 0;
+  let detailCalls = 0;
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.replace('/api/v1', '');
+    let json: unknown = [];
+    if (path === '/auth/me')
+      json = { id: 'reader', username: 'reader', display_name: 'Reader', admin: false };
+    if (path === '/setup/status') json = { available: false, demo_available: false };
+    if (path === '/acquisition-capabilities') json = { enabled: false, destinations: [] };
+    if (path === '/search/titles') {
+      if (url.searchParams.get('scope') === 'local')
+        json = { results: [local], external_status: 'not_requested' };
+      else {
+        remoteCalls++;
+        if (remoteCalls === 1) {
+          await barrier;
+          json = { results: [local], external_status: 'unavailable' };
+        } else json = { results: [local, remote], external_status: 'ok' };
+      }
+    }
+    if (path === '/discover/detail') {
+      if (++detailCalls === 1) {
+        await route.fulfill({ status: 503, body: 'Description provider unavailable' });
+        return;
+      }
+      json = { description: 'A full book description.' };
+    }
+    await route.fulfill({ json });
+  });
+  await page.goto('/search');
+  await page.getByPlaceholder('Search by title, author, or ISBN').fill('Alice');
+  await expect(
+    page.getByRole('button', { name: 'Local Alice by Lewis Carroll', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('Searching beyond your library…', { exact: true })).toBeVisible();
+  releaseRemote();
+  await page.getByRole('button', { name: 'Retry search', exact: true }).click();
+  await page.getByRole('button', { name: 'Remote Alice by Lewis Carroll', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry description', exact: true }).click();
+  await expect(page.getByText('A full book description.', { exact: true })).toBeVisible();
+});

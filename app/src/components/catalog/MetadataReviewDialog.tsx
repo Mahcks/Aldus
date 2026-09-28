@@ -25,11 +25,13 @@ export function MetadataReviewDialog({
   initialQuery,
   onClose,
   onApplied,
+  applyLabel,
 }: {
   workID: string;
   initialQuery: string;
   onClose: () => void;
   onApplied: () => Promise<void>;
+  applyLabel?: string;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [preview, setPreview] = useState<MetadataPreview>();
@@ -210,7 +212,10 @@ export function MetadataReviewDialog({
               </Text>
             ) : null}
             <Button
-              label={`Apply ${changes.length} selected ${changes.length === 1 ? 'change' : 'changes'}`}
+              label={
+                applyLabel ??
+                `Apply ${changes.length} selected ${changes.length === 1 ? 'change' : 'changes'}`
+              }
               kind="primary"
               loading={saving}
               disabled={!changes.length || conflict}

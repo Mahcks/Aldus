@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -98,6 +99,8 @@ type WorkDetail struct {
 }
 
 type WorkSummary struct {
+	MissingMetadata      []string
+	Narrators            []string
 	Series               string
 	SeriesOrder          *int64
 	ID                   string
@@ -130,15 +133,17 @@ type WorkSummary struct {
 }
 
 type BrowseOptions struct {
-	Series       string
-	Narrator     string
-	LibraryID    string
-	Query        string
-	Sort         string
-	Availability string
-	Status       string
-	Limit        int
-	Offset       int
+	MetadataMissing string
+	WorkIDs         []string
+	Series          string
+	Narrator        string
+	LibraryID       string
+	Query           string
+	Sort            string
+	Availability    string
+	Status          string
+	Limit           int
+	Offset          int
 }
 
 type Representation struct {
@@ -519,17 +524,39 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	}
 	if options.Sort == "" {
 		options.Sort = "recent"
+		if options.Query != "" {
+			options.Sort = "relevance"
+		}
 	}
 	if options.Availability == "" {
 		options.Availability = "all"
 	}
-	if !oneOf(options.Sort, "recent", "updated", "title", "author", "progress", "series") || !oneOf(options.Availability, "all", "readable", "listenable", "synchronized", "in_progress") || (options.Status != "" && !oneOf(options.Status, "want_to_read", "reading", "finished")) {
+	if !oneOf(options.Sort, "recent", "updated", "title", "author", "progress", "series", "relevance") || !oneOf(options.Availability, "all", "readable", "listenable", "synchronized", "in_progress") || (options.Status != "" && !oneOf(options.Status, "want_to_read", "reading", "finished")) {
+		return nil, false, ErrInvalid
+	}
+	if !oneOf(options.MetadataMissing, "", "any", "author", "description", "cover", "narrator") {
 		return nil, false, ErrInvalid
 	}
 	limit, offset := page(options.Limit, options.Offset)
 	pattern := "%" + escapeLike(strings.ToLower(options.Query)) + "%"
+	workIDs := ""
+	if len(options.WorkIDs) > 0 {
+		if len(options.WorkIDs) > 100 {
+			return nil, false, ErrInvalid
+		}
+		encoded, _ := json.Marshal(options.WorkIDs)
+		workIDs = string(encoded)
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id, w.library_id, l.name, w.title, COALESCE(w.author,''),
+		SELECT (SELECT json_group_array(value) FROM (`+metadataMissingSQL+`)),
+            (SELECT json_group_array(name) FROM (
+                SELECT DISTINCT rn.name
+                FROM representation_narrators rn
+                JOIN representations nr ON nr.id = rn.representation_id
+                WHERE nr.work_id = w.id
+                ORDER BY rn.name
+            )),
+            w.id, w.library_id, l.name, w.title, COALESCE(w.author,''),
             `+defaultCoverColumn+`, `+formatCoverColumns+`,
             w.cover_fit, w.cover_focal_x, w.cover_focal_y,
             w.generated_cover_style, w.generated_cover_tone, w.generated_cover_layout,
@@ -552,14 +579,26 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			AND (?='' OR w.library_id=?)
  AND (?='' OR w.series_key=?)
  AND (?='' OR EXISTS(SELECT 1 FROM representation_narrators rn JOIN representations nr ON nr.id=rn.representation_id WHERE nr.work_id=w.id AND nr.kind IN ('audio','audiobook') AND rn.name_key=?))
-			AND (?='%%' OR lower(w.title) LIKE ? ESCAPE '\' OR lower(COALESCE(w.author,'')) LIKE ? ESCAPE '\')
+			AND (?='%%' OR lower(w.title) LIKE ? ESCAPE '\' OR lower(COALESCE(w.author,'')) LIKE ? ESCAPE '\'
+                OR lower(w.series_name) LIKE ? ESCAPE '\'
+                OR EXISTS(SELECT 1 FROM representation_narrators n JOIN representations r ON r.id=n.representation_id WHERE r.work_id=w.id AND r.kind IN ('audio','audiobook') AND lower(n.name) LIKE ? ESCAPE '\')
+                OR EXISTS(SELECT 1 FROM work_metadata md WHERE md.work_id=w.id AND replace(md.isbn,'-','')=replace(?,'-','')))
 			AND (?='all'
 				OR (?='readable' AND EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind='epub' AND `+availableMediaSQL("m")+`))
 				OR (?='listenable' AND EXISTS(SELECT 1 FROM representations r JOIN media m ON m.representation_id=r.id WHERE r.work_id=w.id AND m.kind IN ('audio','audiobook') AND `+availableMediaSQL("m")+`))
 				OR (?='synchronized' AND EXISTS(SELECT 1 FROM alignments a JOIN media em ON em.id=a.epub_media_id JOIN representations er ON er.id=em.representation_id JOIN media am ON am.id=a.audio_media_id JOIN representations ar ON ar.id=am.representation_id WHERE a.state='ready' AND er.work_id=w.id AND ar.work_id=w.id AND `+availableMediaSQL("em")+` AND `+availableMediaSQL("am")+`))
 				OR (?='in_progress' AND (EXISTS(SELECT 1 FROM progress p WHERE p.user_id=? AND p.work_id=w.id) OR EXISTS(SELECT 1 FROM representation_state rs JOIN representations r ON r.id=rs.representation_id WHERE rs.user_id=? AND r.work_id=w.id AND (rs.epub_locator IS NOT NULL OR rs.audio_timestamp_ms IS NOT NULL)))))
 			AND (?='' OR EXISTS(SELECT 1 FROM user_work_statuses s WHERE s.user_id=? AND s.work_id=w.id AND s.status=?))
+		AND (?='' OR w.id IN (SELECT value FROM json_each(?)))
+        AND (?='' OR EXISTS(SELECT 1 FROM (`+metadataMissingSQL+`) WHERE ?='any' OR value=?))
 		ORDER BY
+ CASE WHEN ?='relevance' THEN CASE
+   WHEN lower(w.title)=? THEN 0
+   WHEN EXISTS(SELECT 1 FROM work_metadata md WHERE md.work_id=w.id AND replace(md.isbn,'-','')=replace(?,'-','') AND md.isbn!='') THEN 0
+   WHEN lower(w.title) LIKE ? ESCAPE '\' THEN 1
+   WHEN lower(COALESCE(w.author,''))=? THEN 2
+   ELSE 3 END END ASC,
+ CASE WHEN ?='relevance' THEN lower(w.title) END ASC,
  CASE WHEN ?='series' THEN w.series_order IS NULL END ASC,
  CASE WHEN ?='series' THEN w.series_order END ASC,
  CASE WHEN ?='series' THEN lower(w.title) END ASC,
@@ -571,9 +610,11 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 		w.id ASC
 		LIMIT ? OFFSET ?`, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID, actor.ID,
 		actor.ID, actor.ID, actor.ID, actor.ID, actor.Admin, actor.ID,
-		options.LibraryID, options.LibraryID, options.Series, MetadataKey(options.Series), options.Narrator, MetadataKey(options.Narrator), pattern, pattern, pattern,
+		options.LibraryID, options.LibraryID, options.Series, MetadataKey(options.Series), options.Narrator, MetadataKey(options.Narrator), pattern, pattern, pattern, pattern, pattern, strings.ToLower(options.Query),
 		options.Availability, options.Availability, options.Availability, options.Availability, options.Availability, actor.ID, actor.ID,
-		options.Status, actor.ID, options.Status,
+		options.Status, actor.ID, options.Status, workIDs, workIDs,
+		options.MetadataMissing, options.MetadataMissing, options.MetadataMissing,
+		options.Sort, strings.ToLower(options.Query), strings.ToLower(options.Query), escapeLike(strings.ToLower(options.Query))+"%", strings.ToLower(options.Query), options.Sort,
 		options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, options.Sort, actor.ID, actor.ID, limit+1, offset)
 	if err != nil {
 		return nil, false, fmt.Errorf("browse works: %w", err)
@@ -582,8 +623,10 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 	var out []WorkSummary
 	for rows.Next() {
 		var value WorkSummary
-		var created, updated, progress string
+		var created, updated, progress, missing, narrators string
 		if err := rows.Scan(
+			&missing,
+			&narrators,
 			&value.ID,
 			&value.LibraryID,
 			&value.LibraryName,
@@ -614,6 +657,12 @@ func (s *Store) BrowseWorks(ctx context.Context, actor auth.User, options Browse
 			&value.LastMode,
 			&value.ReadingStatus,
 		); err != nil {
+			return nil, false, err
+		}
+		if err := json.Unmarshal([]byte(missing), &value.MissingMetadata); err != nil {
+			return nil, false, err
+		}
+		if err := json.Unmarshal([]byte(narrators), &value.Narrators); err != nil {
 			return nil, false, err
 		}
 		value.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)

@@ -175,6 +175,9 @@ func (s *Store) AcceptProposal(ctx context.Context, actor auth.User, libraryID, 
 		}
 	}
 	if request.WorkID == "" {
+		if err := saveEmbeddedMetadata(ctx, tx, workID, metadata); err != nil {
+			return "", err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE works SET series_name=?,series_key=?,series_order=? WHERE id=?`, series, seriesKey, seriesOrder, workID); err != nil {
 			return "", err
 		}

@@ -643,6 +643,16 @@ export default function LibraryScreen() {
               onPress={() => openPanelFromManage('work')}
             />
           ) : null}
+          {canEdit ? (
+            <ManagementRow
+              icon="search"
+              label="Metadata"
+              onPress={() => {
+                setManageOpen(false);
+                router.push(`/library/${id}/metadata`);
+              }}
+            />
+          ) : null}
           {canManage ? (
             <ManagementRow
               icon="users"
