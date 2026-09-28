@@ -1,4 +1,4 @@
-export { resolvePressStateClass, Button, IconButton } from './Button';
+export { resolvePressStateClass, isKeyboardInput, Button, IconButton } from './Button';
 export { Field, TextField, SearchField } from './Field';
 export { Select, Checkbox, Radio } from './Choice';
 export { Dialog, ConfirmDialog } from './Dialog';
@@ -9,3 +9,8 @@ export { RotatingChevron } from './RotatingChevron';
 export { shared, Row, IconRow, ManagementRow, SectionHeader, Section } from './layout';
 export { useThemeColors, lightColors, darkColors, type ThemeColors } from './theme';
 export { LoadingState, LoadingState as Loading } from './loading-skeleton';
+export { Popover, type PopoverProps } from './Popover';
+export { MenuItem, MenuSeparator } from './MenuItem';
+export { ToolbarSelect } from './ToolbarSelect';
+export { usePointerLayout } from './pointer-layout';
+export { Tabs } from './Tabs';

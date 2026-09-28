@@ -1,10 +1,11 @@
-import { useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Platform } from 'react-native';
+import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Platform, View as NativeView } from 'react-native';
 import { AppIcon } from './icons';
 import { useThemeColors } from './theme';
 import { Pressable, Text, View } from './tw';
 import { Button, resolvePressStateClass } from './Button';
-import { Dialog } from './Dialog';
+import { MenuItem } from './MenuItem';
+import { Popover } from './Popover';
 
 type SelectProps = {
   label: string;
@@ -56,12 +57,15 @@ function SelectMenu({
   disabled = false,
 }: Omit<SelectProps, 'menu'>) {
   const colors = useThemeColors();
+  const anchorRef = useRef<NativeView>(null);
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
-  const current = options.find((option) => option.value === value)?.label ?? '';
-  const borderClass = focused
-    ? 'border border-focus outline outline-2 outline-focus'
-    : 'border border-line-strong';
+  const current = options.find((option) => option.value === value)?.label ?? 'Choose…';
+  const borderClass =
+    focused || open
+      ? 'border border-focus outline outline-2 outline-focus'
+      : 'border border-line-strong';
+  const backgroundClass = open ? 'bg-control-focus' : 'bg-control';
 
   function choose(next: string) {
     setOpen(false);
@@ -71,33 +75,42 @@ function SelectMenu({
   return (
     <View className="gap-1.5">
       <Text className="text-sm font-sans-semibold text-ink">{label}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${label}: ${current}`}
-        accessibilityState={{ disabled, expanded: open }}
-        disabled={disabled}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onPress={() => setOpen(true)}
-        className={`min-h-11 flex-row items-center gap-2 rounded-control bg-control px-3 py-2 ${borderClass} ${disabled ? 'opacity-50' : ''}`}
+      <NativeView ref={anchorRef}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: ${current}`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          accessibilityState={{ disabled, expanded: open }}
+          disabled={disabled}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onPress={() => setOpen((value) => !value)}
+          className={`min-h-11 flex-row items-center gap-2 rounded-control px-3 py-2 ${backgroundClass} ${borderClass} ${disabled ? 'opacity-50' : ''}`}
+        >
+          <Text numberOfLines={1} className="min-w-0 flex-1 text-base text-ink">
+            {current}
+          </Text>
+          <AppIcon name={open ? 'chevronUp' : 'chevronDown'} size={18} color={colors.muted} />
+        </Pressable>
+      </NativeView>
+      <Popover
+        visible={open}
+        onClose={() => setOpen(false)}
+        anchorRef={anchorRef}
+        label={label}
+        role="listbox"
       >
-        <Text numberOfLines={1} className="min-w-0 flex-1 text-base text-ink">
-          {current}
-        </Text>
-        <AppIcon name="chevronDown" size={18} color={colors.muted} />
-      </Pressable>
-      <Dialog sheet visible={open} title={label} onClose={() => setOpen(false)}>
-        <View accessibilityRole="radiogroup" accessibilityLabel={label}>
-          {options.map((option) => (
-            <Radio
-              key={option.value}
-              label={option.label}
-              selected={option.value === value}
-              onPress={() => choose(option.value)}
-            />
-          ))}
-        </View>
-      </Dialog>
+        {options.map((option) => (
+          <MenuItem
+            key={option.value}
+            role="option"
+            label={option.label}
+            selected={option.value === value}
+            onPress={() => choose(option.value)}
+          />
+        ))}
+      </Popover>
     </View>
   );
 }

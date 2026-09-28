@@ -3,6 +3,7 @@ import { ActivityIndicator, Platform } from 'react-native';
 import { AppIcon, type AppIconName } from './icons';
 import { useThemeColors, type ThemeColors } from './theme';
 import { Pressable, Text } from './tw';
+import { useTooltip } from './tooltip';
 
 /**
  * Web-only: RN Web fires `onFocus` for an ordinary mouse/touch click just as
@@ -19,6 +20,11 @@ let lastInputWasKeyboard = true;
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.addEventListener('keydown', () => (lastInputWasKeyboard = true), true);
   document.addEventListener('pointerdown', () => (lastInputWasKeyboard = false), true);
+}
+
+/** Whether the most recent input was the keyboard rather than a pointer (always true off web). */
+export function isKeyboardInput() {
+  return lastInputWasKeyboard;
 }
 
 type ButtonKind = 'primary' | 'secondary' | 'danger' | 'quiet';
@@ -249,6 +255,7 @@ export function IconButton({
   pressed: toggled,
   nativeID,
   size = 'default',
+  menuExpanded,
 }: {
   icon: AppIconName;
   label: string;
@@ -258,15 +265,28 @@ export function IconButton({
   selected?: boolean;
   /** Marks a toggle button's on/off state for assistive tech (`aria-pressed` on web). */
   pressed?: boolean;
+  /** Set when the button opens a menu: whether that menu is currently open. */
+  menuExpanded?: boolean;
   nativeID?: string;
-  size?: 'default' | 'large';
+  /** `small` is only for pointer-revealed overlays, such as a book cover's hover menu. */
+  size?: 'small' | 'default' | 'large';
 }) {
   const colors = useThemeColors();
+  const tooltip = useTooltip(label);
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
-  const handleFocus = () => setFocused(true);
-  const handleBlur = () => setFocused(false);
-  const handlePressIn = () => setPressed(true);
+  const handleFocus = (event: unknown) => {
+    setFocused(true);
+    if (lastInputWasKeyboard) tooltip.show(event, true);
+  };
+  const handleBlur = () => {
+    setFocused(false);
+    tooltip.hide();
+  };
+  const handlePressIn = () => {
+    setPressed(true);
+    tooltip.hide();
+  };
   const handlePressOut = () => setPressed(false);
 
   const backgroundClass = resolveButtonBackgroundClass({
@@ -295,7 +315,11 @@ export function IconButton({
   });
   const opacityClass = disabled ? 'opacity-50' : '';
 
-  const sizeClass = size === 'large' ? 'h-16 w-16 rounded-pill' : 'h-11 w-11 rounded-control';
+  const sizeClass = {
+    small: 'h-8 w-8 rounded-pill',
+    default: 'h-11 w-11 rounded-control',
+    large: 'h-16 w-16 rounded-pill',
+  }[size];
 
   return (
     <Pressable
@@ -304,15 +328,21 @@ export function IconButton({
       accessibilityLabel={label}
       accessibilityState={{ disabled, selected }}
       {...(toggled === undefined ? {} : ({ 'aria-pressed': toggled } as object))}
+      {...(menuExpanded === undefined
+        ? {}
+        : ({ 'aria-haspopup': 'menu', 'aria-expanded': menuExpanded } as object))}
       disabled={disabled}
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      onHoverIn={(event) => tooltip.show(event)}
+      onHoverOut={tooltip.hide}
       onPress={onPress}
       className={`transition-[transform,background-color] duration-150 motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100 ${sizeClass} items-center justify-center ${backgroundClass} ${borderClass} ${shadowClass} ${opacityClass}`}
     >
-      <AppIcon name={icon} size={size === 'large' ? 30 : 20} color={iconColor} />
+      <AppIcon name={icon} size={{ small: 18, default: 20, large: 30 }[size]} color={iconColor} />
+      {tooltip.tooltip}
     </Pressable>
   );
 }

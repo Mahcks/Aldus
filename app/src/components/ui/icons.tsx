@@ -71,6 +71,7 @@ const names = {
   starFilled: 'star',
   shelfLayout: 'view-day-outline',
   gridLayout: 'view-grid-outline',
+  compactGridLayout: 'view-comfy-outline',
   genres: 'tag-multiple-outline',
   sword: 'sword',
   rocketLaunch: 'rocket-launch-outline',
