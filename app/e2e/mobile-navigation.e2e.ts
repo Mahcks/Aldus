@@ -1,8 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { signInAsTestAdmin } from './auth';
 
-for (const viewport of [{ width: 390, height: 500 }, { width: 740, height: 390 }]) {
-  test(`mobile menu keeps all destinations reachable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+for (const viewport of [
+  { width: 390, height: 500 },
+  { width: 740, height: 390 },
+]) {
+  test(`mobile menu keeps all destinations reachable at ${viewport.width}x${viewport.height}`, async ({
+    page,
+  }) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const errors: string[] = [];

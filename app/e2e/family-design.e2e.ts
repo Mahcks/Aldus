@@ -115,7 +115,7 @@ for (const width of [390, 1024, 1440]) {
     expect(shared).toBe('family');
     await page.goto('/library/family');
     await page.getByRole('button', { name: 'Library management', exact: true }).click();
-    await page.getByRole('button', { name: 'Members', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Members', exact: true }).click();
     const access = page.getByRole('dialog', { name: 'Manage members', exact: true });
     await access.getByRole('button', { name: 'Change role', exact: true }).click();
     await access.getByRole('radio', { name: 'Editor', exact: true }).click();
@@ -138,7 +138,7 @@ for (const width of [390, 1024, 1440]) {
     await expect(access.getByRole('button', { name: 'Add member', exact: true })).toBeDisabled();
     await access.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.getByRole('button', { name: 'Library management', exact: true }).click();
-    await page.getByRole('button', { name: 'Library settings', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Library settings', exact: true }).click();
     const settings = page.getByRole('dialog', { name: 'Library settings', exact: true });
     await settings.getByRole('textbox', { name: 'Library name', exact: true }).fill('');
     await expect(
@@ -158,7 +158,7 @@ for (const width of [390, 1024, 1440]) {
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-library-settings.png` });
     await settings.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.getByRole('button', { name: 'Library management', exact: true }).click();
-    await page.getByRole('button', { name: 'Acquisition policy', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Acquisition policy', exact: true }).click();
     const policy = page.getByRole('dialog', { name: 'Acquisition policy', exact: true });
     const savePolicy = policy.getByRole('button', { name: 'Save acquisition policy', exact: true });
     await expect(savePolicy).toBeDisabled();

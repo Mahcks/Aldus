@@ -233,6 +233,7 @@ export default function CollectionDetailScreen() {
           onPress={() => goBackOr('/collections')}
         />
       }
+      breadcrumbs={[{ label: 'Collections', href: '/collections' }]}
       actions={
         !shared || collection.can_edit ? (
           <Row>

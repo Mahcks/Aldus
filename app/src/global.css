@@ -80,11 +80,9 @@
 
   /* Layered shadow scale — the only depth strategy used in this app */
   --shadow-xs: 0 1px 2px rgb(39 33 28 / 0.06);
-  --shadow-sm:
-    0 2px 6px rgb(39 33 28 / 0.08), 0 1px 2px rgb(39 33 28 / 0.06);
+  --shadow-sm: 0 2px 6px rgb(39 33 28 / 0.08), 0 1px 2px rgb(39 33 28 / 0.06);
   --shadow-card: 0 8px 20px -6px rgb(39 33 28 / 0.18), 0 2px 6px rgb(39 33 28 / 0.08);
-  --shadow-popover:
-    0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
+  --shadow-popover: 0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
 }
 
 /*
@@ -147,11 +145,9 @@
     --color-neutral-soft: #2a251f;
 
     --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
-    --shadow-sm:
-      0 2px 6px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.35);
+    --shadow-sm: 0 2px 6px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.35);
     --shadow-card: 0 8px 20px -6px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
-    --shadow-popover:
-      0 24px 48px -12px rgb(0 0 0 / 0.65), 0 8px 16px -4px rgb(0 0 0 / 0.45);
+    --shadow-popover: 0 24px 48px -12px rgb(0 0 0 / 0.65), 0 8px 16px -4px rgb(0 0 0 / 0.45);
   }
 }
 
@@ -192,11 +188,9 @@
   --color-neutral-soft: #2a251f;
 
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
-  --shadow-sm:
-    0 2px 6px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-sm: 0 2px 6px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow-card: 0 8px 20px -6px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.35);
-  --shadow-popover:
-    0 24px 48px -12px rgb(0 0 0 / 0.65), 0 8px 16px -4px rgb(0 0 0 / 0.45);
+  --shadow-popover: 0 24px 48px -12px rgb(0 0 0 / 0.65), 0 8px 16px -4px rgb(0 0 0 / 0.45);
 }
 
 /* Explicit "Light" choice on web — reasserts the base :root values so they win over a dark system preference. */
@@ -236,11 +230,9 @@
   --color-neutral-soft: #e7e0d4;
 
   --shadow-xs: 0 1px 2px rgb(39 33 28 / 0.06);
-  --shadow-sm:
-    0 2px 6px rgb(39 33 28 / 0.08), 0 1px 2px rgb(39 33 28 / 0.06);
+  --shadow-sm: 0 2px 6px rgb(39 33 28 / 0.08), 0 1px 2px rgb(39 33 28 / 0.06);
   --shadow-card: 0 8px 20px -6px rgb(39 33 28 / 0.18), 0 2px 6px rgb(39 33 28 / 0.08);
-  --shadow-popover:
-    0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
+  --shadow-popover: 0 24px 48px -12px rgb(39 33 28 / 0.28), 0 8px 16px -4px rgb(39 33 28 / 0.12);
 }
 
 @layer theme {

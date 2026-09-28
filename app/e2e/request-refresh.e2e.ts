@@ -45,11 +45,13 @@ test('request filters apply to delayed data, recover offline and stop polling co
   fail = false;
   await page.getByRole('button', { name: 'Retry requests', exact: true }).click();
   await expect.poll(() => calls).toBe(2);
-  await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
-  await page.getByRole('radio', { name: 'History', exact: true }).click();
+  await page.getByRole('tab', { name: 'History', exact: true }).click();
   releaseRequests();
   await expect(page.getByText('Past request', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Filter: History', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'History', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.getByText('Active request', { exact: true })).toHaveCount(0);
   await page.clock.install();
   const before = calls;

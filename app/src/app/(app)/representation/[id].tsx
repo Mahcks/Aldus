@@ -163,6 +163,9 @@ export default function RepresentationScreen() {
           onPress={() => goBackOr(`/work/${representation.work_id}/manage?tab=files`)}
         />
       }
+      breadcrumbs={[
+        { label: 'Manage work', href: `/work/${representation.work_id}/manage?tab=files` },
+      ]}
       editorial={false}
     >
       <View className="gap-1 border-b border-line pb-5">

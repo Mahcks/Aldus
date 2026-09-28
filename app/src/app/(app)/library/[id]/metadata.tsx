@@ -352,6 +352,18 @@ export default function MetadataScreen() {
           onPress={() => requestTransition(() => router.push(`/library/${id}`))}
         />
       }
+      breadcrumbs={[
+        {
+          label: 'Libraries',
+          href: '/libraries',
+          onPress: () => requestTransition(() => router.push('/libraries')),
+        },
+        {
+          label: library?.name ?? 'Library',
+          href: `/library/${id}`,
+          onPress: () => requestTransition(() => router.push(`/library/${id}`)),
+        },
+      ]}
     >
       <View className={`min-h-0 flex-1 gap-5 ${compact ? 'px-4 py-5' : 'px-8 py-8'}`}>
         {error ? (

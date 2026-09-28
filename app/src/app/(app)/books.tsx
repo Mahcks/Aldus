@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import type { CatalogGroup, Library, WorkSummary } from '@/generated/api';
 import { CatalogGroupSection } from '@/components/catalog/catalog-groups';
@@ -12,6 +12,7 @@ import {
   type LibraryDensity,
 } from '@/lib/catalog/library-layout';
 import { BrowseControls, BrowseFacet } from '@/components/catalog/browse';
+import { DensityToggle } from '@/components/catalog/DensityToggle';
 import { offlineBrowseWorks } from '@/lib/catalog/offline-browse';
 import { workResumeMode } from '@/lib/catalog/work-resume';
 import { workQuickActions } from '@/lib/catalog/work-actions';
@@ -26,6 +27,7 @@ import {
   LoadingState,
   Notice,
   SearchField,
+  usePointerLayout,
 } from '@/components/ui';
 import { Page } from '@/components/shell/Page';
 import { APIError, api, errorMessage } from '@/lib/api';
@@ -61,6 +63,7 @@ export default function BooksScreen() {
 
 function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
   const inProgress = status === 'in_progress';
+  const pointerLayout = usePointerLayout();
   const [visit] = useState(() =>
     lastVisit?.scope === scope && lastVisit.status === status ? lastVisit : undefined,
   );
@@ -157,10 +160,15 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
     };
   }
 
+  // In progress resumes the book; everywhere else opens its details.
+  function bookHref(work: WorkSummary): Href {
+    const mode = workResumeMode(work);
+    return inProgress && mode ? `/consume/${work.id}?mode=${mode}` : `/work/${work.id}`;
+  }
+
   function openBook(work: WorkSummary) {
     stashVisit();
-    const mode = workResumeMode(work);
-    router.push(inProgress && mode ? `/consume/${work.id}?mode=${mode}` : `/work/${work.id}`);
+    router.push(bookHref(work));
   }
 
   useEffect(() => {
@@ -276,6 +284,16 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
     setOffset(0);
   }
 
+  const defaultSort = inProgress ? 'progress' : q ? 'relevance' : 'recent';
+  const filtersChanged = sort !== defaultSort || availability !== 'all' || libraryID !== '';
+
+  function resetFilters() {
+    setSort(defaultSort);
+    setAvailability('all');
+    setLibraryID('');
+    resetPage();
+  }
+
   function search(value: string) {
     if (value.trim() === q) {
       setQuery(value);
@@ -291,6 +309,53 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
     setNarrators([]);
     setLoading(true);
   }
+
+  const filterFacets = (
+    <>
+      {libraries.length > 1 ? (
+        <BrowseFacet
+          label="Library"
+          options={[
+            { value: '', label: 'All libraries' },
+            ...libraries.map((library) => ({ value: library.id, label: library.name })),
+          ]}
+          value={libraryID}
+          onChange={(value) => {
+            setLibraryID(value);
+            resetPage();
+          }}
+        />
+      ) : null}
+      {inProgress ? (
+        <BrowseFacet
+          label="Sort by"
+          options={[
+            { value: 'progress', label: 'Last opened' },
+            { value: 'title', label: 'Title A–Z' },
+            { value: 'author', label: 'Author A–Z' },
+          ]}
+          value={sort}
+          onChange={(value) => {
+            setSort(value);
+            resetPage();
+          }}
+        />
+      ) : (
+        <BrowseControls
+          sort={sort}
+          availability={availability}
+          onSortChange={(value) => {
+            setSort(value);
+            resetPage();
+          }}
+          onAvailabilityChange={(value) => {
+            setAvailability(value);
+            resetPage();
+          }}
+        />
+      )}
+    </>
+  );
 
   const header = (
     <View className="gap-5 pb-4">
@@ -336,13 +401,26 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
             />
           ) : null}
         </View>
-        <IconButton
-          label="Filter & sort"
-          icon="filter"
-          kind="quiet"
-          onPress={() => setFiltersOpen(true)}
-        />
+        {pointerLayout ? null : (
+          <IconButton
+            label="Filter & sort"
+            icon="filter"
+            kind="quiet"
+            onPress={() => setFiltersOpen(true)}
+          />
+        )}
       </View>
+      {pointerLayout ? (
+        <View className="flex-row flex-wrap items-center gap-2">
+          {filterFacets}
+          {filtersChanged ? <Button label="Reset" kind="quiet" onPress={resetFilters} /> : null}
+          {!inProgress ? (
+            <View className="ml-auto">
+              <DensityToggle value={density} onChange={(value) => void chooseDensity(value)} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
   const footer = error ? (
@@ -391,6 +469,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
           footer={footer}
           onEndReached={loadMore}
           onOpen={openBook}
+          hrefFor={bookHref}
           actions={workQuickActions}
           onBeforeOpen={stashVisit}
           initialOffset={visit?.scrollOffset}
@@ -408,16 +487,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
         onClose={() => setFiltersOpen(false)}
         footer={
           <View className="flex-row items-center justify-between gap-4">
-            <Button
-              label="Reset filters"
-              kind="quiet"
-              onPress={() => {
-                setSort(inProgress ? 'progress' : 'recent');
-                setAvailability('all');
-                setLibraryID('');
-                resetPage();
-              }}
-            />
+            <Button label="Reset filters" kind="quiet" onPress={resetFilters} />
             <View className="min-w-28">
               <Button label="Done" kind="primary" onPress={() => setFiltersOpen(false)} />
             </View>
@@ -436,48 +506,7 @@ function LibraryBrowser({ scope, status }: { scope: string; status: string }) {
               onChange={(value) => void chooseDensity(value)}
             />
           ) : null}
-          {libraries.length > 1 ? (
-            <BrowseFacet
-              label="Library"
-              options={[
-                { value: '', label: 'All libraries' },
-                ...libraries.map((library) => ({ value: library.id, label: library.name })),
-              ]}
-              value={libraryID}
-              onChange={(value) => {
-                setLibraryID(value);
-                resetPage();
-              }}
-            />
-          ) : null}
-          {inProgress ? (
-            <BrowseFacet
-              label="Sort by"
-              options={[
-                { value: 'progress', label: 'Last opened' },
-                { value: 'title', label: 'Title A–Z' },
-                { value: 'author', label: 'Author A–Z' },
-              ]}
-              value={sort}
-              onChange={(value) => {
-                setSort(value);
-                resetPage();
-              }}
-            />
-          ) : (
-            <BrowseControls
-              sort={sort}
-              availability={availability}
-              onSortChange={(value) => {
-                setSort(value);
-                resetPage();
-              }}
-              onAvailabilityChange={(value) => {
-                setAvailability(value);
-                resetPage();
-              }}
-            />
-          )}
+          {filterFacets}
         </View>
       </Dialog>
       <Dialog title="Browse your library" visible={browseOpen} onClose={() => setBrowseOpen(false)}>

@@ -275,6 +275,10 @@ export default function ManageWorkScreen() {
     <Page
       title="Manage work"
       back={<IconButton label="Back" icon="back" kind="quiet" onPress={backToWork} />}
+      breadcrumbs={[
+        { label: 'Library', href: '/books' },
+        { label: work.title, href: `/work/${id}` },
+      ]}
       editorial={false}
     >
       <View className="w-full max-w-[1000px] self-center gap-6">
@@ -1225,6 +1229,7 @@ export default function ManageWorkScreen() {
               onChange={(value) => setGeneratedLayout(value as 'top' | 'center' | 'bottom')}
             />
             <Select
+              menu
               label="Cloth color"
               value={generatedTone}
               disabled={Boolean(savingCover)}

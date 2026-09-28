@@ -1,5 +1,5 @@
 import type { Library } from '@/generated/api';
-import { router, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -12,13 +12,16 @@ import {
   Dialog,
   IconButton,
   Loading,
-  ManagementRow,
   Notice,
   SectionHeader,
   TextField,
 } from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
 import { Page } from '@/components/shell/Page';
+import {
+  LibraryManageMenu,
+  type LibraryManageAction,
+} from '@/components/administration/LibraryManageMenu';
 import { APIError, api, errorMessage } from '@/lib/api';
 import { offlineLibraries, rememberOfflineLibraries } from '@/lib/offline-library';
 
@@ -86,7 +89,6 @@ function LibraryRow({
   canSwitchPrimary,
   canManage,
   settingPrimary,
-  onOpen,
   onManage,
   onSetPrimary,
 }: {
@@ -94,56 +96,62 @@ function LibraryRow({
   canSwitchPrimary: boolean;
   canManage: boolean;
   settingPrimary: boolean;
-  onOpen: () => void;
-  onManage: () => void;
+  onManage: (action: LibraryManageAction) => void;
   onSetPrimary: () => void;
 }) {
   const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const stateClass = resolvePressStateClass({ focused, pressed });
   const workLabel = `${item.work_count} ${item.work_count === 1 ? 'book' : 'books'}`;
   const memberLabel = `${item.member_count} ${item.member_count === 1 ? 'member' : 'members'}`;
 
   return (
     <View className="flex-row items-center gap-3 border-b border-line-subtle py-3.5">
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`${item.name}, ${workLabel}, ${memberLabel}`}
-        onBlur={() => setFocused(false)}
-        onFocus={() => setFocused(true)}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
-        onPress={onOpen}
-        className={`min-h-11 min-w-0 flex-1 flex-row items-center gap-3 rounded-control ${stateClass}`}
-      >
-        <View className="h-11 w-11 flex-none items-center justify-center rounded-full bg-accent-soft">
-          <AppIcon name="libraries" size={18} color={colors.accent} />
-        </View>
-        <View className="min-w-0 flex-1 gap-1">
-          <View className="flex-row flex-wrap items-center gap-1.5">
-            <Text numberOfLines={1} className="font-sans-semibold text-base text-ink">
-              {item.name}
-            </Text>
-            {item.primary ? (
-              <AnimatedView entering={popIn} exiting={popOut}>
-                <AppIcon name="starFilled" size={14} color={colors.accent} />
-              </AnimatedView>
-            ) : null}
+      <Link href={`/library/${item.id}`} asChild>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`${item.name}, ${workLabel}, ${memberLabel}`}
+          onBlur={() => setFocused(false)}
+          onFocus={() => setFocused(true)}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          onHoverIn={() => setHovered(true)}
+          onHoverOut={() => setHovered(false)}
+          className={`min-h-11 min-w-0 flex-1 flex-row items-center gap-3 rounded-control ${stateClass}`}
+        >
+          <View className="h-11 w-11 flex-none items-center justify-center rounded-full bg-accent-soft">
+            <AppIcon name="libraries" size={18} color={colors.accent} />
           </View>
-          <View className="flex-row flex-wrap items-center gap-1.5">
-            <Text className="text-xs font-sans-semibold text-subtle">
-              {item.role || 'Administrator access'}
+          <View className="min-w-0 flex-1 gap-1">
+            <View className="flex-row flex-wrap items-center gap-1.5">
+              <Text
+                numberOfLines={1}
+                className={`font-sans-semibold text-base text-ink ${hovered ? 'underline' : ''}`}
+              >
+                {item.name}
+              </Text>
+              {item.primary ? (
+                <AnimatedView entering={popIn} exiting={popOut}>
+                  <AppIcon name="starFilled" size={14} color={colors.accent} />
+                </AnimatedView>
+              ) : null}
+            </View>
+            <View className="flex-row flex-wrap items-center gap-1.5">
+              <Text className="text-xs font-sans-semibold text-subtle">
+                {item.role || 'Administrator access'}
+              </Text>
+              {item.exclusive ? (
+                <Text className="text-xs text-subtle">· Restricted access</Text>
+              ) : null}
+            </View>
+            <Text className="text-xs text-muted">
+              {workLabel} · {memberLabel}
             </Text>
-            {item.exclusive ? (
-              <Text className="text-xs text-subtle">· Restricted access</Text>
-            ) : null}
           </View>
-          <Text className="text-xs text-muted">
-            {workLabel} · {memberLabel}
-          </Text>
-        </View>
-      </Pressable>
+        </Pressable>
+      </Link>
       {canSwitchPrimary ? (
         <AnimatedView key={String(item.primary)} entering={item.primary ? popIn : undefined}>
           <IconButton
@@ -160,7 +168,7 @@ function LibraryRow({
         </AnimatedView>
       ) : null}
       {canManage ? (
-        <IconButton icon="settings" label={`Manage ${item.name}`} kind="quiet" onPress={onManage} />
+        <LibraryManageMenu label={`Manage ${item.name}`} canEdit canManage onSelect={onManage} />
       ) : null}
       <AppIcon name="chevron" size={16} color={colors.subtle} />
     </View>
@@ -179,7 +187,6 @@ export default function Libraries() {
   const [offline, setOffline] = useState(false);
   const [settingPrimaryID, setSettingPrimaryID] = useState('');
   const primarySavePending = useRef(false);
-  const [manageTarget, setManageTarget] = useState<Library | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -208,33 +215,16 @@ export default function Libraries() {
     }, [load]),
   );
 
-  function openLibrary(library: Library) {
-    router.push(`/library/${library.id}`);
-  }
-
-  function manageLibrary(library: Library) {
-    setManageTarget(library);
-  }
-
-  function openManagePanel(panel: 'work' | 'members' | 'policy' | 'settings') {
-    const target = manageTarget;
-    setManageTarget(null);
-    if (!target) return;
-    router.push(`/library/${target.id}?open=${panel}`);
-  }
-
-  function openManageMetadata() {
-    const target = manageTarget;
-    setManageTarget(null);
-    if (!target) return;
-    router.push(`/library/${target.id}/metadata`);
-  }
-
-  function openManageSources() {
-    const target = manageTarget;
-    setManageTarget(null);
-    if (!target) return;
-    router.push(`/sources?libraryId=${target.id}`);
+  function manageLibrary(library: Library, action: LibraryManageAction) {
+    if (action === 'metadata') {
+      router.push(`/library/${library.id}/metadata`);
+      return;
+    }
+    if (action === 'sources') {
+      router.push(`/sources?libraryId=${library.id}`);
+      return;
+    }
+    router.push(`/library/${library.id}?open=${action}`);
   }
 
   async function setPrimary(library: Library) {
@@ -314,8 +304,7 @@ export default function Libraries() {
                   canSwitchPrimary={items.length > 1}
                   canManage={Boolean(auth.user?.admin || item.role === 'owner')}
                   settingPrimary={Boolean(settingPrimaryID)}
-                  onOpen={() => openLibrary(item)}
-                  onManage={() => manageLibrary(item)}
+                  onManage={(action) => manageLibrary(item, action)}
                   onSetPrimary={() => void setPrimary(item)}
                 />
               </Animated.View>
@@ -347,29 +336,6 @@ export default function Libraries() {
             value={name}
             onChangeText={setName}
             onSubmitEditing={() => void handleCreate()}
-          />
-        </View>
-      </Dialog>
-      <Dialog
-        sheet
-        visible={Boolean(manageTarget)}
-        title={manageTarget ? `Manage ${manageTarget.name}` : 'Manage library'}
-        onClose={() => setManageTarget(null)}
-      >
-        <View>
-          <ManagementRow icon="add" label="Add work" onPress={() => openManagePanel('work')} />
-          <ManagementRow icon="search" label="Metadata" onPress={openManageMetadata} />
-          <ManagementRow icon="users" label="Members" onPress={() => openManagePanel('members')} />
-          <ManagementRow icon="folder" label="Sources" onPress={openManageSources} />
-          <ManagementRow
-            icon="acquire"
-            label="Acquisition policy"
-            onPress={() => openManagePanel('policy')}
-          />
-          <ManagementRow
-            icon="settings"
-            label="Library settings"
-            onPress={() => openManagePanel('settings')}
           />
         </View>
       </Dialog>

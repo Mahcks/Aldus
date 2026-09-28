@@ -114,8 +114,9 @@ for (const [index, library] of ['family', 'review', 'retry'].entries()) {
       .click();
     const dialog = page.getByRole('dialog', { name: 'Book details' });
     await expect(dialog.getByRole('button', { name: 'Request ebook', exact: true })).toBeDisabled();
-    await dialog
-      .getByRole('radio', { name: library[0].toUpperCase() + library.slice(1), exact: true })
+    await dialog.getByRole('button', { name: 'Request in: Choose…', exact: true }).click();
+    await page
+      .getByRole('option', { name: library[0].toUpperCase() + library.slice(1), exact: true })
       .click();
     await expect(
       dialog.getByRole('button', { name: 'Request audiobook', exact: true }),

@@ -439,6 +439,7 @@ export default function AcquisitionsAdministration() {
               description="Prowlarr searches your connected indexers. Choose a direct feed only if you already have its Torznab or Newznab address."
             >
               <Select
+                menu
                 label="Search provider"
                 value={indexerKind}
                 options={[
@@ -715,6 +716,7 @@ export default function AcquisitionsAdministration() {
               <View className="gap-4">
                 {libraries.length > 1 ? (
                   <Select
+                    menu
                     label="Library"
                     value={libraryID}
                     options={libraries.map((library) => ({

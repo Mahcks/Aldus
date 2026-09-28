@@ -1,5 +1,6 @@
 import type { Collection } from '@/generated/api';
-import { router, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
+import { onPlainLinkPress } from '@/lib/navigation';
 import { useCallback, useState } from 'react';
 import { collectionCount } from '@/lib/collections/collection-presentation';
 import { AppIcon } from '@/components/ui/icons';
@@ -29,30 +30,37 @@ function CollectionRow({ item, shared = false }: { item: Collection; shared?: bo
     : collectionCount(item.work_count);
 
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`${item.title}, ${collectionCount(item.work_count)}`}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={() => router.push(`/collection/${item.id}${shared ? '?shared=1' : ''}`)}
-      className={`min-h-16 flex-row items-center gap-3 border-b border-line py-3 ${stateClass}`}
+    <Link
+      href={`/collection/${item.id}${shared ? '?shared=1' : ''}`}
+      asChild
+      onPress={onPlainLinkPress(() =>
+        router.push(`/collection/${item.id}${shared ? '?shared=1' : ''}`),
+      )}
     >
-      <View className="h-11 w-11 items-center justify-center">
-        <AppIcon name="collections" size={22} color={colors.accent} />
-      </View>
-      <View className="min-w-0 flex-1 gap-1">
-        <Text numberOfLines={1} className="font-editorial-bold text-lg text-ink">
-          {item.title}
-        </Text>
-        <Text numberOfLines={2} className="text-sm leading-5 text-muted">
-          {shared ? `${item.shared_library_name} · ${item.owner_name} · ` : ''}
-          {subtitle}
-        </Text>
-      </View>
-      <AppIcon name="chevron" size={20} color={colors.subtle} />
-    </Pressable>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${item.title}, ${collectionCount(item.work_count)}`}
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        className={`min-h-16 flex-row items-center gap-3 border-b border-line py-3 ${stateClass}`}
+      >
+        <View className="h-11 w-11 items-center justify-center">
+          <AppIcon name="collections" size={22} color={colors.accent} />
+        </View>
+        <View className="min-w-0 flex-1 gap-1">
+          <Text numberOfLines={1} className="font-editorial-bold text-lg text-ink">
+            {item.title}
+          </Text>
+          <Text numberOfLines={2} className="text-sm leading-5 text-muted">
+            {shared ? `${item.shared_library_name} · ${item.owner_name} · ` : ''}
+            {subtitle}
+          </Text>
+        </View>
+        <AppIcon name="chevron" size={20} color={colors.subtle} />
+      </Pressable>
+    </Link>
   );
 }
 

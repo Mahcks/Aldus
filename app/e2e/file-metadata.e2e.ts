@@ -146,6 +146,26 @@ for (const width of [390, 1024, 1440]) {
     expect(current.values.description).toBe('My description.');
     await page.getByRole('button', { name: 'Find audiobook details', exact: true }).click();
     const audiobook = page.getByRole('dialog', { name: 'Review audiobook details', exact: true });
+    if (width >= 600) {
+      // A dropdown inside a dialog: Escape closes only the dropdown, never the dialog.
+      const region = (name: string) =>
+        audiobook.getByRole('button', { name: `Audible region: ${name}`, exact: true });
+      const regions = page.getByRole('listbox', { name: 'Audible region', exact: true });
+      await region('United States').click();
+      await expect(
+        regions.getByRole('option', { name: 'United States', exact: true }),
+      ).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(regions).toHaveCount(0);
+      await expect(audiobook).toBeVisible();
+      await expect(region('United States')).toBeFocused();
+      await region('United States').click();
+      await regions.getByRole('option', { name: 'United Kingdom', exact: true }).click();
+      await expect(region('United Kingdom')).toBeVisible();
+      await region('United Kingdom').click();
+      await regions.getByRole('option', { name: 'United States', exact: true }).click();
+      await expect(region('United States')).toBeVisible();
+    }
     await audiobook.getByRole('textbox', { name: 'Audible ASIN', exact: true }).fill('B08G9PRS1K');
     await audiobook.getByRole('button', { name: 'Look up recording', exact: true }).click();
     await expect(

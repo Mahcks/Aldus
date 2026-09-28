@@ -62,7 +62,8 @@ for (const width of [390, 1024, 1440]) {
         const q = url.searchParams.get('q')?.toLowerCase() ?? '';
         json = {
           items: books.filter(
-            (book) => (!narratorSaved || book.id !== 'island') && book.title.toLowerCase().includes(q),
+            (book) =>
+              (!narratorSaved || book.id !== 'island') && book.title.toLowerCase().includes(q),
           ),
           has_more: false,
           offset: 0,
@@ -91,7 +92,12 @@ for (const width of [390, 1024, 1440]) {
         ];
       if (path === '/libraries/library/representations/audio/media')
         json = [
-          { id: 'file', representation_id: 'audio', kind: 'audio', original_filename: 'Treasure Island.m4b' },
+          {
+            id: 'file',
+            representation_id: 'audio',
+            kind: 'audio',
+            original_filename: 'Treasure Island.m4b',
+          },
         ];
       if (path === '/media/file/metadata') {
         if (width === 1440) await tagsReady;
@@ -177,7 +183,9 @@ for (const width of [390, 1024, 1440]) {
     }
 
     // A successful save is visibly reflected in place — no forced navigation.
-    await expect(page.getByText('These narrator names are already saved.', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('These narrator names are already saved.', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save narrator', exact: true })).toBeDisabled();
 
     // Nothing is dirty anymore, so advancing must not prompt for confirmation.
@@ -208,25 +216,59 @@ test('warns before losing an unsaved narrator draft when switching books', async
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     let json: unknown = [];
-    if (path === '/auth/me') json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
+    if (path === '/auth/me')
+      json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
     if (path === '/setup/status') json = { available: false, demo_available: false };
-    if (path === '/libraries/library') json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
+    if (path === '/libraries/library')
+      json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
     if (path === '/works')
       json = {
         items: [
-          { id: 'island', library_id: 'library', title: 'Treasure Island', author: 'R. L. Stevenson', listenable: true, readable: true, narrators: [] },
-          { id: 'sea', library_id: 'library', title: 'The Sea-Wolf', author: 'Jack London', listenable: false, readable: true, narrators: [] },
+          {
+            id: 'island',
+            library_id: 'library',
+            title: 'Treasure Island',
+            author: 'R. L. Stevenson',
+            listenable: true,
+            readable: true,
+            narrators: [],
+          },
+          {
+            id: 'sea',
+            library_id: 'library',
+            title: 'The Sea-Wolf',
+            author: 'Jack London',
+            listenable: false,
+            readable: true,
+            narrators: [],
+          },
         ],
         has_more: false,
         offset: 0,
       };
-    if (path === '/works/island') json = { ...{}, id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson' };
+    if (path === '/works/island')
+      json = { ...{}, id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson' };
     if (path === '/works/sea') json = { id: 'sea', title: 'The Sea-Wolf', author: 'Jack London' };
     if (path === '/works/island/representations')
-      json = [{ id: 'audio', work_id: 'island', kind: 'audio', label: 'Audiobook', narrators: narratorSaved ? ['Manual Narrator'] : [] }];
+      json = [
+        {
+          id: 'audio',
+          work_id: 'island',
+          kind: 'audio',
+          label: 'Audiobook',
+          narrators: narratorSaved ? ['Manual Narrator'] : [],
+        },
+      ];
     if (path === '/works/sea/representations') json = [];
     if (path === '/libraries/library/representations/audio/media')
-      json = [{ id: 'file', representation_id: 'audio', kind: 'audio', original_filename: 'Treasure Island.m4b' }];
+      json = [
+        {
+          id: 'file',
+          representation_id: 'audio',
+          kind: 'audio',
+          original_filename: 'Treasure Island.m4b',
+        },
+      ];
     if (path === '/media/file/metadata') json = { asin: '', current: empty, suggested: empty };
     if (path === '/media/file/metadata/apply') {
       expect(route.request().postDataJSON().values.narrators).toEqual(['Manual Narrator']);
@@ -260,28 +302,51 @@ test('warns before losing an unsaved narrator draft when switching books', async
   await expect(page.getByText('This book has no editions yet.', { exact: true })).toBeVisible();
 });
 
-test('warns before losing an unsaved narrator draft when switching recordings', async ({ page }) => {
+test('warns before losing an unsaved narrator draft when switching recordings', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1024, height: 1000 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const empty = { values: {}, narrators: [], series: '', series_position: '' };
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     let json: unknown = [];
-    if (path === '/auth/me') json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
+    if (path === '/auth/me')
+      json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
     if (path === '/setup/status') json = { available: false, demo_available: false };
-    if (path === '/libraries/library') json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
+    if (path === '/libraries/library')
+      json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
     if (path === '/works')
-      json = { items: [{ id: 'anthology', library_id: 'library', title: 'Two Recordings', author: 'Various', listenable: true, readable: false, narrators: [] }], has_more: false, offset: 0 };
-    if (path === '/works/anthology') json = { id: 'anthology', title: 'Two Recordings', author: 'Various' };
+      json = {
+        items: [
+          {
+            id: 'anthology',
+            library_id: 'library',
+            title: 'Two Recordings',
+            author: 'Various',
+            listenable: true,
+            readable: false,
+            narrators: [],
+          },
+        ],
+        has_more: false,
+        offset: 0,
+      };
+    if (path === '/works/anthology')
+      json = { id: 'anthology', title: 'Two Recordings', author: 'Various' };
     if (path === '/works/anthology/representations')
       json = [
         { id: 'audioA', work_id: 'anthology', kind: 'audio', label: 'Recording A', narrators: [] },
         { id: 'audioB', work_id: 'anthology', kind: 'audio', label: 'Recording B', narrators: [] },
       ];
     if (path === '/libraries/library/representations/audioA/media')
-      json = [{ id: 'fileA', representation_id: 'audioA', kind: 'audio', original_filename: 'A.m4b' }];
+      json = [
+        { id: 'fileA', representation_id: 'audioA', kind: 'audio', original_filename: 'A.m4b' },
+      ];
     if (path === '/libraries/library/representations/audioB/media')
-      json = [{ id: 'fileB', representation_id: 'audioB', kind: 'audio', original_filename: 'B.m4b' }];
+      json = [
+        { id: 'fileB', representation_id: 'audioB', kind: 'audio', original_filename: 'B.m4b' },
+      ];
     if (path === '/media/fileA/metadata' || path === '/media/fileB/metadata')
       json = { asin: '', current: empty, suggested: empty };
     if (path === '/media/fileA/metadata/apply') {
@@ -294,7 +359,9 @@ test('warns before losing an unsaved narrator draft when switching recordings', 
   await page.getByRole('button', { name: 'Review Two Recordings', exact: true }).click();
 
   const narrator = page.getByRole('textbox', { name: 'Narrator names', exact: true });
-  await expect(page.getByRole('button', { name: 'Collapse Recording A', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Collapse Recording A', exact: true }),
+  ).toBeVisible();
   await narrator.fill('Draft for A');
 
   const bar = page.getByText(
@@ -304,12 +371,16 @@ test('warns before losing an unsaved narrator draft when switching recordings', 
   await page.getByRole('button', { name: 'Expand Recording B', exact: true }).click();
   await expect(bar).toBeVisible();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Collapse Recording A', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Collapse Recording A', exact: true }),
+  ).toBeVisible();
   await expect(narrator).toHaveValue('Draft for A');
 
   await page.getByRole('button', { name: 'Expand Recording B', exact: true }).click();
   await page.getByRole('button', { name: 'Save & continue', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Collapse Recording B', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Collapse Recording B', exact: true }),
+  ).toBeVisible();
 });
 
 test('warns before losing an unsaved narrator draft when changing the filter', async ({ page }) => {
@@ -319,16 +390,40 @@ test('warns before losing an unsaved narrator draft when changing the filter', a
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     let json: unknown = [];
-    if (path === '/auth/me') json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
+    if (path === '/auth/me')
+      json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
     if (path === '/setup/status') json = { available: false, demo_available: false };
-    if (path === '/libraries/library') json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
+    if (path === '/libraries/library')
+      json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
     if (path === '/works')
-      json = { items: [{ id: 'island', library_id: 'library', title: 'Treasure Island', author: 'R. L. Stevenson', listenable: true, readable: true, narrators: [] }], has_more: false, offset: 0 };
-    if (path === '/works/island') json = { id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson' };
+      json = {
+        items: [
+          {
+            id: 'island',
+            library_id: 'library',
+            title: 'Treasure Island',
+            author: 'R. L. Stevenson',
+            listenable: true,
+            readable: true,
+            narrators: [],
+          },
+        ],
+        has_more: false,
+        offset: 0,
+      };
+    if (path === '/works/island')
+      json = { id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson' };
     if (path === '/works/island/representations')
       json = [{ id: 'audio', work_id: 'island', kind: 'audio', label: 'Audiobook', narrators: [] }];
     if (path === '/libraries/library/representations/audio/media')
-      json = [{ id: 'file', representation_id: 'audio', kind: 'audio', original_filename: 'Treasure Island.m4b' }];
+      json = [
+        {
+          id: 'file',
+          representation_id: 'audio',
+          kind: 'audio',
+          original_filename: 'Treasure Island.m4b',
+        },
+      ];
     if (path === '/media/file/metadata') json = { asin: '', current: empty, suggested: empty };
     await route.fulfill({ json });
   });
@@ -337,15 +432,16 @@ test('warns before losing an unsaved narrator draft when changing the filter', a
   await page.getByRole('textbox', { name: 'Narrator names', exact: true }).fill('Draft narrator');
 
   await page.getByRole('button', { name: 'Show: Needs attention', exact: true }).click();
-  await page.getByRole('radio', { name: 'All books', exact: true }).click();
+  await page.getByRole('option', { name: 'All books', exact: true }).click();
   await expect(
-    page.getByText(
-      'You have an unsaved narrator or description entry. Save it before moving on?',
-      { exact: true },
-    ),
+    page.getByText('You have an unsaved narrator or description entry. Save it before moving on?', {
+      exact: true,
+    }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Narrator names', exact: true })).toHaveValue('Draft narrator');
+  await expect(page.getByRole('textbox', { name: 'Narrator names', exact: true })).toHaveValue(
+    'Draft narrator',
+  );
 });
 
 test('warns before losing an unsaved description edit when leaving the page', async ({ page }) => {
@@ -356,17 +452,34 @@ test('warns before losing an unsaved description edit when leaving the page', as
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     const method = route.request().method();
     let json: unknown = [];
-    if (path === '/auth/me') json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
+    if (path === '/auth/me')
+      json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
     if (path === '/setup/status') json = { available: false, demo_available: false };
-    if (path === '/libraries/library') json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
+    if (path === '/libraries/library')
+      json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
     if (path === '/works')
-      json = { items: [{ id: 'island', library_id: 'library', title: 'Treasure Island', author: 'R. L. Stevenson', listenable: false, readable: true, narrators: [] }], has_more: false, offset: 0 };
+      json = {
+        items: [
+          {
+            id: 'island',
+            library_id: 'library',
+            title: 'Treasure Island',
+            author: 'R. L. Stevenson',
+            listenable: false,
+            readable: true,
+            narrators: [],
+          },
+        ],
+        has_more: false,
+        offset: 0,
+      };
     if (path === '/works/island' && method === 'PATCH') {
       description = route.request().postDataJSON().description;
       await route.fulfill({ status: 204 });
       return;
     }
-    if (path === '/works/island') json = { id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson', description };
+    if (path === '/works/island')
+      json = { id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson', description };
     if (path === '/works/island/representations') json = [];
     await route.fulfill({ json });
   });
@@ -383,19 +496,25 @@ test('warns before losing an unsaved description edit when leaving the page', as
     'You have an unsaved narrator or description entry. Save it before moving on?',
     { exact: true },
   );
-  await page.getByRole('button', { name: 'Back to library', exact: true }).click();
+  // Wide web shows breadcrumbs instead of a back button; they still guard unsaved work.
+  const libraryCrumb = page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Classics', exact: true });
+  await libraryCrumb.click();
   await expect(bar).toBeVisible();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   await expect(bar).toHaveCount(0);
   await expect(field).toHaveValue('A revised description, not yet saved.');
   expect(page.url()).toContain('/metadata');
 
-  await page.getByRole('button', { name: 'Back to library', exact: true }).click();
+  await libraryCrumb.click();
   await page.getByRole('button', { name: 'Save & continue', exact: true }).click();
   await expect(page).toHaveURL(/\/library\/library$/);
 });
 
-test('an inline Audnexus save does not overwrite a pending manual narrator draft', async ({ page }) => {
+test('an inline Audnexus save does not overwrite a pending manual narrator draft', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1024, height: 1000 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   let description = 'A voyage in search of buried treasure.';
@@ -404,21 +523,55 @@ test('an inline Audnexus save does not overwrite a pending manual narrator draft
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     const method = route.request().method();
     let json: unknown = [];
-    if (path === '/auth/me') json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
+    if (path === '/auth/me')
+      json = { id: 'owner', username: 'owner', admin: true, display_name: 'Max' };
     if (path === '/setup/status') json = { available: false, demo_available: false };
-    if (path === '/libraries/library') json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
+    if (path === '/libraries/library')
+      json = { id: 'library', name: 'Classics', role: 'owner', effective: true };
     if (path === '/works')
-      json = { items: [{ id: 'island', library_id: 'library', title: 'Treasure Island', author: 'R. L. Stevenson', listenable: true, readable: true, narrators: [] }], has_more: false, offset: 0 };
-    if (path === '/works/island') json = { id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson', description };
+      json = {
+        items: [
+          {
+            id: 'island',
+            library_id: 'library',
+            title: 'Treasure Island',
+            author: 'R. L. Stevenson',
+            listenable: true,
+            readable: true,
+            narrators: [],
+          },
+        ],
+        has_more: false,
+        offset: 0,
+      };
+    if (path === '/works/island')
+      json = { id: 'island', title: 'Treasure Island', author: 'R. L. Stevenson', description };
     if (path === '/works/island/representations')
       json = [{ id: 'audio', work_id: 'island', kind: 'audio', label: 'Audiobook', narrators: [] }];
     if (path === '/libraries/library/representations/audio/media')
-      json = [{ id: 'file', representation_id: 'audio', kind: 'audio', original_filename: 'Treasure Island.m4b' }];
+      json = [
+        {
+          id: 'file',
+          representation_id: 'audio',
+          kind: 'audio',
+          original_filename: 'Treasure Island.m4b',
+        },
+      ];
     if (path === '/media/file/metadata')
-      json = { asin: 'B002V1CI40', current: { values: {}, narrators: [], series: '', series_position: '' }, suggested: { values: {}, narrators: [], series: '', series_position: '' } };
+      json = {
+        asin: 'B002V1CI40',
+        current: { values: {}, narrators: [], series: '', series_position: '' },
+        suggested: { values: {}, narrators: [], series: '', series_position: '' },
+      };
     if (path === '/works/island/representations/audio/metadata/audiobook' && method === 'GET')
       json = {
-        recording: { publisher: 'Blackstone Audio', language: 'English', release_date: '2015-03-01', runtime_minutes: 420, format: 'mp3' },
+        recording: {
+          publisher: 'Blackstone Audio',
+          language: 'English',
+          release_date: '2015-03-01',
+          runtime_minutes: 420,
+          format: 'mp3',
+        },
         asin: 'B002V1CI40',
         region: 'us',
         title: 'Treasure Island',
@@ -456,5 +609,7 @@ test('an inline Audnexus save does not overwrite a pending manual narrator draft
   // Appears once in the lookup panel's own comparison and again in the Book
   // details card once refreshSelected() re-fetches the work — the second
   // occurrence is what proves the in-place refresh actually happened.
-  await expect(page.getByText('A revised description from Audnexus.', { exact: true }).last()).toBeVisible();
+  await expect(
+    page.getByText('A revised description from Audnexus.', { exact: true }).last(),
+  ).toBeVisible();
 });

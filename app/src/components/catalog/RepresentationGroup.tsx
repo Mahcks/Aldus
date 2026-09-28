@@ -1,4 +1,5 @@
-import { router } from 'expo-router';
+import { Link, router } from 'expo-router';
+import { onPlainLinkPress } from '@/lib/navigation';
 import type { Representation } from '@/generated/api';
 import type { MediaChoice } from '@/lib/consumption/consumption';
 import { formatMediaSize as formatBytes } from '@/lib/format';
@@ -26,21 +27,26 @@ export function RepresentationGroup({
               ? `${newest.original_filename || 'Unnamed file'} · ${formatBytes(newest.size_bytes)} · ${revisions.length} ${revisions.length === 1 ? 'revision' : 'revisions'}`
               : 'No uploaded file';
             return (
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel={`Manage ${item.label}`}
+              <Link
                 key={item.id}
-                className="min-h-14 flex-row items-center gap-4 border-b border-line py-3.5"
-                onPress={() => router.push(`/representation/${item.id}`)}
+                href={`/representation/${item.id}`}
+                asChild
+                onPress={onPlainLinkPress(() => router.push(`/representation/${item.id}`))}
               >
-                <View className="min-w-0 flex-1 gap-1">
-                  <Text className={shared.itemTitle}>{item.label}</Text>
-                  <Text numberOfLines={2} className={shared.itemMeta}>
-                    {detail}
-                  </Text>
-                </View>
-                <Text className="text-sm font-sans-bold text-accent">Manage</Text>
-              </Pressable>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={`Manage ${item.label}`}
+                  className="min-h-14 flex-row items-center gap-4 border-b border-line py-3.5"
+                >
+                  <View className="min-w-0 flex-1 gap-1">
+                    <Text className={shared.itemTitle}>{item.label}</Text>
+                    <Text numberOfLines={2} className={shared.itemMeta}>
+                      {detail}
+                    </Text>
+                  </View>
+                  <Text className="text-sm font-sans-bold text-accent">Manage</Text>
+                </Pressable>
+              </Link>
             );
           })}
         </View>

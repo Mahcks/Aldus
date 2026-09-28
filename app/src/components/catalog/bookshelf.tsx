@@ -1,14 +1,21 @@
 import { Link, type Href } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, View as NativeView } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useReducedMotion } from 'react-native-reanimated';
-import { useState, type PropsWithChildren, type ReactNode } from 'react';
+import { useRef, useState, type PropsWithChildren, type ReactNode } from 'react';
 import { apiBaseURL } from '@/lib/api-base';
 import { AppIcon, type AppIconName } from '@/components/ui/icons';
-import { Button, Dialog, IconButton, resolvePressStateClass } from '@/components/ui';
+import {
+  Button,
+  IconButton,
+  isKeyboardInput,
+  resolvePressStateClass,
+  usePointerLayout,
+} from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
 import { Pressable, Text, View } from '@/components/ui/tw';
 import type { WorkQuickAction } from '@/lib/catalog/work-actions';
+import { contextMenuProps, WorkActionsMenu } from './WorkActionsMenu';
 
 const coverTones = ['bg-ink', 'bg-text-secondary', 'bg-accent-strong', 'bg-info', 'bg-success'];
 export type CoverPresentation = {
@@ -456,10 +463,18 @@ export function WorkCard({
 }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const pointerLayout = usePointerLayout();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
+  const menuAnchorRef = useRef<NativeView>(null);
   const menuActions = actions ?? [];
   const hasActions = menuActions.length > 0;
   const useNativeMenu = hasActions && Platform.OS === 'ios' && Boolean(href);
+  // Web with a pointer gets a hover-revealed ⋯ button; phones keep long-press.
+  const revealActionButton = hasActions && pointerLayout;
+  // On web the card is a real link, so it can be opened in a new tab.
+  const webLink = Platform.OS === 'web' && Boolean(href);
   const wrappedActions = menuActions.map((action) => ({
     label: action.label,
     onPress: () => {
@@ -484,14 +499,16 @@ export function WorkCard({
 
   const card = (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={webLink ? 'link' : 'button'}
       accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
-      accessibilityHint={hasActions ? 'Press and hold for book actions' : undefined}
+      accessibilityHint={
+        hasActions && !revealActionButton ? 'Press and hold for book actions' : undefined
+      }
       onBlur={handleBlur}
       onFocus={handleFocus}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      onPress={useNativeMenu ? undefined : onPress}
+      onPress={useNativeMenu || webLink ? undefined : onPress}
       onLongPress={hasActions && !useNativeMenu ? () => setMenuOpen(true) : undefined}
       className={`gap-1.5 rounded-control ${widthClass} ${stateClass}`}
     >
@@ -596,41 +613,75 @@ export function WorkCard({
     </Pressable>
   );
 
+  const menuTrigger = hasActions && !useNativeMenu ? () => setMenuOpen(true) : undefined;
+  const actionButtonVisible = hovered || focusWithin || menuOpen;
+
   return (
     <>
-      {href && useNativeMenu ? (
-        <Link href={href} asChild onPress={onBeforeOpen}>
-          <Link.Trigger>{card}</Link.Trigger>
-          <Link.Menu title={title}>
-            {wrappedActions.map((action) => (
-              <Link.MenuAction key={action.label} onPress={action.onPress}>
-                {action.label}
-              </Link.MenuAction>
-            ))}
-          </Link.Menu>
-        </Link>
-      ) : (
-        card
-      )}
+      <NativeView
+        onPointerEnter={revealActionButton ? () => setHovered(true) : undefined}
+        onPointerLeave={revealActionButton ? () => setHovered(false) : undefined}
+        {...focusWithinProps(revealActionButton, setFocusWithin)}
+        {...contextMenuProps(menuTrigger)}
+      >
+        {href && useNativeMenu ? (
+          <Link href={href} asChild onPress={onBeforeOpen}>
+            <Link.Trigger>{card}</Link.Trigger>
+            <Link.Menu title={title}>
+              {wrappedActions.map((action) => (
+                <Link.MenuAction key={action.label} onPress={action.onPress}>
+                  {action.label}
+                </Link.MenuAction>
+              ))}
+            </Link.Menu>
+          </Link>
+        ) : href && webLink ? (
+          <Link href={href} asChild onPress={onBeforeOpen}>
+            {card}
+          </Link>
+        ) : (
+          card
+        )}
+        {revealActionButton ? (
+          <NativeView
+            ref={menuAnchorRef}
+            style={{ position: 'absolute', top: 6, right: 6, opacity: actionButtonVisible ? 1 : 0 }}
+          >
+            <IconButton
+              icon="more"
+              size="small"
+              label={`Actions for ${title}`}
+              menuExpanded={menuOpen}
+              onPress={() => setMenuOpen((open) => !open)}
+            />
+          </NativeView>
+        ) : null}
+      </NativeView>
       {hasActions && !useNativeMenu ? (
-        <Dialog title={title} visible={menuOpen} onClose={() => setMenuOpen(false)}>
-          <View className="gap-1">
-            {wrappedActions.map((action) => (
-              <Button
-                key={action.label}
-                label={action.label}
-                kind="quiet"
-                onPress={() => {
-                  setMenuOpen(false);
-                  action.onPress();
-                }}
-              />
-            ))}
-          </View>
-        </Dialog>
+        <WorkActionsMenu
+          title={title}
+          actions={wrappedActions}
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          anchorRef={menuAnchorRef}
+        />
       ) : null}
     </>
   );
+}
+
+/**
+ * Keeps a hover-revealed control visible while keyboard focus is anywhere in
+ * the card, so Tab reaches it. Pointer and programmatic focus (a closing menu
+ * handing focus back) must not pin it visible. React's focus events bubble;
+ * React Native's View types just don't declare them.
+ */
+function focusWithinProps(enabled: boolean, setFocusWithin: (value: boolean) => void): object {
+  if (!enabled) return {};
+  return {
+    onFocus: () => setFocusWithin(isKeyboardInput()),
+    onBlur: () => setFocusWithin(false),
+  };
 }
 
 /** Alias of `WorkCard`, matching the design plan's naming. */
@@ -649,9 +700,27 @@ export function WorkRow({
   action,
   separator = false,
   audioArtwork = false,
-}: WorkPresentationProps & { action?: ReactNode; separator?: boolean; audioArtwork?: boolean }) {
+  href,
+  actions,
+  onBeforeOpen,
+}: WorkPresentationProps & {
+  action?: ReactNode;
+  separator?: boolean;
+  audioArtwork?: boolean;
+  /** Makes the row a real link on web, so it can open in a new tab. */
+  href?: Href;
+  /** Quick actions: a ⋯ menu and right-click on wide web, long-press on phones. */
+  actions?: WorkQuickAction[];
+  /** Side effect run before the row opens by link, like `WorkCard`'s. */
+  onBeforeOpen?: () => void;
+}) {
+  const pointerLayout = usePointerLayout();
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuAnchorRef = useRef<NativeView>(null);
+  const hasActions = Boolean(actions?.length);
+  const webLink = Platform.OS === 'web' && Boolean(href);
 
   const handleFocus = () => setFocused(true);
   const handleBlur = () => setFocused(false);
@@ -660,46 +729,80 @@ export function WorkRow({
 
   const stateClass = resolvePressStateClass({ focused, pressed });
 
+  const row = (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={webLink ? undefined : onPress}
+      onLongPress={hasActions && !pointerLayout ? () => setMenuOpen(true) : undefined}
+      className={`min-w-0 flex-1 flex-row items-center gap-4 rounded-control py-3 ${stateClass}`}
+    >
+      <View className="w-14">
+        <BookCover
+          title={title}
+          author={author}
+          coverURL={coverURL}
+          fallbackCoverURL={fallbackCoverURL}
+          size="mini"
+          square={audioArtwork}
+          {...coverPresentation}
+          coverFit={coverPresentation?.coverFit}
+        />
+      </View>
+      <View className="min-w-0 flex-1 gap-1">
+        <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
+          {title}
+        </Text>
+        <Text numberOfLines={1} className="text-sm text-muted">
+          {author || 'Unknown author'}
+        </Text>
+        {progress ? (
+          <Text numberOfLines={1} className="text-xs font-sans-bold text-accent">
+            {progress}
+          </Text>
+        ) : null}
+        {availability ? <AvailabilityIcons value={availability} /> : null}
+      </View>
+    </Pressable>
+  );
+
   return (
-    <View className={`flex-row items-center gap-2 ${separator ? 'border-t border-line' : ''}`}>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`${title}${author ? ` by ${author}` : ''}${progress ? `. ${progress}` : ''}`}
-        onBlur={handleBlur}
-        onFocus={handleFocus}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        onPress={onPress}
-        className={`min-w-0 flex-1 flex-row items-center gap-4 rounded-control py-3 ${stateClass}`}
-      >
-        <View className="w-14">
-          <BookCover
-            title={title}
-            author={author}
-            coverURL={coverURL}
-            fallbackCoverURL={fallbackCoverURL}
-            size="mini"
-            square={audioArtwork}
-            {...coverPresentation}
-            coverFit={coverPresentation?.coverFit}
-          />
-        </View>
-        <View className="min-w-0 flex-1 gap-1">
-          <Text numberOfLines={1} className="font-editorial-bold text-base text-ink">
-            {title}
-          </Text>
-          <Text numberOfLines={1} className="text-sm text-muted">
-            {author || 'Unknown author'}
-          </Text>
-          {progress ? (
-            <Text numberOfLines={1} className="text-xs font-sans-bold text-accent">
-              {progress}
-            </Text>
-          ) : null}
-          {availability ? <AvailabilityIcons value={availability} /> : null}
-        </View>
-      </Pressable>
+    <View
+      className={`flex-row items-center gap-2 ${separator ? 'border-t border-line' : ''}`}
+      {...contextMenuProps(hasActions ? () => setMenuOpen(true) : undefined)}
+    >
+      {href && webLink ? (
+        <Link href={href} asChild onPress={onBeforeOpen}>
+          {row}
+        </Link>
+      ) : (
+        row
+      )}
       {action}
+      {hasActions && pointerLayout ? (
+        <NativeView ref={menuAnchorRef}>
+          <IconButton
+            icon="more"
+            kind="quiet"
+            label={`Actions for ${title}`}
+            menuExpanded={menuOpen}
+            onPress={() => setMenuOpen((open) => !open)}
+          />
+        </NativeView>
+      ) : null}
+      {hasActions ? (
+        <WorkActionsMenu
+          title={title}
+          actions={actions ?? []}
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          anchorRef={menuAnchorRef}
+        />
+      ) : null}
     </View>
   );
 }
@@ -802,6 +905,8 @@ export function ContinueCard({
 }) {
   const colors = useThemeColors();
   const [menuOpen, setMenuOpen] = useState(false);
+  const coverAnchorRef = useRef<NativeView>(null);
+  const moreAnchorRef = useRef<NativeView>(null);
   const [coverFocused, setCoverFocused] = useState(false);
   const [coverPressed, setCoverPressed] = useState(false);
   const [titleFocused, setTitleFocused] = useState(false);
@@ -859,20 +964,22 @@ export function ContinueCard({
     <View
       className={`${dimensions.width} ${size === 'hero' ? 'flex-row items-start gap-4' : 'gap-1.5'}`}
     >
-      {Platform.OS === 'ios' ? (
-        <Link href={continueHref} asChild>
-          <Link.Trigger>{cover}</Link.Trigger>
-          <Link.Menu title={title}>
-            {actions.map((action) => (
-              <Link.MenuAction key={action.label} onPress={action.onPress}>
-                {action.label}
-              </Link.MenuAction>
-            ))}
-          </Link.Menu>
-        </Link>
-      ) : (
-        cover
-      )}
+      <NativeView ref={coverAnchorRef} {...contextMenuProps(() => setMenuOpen(true))}>
+        {Platform.OS === 'ios' ? (
+          <Link href={continueHref} asChild>
+            <Link.Trigger>{cover}</Link.Trigger>
+            <Link.Menu title={title}>
+              {actions.map((action) => (
+                <Link.MenuAction key={action.label} onPress={action.onPress}>
+                  {action.label}
+                </Link.MenuAction>
+              ))}
+            </Link.Menu>
+          </Link>
+        ) : (
+          cover
+        )}
+      </NativeView>
       <View className={size === 'hero' ? 'min-w-0 flex-1 gap-2' : ''}>
         <Pressable
           accessibilityRole="link"
@@ -896,12 +1003,15 @@ export function ContinueCard({
             {author || 'Unknown author'}
           </Text>
           {size !== 'hero' ? (
-            <IconButton
-              icon="more"
-              kind="quiet"
-              label={`Book actions for ${title}`}
-              onPress={() => setMenuOpen(true)}
-            />
+            <NativeView ref={moreAnchorRef}>
+              <IconButton
+                icon="more"
+                kind="quiet"
+                label={`Book actions for ${title}`}
+                menuExpanded={menuOpen}
+                onPress={() => setMenuOpen((open) => !open)}
+              />
+            </NativeView>
           ) : null}
         </View>
         {size === 'hero' ? (
@@ -933,21 +1043,13 @@ export function ContinueCard({
           </View>
         ) : null}
       </View>
-      <Dialog visible={menuOpen} title={title} onClose={() => setMenuOpen(false)}>
-        <View className="gap-1">
-          {actions.map((action) => (
-            <Button
-              key={action.label}
-              label={action.label}
-              kind="quiet"
-              onPress={() => {
-                setMenuOpen(false);
-                action.onPress();
-              }}
-            />
-          ))}
-        </View>
-      </Dialog>
+      <WorkActionsMenu
+        title={title}
+        actions={actions}
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={size === 'hero' ? coverAnchorRef : moreAnchorRef}
+      />
     </View>
   );
 }

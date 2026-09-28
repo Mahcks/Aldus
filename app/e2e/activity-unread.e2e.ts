@@ -93,7 +93,6 @@ for (const mode of ['stale-count', 'partial-retry']) {
     }
     expect(unread()).toBe(1);
     await expect(page.getByRole('button', { name: 'Mark all read', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
-    await expect(page.getByRole('radio', { name: 'Unread (1)', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Unread (1)', exact: true })).toBeVisible();
   });
 }

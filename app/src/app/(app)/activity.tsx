@@ -52,6 +52,8 @@ import {
   Radio,
   Section,
   StatusBadge,
+  Tabs,
+  usePointerLayout,
 } from '@/components/ui';
 import { Page } from '@/components/shell/Page';
 import { api, errorMessage } from '@/lib/api';
@@ -208,6 +210,7 @@ export default function ActivityScreen() {
   const [historyLoadingID, setHistoryLoadingID] = useState('');
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const pointerLayout = usePointerLayout();
   const params = useLocalSearchParams<{ request?: string; library?: string; format?: string }>();
   // Always load everything the reader owns; the filter narrows what's shown
   // client-side instead of re-fetching a different server-side page per tab.
@@ -520,12 +523,23 @@ export default function ActivityScreen() {
       ) : null}
 
       <View className="flex-row flex-wrap items-center justify-between gap-3">
-        <Button
-          label={`Filter: ${selectedFilterLabel}`}
-          icon="filter"
-          kind="secondary"
-          onPress={() => setFilterDialogOpen(true)}
-        />
+        {pointerLayout ? (
+          <View className="min-w-0 flex-1">
+            <Tabs
+              label="Filter activity"
+              options={viewFilterOptions}
+              value={viewFilter}
+              onChange={setViewFilter}
+            />
+          </View>
+        ) : (
+          <Button
+            label={`Filter: ${selectedFilterLabel}`}
+            icon="filter"
+            kind="secondary"
+            onPress={() => setFilterDialogOpen(true)}
+          />
+        )}
         {unreadCount > 0 ? (
           <AnimatedView entering={fadeIn} exiting={fadeOut}>
             <Button

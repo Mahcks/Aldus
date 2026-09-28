@@ -7,6 +7,7 @@ import { listItemEnter } from '@/components/ui/motion';
 import { AnimatedView, FlatList, View } from '@/components/ui/tw';
 import { workResumeMode } from '@/lib/catalog/work-resume';
 import { workProgressLabel } from '@/lib/consumption/consumption';
+import type { Href } from 'expo-router';
 import { workHref, type WorkQuickAction } from '@/lib/catalog/work-actions';
 import { libraryColumns, type LibraryDensity } from '@/lib/catalog/library-layout';
 
@@ -18,6 +19,7 @@ export function LibraryGrid({
   footer,
   onEndReached,
   onOpen,
+  hrefFor = workHref,
   actions,
   onBeforeOpen,
   initialOffset = 0,
@@ -30,6 +32,8 @@ export function LibraryGrid({
   footer: ReactNode;
   onEndReached: () => void;
   onOpen: (work: WorkSummary) => void;
+  /** Where a card or row links to on web; must match where `onOpen` goes. Defaults to the book's page. */
+  hrefFor?: (work: WorkSummary) => Href;
   /** Builds the press-and-hold quick-action menu for a card; omit to disable it. */
   actions?: (work: WorkSummary) => WorkQuickAction[];
   /** Pure side effect run before a card opens, by tap or by quick action — Library uses it to save scroll/filter state for Back. */
@@ -82,6 +86,9 @@ export function LibraryGrid({
               coverPresentation={coverPresentation(item)}
               progress={workProgressLabel(item.in_progress, item.completion_percent)}
               availability={item}
+              href={hrefFor(item)}
+              actions={actions?.(item)}
+              onBeforeOpen={onBeforeOpen}
               onPress={() => onOpen(item)}
             />
           </AnimatedView>
@@ -104,7 +111,7 @@ export function LibraryGrid({
               progress={workProgressLabel(item.in_progress, item.completion_percent)}
               narrow
               dense={density === 'compact'}
-              href={workHref(item)}
+              href={hrefFor(item)}
               actions={actions?.(item)}
               onBeforeOpen={onBeforeOpen}
               onPress={() => onOpen(item)}

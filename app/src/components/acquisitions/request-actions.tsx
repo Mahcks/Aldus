@@ -155,6 +155,7 @@ export function RequestActions({
     <View className="gap-3">
       {libraries.length > 1 && !book.library_id ? (
         <Select
+          menu
           label="Request in"
           disabled={Boolean(busy)}
           value={libraryID}

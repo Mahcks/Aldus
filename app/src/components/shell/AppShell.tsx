@@ -1,4 +1,5 @@
-import { router, Stack, usePathname, type Href } from 'expo-router';
+import { Link, router, Stack, usePathname, type Href } from 'expo-router';
+import { onPlainLinkPress } from '@/lib/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -279,28 +280,37 @@ function NavLink({
   const stateClass = resolvePressStateClass({ focused, pressed });
 
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
-      accessibilityState={{ selected }}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={() => router.navigate(href as Href)}
-      className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
+    <Link
+      href={href as Href}
+      asChild
+      onPress={onPlainLinkPress(() => router.navigate(href as Href))}
     >
-      <View>
-        <AppIcon name={icon} size={20} color={iconColor} />
-        {badge ? (
-          <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
-            <Text className="text-[10px] font-sans-bold text-on-accent">{Math.min(badge, 9)}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Text className={`text-sm font-sans-medium ${selected ? 'text-on-rail' : inactiveTextClass}`}>
-        {label}
-      </Text>
-    </Pressable>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={badge ? `${label}, ${badge} unread updates` : label}
+        accessibilityState={{ selected }}
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        className={`min-h-11 flex-row items-center gap-2.5 rounded-control px-[11px] ${backgroundClass} ${stateClass}`}
+      >
+        <View>
+          <AppIcon name={icon} size={20} color={iconColor} />
+          {badge ? (
+            <View className="absolute -right-2 -top-2 min-w-4 items-center rounded-pill bg-accent px-1">
+              <Text className="text-[10px] font-sans-bold text-on-accent">
+                {Math.min(badge, 9)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text
+          className={`text-sm font-sans-medium ${selected ? 'text-on-rail' : inactiveTextClass}`}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    </Link>
   );
 }

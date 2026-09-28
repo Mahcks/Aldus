@@ -96,20 +96,24 @@ for (const width of [390, 1024, 1440]) {
     // The gear opens a local quick-menu without navigating away from the index.
     await page.getByRole('button', { name: 'Manage Public', exact: true }).click();
     await expect(page).toHaveURL(/\/libraries$/);
-    await expect(page.getByRole('heading', { name: 'Manage Public' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Members', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sources', exact: true })).toBeVisible();
+    const manageMenu = page.getByRole('menu', { name: 'Manage Public' });
+    await expect(manageMenu).toBeVisible();
+    await expect(manageMenu.getByRole('menuitem', { name: 'Metadata', exact: true })).toBeVisible();
+    await expect(manageMenu.getByRole('menuitem', { name: 'Members', exact: true })).toBeVisible();
+    await expect(manageMenu.getByRole('menuitem', { name: 'Sources', exact: true })).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Acquisition policy', exact: true }),
+      manageMenu.getByRole('menuitem', { name: 'Acquisition policy', exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Library settings', exact: true })).toBeVisible();
+    await expect(
+      manageMenu.getByRole('menuitem', { name: 'Library settings', exact: true }),
+    ).toBeVisible();
     await page.screenshot({
       path: `../artifacts/design-redesign/${width}-libraries-quick-menu.png`,
     });
 
     // Picking "Sources" from the quick-menu goes straight to the standalone
     // sources page, bypassing the library detail page entirely.
-    await page.getByRole('button', { name: 'Sources', exact: true }).click();
+    await manageMenu.getByRole('menuitem', { name: 'Sources', exact: true }).click();
     await expect(page).toHaveURL(/\/sources\?libraryId=public/);
 
     // The page title is now the switcher.
@@ -121,12 +125,14 @@ for (const width of [390, 1024, 1440]) {
       page.getByRole('button', { name: 'Library management', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add work', exact: true })).toBeVisible();
-    await page.screenshot({ path: `../artifacts/design-redesign/${width}-library-detail-header.png` });
+    await page.screenshot({
+      path: `../artifacts/design-redesign/${width}-library-detail-header.png`,
+    });
 
     const switcherTitle = page.getByRole('button', { name: /Switch library, currently Public/ });
     await expect(switcherTitle).toBeVisible();
     await switcherTitle.click();
-    await expect(page.getByRole('heading', { name: 'Switch library' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Switch library' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Kids, owner', exact: true })).toBeVisible();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-library-switcher.png` });
 
@@ -138,7 +144,7 @@ for (const width of [390, 1024, 1440]) {
     await expect(
       page.getByRole('button', { name: 'Public is your primary library', exact: true }),
     ).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Switch library' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Switch library' })).toBeVisible();
 
     // Switching libraries navigates; "Manage all libraries" goes back to the index.
     await page.getByRole('button', { name: 'Kids, owner', exact: true }).click();

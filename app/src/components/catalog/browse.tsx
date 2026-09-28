@@ -21,6 +21,8 @@ import {
   resolvePressStateClass,
   Select,
   StatusBadge,
+  ToolbarSelect,
+  usePointerLayout,
 } from '@/components/ui';
 import { useThemeColors } from '@/components/ui/theme';
 import { workHref, workQuickActions } from '@/lib/catalog/work-actions';
@@ -40,7 +42,10 @@ export const browseFilters = [
   ['synchronized', 'Synchronized'],
 ] as const;
 
-/** A compact current value that expands to fully visible choices. */
+/**
+ * A compact current value that expands to fully visible choices. On wide web
+ * windows it is an inline toolbar dropdown instead.
+ */
 export function BrowseFacet({
   label,
   options,
@@ -53,6 +58,7 @@ export function BrowseFacet({
   onChange: (value: string) => void;
 }) {
   const colors = useThemeColors();
+  const pointerLayout = usePointerLayout();
   const [expanded, setExpanded] = useState(false);
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -61,6 +67,10 @@ export function BrowseFacet({
   function choose(next: string) {
     onChange(next);
     setExpanded(false);
+  }
+
+  if (pointerLayout) {
+    return <ToolbarSelect label={label} options={options} value={value} onChange={onChange} />;
   }
 
   return (
@@ -107,8 +117,10 @@ export function BrowseControls({
   onSortChange: (value: string) => void;
   onAvailabilityChange: (value: string) => void;
 }) {
+  const pointerLayout = usePointerLayout();
+
   return (
-    <View className="w-full">
+    <View className={pointerLayout ? 'flex-row flex-wrap items-center gap-2' : 'w-full'}>
       <BrowseFacet
         label="Sort by"
         options={browseSorts.map(([value, label]) => ({ value, label }))}
@@ -346,7 +358,7 @@ export function DestinationPicker({
       </View>
     );
   }
-  return <Select label="Add to" options={options} value={value} onChange={onChange} />;
+  return <Select menu label="Add to" options={options} value={value} onChange={onChange} />;
 }
 
 export function WorkGrid({

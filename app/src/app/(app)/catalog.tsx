@@ -106,6 +106,17 @@ function CatalogContent() {
       title={selected || (kind === 'series' ? 'Series' : 'Narrators')}
       editorial={Boolean(series)}
       back={<IconButton icon="back" kind="quiet" label="Back" onPress={() => goBackOr('/books')} />}
+      breadcrumbs={[
+        { label: 'Library', href: '/books' },
+        ...(selected
+          ? [
+              {
+                label: kind === 'series' ? 'Series' : 'Narrators',
+                href: `/catalog?kind=${kind}` as const,
+              },
+            ]
+          : []),
+      ]}
     >
       {selected ? (
         <Text className="text-base text-muted">
@@ -151,6 +162,7 @@ function CatalogContent() {
                 progress={
                   series && work.series_position ? `Book ${work.series_position}` : undefined
                 }
+                href={`/work/${work.id}`}
                 onPress={() => router.push(`/work/${work.id}`)}
               />
             ))}

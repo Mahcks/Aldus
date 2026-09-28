@@ -33,7 +33,7 @@ test('Library retains a failed page across Browse navigation and retries that pa
     await route.fulfill({ json });
   });
   await page.goto('/books');
-  await expect(page.getByRole('button', { name: 'Book 0 by Author', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Book 0 by Author', exact: true })).toBeVisible();
   const main = page.getByRole('main');
   await main.evaluate((element) => {
     element.scrollTop = element.scrollHeight;

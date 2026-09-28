@@ -1,4 +1,8 @@
 import { LibraryAccessEditor } from '@/components/administration/LibraryAccessEditor';
+import {
+  LibraryManageMenu,
+  type LibraryManageAction,
+} from '@/components/administration/LibraryManageMenu';
 import type {
   AcquisitionPolicy,
   Library,
@@ -9,7 +13,9 @@ import type {
 } from '@/generated/api';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import type { View as NativeView } from 'react-native';
 import { BrowseControls, WorkGrid } from '@/components/catalog/browse';
+import { LibrarySwitcherList } from '@/components/catalog/LibrarySwitcherList';
 import { offlineBrowseWorks } from '@/lib/catalog/offline-browse';
 import {
   formatSizeLimit,
@@ -19,8 +25,7 @@ import {
   validPolicyToken,
 } from '@/lib/acquisitions/acquisition-policy-form';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { listItemEnter, popIn } from '@/components/ui/motion';
-import { AnimatedView, Pressable, Text, View } from '@/components/ui/tw';
+import { Pressable, Text, View } from '@/components/ui/tw';
 import {
   Button,
   Checkbox,
@@ -30,8 +35,8 @@ import {
   Field,
   IconButton,
   Loading,
-  ManagementRow,
   Notice,
+  Popover,
   Radio,
   resolvePressStateClass,
   Row,
@@ -68,7 +73,6 @@ export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
-  const [manageOpen, setManageOpen] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
@@ -102,6 +106,7 @@ export default function LibraryScreen() {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [libraryCount, setLibraryCount] = useState(1);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const titleAnchorRef = useRef<NativeView>(null);
   const [settingPrimaryID, setSettingPrimaryID] = useState('');
   const primarySavePending = useRef(false);
   const [switcherError, setSwitcherError] = useState('');
@@ -177,8 +182,6 @@ export default function LibraryScreen() {
       openParam === 'settings'
     ) {
       setPanel(openParam);
-    } else {
-      setManageOpen(true);
     }
   }, [openedPanelFromParam, openParam, library, offline, auth.user?.admin]);
 
@@ -290,14 +293,16 @@ export default function LibraryScreen() {
     setPanel(null);
   }
 
-  function openPanelFromManage(next: Exclude<Panel, null>) {
-    setManageOpen(false);
-    setPanel(next);
-  }
-
-  function openSourcesFromManage() {
-    setManageOpen(false);
-    router.push(`/sources?libraryId=${id}`);
+  function handleManageAction(action: LibraryManageAction) {
+    if (action === 'metadata') {
+      router.push(`/library/${id}/metadata`);
+      return;
+    }
+    if (action === 'sources') {
+      router.push(`/sources?libraryId=${id}`);
+      return;
+    }
+    setPanel(action);
   }
 
   function clearFilters() {
@@ -549,19 +554,21 @@ export default function LibraryScreen() {
   return (
     <Page
       title={library.name}
-      onTitlePress={libraries.length > 1 ? () => setSwitcherOpen(true) : undefined}
+      onTitlePress={libraries.length > 1 ? () => setSwitcherOpen((open) => !open) : undefined}
+      titleAnchorRef={titleAnchorRef}
       titleActionLabel={`Switch library, currently ${library.name}`}
       back={
         <IconButton label="Back" icon="back" kind="quiet" onPress={() => goBackOr('/libraries')} />
       }
+      breadcrumbs={[{ label: 'Libraries', href: '/libraries' }]}
       actions={
         <Row>
           {hasManagementActions ? (
-            <IconButton
-              icon="settings"
+            <LibraryManageMenu
               label="Library management"
-              kind="quiet"
-              onPress={() => setManageOpen(true)}
+              canEdit={canEdit}
+              canManage={canManage}
+              onSelect={handleManageAction}
             />
           ) : null}
           {canEdit ? (
@@ -629,56 +636,6 @@ export default function LibraryScreen() {
           )}
         </View>
       </View>
-      <Dialog
-        sheet
-        visible={manageOpen}
-        title="Library management"
-        onClose={() => setManageOpen(false)}
-      >
-        <View>
-          {canEdit ? (
-            <ManagementRow
-              icon="add"
-              label="Add work"
-              onPress={() => openPanelFromManage('work')}
-            />
-          ) : null}
-          {canEdit ? (
-            <ManagementRow
-              icon="search"
-              label="Metadata"
-              onPress={() => {
-                setManageOpen(false);
-                router.push(`/library/${id}/metadata`);
-              }}
-            />
-          ) : null}
-          {canManage ? (
-            <ManagementRow
-              icon="users"
-              label="Members"
-              onPress={() => openPanelFromManage('members')}
-            />
-          ) : null}
-          {canEdit ? (
-            <ManagementRow icon="folder" label="Sources" onPress={openSourcesFromManage} />
-          ) : null}
-          {canEdit ? (
-            <ManagementRow
-              icon="acquire"
-              label="Acquisition policy"
-              onPress={() => openPanelFromManage('policy')}
-            />
-          ) : null}
-          {canManage ? (
-            <ManagementRow
-              icon="settings"
-              label="Library settings"
-              onPress={() => openPanelFromManage('settings')}
-            />
-          ) : null}
-        </View>
-      </Dialog>
       <Dialog visible={panel === 'work'} title="Add work" onClose={closePanel}>
         <View className={shared.form}>
           <Field label="Title" autoFocus value={title} onChangeText={setTitle} />
@@ -843,12 +800,14 @@ export default function LibraryScreen() {
             ) : (
               <View className="gap-4">
                 <Select
+                  menu
                   label="Default ebook source"
                   options={sources.map((source) => ({ value: source.id, label: source.name }))}
                   value={ebookSourceID}
                   onChange={setEbookSourceID}
                 />
                 <Select
+                  menu
                   label="Default audiobook source"
                   options={sources.map((source) => ({ value: source.id, label: source.name }))}
                   value={audiobookSourceID}
@@ -1004,54 +963,27 @@ export default function LibraryScreen() {
         danger
         busy={deletingLibrary}
       />
-      <Dialog
-        title="Switch library"
-        sheet
+      <Popover
+        role="dialog"
+        label="Switch library"
         visible={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
+        anchorRef={titleAnchorRef}
+        minWidth={320}
       >
-        <View className="gap-1">
-          {switcherError ? <Notice danger>{switcherError}</Notice> : null}
-          {libraries.map((item, index) => (
-            <AnimatedView
-              key={item.id}
-              entering={listItemEnter(index)}
-              className="flex-row items-center gap-2 rounded-control border-b border-line-subtle py-1 last:border-b-0"
-            >
-              <View className="flex-1">
-                <ManagementRow
-                  icon="libraries"
-                  label={`${item.name}, ${item.role || 'Administrator access'}`}
-                  onPress={() => switchToLibrary(item.id)}
-                />
-              </View>
-              <AnimatedView key={String(item.primary)} entering={item.primary ? popIn : undefined}>
-                <IconButton
-                  icon={item.primary ? 'starFilled' : 'starOutline'}
-                  label={
-                    item.primary
-                      ? `${item.name} is your primary library`
-                      : `Make ${item.name} your primary library`
-                  }
-                  kind="quiet"
-                  disabled={Boolean(settingPrimaryID)}
-                  onPress={() => void setAsPrimary(item.id)}
-                />
-              </AnimatedView>
-            </AnimatedView>
-          ))}
-          <View className="border-t border-line pt-1">
-            <ManagementRow
-              icon="gridLayout"
-              label="Manage all libraries"
-              onPress={() => {
-                setSwitcherOpen(false);
-                router.push('/libraries');
-              }}
-            />
-          </View>
-        </View>
-      </Dialog>
+        <LibrarySwitcherList
+          libraries={libraries}
+          currentID={id}
+          error={switcherError}
+          settingPrimary={Boolean(settingPrimaryID)}
+          onSwitch={switchToLibrary}
+          onSetPrimary={(libraryID) => void setAsPrimary(libraryID)}
+          onManageAll={() => {
+            setSwitcherOpen(false);
+            router.push('/libraries');
+          }}
+        />
+      </Popover>
     </Page>
   );
 }

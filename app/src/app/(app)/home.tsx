@@ -1,7 +1,8 @@
 import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import type { Collection, Notification, Work, WorkSummary } from '@/generated/api';
 import type { Href } from 'expo-router';
-import { router, useFocusEffect } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
+import { onPlainLinkPress } from '@/lib/navigation';
 import { useCallback, useState, type PropsWithChildren } from 'react';
 import Animated from 'react-native-reanimated';
 import { useWindowDimensions } from 'react-native';
@@ -220,26 +221,31 @@ function CollectionCard({ item }: { item: Collection }) {
   const [focused, setFocused] = useState(false);
   const [pressed, setPressed] = useState(false);
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`${item.title}, ${collectionCount(item.work_count)}`}
-      onBlur={() => setFocused(false)}
-      onFocus={() => setFocused(true)}
-      onPressIn={() => setPressed(true)}
-      onPressOut={() => setPressed(false)}
-      onPress={() => router.push(`/collection/${item.id}`)}
-      className={`min-h-11 grow basis-[47%] flex-row items-center gap-3 rounded-card border border-line bg-paper p-3 shadow-xs ${resolvePressStateClass({ focused, pressed })}`}
+    <Link
+      href={`/collection/${item.id}`}
+      asChild
+      onPress={onPlainLinkPress(() => router.push(`/collection/${item.id}`))}
     >
-      <View className="h-10 w-10 items-center justify-center rounded-pill bg-accent-soft">
-        <AppIcon name="collections" size={18} color={colors.accent} />
-      </View>
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="font-sans-semibold text-sm text-ink">
-          {item.title}
-        </Text>
-        <Text className="text-xs text-muted">{collectionCount(item.work_count)}</Text>
-      </View>
-    </Pressable>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${item.title}, ${collectionCount(item.work_count)}`}
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        className={`min-h-11 grow basis-[47%] flex-row items-center gap-3 rounded-card border border-line bg-paper p-3 shadow-xs ${resolvePressStateClass({ focused, pressed })}`}
+      >
+        <View className="h-10 w-10 items-center justify-center rounded-pill bg-accent-soft">
+          <AppIcon name="collections" size={18} color={colors.accent} />
+        </View>
+        <View className="min-w-0 flex-1">
+          <Text numberOfLines={1} className="font-sans-semibold text-sm text-ink">
+            {item.title}
+          </Text>
+          <Text className="text-xs text-muted">{collectionCount(item.work_count)}</Text>
+        </View>
+      </Pressable>
+    </Link>
   );
 }
 

@@ -56,7 +56,7 @@ for (const inProgress of [false, true]) {
     });
     await page.goto('/books');
     for (const item of cases) {
-      const card = page.getByRole('button', { name: new RegExp(`^${item.id} by Author`) });
+      const card = page.getByRole('link', { name: new RegExp(`^${item.id} by Author`) });
       await expect(card).toBeAttached();
       const content = await card.textContent();
       for (const icon of [

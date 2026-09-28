@@ -87,8 +87,33 @@ for (const width of [390, 1024, 1440]) {
     });
     await page.goto('/activity');
 
-    // Default "All" view: needs-approval and personal requests share one page, no tabs.
-    await expect(page.getByRole('button', { name: 'Filter: All', exact: true })).toBeVisible();
+    // Phones use one filter control that opens a sheet; wider web windows show tabs.
+    const phone = width < 600;
+    async function expectFilter(name: string) {
+      if (phone) {
+        await expect(
+          page.getByRole('button', { name: `Filter: ${name}`, exact: true }),
+        ).toBeVisible();
+        return;
+      }
+      await expect(page.getByRole('tab', { name, exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    }
+    async function chooseFilter(current: string, next: string) {
+      if (phone) {
+        await page.getByRole('button', { name: `Filter: ${current}`, exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'Filter activity' })).toBeVisible();
+        await page.getByRole('radio', { name: next, exact: true }).click();
+      } else {
+        await page.getByRole('tab', { name: next, exact: true }).click();
+      }
+      await expectFilter(next);
+    }
+
+    // Default "All" view: needs-approval and personal requests share one page.
+    await expectFilter('All');
     await expect(page.getByText('Needs your approval', { exact: true })).toBeVisible();
     await expect(page.getByText('The Secret Garden', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Review', exact: true })).toBeVisible();
@@ -132,13 +157,9 @@ for (const width of [390, 1024, 1440]) {
     await markAliceRead.click();
     await expect(markAliceRead).toHaveCount(0);
     await expect(page).toHaveURL(/\/activity/);
-    await expect(page.getByRole('button', { name: 'Filter: All', exact: true })).toBeVisible();
+    await expectFilter('All');
 
-    // One filter control, not a second tab row: open it, switch to Ready.
-    await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Filter activity' })).toBeVisible();
-    await page.getByRole('radio', { name: 'Ready', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Filter: Ready', exact: true })).toBeVisible();
+    await chooseFilter('All', 'Ready');
     await expect(page.getByText('Through the Looking-Glass', { exact: true })).toBeVisible();
     await expect(page.getByText('Alice’s Adventures in Wonderland', { exact: true })).toHaveCount(
       0,
@@ -148,16 +169,14 @@ for (const width of [390, 1024, 1440]) {
     ).toBeVisible();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-ready.png` });
 
-    await page.getByRole('button', { name: 'Filter: Ready', exact: true }).click();
-    await page.getByRole('radio', { name: 'History', exact: true }).click();
+    await chooseFilter('Ready', 'History');
     await expect(page.getByText('Treasure Island', { exact: true })).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Find Treasure Island again', exact: true }),
     ).toBeVisible();
     await page.screenshot({ path: `../artifacts/design-redesign/${width}-activity-history.png` });
 
-    await page.getByRole('button', { name: 'Filter: History', exact: true }).click();
-    await page.getByRole('radio', { name: 'Needs approval (1)', exact: true }).click();
+    await chooseFilter('History', 'Needs approval (1)');
     await expect(page.getByText('The Secret Garden', { exact: true })).toBeVisible();
     await expect(page.getByText('Treasure Island', { exact: true })).toHaveCount(0);
     await page.screenshot({
@@ -165,13 +184,10 @@ for (const width of [390, 1024, 1440]) {
     });
 
     // Mark all read clears the remaining admin item too; badge and filter label agree.
-    await page.getByRole('button', { name: 'Filter: Needs approval (1)', exact: true }).click();
-    await page.getByRole('radio', { name: 'All', exact: true }).click();
+    await chooseFilter('Needs approval (1)', 'All');
     await page.getByRole('button', { name: 'Mark all read', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Mark all read', exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Filter: All', exact: true }).click();
-    await expect(page.getByRole('radio', { name: 'Unread', exact: true })).toBeVisible();
-    await page.getByRole('radio', { name: 'Unread', exact: true }).click();
+    await chooseFilter('All', 'Unread');
     await expect(page.getByText('You’re all caught up', { exact: true })).toBeVisible();
   });
 }
