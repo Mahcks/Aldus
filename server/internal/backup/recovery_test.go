@@ -15,7 +15,194 @@ import (
 	"testing"
 
 	"github.com/mahcks/aldus/server/internal/database"
+	"github.com/mahcks/aldus/server/internal/position"
 )
+
+func TestLiveBackupExcludesChangingWorkingFiles(t *testing.T) {
+	ctx := context.Background()
+	dataDir := t.TempDir()
+	db, err := database.Open(ctx, filepath.Join(dataDir, "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if err := position.New(db).SeedFixture(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO users (
+			id, username, username_normalized, display_name, password_hash,
+			is_admin, disabled, created_at, updated_at
+		) VALUES ('reader', 'reader', 'reader', 'Reader', 'hash', 0, 0, '2026-01-01', '2026-01-01');
+		INSERT INTO progress (
+			user_id, work_id, alignment_id, segment_id, offset, revision, updated_at, source_device
+		) VALUES ('reader', 'fixture-work', 'fixture-alignment', 's0002', 350000, 7, '2026-01-01', 'phone');
+		INSERT INTO alignment_jobs (
+			id, alignment_id, epub_media_id, audio_media_id, state, worker_version, model, artifact_id, created_at
+		) VALUES ('published', 'fixture-alignment', 'fixture-epub', 'fixture-audio', 'ready', 'test', 'test', 'artifact', '2026-01-01');
+		INSERT INTO alignment_jobs (
+			id, epub_media_id, audio_media_id, state, worker_version, model, created_at
+		) VALUES ('running', 'fixture-epub', 'fixture-audio', 'processing', 'next', 'test', '2026-01-01');
+		INSERT INTO alignment_jobs (
+			id, epub_media_id, audio_media_id, state, worker_version, model, artifact_id, created_at
+		) VALUES ('stale', 'fixture-epub', 'fixture-audio', 'stale', 'old', 'test', 'old-artifact', '2026-01-01');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	durable := []string{
+		"media/media/fixture/book.epub",
+		"media/media/fixture/book.m4b",
+		"custom/media/book.epub",
+		"acquisitions/library/request/file-000001.epub",
+		"alignments/published/alignment.json",
+		"alignments/stale/alignment.json",
+		// Reserved-looking filenames outside their working directories are data.
+		"notes/worker.log",
+		"notes/progress.json",
+		"notes/.aldus-ready-book",
+	}
+	working := []string{
+		"media/staging/upload-first",
+		"custom/staging/upload-second",
+		"staging/upload-root",
+		".aldus-ready-probe",
+		".aldus-diagnostic-probe",
+		"acquisitions/library/.acquisition-pending/file-000001.epub",
+		"alignments/published/input.json",
+		"alignments/published/worker.log",
+		"alignments/published/progress.json",
+		"alignments/published/progress.json.tmp",
+		"alignments/published/stages.json",
+		"alignments/published/stages.tmp",
+		"alignments/published/runtime.json",
+		"alignments/published/checkpoints/transcription.json",
+		"alignments/published/checkpoints/transcription.tmp",
+		"alignments/running/alignment.json",
+		"alignments/running/worker.log",
+		"alignments/matplotlib/fontlist.json",
+		"alignments/models/cache.bin",
+		"models/cache.bin",
+	}
+	for _, names := range [][]string{durable, working} {
+		for _, name := range names {
+			path := filepath.Join(dataDir, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(name), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	archive := filepath.Join(t.TempDir(), "backup.tar.gz")
+	if err := Create(ctx, dataDir, archive, "test"); err != nil {
+		t.Fatal(err)
+	}
+	extracted := t.TempDir()
+	manifest, err := extractAndVerify(ctx, archive, extracted, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range working {
+		if _, included := manifest.Files[name]; included {
+			t.Errorf("backup includes working file %q", name)
+		}
+	}
+
+	// Advance the live worker after the snapshot, then collect paths and
+	// remove/replace temporary files before archiving. This forces the race's
+	// interleaving without sleeps, goroutines, or production test hooks.
+	if _, err := db.ExecContext(ctx, `
+		UPDATE alignment_jobs
+		SET state = 'ready', artifact_id = 'new-artifact'
+		WHERE id = 'running'
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := filepath.Join(extracted, "aldus.db")
+	files, err := backupFiles(ctx, dataDir, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range files {
+		hash, err := fileHash(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest.Files[name] = hash
+	}
+	for i, name := range working {
+		path := filepath.Join(dataDir, filepath.FromSlash(name))
+		if i%2 == 0 {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.WriteFile(path, []byte("changed while backing up"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	interleaved := filepath.Join(t.TempDir(), "interleaved.tar.gz")
+	if err := writeArchive(interleaved, manifest, files); err != nil {
+		t.Fatal(err)
+	}
+	if err := Verify(ctx, interleaved); err != nil {
+		t.Fatal(err)
+	}
+	restored := t.TempDir()
+	if err := Restore(ctx, interleaved, restored); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range durable {
+		data, err := os.ReadFile(filepath.Join(restored, filepath.FromSlash(name)))
+		if err != nil || string(data) != name {
+			t.Errorf("restored %q = %q, %v", name, data, err)
+		}
+	}
+	for _, name := range working {
+		if _, err := os.Stat(filepath.Join(restored, filepath.FromSlash(name))); !os.IsNotExist(err) {
+			t.Errorf("restored working file %q: %v", name, err)
+		}
+	}
+
+	restoredDB, err := database.Open(ctx, filepath.Join(restored, "aldus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restoredDB.Close()
+
+	var username, segment string
+	var offset, revision int
+	if err := restoredDB.QueryRowContext(ctx, `
+		SELECT u.username, p.segment_id, p.offset, p.revision
+		FROM progress p
+		JOIN users u ON u.id = p.user_id
+		WHERE p.work_id = 'fixture-work'
+	`).Scan(&username, &segment, &offset, &revision); err != nil {
+		t.Fatal(err)
+	}
+	if username != "reader" || segment != "s0002" || offset != 350000 || revision != 7 {
+		t.Fatalf("restored position = %s %s %d revision %d", username, segment, offset, revision)
+	}
+	if _, err := position.New(restoredDB).CanonicalToAudio(ctx, position.Canonical{
+		AlignmentID: position.FixtureAlignmentID,
+		SegmentID:   segment,
+		Offset:      offset,
+	}); err != nil {
+		t.Fatalf("resolve restored alignment: %v", err)
+	}
+
+	var state string
+	if err := restoredDB.QueryRowContext(ctx, `
+		SELECT state FROM alignment_jobs WHERE id = 'running'
+	`).Scan(&state); err != nil || state != "processing" {
+		t.Fatalf("restored worker state = %q, %v", state, err)
+	}
+}
 
 func TestBackupLeavesOlderSourceUnchanged(t *testing.T) {
 	ctx := context.Background()

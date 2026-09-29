@@ -24,6 +24,7 @@ import (
 
 	"github.com/mahcks/aldus/server/internal/auth"
 	"github.com/mahcks/aldus/server/internal/database"
+	dbsql "github.com/mahcks/aldus/server/internal/database/sqlc"
 )
 
 const manifestName = "manifest.json"
@@ -220,7 +221,7 @@ func Create(ctx context.Context, dataDir, archivePath, version string) error {
 	if err := redactConnectorSecrets(ctx, snapshot); err != nil {
 		return err
 	}
-	files, err := backupFiles(dataDir, snapshot)
+	files, err := backupFiles(ctx, dataDir, snapshot)
 	if err != nil {
 		return err
 	}
@@ -340,9 +341,31 @@ func snapshotDatabase(ctx context.Context, source, destination string) error {
 	})
 }
 
-func backupFiles(dataDir, snapshot string) (map[string]string, error) {
+func backupFiles(ctx context.Context, dataDir, snapshot string) (map[string]string, error) {
+	// Only published output from the database snapshot is recovery data. Worker
+	// inputs, checkpoints, logs and telemetry can change throughout a live backup.
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(snapshot)+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open backup snapshot: %w", err)
+	}
+	defer db.Close()
+
+	jobs, err := dbsql.New(db).ListPublishedAlignmentJobs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list published backup alignments: %w", err)
+	}
+
+	published := make(map[string]bool, len(jobs))
+	for _, id := range jobs {
+		published["alignments/"+id] = true
+	}
+
 	files := map[string]string{"aldus.db": snapshot}
-	err := filepath.WalkDir(dataDir, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(dataDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		if walkErr != nil {
 			return walkErr
 		}
@@ -352,20 +375,41 @@ func backupFiles(dataDir, snapshot string) (map[string]string, error) {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("backup refuses symbolic link %s", path)
 		}
+
 		relative, err := filepath.Rel(dataDir, path)
 		if err != nil {
 			return err
 		}
 		name := filepath.ToSlash(relative)
+		parent := filepath.ToSlash(filepath.Dir(relative))
 		if entry.IsDir() {
 			if name == "models" {
 				return filepath.SkipDir
 			}
+			if strings.HasPrefix(name, "alignments/") && !published[name] {
+				return filepath.SkipDir
+			}
+			if strings.HasPrefix(name, "acquisitions/") && strings.HasPrefix(entry.Name(), ".acquisition-") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
+
 		if name == "aldus.db" || name == "aldus.db-wal" || name == "aldus.db-shm" {
 			return nil
 		}
+		if parent == "." && (strings.HasPrefix(name, ".aldus-ready-") || strings.HasPrefix(name, ".aldus-diagnostic-")) {
+			return nil
+		}
+		// Media roots may be customized inside the data directory. Ingest owns
+		// staging/upload-* at each root; finalized media never uses this layout.
+		if filepath.Base(parent) == "staging" && strings.HasPrefix(entry.Name(), "upload-") {
+			return nil
+		}
+		if strings.HasPrefix(name, "alignments/") && (!published[parent] || entry.Name() != "alignment.json") {
+			return nil
+		}
+
 		files[name] = path
 		return nil
 	})

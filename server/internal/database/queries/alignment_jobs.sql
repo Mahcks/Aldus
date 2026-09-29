@@ -21,3 +21,9 @@ WHERE representation.work_id = ?
   AND audio_representation.work_id = representation.work_id
 ORDER BY j.created_at DESC, j.id DESC
 LIMIT ? OFFSET ?;
+
+-- name: ListPublishedAlignmentJobs :many
+SELECT id
+FROM alignment_jobs
+WHERE artifact_id IS NOT NULL
+  AND state IN ('ready', 'stale');

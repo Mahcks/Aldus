@@ -93,3 +93,33 @@ func (q *Queries) ListAlignmentJobsForWork(ctx context.Context, arg ListAlignmen
 	}
 	return items, nil
 }
+
+const listPublishedAlignmentJobs = `-- name: ListPublishedAlignmentJobs :many
+SELECT id
+FROM alignment_jobs
+WHERE artifact_id IS NOT NULL
+  AND state IN ('ready', 'stale')
+`
+
+func (q *Queries) ListPublishedAlignmentJobs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listPublishedAlignmentJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
