@@ -12,10 +12,20 @@ SELECT p.work_id, p.alignment_id, p.segment_id, p.offset, p.revision,
 FROM progress p
 JOIN alignments a ON a.id = p.alignment_id
 JOIN alignment_segments s ON s.alignment_id = p.alignment_id AND s.id = p.segment_id
-WHERE p.user_id = ? AND p.work_id = ?;
+WHERE p.user_id = sqlc.arg(user_id) AND p.work_id = sqlc.arg(work_id)
+UNION ALL
+SELECT r.work_id, '', '', 0, r.revision, r.updated_at, '', '', '', 0
+FROM progress_resets r
+WHERE r.user_id = sqlc.arg(user_id) AND r.work_id = sqlc.arg(work_id)
+  AND NOT EXISTS (
+      SELECT 1 FROM progress p WHERE p.user_id = r.user_id AND p.work_id = r.work_id
+  );
 
 -- name: GetProgressRevision :one
-SELECT revision FROM progress WHERE user_id = ? AND work_id = ?;
+SELECT p.revision FROM progress p WHERE p.user_id = sqlc.arg(user_id) AND p.work_id = sqlc.arg(work_id)
+UNION ALL
+SELECT r.revision FROM progress_resets r WHERE r.user_id = sqlc.arg(user_id) AND r.work_id = sqlc.arg(work_id)
+ORDER BY revision DESC LIMIT 1;
 
 -- name: UpsertProgress :exec
 INSERT INTO progress (user_id, work_id, alignment_id, segment_id, offset, revision, updated_at, source_device, source_device_id)

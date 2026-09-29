@@ -21,6 +21,7 @@ export async function downloadOfflineWork(_value: Omit<OfflineWork, 'downloaded_
 export async function removeOfflineWork(_workID: string, _format?: 'epub' | 'audio') {}
 export async function updateOfflineProgress(_workID: string, _progress: CanonicalPosition | null) {}
 export {
+  resetOfflineReadingState,
   offlineRepresentationState,
   updateOfflineRepresentationState,
   acknowledgeOfflineRepresentationState,

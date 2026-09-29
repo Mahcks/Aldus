@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ReadingOwnershipProof, RepresentationState } from '@/generated/api';
+import type { ReadingClaim, ReadingOwnershipProof, RepresentationState } from '@/generated/api';
 import { APIError, api } from './api';
 import { getAPIBaseURL } from './api-base';
 import { getDeviceIdentity } from './device-identity';
@@ -209,5 +209,15 @@ async function reconcileRecord(
       // Failed requests keep their original proof and remain queued for an explicit choice.
     }
     return null;
+  });
+}
+
+export function resetOfflineReadingState(workID: string, _snapshot: ReadingClaim, scope: string) {
+  return serializeProgressMutation(async () => {
+    for (const kind of ['epub', 'audio']) {
+      const key = await storageKey(scope, workID, kind);
+      acknowledgedStates.delete(key);
+      await AsyncStorage.removeItem(key);
+    }
   });
 }

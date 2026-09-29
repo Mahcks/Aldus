@@ -1,3 +1,4 @@
+import { applyReadingReset } from '@/lib/consumption/reading-reset';
 import type { ReadingClaim } from '@/generated/api';
 import { router } from 'expo-router';
 import { AppState, Platform } from 'react-native';
@@ -111,6 +112,8 @@ export function useReadingSession(workID: string) {
             })(),
           expected_epoch: claimOwnerEpoch,
         });
+        if (cancelled) return;
+        await applyReadingReset(workID, claimed);
         if (cancelled) return;
         const proof = { device_id: claimed.owner.device_id, epoch: claimed.owner.epoch };
         registerReadingProof(workID, proof, false);

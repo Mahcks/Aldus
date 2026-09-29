@@ -17,6 +17,7 @@ import (
 )
 
 func registerOwnershipRoutes(router chi.Router, store *ownership.Store) {
+	router.Post("/works/{workID}/progress/reset", resetReadingProgress(store))
 	router.Get("/works/{workID}/reading-session", readingSession(store))
 	router.Get("/works/{workID}/reading-session/watch", watchReadingSession(store))
 	router.Post("/works/{workID}/reading-session/claim", claimReadingSession(store))
@@ -47,20 +48,7 @@ func claimReadingSession(store *ownership.Store) http.HandlerFunc {
 			Platform:      request.Platform,
 			RequestID:     request.RequestID,
 			ExpectedEpoch: request.ExpectedEpoch,
-		}, func(ctx context.Context, tx *sql.Tx) error {
-			progress, states, err := position.ReadingSnapshotTx(ctx, tx, user.ID, workID)
-			if err != nil {
-				return err
-			}
-			if progress != nil {
-				dto := canonicalDTO(*progress)
-				snapshot.Progress = &dto
-			}
-			for _, state := range states {
-				snapshot.RepresentationStates = append(snapshot.RepresentationStates, representationStateDTO(state))
-			}
-			return nil
-		})
+		}, captureReadingSnapshot(&snapshot, user.ID, workID))
 		if err != nil {
 			writeOwnershipResult(w, nil, err)
 			return
@@ -125,5 +113,55 @@ func watchReadingSession(store *ownership.Store) http.HandlerFunc {
 			return
 		}
 		writeOwnershipResult(w, value, err)
+	}
+}
+
+func resetReadingProgress(store *ownership.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request contracts.ClaimReadingSessionRequest
+		if !decode(w, r, &request) {
+			return
+		}
+		user := actor(r)
+		workID := chi.URLParam(r, "workID")
+		var snapshot contracts.ReadingClaim
+		value, err := store.ResetWithClaim(r.Context(), user, workID, ownership.Claim{
+			DeviceID:      request.DeviceID,
+			Label:         request.Label,
+			Platform:      request.Platform,
+			RequestID:     request.RequestID,
+			ExpectedEpoch: request.ExpectedEpoch,
+		}, func(ctx context.Context, tx *sql.Tx) error {
+			return position.ResetTx(ctx, tx, user.ID, workID)
+		}, captureReadingSnapshot(&snapshot, user.ID, workID))
+		if err != nil {
+			writeOwnershipResult(w, nil, err)
+			return
+		}
+		snapshot.Owner = *readingOwnerDTO(value)
+		writeJSON(w, http.StatusOK, snapshot)
+	}
+}
+
+func captureReadingSnapshot(snapshot *contracts.ReadingClaim, userID, workID string) func(context.Context, *sql.Tx) error {
+	return func(ctx context.Context, tx *sql.Tx) error {
+		epoch, err := position.ResetEpochTx(ctx, tx, userID, workID)
+		if err != nil {
+			return err
+		}
+		snapshot.ResetEpoch = epoch
+		progress, states, err := position.ReadingSnapshotTx(ctx, tx, userID, workID)
+		if err != nil {
+			return err
+		}
+		if progress != nil {
+			dto := canonicalDTO(*progress)
+			snapshot.Progress = &dto
+		}
+		snapshot.RepresentationStates = []contracts.RepresentationState{}
+		for _, state := range states {
+			snapshot.RepresentationStates = append(snapshot.RepresentationStates, representationStateDTO(state))
+		}
+		return nil
 	}
 }

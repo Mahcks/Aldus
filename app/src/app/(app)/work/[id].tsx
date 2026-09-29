@@ -1,3 +1,4 @@
+import { ResetProgressDialog } from '@/components/catalog/ResetProgressDialog';
 import { loadWorkDetail } from '@/lib/catalog/load-work-detail';
 import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { EditionSection } from '@/components/catalog/EditionSection';
@@ -17,8 +18,8 @@ import {
 } from '@/components/catalog/alignment-progress';
 import { RequestActions } from '@/components/acquisitions/request-actions';
 import type { AlignmentJob, Collection, Library, ReadingOwner, WorkDetail } from '@/generated/api';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -127,6 +128,15 @@ export default function WorkScreen() {
   const [downloadError, setDownloadError] = useState('');
   const [offline, setOffline] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetMessage, setResetMessage] = useState(false);
+  // The reset confirmation is for this visit only. This screen stays mounted
+  // while the reader is open, so clear it on leaving rather than keeping it forever.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setResetMessage(false);
+    }, []),
+  );
   const [statusBusy, setStatusBusy] = useState(false);
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -174,7 +184,7 @@ export default function WorkScreen() {
         setLibrary(nextLibrary);
         setMedia(revisions);
         setJobs(nextJobs);
-        setHasProgress(Boolean(progress));
+        setHasProgress(Boolean(progress?.alignment_id));
         setEPUBID((current) =>
           revisions.some((item) => item.id === current) ? current : (pair.epub?.id ?? ''),
         );
@@ -189,7 +199,7 @@ export default function WorkScreen() {
           setWork(saved.work);
           setMedia([...saved.epubs, ...saved.audio]);
           setJobs(saved.jobs);
-          setHasProgress(Boolean(saved.progress));
+          setHasProgress(Boolean(saved.progress?.alignment_id));
           setEPUBID(saved.epub_id);
           setAudioID(saved.audio_id);
           setDownloaded(true);
@@ -623,6 +633,7 @@ export default function WorkScreen() {
     <ProgressMeter
       percent={work.completion_percent}
       label={`${workProgressLabel(work.in_progress, work.completion_percent)}${work.active_seconds > 0 ? ` · ${formatDuration(work.active_seconds)} active` : ''}`}
+      action={offline ? undefined : { label: 'Start over', onPress: () => setResetOpen(true) }}
     />
   ) : null;
   const syncBlock = activeAlignment ? (
@@ -866,6 +877,9 @@ export default function WorkScreen() {
         </Notice>
       ) : null}
       {error ? <Notice tone="danger">{error}</Notice> : null}
+      {resetMessage ? (
+        <Notice>Reading progress reset. You can start from the beginning.</Notice>
+      ) : null}
 
       <Animated.View entering={fadeIn}>{split ? splitLayout : showcaseLayout}</Animated.View>
 
@@ -876,6 +890,19 @@ export default function WorkScreen() {
         onClose={() => setDownloadOpen(false)}
         onDownload={(format) => void startOfflineDownload(format)}
       />
+      {resetOpen ? (
+        <ResetProgressDialog
+          key={id}
+          workID={id}
+          title={work.title}
+          onClose={() => setResetOpen(false)}
+          onReset={() => {
+            setHasProgress(false);
+            setWork({ ...work, in_progress: false, completion_percent: 0 });
+            setResetMessage(true);
+          }}
+        />
+      ) : null}
       <ReadingStatusDialog
         work={work}
         visible={statusOpen}

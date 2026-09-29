@@ -11,6 +11,9 @@ import type { Href } from 'expo-router';
 import { workHref, type WorkQuickAction } from '@/lib/catalog/work-actions';
 import { libraryColumns, type LibraryDensity } from '@/lib/catalog/library-layout';
 
+/** Rows that fade in on first load; later rows are off-screen and appear without animation. */
+const ANIMATED_GRID_ROWS = 4;
+
 export function LibraryGrid({
   works,
   density,
@@ -94,7 +97,13 @@ export function LibraryGrid({
           </AnimatedView>
         ) : (
           <AnimatedView
-            entering={index < 14 ? listItemEnter(index) : undefined}
+            // Stagger by row, not by card: every card in a row appears together,
+            // and each row that fits the first screen follows the one above it.
+            entering={
+              Math.floor(index / columns) < ANIMATED_GRID_ROWS
+                ? listItemEnter(Math.floor(index / columns))
+                : undefined
+            }
             style={{ width: `${100 / columns}%`, height: rowHeight }}
             className="justify-end px-1.5 pb-6"
           >

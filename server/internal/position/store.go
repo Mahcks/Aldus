@@ -88,8 +88,14 @@ func progressRow(row dbsql.GetProgressRow, err error) (Canonical, error) {
 		return Canonical{}, fmt.Errorf("get progress: %w", err)
 	}
 	p := Canonical{
-		WorkID: row.WorkID, AlignmentID: row.AlignmentID, SegmentID: row.SegmentID,
-		Offset: int(row.Offset), Revision: row.Revision, SourceDevice: row.SourceDevice, SourceDeviceID: row.SourceDeviceID,
+		Reset:          row.AlignmentID == "",
+		WorkID:         row.WorkID,
+		AlignmentID:    row.AlignmentID,
+		SegmentID:      row.SegmentID,
+		Offset:         int(row.Offset),
+		Revision:       row.Revision,
+		SourceDevice:   row.SourceDevice,
+		SourceDeviceID: row.SourceDeviceID,
 		AlignmentState: row.AlignmentState,
 	}
 	p.UpdatedAt, err = time.Parse(time.RFC3339Nano, row.UpdatedAt)

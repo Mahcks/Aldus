@@ -239,3 +239,56 @@ test('offline audiobook completion uses the cached file duration without changin
   await rememberOfflineAudioDuration('work', 'other-media', 1000);
   expect((await offlineWork('work'))?.audio_duration_ms?.['other-media']).toBeUndefined();
 });
+
+test('reset replaces downloaded places and queued saves without removing media or preferences', async () => {
+  const state = queueEdition('audio');
+  const scope = serverStorageScope('http://localhost:8080', 'reader-one');
+  const key = `aldus:${scope}:offline-work:work`;
+  const before = JSON.parse(storage.get(key)!);
+  before.audio = [
+    {
+      id: 'audio',
+      kind: 'audio',
+      size_bytes: 1000,
+      representation: { id: 'representation', kind: 'audio' },
+    },
+  ];
+  before.audio_id = 'audio';
+  before.work.in_progress = true;
+  storage.set(key, JSON.stringify(before));
+  const { resetOfflineReadingState } = await import('./offline-library.native');
+  await resetOfflineReadingState(
+    'work',
+    {
+      owner: {
+        work_id: 'work',
+        device_id: 'phone',
+        label: 'Phone',
+        platform: 'ios',
+        epoch: 4,
+        updated_at: '',
+        idle_seconds: 0,
+      },
+      reset_epoch: 4,
+      progress: { alignment_id: '', segment_id: '', offset: 0, revision: 8, reset: true },
+      representation_states: [
+        {
+          representation_id: 'representation',
+          playback_speed: 1.5,
+          revision: state.revision + 1,
+          updated_at: '',
+        },
+      ],
+    },
+    scope,
+  );
+  const reset = JSON.parse(storage.get(key)!);
+  expect(reset.audio).toEqual(before.audio);
+  expect(reset.downloaded_at).toBe(before.downloaded_at);
+  expect(reset.pending_representation_states).toBeUndefined();
+  expect(reset.pending_representation_ownership).toBeUndefined();
+  expect(reset.audio_state.audio_timestamp_ms).toBeUndefined();
+  expect(reset.audio_state.playback_speed).toBe(1.5);
+  expect(reset.progress.revision).toBe(8);
+  expect(reset.work.in_progress).toBe(false);
+});

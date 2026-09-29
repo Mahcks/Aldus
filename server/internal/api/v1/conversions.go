@@ -99,7 +99,18 @@ func jobDTO(v alignment.Job) contracts.AlignmentJob {
 }
 
 func canonicalDTO(v position.Canonical) contracts.CanonicalPosition {
-	return contracts.CanonicalPosition{WorkID: v.WorkID, AlignmentID: v.AlignmentID, SegmentID: v.SegmentID, Offset: v.Offset, Revision: v.Revision, UpdatedAt: v.UpdatedAt, SourceDevice: v.SourceDevice, AlignmentState: v.AlignmentState, Resolvable: v.Resolvable}
+	return contracts.CanonicalPosition{
+		Reset:          v.Reset,
+		WorkID:         v.WorkID,
+		AlignmentID:    v.AlignmentID,
+		SegmentID:      v.SegmentID,
+		Offset:         v.Offset,
+		Revision:       v.Revision,
+		UpdatedAt:      v.UpdatedAt,
+		SourceDevice:   v.SourceDevice,
+		AlignmentState: v.AlignmentState,
+		Resolvable:     v.Resolvable,
+	}
 }
 
 func activityDTO(v position.ActivitySession) contracts.ActivitySession {

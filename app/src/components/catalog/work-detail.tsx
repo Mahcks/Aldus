@@ -26,7 +26,16 @@ export function DetailSection({ title, children }: { title?: string; children: R
 }
 
 /** Reading or listening progress: a bar that fills to the saved position, with a plain-language line under it. */
-export function ProgressMeter({ percent, label }: { percent: number; label: string }) {
+export function ProgressMeter({
+  percent,
+  label,
+  action,
+}: {
+  percent: number;
+  label: string;
+  /** A small text action on the label line, such as starting the book over. */
+  action?: { label: string; onPress: () => void };
+}) {
   const clamped = Math.max(0, Math.min(100, percent));
   const fill = useSharedValue(0);
 
@@ -58,7 +67,27 @@ export function ProgressMeter({ percent, label }: { percent: number; label: stri
           />
         </View>
       ) : null}
-      <Text className="text-sm text-muted">{label}</Text>
+      <View className="flex-row flex-wrap items-center gap-x-1.5">
+        <Text className="text-sm text-muted">{label}</Text>
+        {action ? (
+          <>
+            <Text aria-hidden className="text-sm text-subtle">
+              ·
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+              onPress={action.onPress}
+              // A full 44px tap target that doesn't make the line taller.
+              className="-my-3 min-h-11 justify-center rounded-control focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              <Text className="text-sm font-sans-semibold text-accent hover:underline">
+                {action.label}
+              </Text>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
     </View>
   );
 }

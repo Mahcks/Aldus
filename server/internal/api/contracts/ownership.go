@@ -33,6 +33,7 @@ type ClaimReadingSessionRequest struct {
 
 // ReadingClaim includes the exact saved places captured with the ownership change.
 type ReadingClaim struct {
+	ResetEpoch           int64                 `json:"reset_epoch,omitempty"`
 	Owner                ReadingOwner          `json:"owner"`
 	Progress             *CanonicalPosition    `json:"progress" tstype:"CanonicalPosition | null"`
 	RepresentationStates []RepresentationState `json:"representation_states"`

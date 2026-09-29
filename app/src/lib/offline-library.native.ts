@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { File, Paths } from 'expo-file-system';
 import type {
   ReadingOwnershipProof,
+  ReadingClaim,
   Alignment,
   AlignmentJob,
   AudioChapter,
@@ -709,4 +710,36 @@ export async function offlineRepresentationState(
 ) {
   const work = await offlineWork(workID, scope);
   return (kind === 'epub' ? work?.epub_state : work?.audio_state) ?? null;
+}
+
+// Called under serializeEditionSave, after the server has fenced old owners.
+export function resetOfflineReadingState(workID: string, snapshot: ReadingClaim, scope: string) {
+  return serialize(async () => {
+    // Incomplete downloads can still contain queued positions. Clear their
+    // manifest too, even when offlineWork cannot open the media yet.
+    const raw = await AsyncStorage.getItem(key(scope, workID));
+    const value = parseStoredJSON<OfflineWork>(raw);
+    if (!value) return;
+    const stateFor = (mediaID: string) => {
+      const choice = [...value.epubs, ...value.audio].find((item) => item.id === mediaID);
+      return (
+        snapshot.representation_states.find(
+          (state) => state.representation_id === choice?.representation.id,
+        ) ?? null
+      );
+    };
+    value.progress = snapshot.progress ?? null;
+    value.epub_state = stateFor(value.epub_id);
+    value.audio_state = stateFor(value.audio_id);
+    delete value.pending_representation_states;
+    delete value.pending_representation_ownership;
+    delete value.pending_representation_attempts;
+    value.work.in_progress = Boolean(
+      snapshot.progress?.alignment_id ||
+      value.epub_state?.epub_locator ||
+      value.audio_state?.audio_timestamp_ms,
+    );
+    value.work.completion_percent = 0;
+    await AsyncStorage.setItem(key(scope, workID), JSON.stringify(value));
+  });
 }

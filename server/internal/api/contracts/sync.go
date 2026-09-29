@@ -7,6 +7,7 @@ import (
 )
 
 type CanonicalPosition struct {
+	Reset          bool      `json:"reset,omitempty"`
 	WorkID         string    `json:"work_id,omitempty"`
 	AlignmentID    string    `json:"alignment_id"`
 	SegmentID      string    `json:"segment_id"`

@@ -895,6 +895,12 @@ export const api = {
       signal.removeEventListener('abort', abort);
     }
   },
+  resetReadingProgress: (workID: string, body: ClaimReadingSessionRequest) =>
+    request<ReadingClaim>(`/works/${workID}/progress/reset`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(15_000),
+      body: JSON.stringify(body),
+    }),
   claimReadingSession: (workID: string, body: ClaimReadingSessionRequest) =>
     request<ReadingClaim>(`/works/${workID}/reading-session/claim`, {
       method: 'POST',

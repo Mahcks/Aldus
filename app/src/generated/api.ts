@@ -786,6 +786,7 @@ export interface ClaimReadingSessionRequest {
  * ReadingClaim includes the exact saved places captured with the ownership change.
  */
 export interface ReadingClaim {
+  reset_epoch?: number /* int64 */;
   owner: ReadingOwner;
   progress?: CanonicalPosition | null;
   representation_states: RepresentationState[];
@@ -959,6 +960,7 @@ Package contracts contains the intentionally public JSON contracts shared with c
 */
 
 export interface CanonicalPosition {
+  reset?: boolean;
   work_id?: string;
   alignment_id: string;
   segment_id: string;

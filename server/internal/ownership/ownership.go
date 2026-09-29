@@ -148,6 +148,20 @@ func (s *Store) Claim(ctx context.Context, actor auth.User, workID string, claim
 // ClaimWithSnapshot captures the saved place before releasing the takeover's
 // write lock. A failed capture rolls back the claim as well.
 func (s *Store) ClaimWithSnapshot(ctx context.Context, actor auth.User, workID string, claim Claim, capture func(context.Context, *sql.Tx) error) (*Session, error) {
+	return s.claim(ctx, actor, workID, claim, nil, capture)
+}
+
+// ResetWithClaim fences old devices and applies the reset in the same authorized
+// transaction. Retrying the same request never applies the reset twice.
+func (s *Store) ResetWithClaim(ctx context.Context, actor auth.User, workID string, claim Claim, reset, capture func(context.Context, *sql.Tx) error) (*Session, error) {
+	if strings.TrimSpace(claim.RequestID) == "" {
+		return nil, ErrInvalid
+	}
+	claim.RequestID = "reset:" + claim.RequestID
+	return s.claim(ctx, actor, workID, claim, reset, capture)
+}
+
+func (s *Store) claim(ctx context.Context, actor auth.User, workID string, claim Claim, change, capture func(context.Context, *sql.Tx) error) (*Session, error) {
 	if strings.TrimSpace(claim.DeviceID) == "" || len(claim.DeviceID) > 128 ||
 		strings.TrimSpace(claim.Label) == "" || len(claim.Label) > 100 ||
 		strings.TrimSpace(claim.RequestID) == "" || len(claim.RequestID) > 128 ||
@@ -218,6 +232,11 @@ func (s *Store) ClaimWithSnapshot(ctx context.Context, actor auth.User, workID s
 		actor.ID, workID, claim.DeviceID, epoch+1, claim.RequestID, now.Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, fmt.Errorf("claim reading session: %w", err)
+	}
+	if change != nil {
+		if err := change(ctx, tx); err != nil {
+			return nil, err
+		}
 	}
 	if capture != nil {
 		if err := capture(ctx, tx); err != nil {
