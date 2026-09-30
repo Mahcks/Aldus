@@ -1,5 +1,6 @@
 import type { EPUBSelectionRange } from '@/generated/api';
 import { restoreSelectionRange, selectionLocator } from '@/lib/consumption/resume-selection';
+import { readAlongTextRange } from '@/lib/consumption/read-along';
 import { captureSelectionRange } from './selection-range';
 import { canonicalResumeRange } from './canonical-range';
 import { Asset } from 'expo-asset';
@@ -147,6 +148,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
   const [bookPosition, setBookPosition] = useState<{ current: number; total: number }>();
   const host = useRef<RNView>(null);
   const reader = useRef<any>(null);
+  const restoredPassage = useRef<Range | null>(null);
   const disposalRef = useRef<ReturnType<typeof deferredDisposal>>(null);
   const selection = useRef<{ index: number; range: Range } | undefined>(undefined);
   const cursor = useRef<ReaderLocation>(undefined);
@@ -280,6 +282,7 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             onWarningRef.current?.('Your place opened, but its highlight could not be restored.');
           const selected = doc.getSelection();
           if (exact && (highlight || savedRange)) {
+            restoredPassage.current = savedRange ? null : exact.cloneRange();
             selected?.removeAllRanges();
             selected?.addRange(exact);
           }
@@ -409,7 +412,13 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             const anchor = canonicalResumeRange(range, location.offset ?? 0);
             const cfi = view.getCFI(resolved.index, anchor);
             if (!(await view.goTo(cfi)) || disposal.requested()) return false;
-            highlightRange(content.doc, anchor);
+            // Show the audiobook's whole passage without moving the exact navigation anchor.
+            const passage = canonicalResumeRange(
+              range,
+              location.offset ?? 0,
+              readAlongTextRange(range.toString(), location.offset ?? 0),
+            );
+            highlightRange(content.doc, passage);
             if (!disposal.requested() && cursor.current) {
               cursor.current = segmentID
                 ? syncLocation(
@@ -480,6 +489,19 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
           });
           function saveReadingIntent(event: MouseEvent | KeyboardEvent) {
             if (disposed || !product) return;
+            const selected = doc.getSelection();
+            const restored = restoredPassage.current;
+            if (selected?.rangeCount && restored) {
+              const range = selected.getRangeAt(0);
+              // A display highlight is not a new selection of the passage's beginning.
+              if (
+                range.startContainer === restored.startContainer &&
+                range.startOffset === restored.startOffset &&
+                range.endContainer === restored.endContainer &&
+                range.endOffset === restored.endOffset
+              )
+                return;
+            }
             // Completing a drag or keyboard selection need not produce a click.
             // Ordinary pointer releases remain click-to-place, not extra saves.
             if (event.type !== 'click' && doc.getSelection()?.isCollapsed !== false) return;
@@ -679,26 +701,31 @@ export const EPUBReader = forwardRef<EPUBReaderHandle, Props>(function EPUBReade
             <Text className="text-xs font-sans-semibold text-ink" numberOfLines={1}>
               {positionLabel || 'Opening your place…'}
             </Text>
-            {positionLabel && (bookPosition || progression !== undefined) ? (
-              <Text className="text-[11px] text-muted" numberOfLines={1}>
-                {bookPosition ? `Location ${bookPosition.current} of ${bookPosition.total}` : ''}
-                {bookPosition && progression !== undefined ? ' · ' : ''}
-                {progression !== undefined
-                  ? `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%`
-                  : ''}
-              </Text>
-            ) : null}
-            {progression !== undefined ? (
-              <View
-                accessibilityElementsHidden
-                className="h-[3px] w-[280px] max-w-full overflow-hidden rounded-pill bg-line"
-              >
+            {/*
+             * The location line and progress bar always hold their space, empty
+             * until the position is known, so the pager never changes height
+             * while a page settles.
+             */}
+            <Text className="h-4 text-[11px] leading-4 text-muted" numberOfLines={1}>
+              {positionLabel && bookPosition
+                ? `Location ${bookPosition.current} of ${bookPosition.total}`
+                : ''}
+              {positionLabel && bookPosition && progression !== undefined ? ' · ' : ''}
+              {positionLabel && progression !== undefined
+                ? `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%`
+                : ''}
+            </Text>
+            <View
+              accessibilityElementsHidden
+              className={`h-[3px] w-[280px] max-w-full overflow-hidden rounded-pill ${progression !== undefined ? 'bg-line' : ''}`}
+            >
+              {progression !== undefined ? (
                 <View
                   className="h-full bg-accent"
                   style={{ width: `${Math.round(Math.min(1, Math.max(0, progression)) * 100)}%` }}
                 />
-              </View>
-            ) : null}
+              ) : null}
+            </View>
             {statusSlot ?? (
               <Text
                 accessibilityLiveRegion="polite"

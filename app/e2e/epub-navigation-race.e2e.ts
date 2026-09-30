@@ -95,6 +95,9 @@ test('canonical resume restores the selected word inside a paragraph, including 
       first: exports.canonicalResumeRange(segment, 0).toString(),
       end: exports.canonicalResumeRange(segment, 1_000_000).collapsed,
       bounded: exports.canonicalResumeRange(bounded, 500_000).toString(),
+      passage: normalize(
+        exports.canonicalResumeRange(segment, offset, { start: 16, end: 38 }).toString(),
+      ),
     };
   }, source);
   expect(result).toEqual({
@@ -104,6 +107,7 @@ test('canonical resume restores the selected word inside a paragraph, including 
     first: 'Earlier',
     end: true,
     bounded: 'exact',
+    passage: 'Saved exact word here.',
   });
 });
 

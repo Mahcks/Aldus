@@ -1,3 +1,6 @@
+import { useLocalSearchParams } from 'expo-router';
+import { ListeningBatch } from '@/maintainer/ListeningBatch';
+import { ListeningPractice } from '@/maintainer/ListeningPractice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useEffect, useRef, useState } from 'react';
@@ -12,16 +15,32 @@ import {
   View,
 } from 'react-native';
 
-import { mediaURL } from '@/lib/media';
-import type { AnchorFixture, OnsetAnchor, OnsetFixture } from '@/maintainer/anchors.types';
-
-const sourceStorageKey = 'aldus:alice:anchors:v3';
-const storageKey = 'aldus:alice:onsets:v1';
-const epubSHA = '6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c';
-const audioSHA = '6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a';
+import { Button as SharedButton, Checkbox, LoadingState } from '@/components/ui';
+import { View as TWView } from '@/components/ui/tw';
+import { FixturePicker, type AuthoringMedia } from '@/maintainer/FixturePicker';
+import {
+  currentOnsets,
+  onsetFixture,
+  openingWord,
+  storageKeys,
+  validAnchors,
+} from '@/maintainer/fixtures';
+import type { AnchorFixture, OnsetAnchor } from '@/maintainer/anchors.types';
 
 export default function OnsetAuthoring() {
-  const player = useAudioPlayer(mediaURL('alice-chapter-01.mp3'), { updateInterval: 20 });
+  const { practice, review } = useLocalSearchParams<{ practice?: string; review?: string }>();
+  if ((review === 'alice' || review === 'book') && Platform.OS === 'web') return <ListeningBatch />;
+  if (practice === 'alice' && Platform.OS === 'web') return <ListeningPractice />;
+  return (
+    <FixturePicker>
+      {(media) => <OnsetWorkspace key={media.definition.id} {...media} />}
+    </FixturePicker>
+  );
+}
+
+function OnsetWorkspace({ definition, audio }: AuthoringMedia) {
+  const { anchors: sourceStorageKey, onsets: storageKey } = storageKeys(definition);
+  const player = useAudioPlayer(audio, { updateInterval: 20 });
   const status = useAudioPlayerStatus(player);
   const loopEnd = useRef<number | undefined>(undefined);
   const [source, setSource] = useState<AnchorFixture>();
@@ -34,34 +53,38 @@ export default function OnsetAuthoring() {
   const [message, setMessage] = useState('Load the existing manual anchors to begin.');
 
   const anchor = source?.anchors[index];
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([AsyncStorage.getItem(sourceStorageKey), AsyncStorage.getItem(storageKey)]).then(
-      ([sourceValue, onsetValue]) => {
-        let fixture: AnchorFixture | undefined;
-        let savedOnsets: OnsetAnchor[] = [];
-        if (sourceValue) {
-          try {
-            const stored = JSON.parse(sourceValue) as { fixture?: AnchorFixture };
-            if (stored.fixture && validSource(stored.fixture)) fixture = stored.fixture;
-          } catch {}
-        }
-        if (onsetValue) {
-          try {
-            const stored = JSON.parse(onsetValue) as OnsetFixture;
-            if (validOnsets(stored)) savedOnsets = stored.anchors;
-          } catch {}
-        }
-        if (fixture) {
-          setSource(fixture);
-          const saved = savedOnsets.find((item) => item.anchor_id === fixture.anchors[0].id);
-          setCursor(saved?.audible_onset_timestamp_ms ?? fixture.anchors[0].audio.timestamp_ms);
-          setNotes(saved?.annotation_notes ?? '');
-        }
+    let active = true;
+    Promise.all([AsyncStorage.getItem(sourceStorageKey), AsyncStorage.getItem(storageKey)])
+      .then(([sourceValue, onsetValue]) => {
+        if (!active) return;
+        const stored = sourceValue ? (JSON.parse(sourceValue) as { fixture?: unknown }) : undefined;
+        const fixture = stored?.fixture;
+        if (!validAnchors(fixture, definition) || !fixture.anchors.length) return;
+        const savedOnsets = currentOnsets(
+          onsetValue ? JSON.parse(onsetValue) : undefined,
+          fixture,
+          definition,
+        );
+        setSource(fixture);
         setAnnotations(savedOnsets);
-      },
-    );
-  }, []);
+        const saved = savedOnsets.find((item) => item.anchor_id === fixture.anchors[0].id);
+        setCursor(saved?.audible_onset_timestamp_ms ?? fixture.anchors[0].audio.timestamp_ms);
+        setNotes(saved?.annotation_notes ?? '');
+      })
+      .catch(() => {
+        if (active) setMessage('Could not load saved annotations. Import anchors to retry.');
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [definition, sourceStorageKey, storageKey]);
 
   useEffect(() => {
     if (
@@ -75,27 +98,39 @@ export default function OnsetAuthoring() {
   }, [player, status.currentTime, status.playing]);
 
   async function importAnchors() {
-    const fixture = await pickJSON<AnchorFixture>();
+    let fixture: AnchorFixture | undefined;
+    try {
+      fixture = await pickJSON<AnchorFixture>();
+    } catch {
+      setMessage('Could not read this JSON file. Choose an exported anchor fixture.');
+      return;
+    }
     if (!fixture) return;
-    if (!validSource(fixture))
-      return setMessage('Expected the frozen Alice anchors.json with exactly ten anchors.');
-    setSource(fixture);
-    setIndex(0);
-    const saved = annotations.find((item) => item.anchor_id === fixture.anchors[0].id);
-    setCursor(saved?.audible_onset_timestamp_ms ?? fixture.anchors[0].audio.timestamp_ms);
-    setNotes(saved?.annotation_notes ?? '');
-    setConfirmed(false);
-    await AsyncStorage.setItem(
-      sourceStorageKey,
-      JSON.stringify({ persistence_version: 3, fixture }),
-    );
-    setMessage('Loaded the ten immutable manual anchors.');
+    if (!validAnchors(fixture, definition) || !fixture.anchors.length)
+      return setMessage('Choose nonempty anchors for the selected fixture and exact media hashes.');
+    const retained = currentOnsets(onsetFixture(definition, annotations), fixture, definition);
+    try {
+      await AsyncStorage.setItem(
+        sourceStorageKey,
+        JSON.stringify({ persistence_version: 3, fixture }),
+      );
+      setSource(fixture);
+      setAnnotations(retained);
+      setIndex(0);
+      const saved = retained.find((item) => item.anchor_id === fixture.anchors[0].id);
+      setCursor(saved?.audible_onset_timestamp_ms ?? fixture.anchors[0].audio.timestamp_ms);
+      setNotes(saved?.annotation_notes ?? '');
+      setConfirmed(false);
+      setMessage(`Loaded ${fixture.anchors.length} manual anchors.`);
+    } catch {
+      setMessage('Could not save the imported anchors. Please retry.');
+    }
   }
 
   async function seek(timestamp: number) {
     const next = Math.max(
       0,
-      Math.min(Math.round(status.duration * 1000 || 864310), Math.round(timestamp)),
+      Math.min(Math.round(status.duration * 1000 || timestamp), Math.round(timestamp)),
     );
     setCursor(next);
     setConfirmed(false);
@@ -110,10 +145,11 @@ export default function OnsetAuthoring() {
   }
 
   async function save() {
-    if (!anchor || !confirmed || !notes.trim())
+    if (!anchor || !confirmed || !notes.trim() || !Number.isSafeInteger(cursor) || cursor < 0)
       return setMessage('Listen, add annotation notes, and confirm the onset was human-authored.');
     const annotation: OnsetAnchor = {
       anchor_id: anchor.id,
+      epub: anchor.epub,
       manual_seek_timestamp_ms: anchor.audio.timestamp_ms,
       audible_onset_timestamp_ms: cursor,
       opening_word: openingWord(anchor.normalized_text),
@@ -123,10 +159,17 @@ export default function OnsetAuthoring() {
     const next = [...annotations.filter((item) => item.anchor_id !== anchor.id), annotation].sort(
       (a, b) => a.anchor_id.localeCompare(b.anchor_id),
     );
-    setAnnotations(next);
-    await AsyncStorage.setItem(storageKey, JSON.stringify(onsetFixture(next)));
-    setMessage(`Saved human onset for ${anchor.id}.`);
-    if (index < 9) selectAnchor(index + 1, next);
+    setSaving(true);
+    try {
+      await AsyncStorage.setItem(storageKey, JSON.stringify(onsetFixture(definition, next)));
+      setAnnotations(next);
+      setMessage(`Saved human onset for ${anchor.id}.`);
+      if (index < source!.anchors.length - 1) selectAnchor(index + 1, next);
+    } catch {
+      setMessage('Could not save this onset. Keep the page open and retry.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function selectAnchor(nextIndex: number, values = annotations) {
@@ -140,54 +183,71 @@ export default function OnsetAuthoring() {
   }
 
   function exportOnsets() {
-    if (Platform.OS !== 'web' || annotations.length !== 10)
-      return setMessage('Annotate all ten passages before exporting.');
-    const blob = new Blob([`${JSON.stringify(onsetFixture(annotations), null, 2)}\n`], {
+    if (
+      Platform.OS !== 'web' ||
+      !source ||
+      !source.anchors.length ||
+      annotations.length !== source.anchors.length
+    )
+      return setMessage('Annotate every passage in this fixture before exporting.');
+    const blob = new Blob([`${JSON.stringify(onsetFixture(definition, annotations), null, 2)}\n`], {
       type: 'application/json',
     });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'onset-anchors.json';
+    link.download =
+      definition.id === 'alice-ch01-control'
+        ? 'onset-anchors.json'
+        : `${definition.id}-onsets.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
 
+  if (!loaded) return <LoadingState label="Loading saved onsets" />;
+
   return (
     <SafeAreaView style={styles.page}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Alice audible-onset annotations</Text>
+        <TWView className="max-w-full">
+          <Text style={styles.title}>{definition.label}: audible-onset annotations</Text>
           <Text style={styles.message}>{message}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.count}>{annotations.length}/10 complete</Text>
+        </TWView>
+        <TWView className="max-w-full flex-row flex-wrap items-center gap-2">
+          <Text style={styles.count}>
+            {annotations.length}/{source?.anchors.length ?? 0} complete
+          </Text>
           <Button label="Import anchors.json" onPress={importAnchors} />
           <Button
             label="Export onset-anchors.json"
             onPress={exportOnsets}
             primary
-            disabled={annotations.length !== 10}
+            disabled={
+              !source?.anchors.length || annotations.length !== source.anchors.length || saving
+            }
           />
-        </View>
+        </TWView>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {!anchor ? (
           <Text style={styles.empty}>
-            Import the existing test-fixtures/alice/anchors.json, or author anchors in /anchors
-            first.
+            Import manual anchors for this fixture, or author them in /anchors first.
           </Text>
         ) : (
           <>
             <View style={styles.navigation}>
               <Button
                 label="Previous"
-                disabled={index === 0}
+                disabled={index === 0 || saving}
                 onPress={() => selectAnchor(index - 1)}
               />
               <Text style={styles.anchorID}>
-                {anchor.id} · {index + 1} of 10
+                {anchor.id} · {index + 1} of {source!.anchors.length}
               </Text>
-              <Button label="Next" disabled={index === 9} onPress={() => selectAnchor(index + 1)} />
+              <Button
+                label="Next"
+                disabled={index === source!.anchors.length - 1 || saving}
+                onPress={() => selectAnchor(index + 1)}
+              />
             </View>
 
             <Text style={styles.passage}>{anchor.text}</Text>
@@ -281,22 +341,16 @@ export default function OnsetAuthoring() {
                 style={[styles.input, styles.notes]}
               />
             </View>
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: confirmed }}
+            <Checkbox
+              label="I selected this timestamp by listening; model diagnostics did not determine it."
+              checked={confirmed}
               onPress={() => setConfirmed(!confirmed)}
-              style={styles.confirm}
-            >
-              <Text style={styles.check}>{confirmed ? '☑' : '☐'}</Text>
-              <Text style={styles.confirmText}>
-                I selected this timestamp by listening; model diagnostics did not determine it.
-              </Text>
-            </Pressable>
+            />
             <Button
               label="Save human onset"
               onPress={save}
               primary
-              disabled={!confirmed || !notes.trim()}
+              disabled={!confirmed || !notes.trim() || saving}
             />
 
             <Text style={styles.sectionTitle}>Saved audible onsets</Text>
@@ -336,49 +390,15 @@ function Button({
   disabled?: boolean;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+    <SharedButton
+      label={label}
       onPress={onPress}
-      style={[styles.button, primary && styles.primary, disabled && styles.disabled]}
-    >
-      <Text style={[styles.buttonText, primary && styles.primaryText]}>{label}</Text>
-    </Pressable>
+      disabled={disabled}
+      kind={primary ? 'primary' : 'secondary'}
+    />
   );
 }
 
-function onsetFixture(anchors: OnsetAnchor[]): OnsetFixture {
-  return {
-    version: 1,
-    semantics: 'earliest point at which the opening spoken word audibly begins',
-    epub_sha256: epubSHA,
-    audio_sha256: audioSHA,
-    anchors,
-  };
-}
-
-function validSource(value: AnchorFixture) {
-  return (
-    value.version === 1 &&
-    value.epub_sha256 === epubSHA &&
-    value.audio_sha256 === audioSHA &&
-    value.anchors?.length === 10
-  );
-}
-
-function validOnsets(value: OnsetFixture) {
-  return (
-    value.version === 1 &&
-    value.epub_sha256 === epubSHA &&
-    value.audio_sha256 === audioSHA &&
-    Array.isArray(value.anchors)
-  );
-}
-
-function openingWord(text: string) {
-  return text.match(/[\p{L}’'-]+/u)?.[0] ?? '';
-}
 function formatMS(ms: number) {
   return `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`;
 }
@@ -388,7 +408,7 @@ function signed(ms: number) {
 
 async function pickJSON<T>() {
   if (Platform.OS !== 'web') return undefined;
-  return new Promise<T | undefined>((resolve) => {
+  return new Promise<T | undefined>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/json,.json';
@@ -397,10 +417,11 @@ async function pickJSON<T>() {
       if (!file) return resolve(undefined);
       try {
         resolve(JSON.parse(await file.text()) as T);
-      } catch {
-        resolve(undefined);
+      } catch (error) {
+        reject(error);
       }
     };
+    input.oncancel = () => resolve(undefined);
     input.click();
   });
 }
@@ -414,6 +435,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#c9c0b3',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 16,
@@ -423,7 +445,13 @@ const styles = StyleSheet.create({
   count: { color: '#655b51', fontVariant: ['tabular-nums'] },
   content: { width: '100%', maxWidth: 920, alignSelf: 'center', padding: 24, gap: 14 },
   empty: { color: '#40372f', fontSize: 15 },
-  navigation: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  navigation: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
   passage: {
     color: '#29231d',

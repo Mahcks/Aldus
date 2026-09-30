@@ -10,6 +10,7 @@ import math
 import os
 import re
 import sys
+import subprocess
 import time
 from pathlib import Path
 
@@ -88,6 +89,166 @@ def canonical_words(words):
             mapped["confidence"] = score
         output.append(mapped)
     return output
+
+
+def opening_word_score(words):
+    # ponytail: the first ten matched words are a bounded opening-phrase check,
+    # not chapter detection; broaden only with independent corpus evidence.
+    opening = words[:10]
+    if not opening or any(word.get("confidence") is None for word in opening):
+        return None
+    return sum(word["confidence"] for word in opening) / len(opening)
+
+
+def recovery_opening(model, audio, text):
+    """Find one independently recognized opening across overlapping short clips."""
+    expected = tokens(text)[:6]
+    if len(expected) < 6:
+        return None
+    starts = []
+    for offset in (0, 7.5, 15, 22.5, 30):
+        clip = audio[round(offset * 16000):round((offset + 15) * 16000)]
+        if len(clip) < 5 * 16000:
+            continue
+        segments, _ = model.transcribe(
+            clip, language="en", word_timestamps=True,
+            vad_filter=False, condition_on_previous_text=False,
+        )
+        recognized = []
+        owners = []
+        for segment in segments:
+            for word in segment.words or []:
+                parts = tokens(word.word)
+                recognized.extend(parts)
+                owners.extend([word.start + offset] * len(parts))
+        for index in range(len(recognized) - len(expected) + 1):
+            if recognized[index:index + len(expected)] == expected:
+                starts.append(owners[index])
+    # Repeated phrases elsewhere in the window are ambiguous. Overlapping
+    # recognition of the same occurrence may disagree by up to one second.
+    if not starts or max(starts) - min(starts) > 1:
+        return None
+    return min(starts)
+
+
+def recovered_words(result, text, offset, opening, lower_ms, upper_ms):
+    raw = result["word_segments"]
+    if not raw or any("start" not in word or "end" not in word for word in raw):
+        return None
+    words = canonical_words(raw)
+    if tokens(" ".join(word["text"] for word in words)) != tokens(text):
+        return None
+    scores = [word.get("confidence", 0) for word in words]
+    opening_score = opening_word_score(words)
+    if opening_score is None or opening_score < 0.5 or sum(scores) / len(scores) < 0.5:
+        return None
+    if abs(words[0]["startTime"] - opening) > 0.75:
+        return None
+    previous = lower_ms / 1000
+    for word in words:
+        word["startTime"] += offset
+        word["endTime"] += offset
+        if word["startTime"] < previous or word["endTime"] > upper_ms / 1000:
+            return None
+        previous = word["endTime"]
+    if round(words[-1]["endTime"] * 1000) <= round(words[0]["startTime"] * 1000):
+        return None
+    return words
+
+
+def recover_weak_starts(segments, job, device, compute_type, diagnostics):
+    candidates = []
+    for index, segment in enumerate(segments):
+        signals = segment["confidence_signals"]
+        if (
+            segment["status"] == "unresolved"
+            and segment["word_timings"]
+            and signals["opening_word_matched"]
+            and signals["text_coverage"] >= 0.8
+            and (signals["mean_word_score"] or 0) >= 0.5
+            and (signals["opening_word_score"] or 0) < 0.5
+            and len(tokens(segment["text"])) >= 6
+        ):
+            candidates.append(index)
+    if not candidates:
+        return
+
+    import numpy as np
+    import whisperx
+    from faster_whisper import WhisperModel
+
+    diagnostics.stage("recovering_starts")
+    report_stage("matching_text")
+    # ponytail: cap local retries at eight passages and 120 seconds per passage;
+    # larger gaps stay unresolved until corpus evidence justifies broader search.
+    pending = []
+    attempted = 0
+    model = WhisperModel(job["model"], device=device, compute_type=compute_type)
+    for index in candidates[:8]:
+        segment = segments[index]
+        lower_ms = segments[index - 1]["audio"]["end_ms"] if index else 0
+        upper_ms = (
+            segments[index + 1]["audio"]["start_ms"]
+            if index + 1 < len(segments) else job["audio_duration_ms"]
+        )
+        start_ms = max(lower_ms, segment["audio"]["start_ms"] - 5000)
+        end_ms = min(upper_ms, segment["audio"]["end_ms"] + 1000)
+        if not 5000 <= end_ms - start_ms <= 120000:
+            continue
+        attempted += 1
+        decoded = subprocess.run(
+            ["ffmpeg", "-nostdin", "-v", "error", "-ss", str(start_ms / 1000),
+             "-i", job["audio_path"], "-t", str((end_ms - start_ms) / 1000),
+             "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"],
+            check=True, capture_output=True, timeout=60,
+        )
+        audio = np.frombuffer(decoded.stdout, dtype=np.float32).copy()
+        opening = recovery_opening(model, audio, segment["text"])
+        if opening is not None:
+            pending.append((index, audio, start_ms, end_ms, opening))
+    del model
+    gc.collect()
+    if device == "cuda":
+        import torch
+        torch.cuda.empty_cache()
+    recovered = 0
+    if pending:
+        align_model, metadata = whisperx.load_align_model(language_code="en", device=device)
+        for index, audio, start_ms, end_ms, opening in pending:
+            segment = segments[index]
+            result = whisperx.align(
+                [{"text": segment["text"], "start": max(0, opening - 0.5),
+                  "end": len(audio) / 16000}],
+                align_model, metadata, audio, device, return_char_alignments=False,
+            )
+            lower_ms = max(start_ms, segments[index - 1]["audio"]["end_ms"] if index else 0)
+            words = recovered_words(
+                result, segment["text"], start_ms / 1000, opening, lower_ms, end_ms,
+            )
+            if words is None:
+                continue
+            segment["word_timings"] = words
+            segment["audio"]["start_ms"] = round(words[0]["startTime"] * 1000)
+            segment["audio"]["end_ms"] = round(words[-1]["endTime"] * 1000)
+            segment["status"] = "aligned"
+            segment["highlightable"] = True
+            segment["confidence_signals"].update({
+                "mean_word_score": sum(word.get("confidence", 0) for word in words) / len(words),
+                "opening_word_score": opening_word_score(words),
+                "text_coverage": 1.0,
+                "opening_recovered": True,
+            })
+            recovered += 1
+        del align_model
+        gc.collect()
+        if device == "cuda":
+            import torch
+            torch.cuda.empty_cache()
+    diagnostics.details(
+        opening_retry_candidates=len(candidates),
+        opening_retries=attempted,
+        openings_recovered=recovered,
+    )
 
 
 def main():
@@ -264,6 +425,7 @@ def run(args, diagnostics):
                 if word.get("confidence") is not None
             ]
             mean_score = sum(scores) / len(scores) if scores else None
+            opening_score = opening_word_score(words)
             coverage = len(target_indexes) / max(1, len(source_indexes))
             first_word_matched = bool(source_indexes and source_indexes[0] in matches)
             status = (
@@ -273,6 +435,8 @@ def run(args, diagnostics):
                 and coverage >= 0.8
                 and mean_score is not None
                 and mean_score >= 0.5
+                and opening_score is not None
+                and opening_score >= 0.5
                 else "unresolved"
             )
             if words and round(words[0]["startTime"] * 1000) < last_end_ms:
@@ -310,12 +474,14 @@ def run(args, diagnostics):
                     "highlightable": status == "aligned",
                     "confidence_signals": {
                         "mean_word_score": mean_score,
+                        "opening_word_score": opening_score,
                         "text_coverage": coverage,
                         "opening_word_matched": first_word_matched,
                     },
                     "word_timings": words,
                 }
             )
+        recover_weak_starts(output_segments, job, device, compute_type, diagnostics)
         diagnostics.stage("writing_artifact")
         write(
             args.output,

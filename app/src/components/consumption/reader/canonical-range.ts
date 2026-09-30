@@ -1,5 +1,9 @@
 /** Resolve the existing normalized, code-point offset back into the segment's DOM. */
-export function canonicalResumeRange(segment: Range, offset: number): Range {
+export function canonicalResumeRange(
+  segment: Range,
+  offset: number,
+  passage?: { start: number; end: number },
+): Range {
   if (!Number.isFinite(offset) || offset < 0 || offset > 1_000_000) {
     throw new Error('The saved text position is invalid.');
   }
@@ -31,7 +35,7 @@ export function canonicalResumeRange(segment: Range, offset: number): Range {
     current = walker.nextNode();
   }
   if (!characters.length) throw new Error('The saved passage has no text.');
-  let index = Math.round((offset * characters.length) / 1_000_000);
+  let index = passage?.start ?? Math.round((offset * characters.length) / 1_000_000);
   // Saving trims trailing whitespace in the prefix. Its inverse is the next
   // text character, including across inline elements and collapsed whitespace.
   while (characters[index]?.text === ' ') index++;
@@ -45,7 +49,7 @@ export function canonicalResumeRange(segment: Range, offset: number): Range {
   const start = characters[index].start;
   let endIndex = index;
   while (characters[endIndex + 1] && characters[endIndex + 1].text !== ' ') endIndex++;
-  const end = characters[endIndex].end;
+  const end = characters[passage ? passage.end - 1 : endIndex].end;
   result.setStart(start.node, start.offset);
   result.setEnd(end.node, end.offset);
   return result;

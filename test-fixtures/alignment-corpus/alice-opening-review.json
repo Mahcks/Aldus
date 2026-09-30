@@ -1,0 +1,2443 @@
+{
+  "description": "Frozen word evidence from the five-passage model-assisted Alice review. This tests a refusal rule, not independent onset accuracy.",
+  "candidate_sha256": "c853f7bb73e22ad94146cd7806ac268720c3efe93b7728a48006b414c9ac34a5",
+  "epub_sha256": "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c",
+  "audio_sha256": "a74d661f909a8c11f0a04dbbab387ba00c66464753bba93a3d0393b1195c7e81",
+  "samples": [
+    {
+      "segment_id": "s000007",
+      "text": "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, “and what is the use of a book,” thought Alice “without pictures or conversations?”",
+      "review": {
+        "clip_sha256": "404f853e1d2a82834df17de001bb6b3059d09756fb271a904f68b56fb081c8d2",
+        "boundary_ms": 5000,
+        "result": "right",
+        "reviewed_timestamp_ms": 27810,
+        "correction_ms": 0,
+        "annotation_mode": "model-assisted-review"
+      },
+      "old_confidence": {
+        "mean_word_score": 0.7805789473684213,
+        "text_coverage": 1,
+        "opening_word_matched": true
+      },
+      "words": [
+        {
+          "word": "Alice",
+          "start": 27.81,
+          "end": 28.09,
+          "score": 0.905
+        },
+        {
+          "word": "was",
+          "start": 28.37,
+          "end": 28.53,
+          "score": 0.702
+        },
+        {
+          "word": "beginning",
+          "start": 28.611,
+          "end": 29.051,
+          "score": 0.833
+        },
+        {
+          "word": "to",
+          "start": 29.331,
+          "end": 29.431,
+          "score": 1
+        },
+        {
+          "word": "get",
+          "start": 29.471,
+          "end": 29.691,
+          "score": 0.445
+        },
+        {
+          "word": "very",
+          "start": 29.811,
+          "end": 30.071,
+          "score": 0.717
+        },
+        {
+          "word": "tired",
+          "start": 30.191,
+          "end": 30.652,
+          "score": 0.677
+        },
+        {
+          "word": "of",
+          "start": 31.052,
+          "end": 31.132,
+          "score": 0.822
+        },
+        {
+          "word": "sitting",
+          "start": 31.232,
+          "end": 31.552,
+          "score": 0.792
+        },
+        {
+          "word": "by",
+          "start": 31.672,
+          "end": 31.872,
+          "score": 0.812
+        },
+        {
+          "word": "her",
+          "start": 31.952,
+          "end": 32.092,
+          "score": 0.678
+        },
+        {
+          "word": "sister",
+          "start": 32.172,
+          "end": 32.593,
+          "score": 0.725
+        },
+        {
+          "word": "on",
+          "start": 32.973,
+          "end": 33.053,
+          "score": 0.873
+        },
+        {
+          "word": "the",
+          "start": 33.093,
+          "end": 33.173,
+          "score": 0.999
+        },
+        {
+          "word": "bank,",
+          "start": 33.213,
+          "end": 33.493,
+          "score": 0.993
+        },
+        {
+          "word": "and",
+          "start": 34.154,
+          "end": 34.274,
+          "score": 0.694
+        },
+        {
+          "word": "of",
+          "start": 34.314,
+          "end": 34.374,
+          "score": 0.755
+        },
+        {
+          "word": "having",
+          "start": 34.474,
+          "end": 34.714,
+          "score": 0.831
+        },
+        {
+          "word": "nothing",
+          "start": 34.794,
+          "end": 35.134,
+          "score": 0.857
+        },
+        {
+          "word": "to",
+          "start": 35.254,
+          "end": 35.374,
+          "score": 0.626
+        },
+        {
+          "word": "do.",
+          "start": 35.414,
+          "end": 35.674,
+          "score": 0.836
+        },
+        {
+          "word": "Once",
+          "start": 36.555,
+          "end": 36.775,
+          "score": 0.699
+        },
+        {
+          "word": "or",
+          "start": 37.055,
+          "end": 37.175,
+          "score": 0.453
+        },
+        {
+          "word": "twice",
+          "start": 37.315,
+          "end": 37.695,
+          "score": 0.753
+        },
+        {
+          "word": "she",
+          "start": 38.436,
+          "end": 38.636,
+          "score": 0.663
+        },
+        {
+          "word": "had",
+          "start": 38.736,
+          "end": 38.936,
+          "score": 0.679
+        },
+        {
+          "word": "peeped",
+          "start": 39.036,
+          "end": 39.376,
+          "score": 0.941
+        },
+        {
+          "word": "into",
+          "start": 39.617,
+          "end": 39.857,
+          "score": 0.815
+        },
+        {
+          "word": "the",
+          "start": 39.897,
+          "end": 39.977,
+          "score": 0.83
+        },
+        {
+          "word": "book",
+          "start": 40.017,
+          "end": 40.277,
+          "score": 0.829
+        },
+        {
+          "word": "her",
+          "start": 40.657,
+          "end": 40.797,
+          "score": 0.864
+        },
+        {
+          "word": "sister",
+          "start": 40.917,
+          "end": 41.357,
+          "score": 0.807
+        },
+        {
+          "word": "was",
+          "start": 41.638,
+          "end": 41.838,
+          "score": 0.621
+        },
+        {
+          "word": "reading.",
+          "start": 41.938,
+          "end": 42.278,
+          "score": 0.838
+        },
+        {
+          "word": "But",
+          "start": 43.218,
+          "end": 43.359,
+          "score": 0.687
+        },
+        {
+          "word": "it",
+          "start": 43.399,
+          "end": 43.459,
+          "score": 0.738
+        },
+        {
+          "word": "had",
+          "start": 43.499,
+          "end": 43.659,
+          "score": 0.789
+        },
+        {
+          "word": "no",
+          "start": 43.719,
+          "end": 43.859,
+          "score": 0.876
+        },
+        {
+          "word": "pictures",
+          "start": 43.919,
+          "end": 44.439,
+          "score": 0.8
+        },
+        {
+          "word": "or",
+          "start": 44.639,
+          "end": 44.739,
+          "score": 0.525
+        },
+        {
+          "word": "conversations",
+          "start": 44.819,
+          "end": 45.54,
+          "score": 0.908
+        },
+        {
+          "word": "in",
+          "start": 45.6,
+          "end": 45.66,
+          "score": 0.905
+        },
+        {
+          "word": "it.",
+          "start": 45.7,
+          "end": 45.8,
+          "score": 0.926
+        },
+        {
+          "word": "And",
+          "start": 46.74,
+          "end": 46.84,
+          "score": 0.89
+        },
+        {
+          "word": "what",
+          "start": 46.92,
+          "end": 47.121,
+          "score": 0.794
+        },
+        {
+          "word": "is",
+          "start": 47.201,
+          "end": 47.301,
+          "score": 0.756
+        },
+        {
+          "word": "the",
+          "start": 47.341,
+          "end": 47.441,
+          "score": 0.834
+        },
+        {
+          "word": "use",
+          "start": 47.561,
+          "end": 47.701,
+          "score": 0.669
+        },
+        {
+          "word": "of",
+          "start": 47.761,
+          "end": 47.841,
+          "score": 0.67
+        },
+        {
+          "word": "a",
+          "start": 47.901,
+          "end": 47.941,
+          "score": 0.499
+        },
+        {
+          "word": "book?",
+          "start": 47.981,
+          "end": 48.261,
+          "score": 0.88
+        },
+        {
+          "word": "Thought",
+          "start": 49.122,
+          "end": 49.382,
+          "score": 0.902
+        },
+        {
+          "word": "Alice,",
+          "start": 49.542,
+          "end": 49.822,
+          "score": 0.97
+        },
+        {
+          "word": "without",
+          "start": 50.422,
+          "end": 50.803,
+          "score": 0.828
+        },
+        {
+          "word": "pictures",
+          "start": 50.903,
+          "end": 51.483,
+          "score": 0.768
+        },
+        {
+          "word": "or",
+          "start": 51.943,
+          "end": 52.063,
+          "score": 0.623
+        },
+        {
+          "word": "conversations.",
+          "start": 52.203,
+          "end": 53.124,
+          "score": 0.892
+        }
+      ]
+    },
+    {
+      "segment_id": "s000104",
+      "text": "It was the White Rabbit, trotting slowly back again, and looking anxiously about as it went, as if it had lost something; and she heard it muttering to itself “The Duchess! The Duchess! Oh my dear paws! Oh my fur and whiskers! She’ll get me executed, as sure as ferrets are ferrets! Where can I have dropped them, I wonder?” Alice guessed in a moment that it was looking for the fan and the pair of white kid gloves, and she very good-naturedly began hunting about for them, but they were nowhere to be seen—everything seemed to have changed since her swim in the pool, and the great hall, with the glass table and the little door, had vanished completely.",
+      "review": {
+        "clip_sha256": "d527a4ef2bad8fa9fb7a391e2ebd120798bece19c0f5c88be92c1ea51b69ba88",
+        "boundary_ms": 5200,
+        "result": "right",
+        "reviewed_timestamp_ms": 2841188,
+        "correction_ms": 200,
+        "annotation_mode": "model-assisted-review"
+      },
+      "old_confidence": {
+        "mean_word_score": 0.8142916666666665,
+        "text_coverage": 0.975609756097561,
+        "opening_word_matched": true
+      },
+      "words": [
+        {
+          "word": "It",
+          "start": 2840.988,
+          "end": 2841.048,
+          "score": 0.984
+        },
+        {
+          "word": "was",
+          "start": 2841.128,
+          "end": 2841.288,
+          "score": 0.814
+        },
+        {
+          "word": "the",
+          "start": 2841.348,
+          "end": 2841.428,
+          "score": 0.958
+        },
+        {
+          "word": "white",
+          "start": 2841.468,
+          "end": 2841.708,
+          "score": 0.771
+        },
+        {
+          "word": "rabbit",
+          "start": 2841.809,
+          "end": 2842.129,
+          "score": 0.885
+        },
+        {
+          "word": "trotting",
+          "start": 2842.529,
+          "end": 2842.889,
+          "score": 0.929
+        },
+        {
+          "word": "slowly",
+          "start": 2842.969,
+          "end": 2843.389,
+          "score": 0.809
+        },
+        {
+          "word": "back",
+          "start": 2843.55,
+          "end": 2843.75,
+          "score": 0.76
+        },
+        {
+          "word": "again,",
+          "start": 2843.81,
+          "end": 2844.09,
+          "score": 0.789
+        },
+        {
+          "word": "and",
+          "start": 2844.75,
+          "end": 2844.87,
+          "score": 0.769
+        },
+        {
+          "word": "looking",
+          "start": 2844.91,
+          "end": 2845.211,
+          "score": 0.835
+        },
+        {
+          "word": "anxiously",
+          "start": 2845.391,
+          "end": 2845.891,
+          "score": 0.835
+        },
+        {
+          "word": "about",
+          "start": 2845.971,
+          "end": 2846.291,
+          "score": 0.794
+        },
+        {
+          "word": "as",
+          "start": 2846.631,
+          "end": 2846.711,
+          "score": 0.805
+        },
+        {
+          "word": "it",
+          "start": 2846.772,
+          "end": 2846.832,
+          "score": 0.771
+        },
+        {
+          "word": "went,",
+          "start": 2846.892,
+          "end": 2847.092,
+          "score": 0.982
+        },
+        {
+          "word": "as",
+          "start": 2847.652,
+          "end": 2847.752,
+          "score": 0.797
+        },
+        {
+          "word": "if",
+          "start": 2847.952,
+          "end": 2848.032,
+          "score": 0.878
+        },
+        {
+          "word": "it",
+          "start": 2848.152,
+          "end": 2848.212,
+          "score": 0.82
+        },
+        {
+          "word": "had",
+          "start": 2848.252,
+          "end": 2848.412,
+          "score": 0.687
+        },
+        {
+          "word": "lost",
+          "start": 2848.513,
+          "end": 2848.853,
+          "score": 0.883
+        },
+        {
+          "word": "something.",
+          "start": 2849.013,
+          "end": 2849.393,
+          "score": 0.852
+        },
+        {
+          "word": "And",
+          "start": 2850.053,
+          "end": 2850.194,
+          "score": 0.64
+        },
+        {
+          "word": "she",
+          "start": 2850.334,
+          "end": 2850.474,
+          "score": 0.7
+        },
+        {
+          "word": "heard",
+          "start": 2850.534,
+          "end": 2850.714,
+          "score": 0.827
+        },
+        {
+          "word": "it",
+          "start": 2850.774,
+          "end": 2850.834,
+          "score": 0.8
+        },
+        {
+          "word": "muttering",
+          "start": 2850.934,
+          "end": 2851.374,
+          "score": 0.834
+        },
+        {
+          "word": "to",
+          "start": 2851.514,
+          "end": 2851.654,
+          "score": 0.829
+        },
+        {
+          "word": "itself.",
+          "start": 2851.714,
+          "end": 2852.175,
+          "score": 0.809
+        },
+        {
+          "word": "The",
+          "start": 2852.835,
+          "end": 2852.915,
+          "score": 0.851
+        },
+        {
+          "word": "Duchess!",
+          "start": 2852.955,
+          "end": 2853.335,
+          "score": 0.865
+        },
+        {
+          "word": "The",
+          "start": 2853.616,
+          "end": 2853.696,
+          "score": 0.959
+        },
+        {
+          "word": "Duchess!",
+          "start": 2853.716,
+          "end": 2854.136,
+          "score": 0.785
+        },
+        {
+          "word": "Oh,",
+          "start": 2854.676,
+          "end": 2854.776,
+          "score": 0.686
+        },
+        {
+          "word": "my",
+          "start": 2854.816,
+          "end": 2854.936,
+          "score": 0.996
+        },
+        {
+          "word": "dear",
+          "start": 2854.976,
+          "end": 2855.177,
+          "score": 0.848
+        },
+        {
+          "word": "paws!",
+          "start": 2855.237,
+          "end": 2855.597,
+          "score": 0.879
+        },
+        {
+          "word": "Oh,",
+          "start": 2856.217,
+          "end": 2856.337,
+          "score": 0.91
+        },
+        {
+          "word": "my",
+          "start": 2856.377,
+          "end": 2856.537,
+          "score": 0.877
+        },
+        {
+          "word": "and",
+          "start": 2856.898,
+          "end": 2856.978,
+          "score": 0.895
+        },
+        {
+          "word": "whiskers!",
+          "start": 2856.998,
+          "end": 2857.358,
+          "score": 0.828
+        },
+        {
+          "word": "She'll",
+          "start": 2858.014,
+          "end": 2858.274,
+          "score": 0.885
+        },
+        {
+          "word": "get",
+          "start": 2858.294,
+          "end": 2858.494,
+          "score": 0.79
+        },
+        {
+          "word": "me",
+          "start": 2858.554,
+          "end": 2858.695,
+          "score": 0.798
+        },
+        {
+          "word": "executed,",
+          "start": 2858.795,
+          "end": 2859.355,
+          "score": 0.958
+        },
+        {
+          "word": "as",
+          "start": 2859.695,
+          "end": 2859.796,
+          "score": 0.759
+        },
+        {
+          "word": "sure",
+          "start": 2859.876,
+          "end": 2860.116,
+          "score": 0.9
+        },
+        {
+          "word": "as",
+          "start": 2860.216,
+          "end": 2860.336,
+          "score": 0.564
+        },
+        {
+          "word": "ferrets",
+          "start": 2860.416,
+          "end": 2860.816,
+          "score": 0.82
+        },
+        {
+          "word": "are",
+          "start": 2860.976,
+          "end": 2861.077,
+          "score": 0.731
+        },
+        {
+          "word": "ferrets.",
+          "start": 2861.137,
+          "end": 2861.577,
+          "score": 0.883
+        },
+        {
+          "word": "Where",
+          "start": 2862.077,
+          "end": 2862.338,
+          "score": 0.933
+        },
+        {
+          "word": "can",
+          "start": 2862.438,
+          "end": 2862.858,
+          "score": 0.822
+        },
+        {
+          "word": "I",
+          "start": 2862.878,
+          "end": 2862.898,
+          "score": 0
+        },
+        {
+          "word": "have",
+          "start": 2863.138,
+          "end": 2863.278,
+          "score": 0.955
+        },
+        {
+          "word": "dropped",
+          "start": 2863.318,
+          "end": 2863.679,
+          "score": 0.82
+        },
+        {
+          "word": "them,",
+          "start": 2863.759,
+          "end": 2863.959,
+          "score": 0.967
+        },
+        {
+          "word": "I",
+          "start": 2864.259,
+          "end": 2864.319,
+          "score": 1
+        },
+        {
+          "word": "wonder?\"",
+          "start": 2864.379,
+          "end": 2864.76,
+          "score": 0.794
+        },
+        {
+          "word": "Alice",
+          "start": 2865.56,
+          "end": 2865.82,
+          "score": 0.932
+        },
+        {
+          "word": "guessed",
+          "start": 2865.901,
+          "end": 2866.261,
+          "score": 0.899
+        },
+        {
+          "word": "in",
+          "start": 2866.441,
+          "end": 2866.521,
+          "score": 0.83
+        },
+        {
+          "word": "a",
+          "start": 2866.561,
+          "end": 2866.581,
+          "score": 0.998
+        },
+        {
+          "word": "moment",
+          "start": 2866.641,
+          "end": 2866.961,
+          "score": 0.795
+        },
+        {
+          "word": "that",
+          "start": 2867.382,
+          "end": 2867.582,
+          "score": 0.772
+        },
+        {
+          "word": "it",
+          "start": 2867.742,
+          "end": 2867.822,
+          "score": 0.738
+        },
+        {
+          "word": "was",
+          "start": 2867.882,
+          "end": 2868.022,
+          "score": 0.852
+        },
+        {
+          "word": "looking",
+          "start": 2868.062,
+          "end": 2868.423,
+          "score": 0.84
+        },
+        {
+          "word": "for",
+          "start": 2868.523,
+          "end": 2868.663,
+          "score": 0.822
+        },
+        {
+          "word": "the",
+          "start": 2868.703,
+          "end": 2868.783,
+          "score": 0.833
+        },
+        {
+          "word": "fan",
+          "start": 2868.843,
+          "end": 2869.203,
+          "score": 0.856
+        },
+        {
+          "word": "and",
+          "start": 2869.604,
+          "end": 2869.724,
+          "score": 0.829
+        },
+        {
+          "word": "the",
+          "start": 2869.744,
+          "end": 2869.984,
+          "score": 0.503
+        },
+        {
+          "word": "pair",
+          "start": 2870.044,
+          "end": 2870.384,
+          "score": 0.829
+        },
+        {
+          "word": "of",
+          "start": 2870.484,
+          "end": 2870.564,
+          "score": 0.804
+        },
+        {
+          "word": "white",
+          "start": 2870.644,
+          "end": 2870.845,
+          "score": 0.949
+        },
+        {
+          "word": "kid",
+          "start": 2870.905,
+          "end": 2871.145,
+          "score": 0.58
+        },
+        {
+          "word": "gloves,",
+          "start": 2871.185,
+          "end": 2871.545,
+          "score": 0.858
+        },
+        {
+          "word": "and",
+          "start": 2872.326,
+          "end": 2872.466,
+          "score": 0.631
+        },
+        {
+          "word": "she",
+          "start": 2872.626,
+          "end": 2872.766,
+          "score": 0.633
+        },
+        {
+          "word": "very",
+          "start": 2872.826,
+          "end": 2873.066,
+          "score": 0.707
+        },
+        {
+          "word": "good-naturedly",
+          "start": 2873.127,
+          "end": 2873.947,
+          "score": 0.783
+        },
+        {
+          "word": "began",
+          "start": 2874.167,
+          "end": 2874.488,
+          "score": 0.81
+        },
+        {
+          "word": "hunting",
+          "start": 2874.568,
+          "end": 2874.888,
+          "score": 0.887
+        },
+        {
+          "word": "about",
+          "start": 2874.988,
+          "end": 2875.248,
+          "score": 0.928
+        },
+        {
+          "word": "for",
+          "start": 2875.348,
+          "end": 2875.468,
+          "score": 0.802
+        },
+        {
+          "word": "them.",
+          "start": 2875.508,
+          "end": 2875.689,
+          "score": 0.983
+        },
+        {
+          "word": "But",
+          "start": 2876.469,
+          "end": 2876.609,
+          "score": 0.671
+        },
+        {
+          "word": "they",
+          "start": 2876.649,
+          "end": 2876.83,
+          "score": 0.83
+        },
+        {
+          "word": "were",
+          "start": 2876.87,
+          "end": 2877.01,
+          "score": 0.826
+        },
+        {
+          "word": "nowhere",
+          "start": 2877.07,
+          "end": 2877.43,
+          "score": 0.879
+        },
+        {
+          "word": "to",
+          "start": 2877.49,
+          "end": 2877.59,
+          "score": 0.729
+        },
+        {
+          "word": "be",
+          "start": 2877.63,
+          "end": 2877.73,
+          "score": 0.798
+        },
+        {
+          "word": "seen.",
+          "start": 2877.79,
+          "end": 2878.091,
+          "score": 0.798
+        },
+        {
+          "word": "Everything",
+          "start": 2878.931,
+          "end": 2879.452,
+          "score": 0.745
+        },
+        {
+          "word": "seemed",
+          "start": 2879.552,
+          "end": 2879.852,
+          "score": 0.764
+        },
+        {
+          "word": "to",
+          "start": 2879.972,
+          "end": 2880.052,
+          "score": 0.828
+        },
+        {
+          "word": "have",
+          "start": 2880.092,
+          "end": 2880.232,
+          "score": 0.758
+        },
+        {
+          "word": "changed",
+          "start": 2880.292,
+          "end": 2880.773,
+          "score": 0.828
+        },
+        {
+          "word": "since",
+          "start": 2880.993,
+          "end": 2881.213,
+          "score": 0.895
+        },
+        {
+          "word": "her",
+          "start": 2881.253,
+          "end": 2881.393,
+          "score": 0.725
+        },
+        {
+          "word": "swim",
+          "start": 2881.453,
+          "end": 2881.734,
+          "score": 0.815
+        },
+        {
+          "word": "in",
+          "start": 2881.754,
+          "end": 2881.814,
+          "score": 0.742
+        },
+        {
+          "word": "the",
+          "start": 2881.854,
+          "end": 2881.914,
+          "score": 0.998
+        },
+        {
+          "word": "pool,",
+          "start": 2881.954,
+          "end": 2882.254,
+          "score": 0.764
+        },
+        {
+          "word": "and",
+          "start": 2882.975,
+          "end": 2883.115,
+          "score": 0.688
+        },
+        {
+          "word": "the",
+          "start": 2883.135,
+          "end": 2883.355,
+          "score": 0.832
+        },
+        {
+          "word": "great",
+          "start": 2883.395,
+          "end": 2883.635,
+          "score": 0.688
+        },
+        {
+          "word": "hall,",
+          "start": 2883.675,
+          "end": 2883.975,
+          "score": 0.998
+        },
+        {
+          "word": "with",
+          "start": 2884.456,
+          "end": 2884.636,
+          "score": 0.714
+        },
+        {
+          "word": "the",
+          "start": 2884.756,
+          "end": 2884.856,
+          "score": 0.817
+        },
+        {
+          "word": "glass",
+          "start": 2884.896,
+          "end": 2885.237,
+          "score": 0.853
+        },
+        {
+          "word": "table",
+          "start": 2885.297,
+          "end": 2885.617,
+          "score": 0.735
+        },
+        {
+          "word": "and",
+          "start": 2885.857,
+          "end": 2885.997,
+          "score": 0.767
+        },
+        {
+          "word": "the",
+          "start": 2886.017,
+          "end": 2886.297,
+          "score": 0.717
+        },
+        {
+          "word": "little",
+          "start": 2886.337,
+          "end": 2886.598,
+          "score": 0.77
+        },
+        {
+          "word": "door.",
+          "start": 2886.638,
+          "end": 2886.858,
+          "score": 0.914
+        },
+        {
+          "word": "had",
+          "start": 2887.51,
+          "end": 2887.65,
+          "score": 0.846
+        },
+        {
+          "word": "vanished",
+          "start": 2887.75,
+          "end": 2888.171,
+          "score": 0.84
+        },
+        {
+          "word": "completely.",
+          "start": 2888.291,
+          "end": 2888.771,
+          "score": 0.856
+        }
+      ]
+    },
+    {
+      "segment_id": "s000295",
+      "text": "There was a table set out under a tree in front of the house, and the March Hare and the Hatter were having tea at it: a Dormouse was sitting between them, fast asleep, and the other two were using it as a cushion, resting their elbows on it, and talking over its head. “Very uncomfortable for the Dormouse,” thought Alice; “only, as it’s asleep, I suppose it doesn’t mind.”",
+      "review": {
+        "clip_sha256": "9a46589cb45a96512b3ae55f25b27e894f685b83a664ea79c11238412bc908d2",
+        "boundary_ms": 5000,
+        "result": "right",
+        "reviewed_timestamp_ms": 6304242,
+        "correction_ms": 0,
+        "annotation_mode": "model-assisted-review"
+      },
+      "old_confidence": {
+        "mean_word_score": 0.7999253731343282,
+        "text_coverage": 0.9305555555555556,
+        "opening_word_matched": true
+      },
+      "words": [
+        {
+          "word": "There",
+          "start": 6304.242,
+          "end": 6304.542,
+          "score": 0.617
+        },
+        {
+          "word": "was",
+          "start": 6304.702,
+          "end": 6304.882,
+          "score": 0.777
+        },
+        {
+          "word": "a",
+          "start": 6304.962,
+          "end": 6304.982,
+          "score": 0.999
+        },
+        {
+          "word": "table",
+          "start": 6305.062,
+          "end": 6305.482,
+          "score": 0.649
+        },
+        {
+          "word": "set",
+          "start": 6305.682,
+          "end": 6305.922,
+          "score": 0.892
+        },
+        {
+          "word": "out",
+          "start": 6306.163,
+          "end": 6306.323,
+          "score": 0.849
+        },
+        {
+          "word": "under",
+          "start": 6306.623,
+          "end": 6306.903,
+          "score": 0.758
+        },
+        {
+          "word": "a",
+          "start": 6306.963,
+          "end": 6307.003,
+          "score": 0.499
+        },
+        {
+          "word": "tree",
+          "start": 6307.123,
+          "end": 6307.463,
+          "score": 0.704
+        },
+        {
+          "word": "in",
+          "start": 6307.743,
+          "end": 6307.863,
+          "score": 0.756
+        },
+        {
+          "word": "front",
+          "start": 6307.943,
+          "end": 6308.223,
+          "score": 0.717
+        },
+        {
+          "word": "of",
+          "start": 6308.463,
+          "end": 6308.543,
+          "score": 0.989
+        },
+        {
+          "word": "the",
+          "start": 6308.603,
+          "end": 6308.703,
+          "score": 0.836
+        },
+        {
+          "word": "house,",
+          "start": 6308.743,
+          "end": 6309.023,
+          "score": 0.855
+        },
+        {
+          "word": "and",
+          "start": 6309.984,
+          "end": 6310.144,
+          "score": 0.751
+        },
+        {
+          "word": "the",
+          "start": 6310.364,
+          "end": 6310.484,
+          "score": 0.796
+        },
+        {
+          "word": "March",
+          "start": 6310.544,
+          "end": 6310.864,
+          "score": 0.892
+        },
+        {
+          "word": "Hare",
+          "start": 6310.924,
+          "end": 6311.264,
+          "score": 0.684
+        },
+        {
+          "word": "and",
+          "start": 6311.584,
+          "end": 6311.724,
+          "score": 0.717
+        },
+        {
+          "word": "the",
+          "start": 6311.924,
+          "end": 6312.024,
+          "score": 0.904
+        },
+        {
+          "word": "Hatter",
+          "start": 6312.064,
+          "end": 6312.484,
+          "score": 0.872
+        },
+        {
+          "word": "were",
+          "start": 6312.684,
+          "end": 6312.864,
+          "score": 0.722
+        },
+        {
+          "word": "having",
+          "start": 6312.904,
+          "end": 6313.184,
+          "score": 0.778
+        },
+        {
+          "word": "tea",
+          "start": 6313.324,
+          "end": 6313.605,
+          "score": 0.866
+        },
+        {
+          "word": "at",
+          "start": 6313.765,
+          "end": 6313.845,
+          "score": 0.996
+        },
+        {
+          "word": "it.",
+          "start": 6313.905,
+          "end": 6314.005,
+          "score": 0.973
+        },
+        {
+          "word": "A",
+          "start": 6314.825,
+          "end": 6314.885,
+          "score": 0.68
+        },
+        {
+          "word": "was",
+          "start": 6316.065,
+          "end": 6316.305,
+          "score": 0.695
+        },
+        {
+          "word": "sitting",
+          "start": 6316.625,
+          "end": 6317.045,
+          "score": 0.734
+        },
+        {
+          "word": "between",
+          "start": 6317.166,
+          "end": 6317.586,
+          "score": 0.795
+        },
+        {
+          "word": "them,",
+          "start": 6317.646,
+          "end": 6317.826,
+          "score": 0.828
+        },
+        {
+          "word": "fast",
+          "start": 6318.346,
+          "end": 6318.786,
+          "score": 0.914
+        },
+        {
+          "word": "asleep,",
+          "start": 6319.006,
+          "end": 6319.466,
+          "score": 0.901
+        },
+        {
+          "word": "and",
+          "start": 6320.026,
+          "end": 6320.166,
+          "score": 0.708
+        },
+        {
+          "word": "the",
+          "start": 6320.366,
+          "end": 6320.506,
+          "score": 0.721
+        },
+        {
+          "word": "other",
+          "start": 6320.646,
+          "end": 6320.867,
+          "score": 0.816
+        },
+        {
+          "word": "two",
+          "start": 6320.947,
+          "end": 6321.187,
+          "score": 0.766
+        },
+        {
+          "word": "were",
+          "start": 6321.387,
+          "end": 6321.587,
+          "score": 0.628
+        },
+        {
+          "word": "using",
+          "start": 6321.747,
+          "end": 6321.987,
+          "score": 0.744
+        },
+        {
+          "word": "it",
+          "start": 6322.047,
+          "end": 6322.147,
+          "score": 0.581
+        },
+        {
+          "word": "as",
+          "start": 6322.347,
+          "end": 6322.447,
+          "score": 0.586
+        },
+        {
+          "word": "a",
+          "start": 6322.507,
+          "end": 6322.527,
+          "score": 0.999
+        },
+        {
+          "word": "cushion,",
+          "start": 6322.587,
+          "end": 6322.987,
+          "score": 0.755
+        },
+        {
+          "word": "resting",
+          "start": 6323.567,
+          "end": 6324.027,
+          "score": 0.823
+        },
+        {
+          "word": "their",
+          "start": 6324.087,
+          "end": 6324.307,
+          "score": 0.742
+        },
+        {
+          "word": "elbows",
+          "start": 6324.508,
+          "end": 6324.948,
+          "score": 0.766
+        },
+        {
+          "word": "on",
+          "start": 6325.148,
+          "end": 6325.248,
+          "score": 0.948
+        },
+        {
+          "word": "it",
+          "start": 6325.308,
+          "end": 6325.408,
+          "score": 0.67
+        },
+        {
+          "word": "and",
+          "start": 6326.108,
+          "end": 6326.248,
+          "score": 0.666
+        },
+        {
+          "word": "talking",
+          "start": 6326.408,
+          "end": 6326.848,
+          "score": 0.985
+        },
+        {
+          "word": "over",
+          "start": 6327.148,
+          "end": 6327.408,
+          "score": 0.816
+        },
+        {
+          "word": "its",
+          "start": 6327.648,
+          "end": 6327.768,
+          "score": 0.659
+        },
+        {
+          "word": "head.",
+          "start": 6327.848,
+          "end": 6328.109,
+          "score": 0.861
+        },
+        {
+          "word": "Very",
+          "start": 6328.909,
+          "end": 6329.249,
+          "score": 0.808
+        },
+        {
+          "word": "uncomfortable",
+          "start": 6329.349,
+          "end": 6329.949,
+          "score": 0.838
+        },
+        {
+          "word": "for",
+          "start": 6330.009,
+          "end": 6330.169,
+          "score": 0.886
+        },
+        {
+          "word": "the",
+          "start": 6330.209,
+          "end": 6330.289,
+          "score": 0.878
+        },
+        {
+          "word": "thought",
+          "start": 6331.629,
+          "end": 6331.89,
+          "score": 0.784
+        },
+        {
+          "word": "Alice.",
+          "start": 6332.05,
+          "end": 6332.33,
+          "score": 0.941
+        },
+        {
+          "word": "as",
+          "start": 6334.202,
+          "end": 6334.342,
+          "score": 0.83
+        },
+        {
+          "word": "it's",
+          "start": 6334.402,
+          "end": 6334.522,
+          "score": 0.846
+        },
+        {
+          "word": "asleep,",
+          "start": 6334.582,
+          "end": 6335.002,
+          "score": 0.913
+        },
+        {
+          "word": "I",
+          "start": 6335.663,
+          "end": 6335.743,
+          "score": 0.845
+        },
+        {
+          "word": "suppose",
+          "start": 6335.803,
+          "end": 6336.363,
+          "score": 0.877
+        },
+        {
+          "word": "it",
+          "start": 6336.403,
+          "end": 6336.463,
+          "score": 0.746
+        },
+        {
+          "word": "doesn't",
+          "start": 6336.523,
+          "end": 6336.783,
+          "score": 0.898
+        },
+        {
+          "word": "mind.\"",
+          "start": 6336.823,
+          "end": 6337.183,
+          "score": 0.87
+        }
+      ]
+    },
+    {
+      "segment_id": "s000563",
+      "text": "The Mock Turtle sighed deeply, and drew the back of one flapper across his eyes. He looked at Alice, and tried to speak, but for a minute or two sobs choked his voice. “Same as if he had a bone in his throat,” said the Gryphon: and it set to work shaking him and punching him in the back. At last the Mock Turtle recovered his voice, and, with tears running down his cheeks, he went on again:—",
+      "review": {
+        "clip_sha256": "adfabdb277a643030894e05e17b64809d0e1664b8de8a0f2abbbc58a40fceddb",
+        "boundary_ms": 5000,
+        "result": "right",
+        "reviewed_timestamp_ms": 9822160,
+        "correction_ms": 0,
+        "annotation_mode": "model-assisted-review"
+      },
+      "old_confidence": {
+        "mean_word_score": 0.801027777777778,
+        "text_coverage": 0.9230769230769231,
+        "opening_word_matched": true
+      },
+      "words": [
+        {
+          "word": "The",
+          "start": 9822.16,
+          "end": 9822.28,
+          "score": 0.754
+        },
+        {
+          "word": "mock",
+          "start": 9822.32,
+          "end": 9822.62,
+          "score": 0.948
+        },
+        {
+          "word": "sighed",
+          "start": 9823.321,
+          "end": 9823.761,
+          "score": 0.736
+        },
+        {
+          "word": "deeply,",
+          "start": 9823.921,
+          "end": 9824.381,
+          "score": 0.969
+        },
+        {
+          "word": "and",
+          "start": 9824.902,
+          "end": 9825.082,
+          "score": 0.641
+        },
+        {
+          "word": "drew",
+          "start": 9825.262,
+          "end": 9825.562,
+          "score": 0.872
+        },
+        {
+          "word": "the",
+          "start": 9825.642,
+          "end": 9825.762,
+          "score": 0.723
+        },
+        {
+          "word": "back",
+          "start": 9825.802,
+          "end": 9826.123,
+          "score": 0.797
+        },
+        {
+          "word": "of",
+          "start": 9826.383,
+          "end": 9826.463,
+          "score": 0.833
+        },
+        {
+          "word": "one",
+          "start": 9826.643,
+          "end": 9826.783,
+          "score": 0.533
+        },
+        {
+          "word": "flapper",
+          "start": 9826.863,
+          "end": 9827.343,
+          "score": 0.844
+        },
+        {
+          "word": "across",
+          "start": 9827.624,
+          "end": 9828.104,
+          "score": 0.836
+        },
+        {
+          "word": "his",
+          "start": 9828.244,
+          "end": 9828.404,
+          "score": 0.813
+        },
+        {
+          "word": "eyes.",
+          "start": 9828.704,
+          "end": 9828.924,
+          "score": 0.723
+        },
+        {
+          "word": "He",
+          "start": 9829.625,
+          "end": 9829.745,
+          "score": 0.824
+        },
+        {
+          "word": "looked",
+          "start": 9829.805,
+          "end": 9830.105,
+          "score": 0.708
+        },
+        {
+          "word": "at",
+          "start": 9830.245,
+          "end": 9830.325,
+          "score": 0.808
+        },
+        {
+          "word": "Alice,",
+          "start": 9830.486,
+          "end": 9830.766,
+          "score": 0.954
+        },
+        {
+          "word": "and",
+          "start": 9831.326,
+          "end": 9831.426,
+          "score": 0.691
+        },
+        {
+          "word": "tried",
+          "start": 9831.526,
+          "end": 9831.907,
+          "score": 0.767
+        },
+        {
+          "word": "to",
+          "start": 9832.047,
+          "end": 9832.187,
+          "score": 0.71
+        },
+        {
+          "word": "speak,",
+          "start": 9832.247,
+          "end": 9832.567,
+          "score": 0.973
+        },
+        {
+          "word": "but",
+          "start": 9833.187,
+          "end": 9833.368,
+          "score": 0.801
+        },
+        {
+          "word": "for",
+          "start": 9833.508,
+          "end": 9833.708,
+          "score": 0.57
+        },
+        {
+          "word": "or",
+          "start": 9834.188,
+          "end": 9834.288,
+          "score": 0.562
+        },
+        {
+          "word": "choked",
+          "start": 9835.889,
+          "end": 9836.189,
+          "score": 0.825
+        },
+        {
+          "word": "his",
+          "start": 9836.249,
+          "end": 9836.37,
+          "score": 0.742
+        },
+        {
+          "word": "voice.",
+          "start": 9836.43,
+          "end": 9836.75,
+          "score": 0.733
+        },
+        {
+          "word": "same",
+          "start": 9837.61,
+          "end": 9837.85,
+          "score": 0.993
+        },
+        {
+          "word": "as",
+          "start": 9837.91,
+          "end": 9837.99,
+          "score": 0.834
+        },
+        {
+          "word": "if",
+          "start": 9838.07,
+          "end": 9838.17,
+          "score": 0.824
+        },
+        {
+          "word": "he",
+          "start": 9838.23,
+          "end": 9838.311,
+          "score": 0.832
+        },
+        {
+          "word": "had",
+          "start": 9838.351,
+          "end": 9838.471,
+          "score": 0.672
+        },
+        {
+          "word": "a",
+          "start": 9838.511,
+          "end": 9838.551,
+          "score": 0.5
+        },
+        {
+          "word": "bone",
+          "start": 9838.591,
+          "end": 9838.871,
+          "score": 0.876
+        },
+        {
+          "word": "in",
+          "start": 9838.911,
+          "end": 9838.971,
+          "score": 0.99
+        },
+        {
+          "word": "his",
+          "start": 9839.031,
+          "end": 9839.131,
+          "score": 0.692
+        },
+        {
+          "word": "throat,\"",
+          "start": 9839.171,
+          "end": 9839.471,
+          "score": 0.94
+        },
+        {
+          "word": "said",
+          "start": 9840.332,
+          "end": 9840.492,
+          "score": 0.967
+        },
+        {
+          "word": "the",
+          "start": 9840.532,
+          "end": 9840.612,
+          "score": 0.837
+        },
+        {
+          "word": "and",
+          "start": 9841.813,
+          "end": 9841.933,
+          "score": 0.694
+        },
+        {
+          "word": "it",
+          "start": 9842.013,
+          "end": 9842.093,
+          "score": 0.862
+        },
+        {
+          "word": "set",
+          "start": 9842.133,
+          "end": 9842.293,
+          "score": 0.962
+        },
+        {
+          "word": "to",
+          "start": 9842.333,
+          "end": 9842.433,
+          "score": 0.997
+        },
+        {
+          "word": "work",
+          "start": 9842.473,
+          "end": 9842.713,
+          "score": 0.875
+        },
+        {
+          "word": "shaking",
+          "start": 9842.854,
+          "end": 9843.194,
+          "score": 0.804
+        },
+        {
+          "word": "him",
+          "start": 9843.234,
+          "end": 9843.394,
+          "score": 0.735
+        },
+        {
+          "word": "and",
+          "start": 9843.774,
+          "end": 9843.894,
+          "score": 0.778
+        },
+        {
+          "word": "punching",
+          "start": 9843.974,
+          "end": 9844.315,
+          "score": 0.839
+        },
+        {
+          "word": "him",
+          "start": 9844.355,
+          "end": 9844.475,
+          "score": 0.771
+        },
+        {
+          "word": "in",
+          "start": 9844.515,
+          "end": 9844.595,
+          "score": 0.815
+        },
+        {
+          "word": "the",
+          "start": 9844.635,
+          "end": 9844.715,
+          "score": 0.834
+        },
+        {
+          "word": "back.",
+          "start": 9844.755,
+          "end": 9845.075,
+          "score": 0.997
+        },
+        {
+          "word": "At",
+          "start": 9845.976,
+          "end": 9846.076,
+          "score": 0.501
+        },
+        {
+          "word": "last",
+          "start": 9846.176,
+          "end": 9846.556,
+          "score": 0.734
+        },
+        {
+          "word": "the",
+          "start": 9846.756,
+          "end": 9846.856,
+          "score": 0.834
+        },
+        {
+          "word": "mock",
+          "start": 9846.896,
+          "end": 9847.116,
+          "score": 0.876
+        },
+        {
+          "word": "turtle",
+          "start": 9847.197,
+          "end": 9847.477,
+          "score": 0.907
+        },
+        {
+          "word": "recovered",
+          "start": 9847.537,
+          "end": 9847.957,
+          "score": 0.827
+        },
+        {
+          "word": "his",
+          "start": 9847.997,
+          "end": 9848.137,
+          "score": 0.664
+        },
+        {
+          "word": "voice,",
+          "start": 9848.197,
+          "end": 9848.517,
+          "score": 0.871
+        },
+        {
+          "word": "and,",
+          "start": 9849.318,
+          "end": 9849.498,
+          "score": 0.767
+        },
+        {
+          "word": "with",
+          "start": 9850.139,
+          "end": 9850.319,
+          "score": 0.816
+        },
+        {
+          "word": "tears",
+          "start": 9850.479,
+          "end": 9850.939,
+          "score": 0.65
+        },
+        {
+          "word": "running",
+          "start": 9851.159,
+          "end": 9851.439,
+          "score": 0.832
+        },
+        {
+          "word": "down",
+          "start": 9851.499,
+          "end": 9851.84,
+          "score": 0.843
+        },
+        {
+          "word": "his",
+          "start": 9851.94,
+          "end": 9852.08,
+          "score": 0.84
+        },
+        {
+          "word": "cheeks,",
+          "start": 9852.22,
+          "end": 9852.56,
+          "score": 0.873
+        },
+        {
+          "word": "he",
+          "start": 9853.121,
+          "end": 9853.201,
+          "score": 0.982
+        },
+        {
+          "word": "went",
+          "start": 9853.261,
+          "end": 9853.441,
+          "score": 0.832
+        },
+        {
+          "word": "on",
+          "start": 9853.681,
+          "end": 9853.781,
+          "score": 0.624
+        },
+        {
+          "word": "again.",
+          "start": 9854.121,
+          "end": 9854.441,
+          "score": 0.791
+        }
+      ]
+    },
+    {
+      "segment_id": "s000713",
+      "text": "“Here!” cried Alice, quite forgetting in the flurry of the moment how large she had grown in the last few minutes, and she jumped up in such a hurry that she tipped over the jury-box with the edge of her skirt, upsetting all the jurymen on to the heads of the crowd below, and there they lay sprawling about, reminding her very much of a globe of goldfish she had accidentally upset the week before.",
+      "review": {
+        "clip_sha256": "12540913603f5d9d98358024ea904b55f06c0ef95aa043bcbe494c4afb996d6b",
+        "boundary_ms": 5000,
+        "result": "unsure",
+        "reviewed_timestamp_ms": null,
+        "correction_ms": null,
+        "annotation_mode": "model-assisted-review"
+      },
+      "old_confidence": {
+        "mean_word_score": 0.6615675675675678,
+        "text_coverage": 0.9736842105263158,
+        "opening_word_matched": true
+      },
+      "words": [
+        {
+          "word": "Here,",
+          "start": 11847.523,
+          "end": 11847.743,
+          "score": 0.56
+        },
+        {
+          "word": "cried",
+          "start": 11847.763,
+          "end": 11848.043,
+          "score": 0.413
+        },
+        {
+          "word": "Alice,",
+          "start": 11848.103,
+          "end": 11848.503,
+          "score": 0.619
+        },
+        {
+          "word": "quite",
+          "start": 11848.523,
+          "end": 11848.763,
+          "score": 0.434
+        },
+        {
+          "word": "forgetting",
+          "start": 11848.803,
+          "end": 11849.384,
+          "score": 0.468
+        },
+        {
+          "word": "in",
+          "start": 11849.404,
+          "end": 11849.444,
+          "score": 0
+        },
+        {
+          "word": "the",
+          "start": 11850.124,
+          "end": 11850.384,
+          "score": 0.446
+        },
+        {
+          "word": "flurry",
+          "start": 11850.404,
+          "end": 11850.644,
+          "score": 0.395
+        },
+        {
+          "word": "of",
+          "start": 11850.684,
+          "end": 11850.784,
+          "score": 0.369
+        },
+        {
+          "word": "the",
+          "start": 11850.864,
+          "end": 11851.084,
+          "score": 0.609
+        },
+        {
+          "word": "moment,",
+          "start": 11851.104,
+          "end": 11852.225,
+          "score": 0.553
+        },
+        {
+          "word": "how",
+          "start": 11852.245,
+          "end": 11852.425,
+          "score": 0.31
+        },
+        {
+          "word": "large",
+          "start": 11852.565,
+          "end": 11852.705,
+          "score": 0.334
+        },
+        {
+          "word": "she",
+          "start": 11852.725,
+          "end": 11852.785,
+          "score": 0.056
+        },
+        {
+          "word": "had",
+          "start": 11852.805,
+          "end": 11852.865,
+          "score": 0.001
+        },
+        {
+          "word": "grown",
+          "start": 11852.885,
+          "end": 11853.065,
+          "score": 0.395
+        },
+        {
+          "word": "in",
+          "start": 11853.085,
+          "end": 11853.185,
+          "score": 0.37
+        },
+        {
+          "word": "the",
+          "start": 11853.205,
+          "end": 11853.345,
+          "score": 0.72
+        },
+        {
+          "word": "last",
+          "start": 11853.365,
+          "end": 11853.625,
+          "score": 0.589
+        },
+        {
+          "word": "few",
+          "start": 11853.645,
+          "end": 11853.726,
+          "score": 0.033
+        },
+        {
+          "word": "minutes,",
+          "start": 11853.746,
+          "end": 11854.646,
+          "score": 0.474
+        },
+        {
+          "word": "and",
+          "start": 11854.666,
+          "end": 11854.726,
+          "score": 0
+        },
+        {
+          "word": "she",
+          "start": 11854.746,
+          "end": 11854.806,
+          "score": 0.644
+        },
+        {
+          "word": "jumped",
+          "start": 11854.886,
+          "end": 11855.246,
+          "score": 0.612
+        },
+        {
+          "word": "up",
+          "start": 11855.426,
+          "end": 11855.586,
+          "score": 0.676
+        },
+        {
+          "word": "in",
+          "start": 11855.606,
+          "end": 11855.726,
+          "score": 0.73
+        },
+        {
+          "word": "such",
+          "start": 11855.746,
+          "end": 11857.107,
+          "score": 0.746
+        },
+        {
+          "word": "a",
+          "start": 11857.187,
+          "end": 11857.227,
+          "score": 1
+        },
+        {
+          "word": "hurry",
+          "start": 11857.327,
+          "end": 11857.467,
+          "score": 0.531
+        },
+        {
+          "word": "that",
+          "start": 11874.238,
+          "end": 11874.418,
+          "score": 0.879
+        },
+        {
+          "word": "she",
+          "start": 11874.478,
+          "end": 11874.638,
+          "score": 0.679
+        },
+        {
+          "word": "tipped",
+          "start": 11874.778,
+          "end": 11875.099,
+          "score": 0.73
+        },
+        {
+          "word": "over",
+          "start": 11875.379,
+          "end": 11875.599,
+          "score": 0.789
+        },
+        {
+          "word": "the",
+          "start": 11875.699,
+          "end": 11875.799,
+          "score": 0.843
+        },
+        {
+          "word": "jury",
+          "start": 11875.859,
+          "end": 11876.239,
+          "score": 0.838
+        },
+        {
+          "word": "box",
+          "start": 11876.299,
+          "end": 11876.72,
+          "score": 0.905
+        },
+        {
+          "word": "with",
+          "start": 11876.94,
+          "end": 11877.12,
+          "score": 0.86
+        },
+        {
+          "word": "the",
+          "start": 11877.22,
+          "end": 11877.36,
+          "score": 0.681
+        },
+        {
+          "word": "edge",
+          "start": 11877.6,
+          "end": 11877.841,
+          "score": 0.786
+        },
+        {
+          "word": "of",
+          "start": 11878.041,
+          "end": 11878.121,
+          "score": 0.832
+        },
+        {
+          "word": "her",
+          "start": 11878.181,
+          "end": 11878.301,
+          "score": 0.786
+        },
+        {
+          "word": "skirt,",
+          "start": 11878.381,
+          "end": 11878.761,
+          "score": 0.855
+        },
+        {
+          "word": "upsetting",
+          "start": 11879.402,
+          "end": 11880.002,
+          "score": 0.811
+        },
+        {
+          "word": "all",
+          "start": 11880.382,
+          "end": 11880.562,
+          "score": 0.663
+        },
+        {
+          "word": "the",
+          "start": 11880.622,
+          "end": 11880.743,
+          "score": 0.667
+        },
+        {
+          "word": "jurymen",
+          "start": 11880.783,
+          "end": 11881.343,
+          "score": 0.785
+        },
+        {
+          "word": "the",
+          "start": 11882.144,
+          "end": 11882.244,
+          "score": 0.792
+        },
+        {
+          "word": "heads",
+          "start": 11882.304,
+          "end": 11882.644,
+          "score": 0.878
+        },
+        {
+          "word": "of",
+          "start": 11882.944,
+          "end": 11883.024,
+          "score": 0.832
+        },
+        {
+          "word": "the",
+          "start": 11883.084,
+          "end": 11883.184,
+          "score": 0.743
+        },
+        {
+          "word": "crowd",
+          "start": 11883.244,
+          "end": 11883.625,
+          "score": 0.832
+        },
+        {
+          "word": "below.",
+          "start": 11883.725,
+          "end": 11884.185,
+          "score": 0.897
+        },
+        {
+          "word": "And",
+          "start": 11884.725,
+          "end": 11884.865,
+          "score": 0.585
+        },
+        {
+          "word": "there",
+          "start": 11885.006,
+          "end": 11885.286,
+          "score": 0.778
+        },
+        {
+          "word": "they",
+          "start": 11885.366,
+          "end": 11885.566,
+          "score": 0.714
+        },
+        {
+          "word": "lay",
+          "start": 11885.646,
+          "end": 11885.966,
+          "score": 0.583
+        },
+        {
+          "word": "sprawling",
+          "start": 11886.166,
+          "end": 11886.807,
+          "score": 0.85
+        },
+        {
+          "word": "about,",
+          "start": 11886.907,
+          "end": 11887.267,
+          "score": 0.987
+        },
+        {
+          "word": "reminding",
+          "start": 11887.948,
+          "end": 11888.508,
+          "score": 0.806
+        },
+        {
+          "word": "her",
+          "start": 11888.608,
+          "end": 11888.808,
+          "score": 0.645
+        },
+        {
+          "word": "very",
+          "start": 11889.188,
+          "end": 11889.509,
+          "score": 0.741
+        },
+        {
+          "word": "much",
+          "start": 11889.589,
+          "end": 11889.889,
+          "score": 0.648
+        },
+        {
+          "word": "of",
+          "start": 11890.249,
+          "end": 11890.329,
+          "score": 0.833
+        },
+        {
+          "word": "a",
+          "start": 11890.409,
+          "end": 11890.429,
+          "score": 1
+        },
+        {
+          "word": "globe",
+          "start": 11890.489,
+          "end": 11890.89,
+          "score": 0.847
+        },
+        {
+          "word": "of",
+          "start": 11891.05,
+          "end": 11891.13,
+          "score": 0.83
+        },
+        {
+          "word": "goldfish",
+          "start": 11891.23,
+          "end": 11891.85,
+          "score": 0.81
+        },
+        {
+          "word": "she",
+          "start": 11892.09,
+          "end": 11892.231,
+          "score": 0.829
+        },
+        {
+          "word": "had",
+          "start": 11892.311,
+          "end": 11892.491,
+          "score": 0.737
+        },
+        {
+          "word": "accidentally",
+          "start": 11892.731,
+          "end": 11893.611,
+          "score": 0.839
+        },
+        {
+          "word": "upset",
+          "start": 11893.872,
+          "end": 11894.352,
+          "score": 0.888
+        },
+        {
+          "word": "the",
+          "start": 11894.612,
+          "end": 11894.732,
+          "score": 0.831
+        },
+        {
+          "word": "week",
+          "start": 11894.772,
+          "end": 11894.992,
+          "score": 0.885
+        },
+        {
+          "word": "before.",
+          "start": 11895.113,
+          "end": 11895.593,
+          "score": 0.84
+        }
+      ]
+    }
+  ]
+}

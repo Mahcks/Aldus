@@ -6,7 +6,7 @@ import type { AudioChapter, Work } from '@/generated/api';
 import { useAudioPlayerStatus } from 'expo-audio';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AccessibilityActionEvent } from 'react-native';
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BookCover, coverPresentation } from '@/components/catalog/bookshelf';
 import {
@@ -33,6 +33,7 @@ type PlayerViewProps = {
   hasEbook: boolean;
   passage: ReturnType<typeof audioPassage>;
   status: ReturnType<typeof useAudioPlayerStatus>;
+  restoringPlace: boolean;
   progressStatus: string;
   audioID: string;
   audioDuration: number;
@@ -57,12 +58,22 @@ type PlayerViewProps = {
   setSleepTimerOpen: (open: boolean) => void;
 };
 
+/** How long to wait for the art to report its shape before showing the cover anyway. */
+const ART_SETTLE_MS = 600;
+
+/** The longest the cover stays hidden while its size and header mode settle. */
+const COVER_WAIT_MS = 1500;
+
+/** Covers `layoutShift` (380ms) plus a frame of slack for the new layout to land. */
+const HEADER_SWITCH_MS = 450;
+
 export function PlayerView({
   selectedAudio,
   work,
   hasEbook,
   passage,
   status,
+  restoringPlace,
   progressStatus,
   audioID,
   audioDuration,
@@ -95,23 +106,45 @@ export function PlayerView({
   const [syncPromptOpen, setSyncPromptOpen] = useState(false);
   // Audiobook art is often a portrait book jacket, not a square; the frame follows the art.
   const [artRatio, setArtRatio] = useState(1);
+  // The cover's size settles from measurements and the art's real shape just after mount. It
+  // stays invisible until then and fades in once, instead of visibly jumping between sizes.
+  const [artSettled, setArtSettled] = useState(false);
+  const [coverWaitExpired, setCoverWaitExpired] = useState(false);
+  useEffect(() => {
+    // Fallback art, or art that fails to load, never reports a shape.
+    const artTimer = setTimeout(() => setArtSettled(true), ART_SETTLE_MS);
+    // Never keep the cover hidden for long, whatever is still settling (e.g. audio not loading).
+    const coverTimer = setTimeout(() => setCoverWaitExpired(true), COVER_WAIT_MS);
+    return () => {
+      clearTimeout(artTimer);
+      clearTimeout(coverTimer);
+    };
+  }, []);
   // What the listener has chosen, for a synced book.
   const readAlongOn = Boolean(passage) && readAlongEnabled;
-  // The text only appears once the audio is ready and the position has stopped moving. While
-  // the player opens, the position is still 0:00 and can jump a few times as the saved place is
-  // applied; building the text from each of those would replay its entrance every time.
-  const [textRevealed, setTextRevealed] = useState(false);
-  const settledOn = readAlongOn && status.isLoaded ? (passage?.current.id ?? '') : '';
-  if (!readAlongOn && textRevealed) setTextRevealed(false);
-  useEffect(() => {
-    if (!settledOn || textRevealed) return;
-    const timer = setTimeout(() => setTextRevealed(true), 450);
-    return () => clearTimeout(timer);
-  }, [settledOn, textRevealed]);
   // While another device has the book, the text (and its stale place) gives way to a compact header.
-  const showReadAlong = readAlongOn && textRevealed && !pausedNotice;
+  const showReadAlong = readAlongOn && status.isLoaded && !restoringPlace && !pausedNotice;
   const compactHeader = showReadAlong || Boolean(pausedNotice);
-  const controlsLocked = Boolean(pausedReason);
+  // The glide is only for switching between the full and compact header. The cover's opening
+  // size settles from measurements and the art's real shape a moment after mount; animating
+  // those made the cover stretch and then shrink toward the corner, so they apply instantly.
+  const [animatedHeader, setAnimatedHeader] = useState(compactHeader);
+  const [headerSwitching, setHeaderSwitching] = useState(false);
+  if (animatedHeader !== compactHeader) {
+    setAnimatedHeader(compactHeader);
+    setHeaderSwitching(true);
+  }
+  useEffect(() => {
+    if (!headerSwitching) return;
+    const timer = setTimeout(() => setHeaderSwitching(false), HEADER_SWITCH_MS);
+    return () => clearTimeout(timer);
+  }, [headerSwitching]);
+  // Web layout transitions animate a scaled snapshot. Animating both the header block and the
+  // cover inside it compounded the two scales and stretched the art, so on web only the cover
+  // glides (keeping its shape) while the block itself switches instantly and the text crossfades.
+  const headerLayout = headerSwitching && Platform.OS !== 'web' ? layoutShift : undefined;
+  const coverLayout = headerSwitching ? layoutShift : undefined;
+  const controlsLocked = restoringPlace || Boolean(pausedReason);
   // Leave room for the header, home indicator, and large text; short screens can scroll.
   const listeningContentHeight = Math.max(
     620 * Math.max(1, fontScale),
@@ -125,12 +158,19 @@ export function PlayerView({
       ? Math.max(pausedNotice ? PAUSED_MIN_COVER_HEIGHT : MIN_COVER_HEIGHT, coverRoom)
       : Math.round(listeningContentHeight * 0.4);
   const coverHeight = compactHeader ? 64 : fittedCoverHeight;
+  // A synced book opens into read-along a moment later; showing the full cover first would
+  // flash it large and then snap it small, so wait for that switch too, up to a limit.
+  const readAlongPending = readAlongOn && (restoringPlace || !status.isLoaded) && !pausedNotice;
+  const coverReady =
+    coverWaitExpired ||
+    (artSettled && topHeight > 0 && (compactHeader || textHeight > 0) && !readAlongPending);
   const coverWidth = compactHeader
     ? Math.round(Math.min(96, 64 * artRatio))
     : Math.round(Math.min(windowWidth - 40, 340, coverHeight * artRatio));
 
   function handleArtLoad({ width, height }: { width: number; height: number }) {
     if (width > 0 && height > 0) setArtRatio(Math.min(2, Math.max(0.5, width / height)));
+    setArtSettled(true);
   }
 
   // Unsynced books keep the button but explain on press, so they never carry a standing warning.
@@ -160,12 +200,16 @@ export function PlayerView({
           onLayout={(event) => setTopHeight(event.nativeEvent.layout.height)}
         >
           <AnimatedView
-            layout={layoutShift}
+            layout={headerLayout}
             className={
               compactHeader ? 'flex-row items-center gap-4 py-2' : 'items-center gap-5 pb-2 pt-4'
             }
           >
-            <AnimatedView layout={layoutShift} style={{ width: coverWidth }}>
+            <AnimatedView
+              layout={coverLayout}
+              style={{ width: coverWidth, opacity: coverReady ? 1 : 0 }}
+              className="transition-opacity duration-200 motion-reduce:transition-none"
+            >
               <BookCover
                 title={work.title}
                 author={work.author}
@@ -230,12 +274,15 @@ export function PlayerView({
           <View className="mt-5">
             <Notice danger>The audiobook could not be opened on this device.</Notice>
           </View>
-        ) : !status.isLoaded ? (
+        ) : !status.isLoaded || restoringPlace ? (
           <View className="mt-auto w-full pt-6">
-            <Loading layout="controls" label="Loading audiobook…" />
+            <Loading
+              layout="controls"
+              label={restoringPlace ? 'Opening your listening place…' : 'Loading audiobook…'}
+            />
           </View>
         ) : null}
-        {status.isLoaded || status.error ? (
+        {(status.isLoaded && !restoringPlace) || status.error ? (
           <>
             <View className="w-full gap-1 pt-4">
               <AudioScrubber

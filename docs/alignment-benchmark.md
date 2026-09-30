@@ -1,6 +1,18 @@
 # Forced-alignment benchmark
 
-## Decision
+## Current decision
+
+WhisperX meets the original 250 ms median onset target on the ten human-onset
+Alice anchors (230.5 ms). It is the adopted MVP candidate, not evidence of broad
+full-book accuracy. The [release corpus](../test-fixtures/alignment-corpus/README.md)
+defines the additional books, negative cases, annotation protocol and pass criteria.
+Those expanded results remain pending.
+
+The comparisons below preserve the earlier manual-seek experiments. Their
+experimental recommendations are historical; the final human-onset section
+explains the different measurement and the current bounded decision.
+
+## Historical manual-seek decision
 
 **Keep automatic alignment experimental and continue benchmarking.** WhisperX 3.8.6 is the best candidate tested, but its 329.5 ms median misses the 250 ms target. It has no errors over one second, so it is a useful next baseline, not a production default.
 
@@ -65,7 +77,7 @@ Candidate artifacts are isolated under:
 
 The real Chromium flow restored all ten exact DOM ranges for every candidate and reported a player API seek difference of 0 ms. That validates serialization, navigation, reverse mapping, and browser/player API behavior; it does not measure audible decoder onset.
 
-## Conclusion
+## Historical manual-seek conclusion
 
 WhisperX materially outperforms the completed stalign baseline and removes catastrophic errors, but it does not meet the median target and only 4/10 anchors are within 250 ms. MFA and the hybrid do not improve it. The canonical sync model remains validated; automatic timestamp generation remains the limiting component. Continue benchmarking boundary semantics/model choices before adopting automatic alignment.
 

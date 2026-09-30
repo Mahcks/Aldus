@@ -12,7 +12,7 @@ import {
 import { BookCover, coverPresentation } from '@/components/catalog/bookshelf';
 import { type MediaChoice } from '@/lib/consumption/consumption';
 import { Button, IconButton, EmptyState } from '@/components/ui';
-import { SyncIndicator, type NarrationSync, type ReaderSaveStatus } from './SyncIndicator';
+import { SyncIndicator, type ReaderSaveStatus } from './SyncIndicator';
 import { useIsDarkTheme, useThemeColors } from '@/components/ui/theme';
 import { Text, View } from '@/components/ui/tw';
 
@@ -49,7 +49,6 @@ type ReaderViewProps = {
   paused?: boolean;
   /** Web: what to show in the pager's status slot. */
   saveIndicator?: ReaderSaveStatus;
-  narrationSync?: NarrationSync;
 };
 
 export function ReaderView({
@@ -82,7 +81,6 @@ export function ReaderView({
   leaveReader,
   paused = false,
   saveIndicator,
-  narrationSync,
 }: ReaderViewProps) {
   const { width } = useWindowDimensions();
   const colors = useThemeColors();
@@ -119,9 +117,7 @@ export function ReaderView({
             compactChrome={compactNative}
             statusTone={paused ? 'warning' : undefined}
             statusSlot={
-              !compactNative && saveIndicator ? (
-                <SyncIndicator save={saveIndicator} narration={narrationSync} />
-              ) : undefined
+              !compactNative && saveIndicator ? <SyncIndicator save={saveIndicator} /> : undefined
             }
             trailing={
               !compactNative && !paused ? (
@@ -133,12 +129,16 @@ export function ReaderView({
                     onPress={() => void switchToListen()}
                   />
                 ) : (
-                  <Button
-                    label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
-                    icon="listen"
-                    disabled={!canListenFromReader || !readerInteractionReady}
-                    onPress={() => void switchToListen()}
-                  />
+                  // Wide enough for either label, so switching between them never
+                  // shifts the centered page position beside it.
+                  <View className="min-w-[236px] items-end">
+                    <Button
+                      label={canListenFromReader ? 'Listen from here' : 'Listen unavailable here'}
+                      icon="listen"
+                      disabled={!canListenFromReader || !readerInteractionReady}
+                      onPress={() => void switchToListen()}
+                    />
+                  </View>
                 )
               ) : undefined
             }

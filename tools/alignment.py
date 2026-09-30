@@ -15,6 +15,8 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from alignment_evaluation import bound_fixtures, error_metrics, evaluate_anchors, same_range, timestamp, unique
+
 XHTML = "http://www.w3.org/1999/xhtml"
 SMIL = "http://www.w3.org/ns/SMIL"
 
@@ -144,45 +146,23 @@ def convert(args):
 def evaluate(args):
     candidate = json.loads(Path(args.candidate).read_text())
     golden = json.loads(Path(args.anchors).read_text())
-    results = []
-    for anchor in golden["anchors"]:
-        matches = [segment for segment in candidate["segments"] if anchor["normalized_text"] in segment["normalized_text"]]
-        if len(matches) != 1:
-            raise ValueError(f"{anchor['id']}: expected one exact passage match, got {len(matches)}")
-        segment = matches[0]
-        manual = anchor["audio"]["timestamp_ms"]
-        generated = segment["audio"]["start_ms"]
-        results.append({
-            "anchor_id": anchor["id"],
-            "manual_timestamp_ms": manual,
-            "generated_timestamp_ms": generated,
-            "absolute_error_ms": abs(generated - manual),
-            "restored_text_match": segment["normalized_text"] == anchor["normalized_text"],
-            "confidence": segment["confidence"],
-            "segment_id": segment["id"],
-        })
-    errors = [row["absolute_error_ms"] for row in results]
+    results = evaluate_anchors(candidate, golden)
+    positives = [row for row in results if row["expected_match"]]
+    errors = [row["absolute_error_ms"] for row in positives if row["status"] == "matched"]
+    metrics = error_metrics(errors)
+    metrics.update(
+        total_anchors=len(results), positive_anchors=len(positives),
+        unresolved_anchors=sum(row["status"] == "unresolved" for row in positives),
+        ambiguous_anchors=sum(row["status"] == "ambiguous" for row in positives),
+        coverage_percent=100 * len(errors) / len(positives) if positives else None,
+        negative_failures=sum(not row["negative_pass"] for row in results if not row["expected_match"]),
+        exact_locator_matches=sum(row["restored_text_match"] for row in results),
+    )
     report = {
         "candidate": str(args.candidate),
-        "anchors": results,
-        "metrics": {
-            "median_absolute_error_ms": statistics.median(errors),
-            "mean_absolute_error_ms": statistics.fmean(errors),
-            "maximum_absolute_error_ms": max(errors),
-            "within_100_ms": sum(error <= 100 for error in errors),
-            "within_250_ms": sum(error <= 250 for error in errors),
-            "within_500_ms": sum(error <= 500 for error in errors),
-            "within_1000_ms": sum(error <= 1000 for error in errors),
-            "over_1000_ms": sum(error > 1000 for error in errors),
-            "exact_passage_restoration": sum(row["restored_text_match"] for row in results),
-            "percentages": {
-                "within_100_ms": 100 * sum(error <= 100 for error in errors) / len(errors),
-                "within_250_ms": 100 * sum(error <= 250 for error in errors) / len(errors),
-                "within_500_ms": 100 * sum(error <= 500 for error in errors) / len(errors),
-                "within_1000_ms": 100 * sum(error <= 1000 for error in errors) / len(errors),
-                "over_1000_ms": 100 * sum(error > 1000 for error in errors) / len(errors),
-            },
-        },
+        "epub_sha256": golden["epub_sha256"], "audio_sha256": golden["audio_sha256"],
+        "anchors": results, "metrics": metrics,
+        "restoration_verified": False,
     }
     Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 
@@ -277,7 +257,8 @@ def convert_mfa(args):
 
 
 def boundary_analysis(args):
-    anchors = json.loads(Path(args.anchors).read_text())["anchors"]
+    fixture = json.loads(Path(args.anchors).read_text())
+    anchors = fixture["anchors"]
     evaluation = {row["anchor_id"]: row for row in json.loads(Path(args.evaluation).read_text())["anchors"]}
     aligned = json.loads(Path(args.aligned).read_text())
     words = [word for word in aligned["word_segments"] if "start" in word and "end" in word]
@@ -297,6 +278,8 @@ def boundary_analysis(args):
     for anchor in anchors:
         golden = anchor["audio"]["timestamp_ms"]
         generated = evaluation[anchor["id"]]["generated_timestamp_ms"]
+        if generated is None:
+            raise ValueError(f"{anchor['id']}: no exact eligible segment for boundary analysis")
         word = min(words, key=lambda item: abs(round(item["start"] * 1000) - generated))
         word_start, word_end = round(word["start"] * 1000), round(word["end"] * 1000)
         segment = min(aligned["segments"], key=lambda item: abs(round(item["start"] * 1000) - word_start))
@@ -354,6 +337,8 @@ def boundary_analysis(args):
             "over_1000_ms": sum(value > 1000 for value in absolute),
         }
     Path(args.output).write_text(json.dumps({
+        "epub_sha256": fixture["epub_sha256"],
+        "audio_sha256": fixture["audio_sha256"],
         "method": "WhisperX 3.8.6 CTC boundaries plus fixed 10 ms RMS onset detector",
         "acoustic_rule": "first three 10 ms frames above -40 dBFS, after the last >=30 ms run at or below -50 dBFS, within -100/+200 ms of CTC word start",
         "rows": rows,
@@ -362,53 +347,77 @@ def boundary_analysis(args):
 
 
 def evaluate_onsets(args):
-    manual = {item["id"]: item for item in json.loads(Path(args.manual).read_text())["anchors"]}
+    manual_fixture = json.loads(Path(args.manual).read_text())
     onset_fixture = json.loads(Path(args.onsets).read_text())
-    measurements = {item["anchor_id"]: item for item in json.loads(Path(args.boundaries).read_text())["rows"]}
-    if onset_fixture.get("semantics") != "earliest point at which the opening spoken word audibly begins" or len(onset_fixture.get("anchors", [])) != 10:
-        raise ValueError("onset fixture must contain ten human audible-onset annotations")
+    bound_fixtures(manual_fixture, onset_fixture)
+    manual = unique(manual_fixture["anchors"], "id")
+    onsets = unique(onset_fixture["anchors"], "anchor_id")
+    expected = {key for key, item in manual.items() if item.get("expected_match", True)}
+    if onset_fixture.get("semantics") != "earliest point at which the opening spoken word audibly begins" or not expected or set(onsets) != expected:
+        raise ValueError("onset annotations must cover every positive anchor exactly once")
+
+    if args.candidate:
+        candidate = json.loads(Path(args.candidate).read_text())
+        evaluated = evaluate_anchors(candidate, manual_fixture)
+        measurements = {item["anchor_id"]: {"word_start_ms": item["generated_timestamp_ms"]} for item in evaluated}
+        fields = (("candidate_segment_start", "word_start_ms"),)
+    else:
+        boundaries = json.loads(Path(args.boundaries).read_text())
+        # Preserve the immutable Alice diagnostic without weakening hash binding
+        # for new input files. Newly generated diagnostics carry both hashes.
+        legacy = sha256(args.boundaries) == "51b64ffdd58c868e8d4c8c21ae7998c931522a389fb30b798eaa0bbb279e8678"
+        if legacy:
+            bound_fixtures(manual_fixture, {
+                "epub_sha256": "6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c",
+                "audio_sha256": "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a",
+            })
+        else:
+            bound_fixtures(manual_fixture, boundaries)
+        measurements = unique(boundaries["rows"], "anchor_id")
+        fields = (("whisperx_word_start", "word_start_ms"), ("waveform_energy_onset", "acoustic_onset_ms"))
+    if not expected.issubset(measurements):
+        raise ValueError("missing onset measurements")
+
     rows = []
-    for onset in onset_fixture["anchors"]:
-        anchor_id = onset["anchor_id"]
-        source = manual.get(anchor_id)
-        measurement = measurements.get(anchor_id)
-        if not source or not measurement or onset["manual_seek_timestamp_ms"] != source["audio"]["timestamp_ms"]:
-            raise ValueError(f"{anchor_id}: onset annotation does not match the immutable manual anchor")
-        golden = onset["audible_onset_timestamp_ms"]
+    for anchor_id, onset in onsets.items():
+        source = manual[anchor_id]
+        measurement = measurements[anchor_id]
+        if onset["manual_seek_timestamp_ms"] != source["audio"]["timestamp_ms"]:
+            raise ValueError(f"{anchor_id}: onset annotation does not match the manual anchor")
+        if onset.get("epub") is not None and not same_range(source["epub"], onset["epub"]):
+            raise ValueError(f"{anchor_id}: onset annotation location changed")
+        if onset.get("epub") is None and manual_fixture["audio_sha256"] != "6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a":
+            raise ValueError(f"{anchor_id}: missing onset passage location")
+        if not isinstance(onset.get("annotation_notes"), str) or not onset["annotation_notes"].strip():
+            raise ValueError(f"{anchor_id}: missing human annotation notes")
+        golden = timestamp(onset["audible_onset_timestamp_ms"])
         row = {
-            "anchor_id": anchor_id,
-            "opening_word": onset["opening_word"],
+            "anchor_id": anchor_id, "opening_word": onset["opening_word"],
             "manual_seek_timestamp_ms": onset["manual_seek_timestamp_ms"],
-            "audible_onset_timestamp_ms": golden,
-            "annotation_notes": onset["annotation_notes"],
+            "audible_onset_timestamp_ms": golden, "annotation_notes": onset["annotation_notes"],
         }
-        for name, field in (("whisperx_word_start", "word_start_ms"), ("waveform_energy_onset", "acoustic_onset_ms")):
-            generated = measurement[field]
+        for name, field in fields:
+            generated = measurement.get(field)
+            if generated is None:
+                row[name] = None
+                continue
+            timestamp(generated)
             row[name] = {
-                "generated_timestamp_ms": generated,
-                "signed_error_ms": generated - golden,
+                "generated_timestamp_ms": generated, "signed_error_ms": generated - golden,
                 "absolute_error_ms": abs(generated - golden),
             }
         rows.append(row)
 
-    def metrics(name):
-        signed = [row[name]["signed_error_ms"] for row in rows]
-        absolute = [abs(value) for value in signed]
-        return {
-            "median_signed_error_ms": statistics.median(signed),
-            "median_absolute_error_ms": statistics.median(absolute),
-            "mean_absolute_error_ms": statistics.fmean(absolute),
-            "maximum_absolute_error_ms": max(absolute),
-            "within_100_ms": sum(value <= 100 for value in absolute),
-            "within_250_ms": sum(value <= 250 for value in absolute),
-            "within_500_ms": sum(value <= 500 for value in absolute),
-            "within_1000_ms": sum(value <= 1000 for value in absolute),
-            "over_1000_ms": sum(value > 1000 for value in absolute),
-        }
+    metrics = {}
+    for name, _ in fields:
+        available = [row[name] for row in rows if row[name] is not None]
+        metrics[name] = error_metrics([row["absolute_error_ms"] for row in available])
+        metrics[name]["total_anchors"] = len(rows)
+        metrics[name]["unresolved_anchors"] = len(rows) - len(available)
+        metrics[name]["median_signed_error_ms"] = statistics.median(row["signed_error_ms"] for row in available) if available else None
     Path(args.output).write_text(json.dumps({
-        "onset_fixture": str(args.onsets),
-        "rows": rows,
-        "metrics": {name: metrics(name) for name in ("whisperx_word_start", "waveform_energy_onset")},
+        "onset_fixture": str(args.onsets), "rows": rows, "metrics": metrics,
+        "epub_sha256": manual_fixture["epub_sha256"], "audio_sha256": manual_fixture["audio_sha256"],
     }, ensure_ascii=False, indent=2) + "\n")
 
 
@@ -444,8 +453,11 @@ for name in ("anchors", "evaluation", "aligned", "wav", "output"):
     boundary.add_argument(f"--{name}", required=True)
 boundary.set_defaults(run=boundary_analysis)
 onset_evaluate = commands.add_parser("onset-evaluate")
-for name in ("manual", "onsets", "boundaries", "output"):
+for name in ("manual", "onsets", "output"):
     onset_evaluate.add_argument(f"--{name}", required=True)
+onset_source = onset_evaluate.add_mutually_exclusive_group(required=True)
+onset_source.add_argument("--boundaries")
+onset_source.add_argument("--candidate")
 onset_evaluate.set_defaults(run=evaluate_onsets)
 arguments = parser.parse_args()
 arguments.run(arguments)

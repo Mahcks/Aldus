@@ -1019,6 +1019,7 @@ test('web selection completion saves without click and suppresses the following 
     disposed: false,
     product: true,
     doc: { getSelection: () => ({ isCollapsed: !selected, toString: () => selected?.text ?? '' }) },
+    restoredPassage: { current: null },
     readingIntentPoint: () => ({}),
     view: { book: { sections: [{ id: 'chapter.xhtml' }] }, getCFI: () => 'selection-start' },
     index: 0,

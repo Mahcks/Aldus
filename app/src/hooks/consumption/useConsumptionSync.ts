@@ -52,6 +52,8 @@ export function useConsumptionSync(
     showEditionConflict,
   } = state;
   const { saveEPUBLocation, saveReadingCursor, saveListeningPosition } = actions;
+  const webAudioTime = Platform.OS === 'web' ? status.currentTime : undefined;
+  const webAudioLoaded = Platform.OS !== 'web' || player.isLoaded;
 
   useEffect(() => {
     if (!work || !mayWrite) return;
@@ -173,16 +175,27 @@ export function useConsumptionSync(
 
   useEffect(() => {
     if (mode !== 'listen' || mediaLoading || !source) return;
-    if (!status.isLoaded) return;
+    if (!status.isLoaded || status.id !== player.id) return;
     if (initialAudioMS == null) return;
     if (audioDuration <= 0) return;
-    if (restoredAudioRef.current === `${audioID}:${initialAudioMS}`) return;
+    const target = clampAudioPosition(initialAudioMS / 1000, audioDuration);
+    if (restoredAudioRef.current === `${audioID}:${initialAudioMS}`) {
+      // Web seekTo resolves before seeked updates the displayed position.
+      if (
+        !audioReady &&
+        webAudioLoaded &&
+        webAudioTime !== undefined &&
+        Math.abs(webAudioTime - target) < 1
+      )
+        setAudioReady(true);
+      return;
+    }
     void (async () => {
       try {
-        await player.seekTo(clampAudioPosition(initialAudioMS / 1000, audioDuration), 0, 0);
+        await player.seekTo(target, 0, 0);
         applyPlaybackRate(player, audioState?.playback_speed);
         restoredAudioRef.current = `${audioID}:${initialAudioMS}`;
-        setAudioReady(true);
+        setAudioReady(Platform.OS !== 'web');
         const handoff = pendingAudioHandoffRef.current;
         if (handoff?.audioID !== audioID || handoff.timestampMS !== initialAudioMS) return;
         pendingAudioHandoffRef.current = undefined;
@@ -206,6 +219,10 @@ export function useConsumptionSync(
     mediaLoading,
     source,
     status.isLoaded,
+    status.id,
+    webAudioTime,
+    webAudioLoaded,
+    audioReady,
     audioDuration,
     initialAudioMS,
     audioID,

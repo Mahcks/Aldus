@@ -169,6 +169,20 @@ export function readAlongChunkIndex(chunks: ReadAlongChunk[], timestampMS: numbe
   return next < 0 ? chunks.length - 1 : Math.max(0, next - 1);
 }
 
+/** The same display passage as read-along, expressed as normalized code-point boundaries. */
+export function readAlongTextRange(text: string, offset: number) {
+  const words = text.replace(/\s+/gu, ' ').trim().split(' ');
+  const length = Array.from(words.join(' ')).length;
+  const position = Math.min(length - 1, Math.round((offset * length) / 1_000_000));
+  let start = 0;
+  for (const range of chunkRanges(words)) {
+    const end = start + Array.from(words.slice(range.start, range.end + 1).join(' ')).length;
+    if (position < end) return { start, end };
+    start = end + 1;
+  }
+  return { start: 0, end: length };
+}
+
 type ReadAlongWindow = {
   segments: AlignmentSegment[];
   /** Segments that fell off the top; the caller keeps their height as spacer so nothing shifts. */

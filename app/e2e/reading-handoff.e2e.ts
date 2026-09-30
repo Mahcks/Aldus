@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readAlongTextRange } from '../src/lib/consumption/read-along';
 import { signInAsTestAdmin, testServer } from './auth';
 
 const workID = 'alice-gutenberg-11-work';
@@ -39,9 +40,8 @@ test('independent readers require takeover and the previous reader pauses', asyn
     let exactPlace = await seeded.json();
     const normalizedText = segment.text.replace(/\s+/gu, ' ').trim();
     const points = Array.from(normalizedText) as string[];
-    let start = Math.round(points.length / 2);
-    while (points[start] === ' ') start++;
-    let expectedHighlight = points.slice(start).join('').split(' ')[0];
+    const range = readAlongTextRange(normalizedText, 500000);
+    let expectedHighlight = points.slice(range.start, range.end).join('');
     async function expectExactHighlight(page: import('@playwright/test').Page) {
       await expect
         .poll(async () => {
@@ -104,7 +104,7 @@ test('independent readers require takeover and the previous reader pauses', asyn
     expect(expectedHighlight.length).toBeGreaterThan(30);
     expect((await rangeSaved).ok()).toBe(true);
     exactPlace = await (await first.request.get(progressURL)).json();
-    await expect(first.getByLabel('Reading place saved', { exact: true })).toBeVisible();
+    await expect(first.getByText('Saved', { exact: true })).toBeVisible();
     const editionURL = testServer + '/api/v1/representations/alice-gutenberg-11-epub/state';
     const savedEdition = await (await first.request.get(editionURL)).json();
     await first.clock.install();

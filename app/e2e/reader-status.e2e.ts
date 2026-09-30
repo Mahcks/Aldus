@@ -56,7 +56,12 @@ for (const width of [390, 1024, 1440]) {
     if (await claim.isVisible()) await claim.click();
     await expect(next).toBeEnabled({ timeout: 30000 });
     await expect(page.getByText('Ready to read', { exact: true })).toBeVisible();
-    await expect(page.getByText('Synced', { exact: true })).toHaveCount(0);
+    // The pager must not change height as the save status changes.
+    const pager = next.locator('xpath=..');
+    const pagerHeight = async () => (await pager.boundingBox())?.height;
+    const readyHeight = await pagerHeight();
+    expect(readyHeight).toBeGreaterThan(0);
+    await expect(page.getByText('Saved', { exact: true })).toHaveCount(0);
     const locationLabel = page.getByText(/^Location \d+ of \d+/);
     await expect(locationLabel).toBeVisible();
     expect(
@@ -84,12 +89,18 @@ for (const width of [390, 1024, 1440]) {
       await next.click();
       await pending;
       await expect(page.getByText('Saving…', { exact: true })).toBeVisible();
-      await expect(page.getByText('Synced', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Saved', { exact: true })).toHaveCount(0);
+      expect(await pagerHeight()).toBe(readyHeight);
     } finally {
       release();
     }
-    await expect(page.getByText('Synced', { exact: true })).toBeVisible();
-    await page.screenshot({ path: `/tmp/aldus-reader-status-${width}.png`, fullPage: true });
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+    expect(await pagerHeight()).toBe(readyHeight);
+    await expect(page.getByText('In sync with audiobook', { exact: true })).toHaveCount(0);
+    await page.screenshot({
+      path: `../artifacts/reader-status/${width}-saved.png`,
+      fullPage: true,
+    });
     await page.unroute(endpoint);
     await page.route(endpoint, (route) =>
       route.request().method() === 'PUT'
@@ -98,6 +109,7 @@ for (const width of [390, 1024, 1440]) {
     );
     await next.click();
     await expect(page.getByText('Couldn’t save', { exact: true })).toBeVisible();
-    await expect(page.getByText('Synced', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Saved', { exact: true })).toHaveCount(0);
+    expect(await pagerHeight()).toBe(readyHeight);
   });
 }

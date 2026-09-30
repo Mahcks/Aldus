@@ -1,6 +1,25 @@
 import { expect, test } from 'bun:test';
 import type { AlignmentSegment } from '@/generated/api';
-import { readAlongChunkIndex, readAlongChunks, readAlongWindow } from './read-along';
+import {
+  readAlongChunkIndex,
+  readAlongChunks,
+  readAlongWindow,
+  readAlongTextRange,
+} from './read-along';
+
+test('ebook passage boundaries match complete read-along chunks at an interior saved word', () => {
+  const text =
+    'Two days passed in this manner before he was able to speak. When he recovered, I moved him to my cabin.';
+  const offset = Math.round((text.indexOf('manner') * 1_000_000) / text.length);
+  const range = readAlongTextRange(text, offset);
+  expect(Array.from(text).slice(range.start, range.end).join('')).toBe(
+    'Two days passed in this manner before he was able to speak.',
+  );
+  const last = readAlongTextRange(text, 1_000_000);
+  expect(Array.from(text).slice(last.start, last.end).join('')).toBe(
+    'When he recovered, I moved him to my cabin.',
+  );
+});
 
 const text =
   'This sentence is deliberately long enough to require several small chunks on a phone while keeping every single word of the original passage in exactly the same order. Another sentence follows with a little more context.';

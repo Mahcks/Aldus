@@ -1,41 +1,32 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useEffect, useRef, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   EPUBReader,
   type EPUBReaderHandle,
   type ReaderCapture,
 } from '@/components/consumption/reader/EPUBReader';
-import { mediaURL } from '@/lib/media';
-import type { Anchor, AnchorFixture, SeekDiagnostic } from './anchors.types';
-
-const oldStorageKeys = ['aldus:alice:anchors:v1', 'aldus:alice:anchors:v2'];
-const storageKey = 'aldus:alice:anchors:v3';
-const persistenceVersion = 3;
-const audioResource = 'alice-chapter-01.mp3';
-const emptyFixture: AnchorFixture = {
-  version: 1,
-  epub_sha256: '6b79f2d23b804172816e81c463dbcea689593bbde63ef200d52b6c0da7ef629c',
-  audio_sha256: '6c58be3679f82e5d20b2c5efea6f377ee0ed985a4e2b4dbd5201ea656312757a',
-  koreader_document_hash: 'abb11be65399f96116fd90ab861dda0e',
-  anchors: [],
-};
+import { Button as SharedButton, LoadingState, ErrorState } from '@/components/ui';
+import { View as TWView } from '@/components/ui/tw';
+import { FixturePicker, type AuthoringMedia } from '@/maintainer/FixturePicker';
+import { emptyFixture, samePassage, storageKeys, validAnchors } from '@/maintainer/fixtures';
+import type { Anchor, AnchorFixture, SeekDiagnostic } from '@/maintainer/anchors.types';
 
 export default function AnchorAuthoring() {
+  return (
+    <FixturePicker>
+      {(media) => <AnchorWorkspace key={media.definition.id} {...media} />}
+    </FixturePicker>
+  );
+}
+
+function AnchorWorkspace({ definition, epub, audio }: AuthoringMedia) {
+  const storageKey = storageKeys(definition).anchors;
   const reader = useRef<EPUBReaderHandle>(null);
-  const player = useAudioPlayer(mediaURL('alice-chapter-01.mp3'), { updateInterval: 50 });
+  const player = useAudioPlayer(audio, { updateInterval: 50 });
   const status = useAudioPlayerStatus(player);
-  const [fixture, setFixture] = useState(emptyFixture);
+  const [fixture, setFixture] = useState(() => emptyFixture(definition));
   const [capture, setCapture] = useState<ReaderCapture>();
   const [selectionVerified, setSelectionVerified] = useState(false);
   const [requestedMS, setRequestedMS] = useState(0);
@@ -45,40 +36,55 @@ export default function AnchorAuthoring() {
     difference_ms: 0,
   });
   const [editingID, setEditingID] = useState<string>();
-  const [message, setMessage] = useState('Ready for a real Alice anchor.');
+  const [message, setMessage] = useState('Select a passage to begin.');
+
+  const [loadError, setLoadError] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      ...oldStorageKeys.map((key) => AsyncStorage.removeItem(key)),
-      AsyncStorage.getItem(storageKey),
-    ]).then(async (values) => {
-      const value = values.at(-1);
-      if (!value) return;
-      try {
-        const stored = JSON.parse(value) as {
-          persistence_version?: number;
-          fixture?: AnchorFixture;
-        };
-        if (
-          stored.persistence_version === persistenceVersion &&
-          stored.fixture &&
-          isAliceFixture(stored.fixture)
-        ) {
-          setFixture(stored.fixture);
-          return;
+    let active = true;
+    AsyncStorage.getItem(storageKey)
+      .then((value) => {
+        if (!active || !value) return;
+        const stored = JSON.parse(value) as { persistence_version?: number; fixture?: unknown };
+        if (stored.persistence_version !== 3 || !validAnchors(stored.fixture, definition)) {
+          throw new Error('Saved anchors do not match this fixture. They have not been deleted.');
         }
-      } catch {}
-      await AsyncStorage.removeItem(storageKey);
-    });
-  }, []);
+        setFixture(stored.fixture);
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setLoadError(error instanceof Error ? error.message : 'Could not load saved anchors.');
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [definition, storageKey]);
+
+  async function persist(next: AnchorFixture) {
+    await AsyncStorage.setItem(
+      storageKey,
+      JSON.stringify({ persistence_version: 3, fixture: next }),
+    );
+    setFixture(next);
+  }
 
   async function seek(target: number) {
     const requested = Math.max(
       0,
-      Math.min(Math.round(status.duration * 1000 || 864310), Math.round(target)),
+      Math.min(Math.round(status.duration * 1000 || target), Math.round(target)),
     );
     setRequestedMS(requested);
-    await player.seekTo(requested / 1000, 0, 0);
+    try {
+      await player.seekTo(requested / 1000, 0, 0);
+    } catch {
+      setMessage('Could not seek the audiobook. Wait for it to load and retry.');
+      return;
+    }
     const reported = Math.round(player.currentTime * 1000);
     setDiagnostic({
       requested_ms: requested,
@@ -88,41 +94,62 @@ export default function AnchorAuthoring() {
   }
 
   async function captureSelection() {
-    const next = reader.current?.captureSelection();
-    if (!next) return setMessage('Select some text in the book first.');
-    setCapture(next);
-    const restored = await reader.current?.restoreSelection(next);
-    const exact = restored === next.text;
-    setSelectionVerified(exact);
-    setMessage(
-      exact
-        ? 'Captured and restored the exact browser selection.'
-        : 'Capture failed its immediate restore check.',
-    );
+    setSelectionVerified(false);
+    try {
+      const next = reader.current?.captureSelection();
+      if (!next) return setMessage('Select some text in the book first.');
+      setCapture(next);
+      const restored = await reader.current?.restoreSelection(next);
+      const restoredCapture = reader.current?.captureSelection();
+      const exact =
+        restored === next.text && Boolean(restoredCapture && samePassage(next, restoredCapture));
+      setSelectionVerified(exact);
+      setMessage(
+        exact
+          ? 'Captured and restored the exact browser selection.'
+          : 'Capture failed its immediate restore check.',
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not restore this passage.');
+    }
   }
 
   async function restoreSelection() {
-    if (!capture) return;
-    const restored = await reader.current?.restoreSelection(capture);
-    const exact = restored === capture.text;
-    setSelectionVerified(exact);
-    setMessage(
-      exact
-        ? 'Restore exact: selected text matches the captured text.'
-        : 'Restore failed: selected text differs from the captured text.',
-    );
+    setSelectionVerified(false);
+    try {
+      if (!capture) return;
+      const restored = await reader.current?.restoreSelection(capture);
+      const restoredCapture = reader.current?.captureSelection();
+      const exact =
+        restored === capture.text &&
+        Boolean(restoredCapture && samePassage(capture, restoredCapture));
+      setSelectionVerified(exact);
+      setMessage(
+        exact
+          ? 'Restore exact: selected text and DOM boundaries match.'
+          : 'Restore failed: selected text or DOM boundaries differ.',
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not restore this passage.');
+    }
   }
 
   async function saveAnchor() {
     if (!capture || !selectionVerified)
       return setMessage('Capture and exactly restore an EPUB selection first.');
-    const id = editingID || nextID(fixture.anchors);
+    if (
+      !Number.isSafeInteger(requestedMS) ||
+      requestedMS < 0 ||
+      diagnostic.requested_ms !== requestedMS
+    )
+      return setMessage('Use Seek + capture to verify the requested timestamp before saving.');
+    const id = editingID || nextID(fixture.anchors, definition.prefix);
     const anchor: Anchor = {
       id,
       text: capture.text,
       normalized_text: capture.normalized_text,
       epub: { href: capture.href, cfi: capture.cfi, start: capture.start, end: capture.end },
-      audio: { resource: audioResource, timestamp_ms: requestedMS, seek: diagnostic },
+      audio: { resource: definition.audio, timestamp_ms: requestedMS, seek: diagnostic },
       canonical: { segment_id: id, offset: 0 },
       koreader_xpointer: fixture.anchors.find((item) => item.id === id)?.koreader_xpointer ?? '',
     };
@@ -130,16 +157,22 @@ export default function AnchorAuthoring() {
       (a, b) => a.audio.timestamp_ms - b.audio.timestamp_ms,
     );
     const next = { ...fixture, anchors };
-    setFixture(next);
-    await persist(next);
-    setEditingID(undefined);
-    setMessage(`Saved ${id} locally. Export to update the repository fixture.`);
+    setSaving(true);
+    try {
+      await persist(next);
+      setEditingID(undefined);
+      setMessage(`Saved ${id} locally. Export to update the repository fixture.`);
+    } catch {
+      setMessage('Could not save this anchor. Keep this page open and retry.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function edit(anchor: Anchor) {
     setEditingID(anchor.id);
     setCapture({ ...anchor.epub, text: anchor.text, normalized_text: anchor.normalized_text });
-    setSelectionVerified(true);
+    setSelectionVerified(false);
     setRequestedMS(anchor.audio.timestamp_ms);
     setDiagnostic(anchor.audio.seek);
     setMessage(`Editing ${anchor.id}`);
@@ -147,8 +180,19 @@ export default function AnchorAuthoring() {
 
   async function remove(id: string) {
     const next = { ...fixture, anchors: fixture.anchors.filter((anchor) => anchor.id !== id) };
-    setFixture(next);
-    await persist(next);
+    setSaving(true);
+    try {
+      await persist(next);
+      if (editingID === id) {
+        setEditingID(undefined);
+        setCapture(undefined);
+        setSelectionVerified(false);
+      }
+    } catch {
+      setMessage('Could not delete the saved anchor. Please retry.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function exportFixture() {
@@ -156,33 +200,40 @@ export default function AnchorAuthoring() {
     const blob = new Blob([`${JSON.stringify(fixture, null, 2)}\n`], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'anchors.json';
+    link.download =
+      definition.id === 'alice-ch01-control' ? 'anchors.json' : `${definition.id}-anchors.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
 
+  if (loadError)
+    return (
+      <ErrorState title="Saved anchors could not be loaded">
+        {loadError} Export or repair the stored data before continuing; reload to retry.
+      </ErrorState>
+    );
+  if (!loaded) return <LoadingState label="Loading saved anchors" />;
+
   return (
-    <SafeAreaView style={styles.page}>
+    <TWView className="flex-1 bg-canvas">
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Alice anchor authoring</Text>
+        <TWView className="max-w-full">
+          <Text style={styles.title}>{definition.label}: anchor authoring</Text>
           <Text style={styles.message}>{message}</Text>
-        </View>
+        </TWView>
         <View style={styles.headerActions}>
           <Text style={styles.count}>{fixture.anchors.length} anchors</Text>
-          <Pressable style={styles.primary} onPress={exportFixture}>
-            <Text style={styles.primaryText}>Export JSON</Text>
-          </Pressable>
+          <Button label="Export JSON" onPress={exportFixture} primary />
         </View>
       </View>
-      <View style={styles.workspace}>
-        <View style={styles.reader}>
-          <EPUBReader ref={reader} source={mediaURL('alice.epub')} />
-        </View>
+      <TWView className="flex-1 flex-col min-[820px]:flex-row">
+        <TWView className="min-h-[400px] flex-1 p-4 min-[820px]:flex-[3]">
+          <EPUBReader ref={reader} source={epub} onError={(error) => setMessage(error.message)} />
+        </TWView>
         <ScrollView style={styles.inspector} contentContainerStyle={styles.inspectorContent}>
           <View style={styles.workflow}>
             <Text style={styles.step}>
-              1. Highlight a passage in the real Alice EPUB, then capture the selection.
+              1. Highlight a passage in the selected EPUB, then capture the selection.
             </Text>
             <Text style={styles.step}>2. Play or seek the audiobook to that sentence.</Text>
             <Text style={styles.step}>3. Click Save Anchor.</Text>
@@ -190,11 +241,13 @@ export default function AnchorAuthoring() {
 
           <Button label="Capture selection" onPress={captureSelection} primary />
 
-          <Text style={styles.sectionTitle}>Captured Alice passage</Text>
+          <Text style={styles.sectionTitle}>Captured passage</Text>
           <TextInput
             multiline
             editable={false}
-            value={capture?.text || 'Highlight a passage in Alice, then click Capture selection.'}
+            value={
+              capture?.text || 'Highlight a passage in the book, then click Capture selection.'
+            }
             style={[styles.input, styles.capturedText]}
           />
           <Text style={styles.mono}>
@@ -209,7 +262,7 @@ export default function AnchorAuthoring() {
             disabled={!capture}
           />
 
-          <Text style={styles.sectionTitle}>Alice audiobook · Chapter 1</Text>
+          <Text style={styles.sectionTitle}>{definition.audio}</Text>
           <Text style={styles.clock}>{formatMS(Math.round(status.currentTime * 1000))}</Text>
           <Text style={styles.mono}>
             {Math.round(status.currentTime * 1000)} ms / {Math.round(status.duration * 1000)} ms
@@ -219,11 +272,11 @@ export default function AnchorAuthoring() {
               label={status.playing ? 'Pause' : 'Play'}
               onPress={() => (status.playing ? player.pause() : player.play())}
               primary
-              disabled={!selectionVerified}
+              disabled={!selectionVerified || saving}
             />
             <Button
               label="Capture current"
-              disabled={!selectionVerified}
+              disabled={!selectionVerified || saving}
               onPress={() => {
                 const current = Math.round(player.currentTime * 1000);
                 setRequestedMS(current);
@@ -234,7 +287,7 @@ export default function AnchorAuthoring() {
               <Button
                 key={amount}
                 label={`${amount > 0 ? '+' : ''}${amount}`}
-                disabled={!selectionVerified}
+                disabled={!selectionVerified || saving}
                 onPress={() => seek(requestedMS + amount)}
               />
             ))}
@@ -251,7 +304,7 @@ export default function AnchorAuthoring() {
             />
             <Button
               label="Seek + capture"
-              disabled={!selectionVerified}
+              disabled={!selectionVerified || saving}
               onPress={() => seek(requestedMS)}
             />
           </View>
@@ -263,7 +316,7 @@ export default function AnchorAuthoring() {
             label={editingID ? 'Update anchor' : 'Save anchor'}
             onPress={saveAnchor}
             primary
-            disabled={!selectionVerified}
+            disabled={!selectionVerified || saving}
           />
 
           <Text style={styles.sectionTitle}>Saved anchors</Text>
@@ -277,13 +330,13 @@ export default function AnchorAuthoring() {
                   {anchor.text}
                 </Text>
               </View>
-              <Button label="Edit" onPress={() => edit(anchor)} />
-              <Button label="Delete" onPress={() => remove(anchor.id)} danger />
+              <Button label="Edit" onPress={() => edit(anchor)} disabled={saving} />
+              <Button label="Delete" onPress={() => remove(anchor.id)} danger disabled={saving} />
             </View>
           ))}
         </ScrollView>
-      </View>
-    </SafeAreaView>
+      </TWView>
+    </TWView>
   );
 }
 
@@ -301,49 +354,17 @@ function Button({
   disabled?: boolean;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+    <SharedButton
+      label={label}
       onPress={onPress}
-      style={[
-        styles.button,
-        primary && styles.primary,
-        danger && styles.danger,
-        disabled && styles.disabled,
-      ]}
-    >
-      <Text style={[styles.buttonText, primary && styles.primaryText, danger && styles.dangerText]}>
-        {label}
-      </Text>
-    </Pressable>
+      disabled={disabled}
+      kind={danger ? 'danger' : primary ? 'primary' : 'secondary'}
+    />
   );
 }
 
-function nextID(anchors: Anchor[]) {
-  return `alice-ch01-${String(Math.max(0, ...anchors.map((anchor) => Number(anchor.id.split('-').at(-1)) || 0)) + 1).padStart(2, '0')}`;
-}
-function persist(fixture: AnchorFixture) {
-  return AsyncStorage.setItem(
-    storageKey,
-    JSON.stringify({ persistence_version: persistenceVersion, fixture }),
-  );
-}
-function isAliceFixture(fixture: AnchorFixture) {
-  return (
-    fixture.version === 1 &&
-    fixture.epub_sha256 === emptyFixture.epub_sha256 &&
-    fixture.audio_sha256 === emptyFixture.audio_sha256 &&
-    Array.isArray(fixture.anchors) &&
-    fixture.anchors.every(
-      (anchor) =>
-        anchor.epub?.href?.startsWith('OEBPS/') &&
-        anchor.epub.start?.dom_path &&
-        anchor.epub.end?.dom_path &&
-        typeof anchor.normalized_text === 'string' &&
-        anchor.audio?.resource === audioResource,
-    )
-  );
+function nextID(anchors: Anchor[], prefix: string) {
+  return `${prefix}-${String(Math.max(0, ...anchors.map((anchor) => Number(anchor.id.split('-').at(-1)) || 0)) + 1).padStart(2, '0')}`;
 }
 function formatMS(ms: number) {
   const minutes = Math.floor(ms / 60000);
@@ -363,6 +384,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#c9c0b3',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
     justifyContent: 'space-between',
     alignItems: 'center',
   },

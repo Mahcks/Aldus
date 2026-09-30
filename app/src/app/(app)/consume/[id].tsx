@@ -34,7 +34,6 @@ import { TakeoverDialog } from '@/components/consumption/handoff/TakeoverDialog'
 import { pausedCopy, saveStatusView } from '@/lib/consumption/handoff-copy';
 import { ResumeToast } from '@/components/consumption/ResumeToast';
 import { readerSaveIndicator } from '@/lib/consumption/reader-status';
-import type { NarrationSync } from '@/components/consumption/SyncIndicator';
 import { api, errorMessage } from '@/lib/api';
 
 type Mode = 'read' | 'listen';
@@ -393,9 +392,6 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       ? actions.settledEPUBSave?.result
       : undefined,
   );
-  const narrationSync: NarrationSync | undefined = alignmentID
-    ? (readerLocation?.syncState ?? 'none')
-    : undefined;
   const progressStatus =
     pausedDevice || placeConflict
       ? saveStatusView('paused', mode).label
@@ -707,7 +703,6 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
             leaveReader={leaveReader}
             paused={Boolean(pausedDevice)}
             saveIndicator={saveIndicator}
-            narrationSync={narrationSync}
           />
           {!compactNative && mode === 'read' && readerInteractionReady && controlsEnabled ? (
             <ResumeToast message={resumeMessage} />
@@ -744,6 +739,7 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
           hasEbook={Boolean(selectedEPUB)}
           passage={passage}
           status={status}
+          restoringPlace={state.mediaLoading || (state.initialAudioMS != null && !state.audioReady)}
           progressStatus={progressStatus}
           audioID={audioID}
           audioDuration={audioDuration}

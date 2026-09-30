@@ -166,3 +166,8 @@ alignment-gpu-check:
 
 # Optional commands for this checkout; never required by shared workflows.
 -include Makefile.local
+
+.PHONY: listening-practice
+listening-practice:
+	cp app/src/maintainer/onsets.tsx app/src/app/onsets.tsx
+	python3 tools/listening_practice.py
