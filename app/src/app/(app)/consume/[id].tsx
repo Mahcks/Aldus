@@ -360,7 +360,10 @@ function ConsumeWorkContent({ session }: { session: ReadingSession }) {
       <ConsumeLoading mode={mode} onBack={() => void leaveReader()} />
     ) : (
       <View className="min-h-full flex-1 items-center justify-center bg-canvas p-6">
-        <Notice danger>{notice || 'Work unavailable.'}</Notice>
+        <View className="w-full max-w-md gap-4">
+          <Notice danger>{notice || 'Work unavailable.'}</Notice>
+          <Button label="Back to book" kind="secondary" onPress={session.backToBook} />
+        </View>
       </View>
     );
 
