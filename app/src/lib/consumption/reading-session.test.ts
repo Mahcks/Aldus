@@ -151,6 +151,34 @@ describe('continuing here', () => {
     expect(state.kind === 'claiming' && state.proof).toEqual({ device_id: 'laptop', epoch: 4 });
   });
 
+  it('unblocks saving when a failed restore subsequently finishes, unless ownership was lost', () => {
+    const proof = { device_id: 'laptop', epoch: 4 };
+    for (const reason of ['restore', 'not-downloaded'] as const) {
+      const failed = run(
+        [{ type: 'continue' }, { type: 'claimed', proof }, { type: 'content-failed', reason }],
+        prompt(),
+      );
+      expect(mayWritePosition(failed)).toBe(false);
+      expect(takeoverViewFor(failed)?.kind).toBe('failed');
+
+      const recovered = run([{ type: 'content-ready' }], failed);
+      expect(recovered).toEqual({ kind: 'active', attempt: 1, proof });
+      expect(mayWritePosition(recovered)).toBe(true);
+      expect(takeoverViewFor(recovered)).toBeUndefined();
+
+      const lost = run([{ type: 'lost', owner: owner({ epoch: 5 }) }], failed);
+      expect(run([{ type: 'content-ready' }], lost)).toEqual(lost);
+      expect(mayWritePosition(lost)).toBe(false);
+    }
+
+    const refused = run(
+      [{ type: 'continue' }, { type: 'claim-failed', reason: 'refused' }],
+      prompt(),
+    );
+    expect(run([{ type: 'content-ready' }], refused)).toEqual(refused);
+    expect(mayWritePosition(refused)).toBe(false);
+  });
+
   it('offers cancel only once the transfer is slow, and returns to the prompt', () => {
     let state = run([{ type: 'continue' }], prompt());
     expect(run([{ type: 'cancel' }], state)).toEqual(state);

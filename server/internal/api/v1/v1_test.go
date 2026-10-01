@@ -231,6 +231,7 @@ func TestRouteContract(t *testing.T) {
 		"GET /catalog/{kind}",
 		"GET /covers/{coverID}",
 		"GET /media/{mediaID}/cover",
+		"GET /media/{mediaID}/playback",
 		"GET /works/{workID}/covers",
 		"POST /works/{workID}/cover",
 		"PUT /works/{workID}/cover/{format}",

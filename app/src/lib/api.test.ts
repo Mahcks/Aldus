@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 mock.module('react-native', () => ({ Platform: { OS: 'web' } }));
 const { api, APIError, errorMessage, onUnauthorized } = await import('./api');
 const { isLoopbackURL, resolveAPIBaseURL } = await import('./api-base');
-const { productMediaURL } = await import('./media');
+const { productMediaURL, productAudioSource } = await import('./media');
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
@@ -110,6 +110,12 @@ describe('API transport', () => {
     expect(productMediaURL('audio/item', 'https://library.example')).toBe(
       'https://library.example/api/v1/media/audio%2Fitem',
     );
+  });
+
+  it('streams web audio through playback without changing original download URLs', async () => {
+    expect(await productAudioSource('audio/item')).toMatchObject({
+      uri: `${productMediaURL('audio/item')}/playback`,
+    });
   });
 
   it('does not persist or attach the web login token', async () => {

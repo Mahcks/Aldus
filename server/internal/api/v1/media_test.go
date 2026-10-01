@@ -48,7 +48,8 @@ func TestOpaqueMediaDownloadSupportsRanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mediaStore, err := ingest.New(db, ingest.Options{Root: t.TempDir(), MaxBytes: 1024, Probe: func(context.Context, string) error { return nil }})
+	mediaRoot := t.TempDir()
+	mediaStore, err := ingest.New(db, ingest.Options{Root: mediaRoot, MaxBytes: 1024, Probe: func(context.Context, string) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +65,57 @@ func TestOpaqueMediaDownloadSupportsRanges(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" || response.Header().Get("Accept-Ranges") != "bytes" || response.Header().Get("Content-Type") != "audio/mpeg" {
 		t.Fatalf("range=%d %q %#v", response.Code, response.Body.String(), response.Header())
+	}
+
+	// Formats that need no playback copy retain the same authorized range behavior.
+	request = httptest.NewRequest(http.MethodGet, "/media/"+media.ID+"/playback", nil)
+	request.Header.Set("Authorization", "Bearer "+session.Token)
+	request.Header.Set("Range", "bytes=2-5")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusPartialContent || response.Body.String() != "2345" {
+		t.Fatalf("playback range=%d %q", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/media/"+media.ID+"/playback", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated playback = %d", response.Code)
+	}
+
+	book, err := mediaStore.Upload(ctx, session.User, library.ID, representation.ID, "book.m4b", strings.NewReader("original-audio"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cacheDir := filepath.Join(mediaRoot, "playback-v1")
+	if err := os.MkdirAll(cacheDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, book.SHA256+".m4a"), []byte("cached-playback"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/media/"+book.ID+"/playback", nil)
+	request.Header.Set("Authorization", "Bearer "+session.Token)
+	request.Header.Set("Range", "bytes=7-10")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusPartialContent || response.Body.String() != "play" ||
+		response.Header().Get("Content-Range") != "bytes 7-10/15" ||
+		response.Header().Get("Content-Type") != "audio/mp4" {
+		t.Fatalf("cached playback range=%d %q %#v", response.Code, response.Body.String(), response.Header())
+	}
+
+	unprepared, err := mediaStore.Upload(ctx, session.User, library.ID, representation.ID, "unsupported.m4b", strings.NewReader("unprobeable-audio"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/media/"+unprepared.ID+"/playback", nil)
+	request.Header.Set("Authorization", "Bearer "+session.Token)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusTemporaryRedirect || response.Header().Get("Location") != "/media/"+unprepared.ID {
+		t.Fatalf("unavailable optimization = %d %#v", response.Code, response.Header())
 	}
 }
 

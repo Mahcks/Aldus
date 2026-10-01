@@ -383,6 +383,11 @@ func backupFiles(ctx context.Context, dataDir, snapshot string) (map[string]stri
 		name := filepath.ToSlash(relative)
 		parent := filepath.ToSlash(filepath.Dir(relative))
 		if entry.IsDir() {
+			// Ingest reserves this directory at each media root for reproducible
+			// playback copies, including temporary files being remuxed.
+			if entry.Name() == "playback-v1" {
+				return filepath.SkipDir
+			}
 			if name == "models" {
 				return filepath.SkipDir
 			}

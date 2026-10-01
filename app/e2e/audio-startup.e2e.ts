@@ -45,7 +45,7 @@ test('Listen restores the saved time before showing the player and reuses loaded
   const audioGate = new Promise<void>((resolve) => {
     releaseAudio = resolve;
   });
-  await page.route(`${testServer}/api/v1/media/${job.audio_media_id}`, async (route) => {
+  await page.route(`${testServer}/api/v1/media/${job.audio_media_id}/playback`, async (route) => {
     await audioGate;
     await route.continue();
   });

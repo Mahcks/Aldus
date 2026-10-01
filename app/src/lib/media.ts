@@ -27,7 +27,7 @@ export async function productAudioSource(
 ): Promise<AudioSource> {
   const token = await getToken();
   return {
-    uri: productMediaURL(id),
+    uri: `${productMediaURL(id)}/playback`,
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   };
 }

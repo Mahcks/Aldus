@@ -64,6 +64,9 @@ func TestLiveBackupExcludesChangingWorkingFiles(t *testing.T) {
 		"notes/.aldus-ready-book",
 	}
 	working := []string{
+		"media/playback-v1/book.m4a",
+		"media/playback-v1/preparing.tmp",
+		"custom/playback-v1/book.m4a",
 		"media/staging/upload-first",
 		"custom/staging/upload-second",
 		"staging/upload-root",

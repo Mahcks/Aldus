@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,7 +17,8 @@ import (
 func registerMediaRoutes(router chi.Router, store *ingest.Store) {
 	router.Get("/libraries/{libraryID}/representations/{representationID}/media", listMedia(store))
 	router.Post("/libraries/{libraryID}/representations/{representationID}/media", uploadMedia(store))
-	router.Get("/media/{mediaID}", downloadMedia(store))
+	router.Get("/media/{mediaID}", downloadMedia(store, false))
+	router.Get("/media/{mediaID}/playback", downloadMedia(store, true))
 	router.Get("/media/{mediaID}/chapters", audioChapters(store))
 	router.Get("/media/{mediaID}/cover", downloadCover(store))
 }
@@ -91,10 +93,21 @@ func listMedia(store *ingest.Store) http.HandlerFunc {
 	}
 }
 
-func downloadMedia(store *ingest.Store) http.HandlerFunc {
+func downloadMedia(store *ingest.Store, playback bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		file, media, err := store.Open(r.Context(), actor(r), chi.URLParam(r, "mediaID"))
+		open := store.Open
+		if playback {
+			open = store.OpenPlayback
+		}
+		file, media, err := open(r.Context(), actor(r), chi.URLParam(r, "mediaID"))
 		if err != nil {
+			if errors.Is(err, ingest.ErrPlaybackUnavailable) && r.Context().Err() == nil {
+				// Keep playable originals available, and avoid retrying preparation
+				// for every range request made during this playback attempt.
+				slog.Warn("using original audiobook playback", "error", err)
+				http.Redirect(w, r, strings.TrimSuffix(r.URL.Path, "/playback"), http.StatusTemporaryRedirect)
+				return
+			}
 			writeMediaError(w, err)
 			return
 		}

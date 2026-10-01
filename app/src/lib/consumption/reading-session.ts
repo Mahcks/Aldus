@@ -145,10 +145,17 @@ export function readingSessionReducer(state: SessionState, event: SessionEvent):
         reason: event.reason,
       };
     }
-    case 'content-ready':
-      return state.kind === 'claiming' && state.step === 'restore' && state.proof
+    case 'content-ready': {
+      // A transient load error can clear without an explicit retry. Keep the
+      // existing ownership proof; readiness must never reclaim a lost session.
+      const restoring =
+        (state.kind === 'claiming' && state.step === 'restore') ||
+        (state.kind === 'failed' &&
+          (state.reason === 'restore' || state.reason === 'not-downloaded'));
+      return restoring && state.proof
         ? { kind: 'active', attempt: state.attempt, proof: state.proof }
         : state;
+    }
     case 'content-failed':
       return state.kind === 'claiming' && state.step === 'restore'
         ? {

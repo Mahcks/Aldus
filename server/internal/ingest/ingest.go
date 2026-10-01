@@ -49,6 +49,7 @@ type Store struct {
 	resolver *source.Store
 	mu       sync.Mutex
 	probes   chan struct{}
+	playback chan struct{}
 }
 
 type Media struct {
@@ -118,6 +119,7 @@ func New(db *sql.DB, options Options) (*Store, error) {
 		probe:    probe,
 		resolver: resolver,
 		probes:   make(chan struct{}, 2),
+		playback: make(chan struct{}, 1),
 	}, nil
 }
 
