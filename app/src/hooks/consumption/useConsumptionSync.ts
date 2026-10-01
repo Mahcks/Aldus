@@ -195,7 +195,11 @@ export function useConsumptionSync(
         await player.seekTo(target, 0, 0);
         applyPlaybackRate(player, audioState?.playback_speed);
         restoredAudioRef.current = `${audioID}:${initialAudioMS}`;
-        setAudioReady(Platform.OS !== 'web');
+        // Seeking to the current web position may emit no status update.
+        setAudioReady(
+          Platform.OS !== 'web' ||
+            (webAudioLoaded && webAudioTime !== undefined && Math.abs(webAudioTime - target) < 1),
+        );
         const handoff = pendingAudioHandoffRef.current;
         if (handoff?.audioID !== audioID || handoff.timestampMS !== initialAudioMS) return;
         pendingAudioHandoffRef.current = undefined;

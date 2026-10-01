@@ -20,7 +20,7 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   const settings = page.getByRole('button', { name: 'Open reader settings' });
   await expect(settings).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Next page' }).click();
-  await expect(page.getByLabel('Reading place saved', { exact: true })).toBeVisible({
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible({
     timeout: 10_000,
   });
 
