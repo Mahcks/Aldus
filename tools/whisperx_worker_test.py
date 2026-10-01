@@ -55,6 +55,61 @@ class WordTimingTest(unittest.TestCase):
 
 
 class OpeningConfidenceTest(unittest.TestCase):
+    def test_chapter_markers_keep_the_first_part_of_a_split_chapter(self):
+        from types import SimpleNamespace
+        from whisperx_worker import chapter_markers
+
+        probe = {"chapters": [
+            {"start_time": "8853.019546", "tags": {"title": "10 - Chapter 6"}},
+            {"start_time": "31790.004717", "tags": {"title": "28 - Chapter 24: Part 1"}},
+            {"start_time": "33230.008073", "tags": {"title": "29 - Chapter 24: Part 2"}},
+        ]}
+        with patch("whisperx_worker.subprocess.run", return_value=SimpleNamespace(stdout=json.dumps(probe).encode())):
+            self.assertEqual(chapter_markers("book.m4b"), {"Chapter 6": 8853020, "Chapter 24": 31790005})
+
+    def test_chapter_marker_rejects_prior_chapter_credit_as_heading(self):
+        from contextlib import ExitStack
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        import whisperx_worker
+
+        job = {
+            "version": 1, "audio_path": "/frozen/book.m4b", "audio_resource": "book.m4b",
+            "epub_sha256": "epub", "audio_sha256": "audio", "model": "base.en",
+            "segments": [
+                {"id": "heading", "ordinal": 0, "text": "Chapter 6", "href": "book.xhtml", "dom_path": "h2[1]"},
+                {"id": "prose", "ordinal": 1, "text": "Clerval then put the letter", "href": "book.xhtml", "dom_path": "p[1]"},
+            ],
+        }
+        words = [
+            {"word": word, "start": start, "end": start + 0.2, "score": 0.9}
+            for word, start in zip(
+                "Chapter 6 Clerval then put the letter".split(),
+                (100.0, 100.3, 120.0, 120.3, 120.6, 120.9, 121.2),
+            )
+        ]
+        worker = SimpleNamespace(
+            load_audio=Mock(return_value=[]),
+            load_model=Mock(return_value=SimpleNamespace(transcribe=Mock(return_value={"segments": []}))),
+            load_align_model=Mock(return_value=(None, {})),
+            align=Mock(return_value={"word_segments": words}),
+        )
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            source = Path(directory) / "input.json"
+            output = Path(directory) / "alignment.json"
+            source.write_text(json.dumps(job))
+            stack.enter_context(patch.dict("sys.modules", {"whisperx": worker}))
+            stack.enter_context(patch("sys.argv", ["worker", "--job-input", str(source), "--output", str(output)]))
+            stack.enter_context(patch("whisperx_worker.importlib.metadata.version", return_value="test"))
+            stack.enter_context(patch("whisperx_worker.load_worker_config", return_value=("cpu", "int8", 4)))
+            stack.enter_context(patch("whisperx_worker.chapter_markers", return_value={"Chapter 6": 110000}))
+            stack.enter_context(patch("whisperx_worker.recover_weak_starts"))
+            whisperx_worker.main()
+            segments = json.loads(output.read_text())["segments"]
+        self.assertEqual(segments[0]["status"], "unresolved")
+        self.assertFalse(segments[0]["highlightable"])
+        self.assertEqual(segments[1]["status"], "aligned")
+
     def test_full_worker_refuses_reviewed_bad_start_and_keeps_confirmed_starts(self):
         from contextlib import ExitStack
         from types import SimpleNamespace
@@ -148,6 +203,10 @@ class OpeningRecoveryTest(unittest.TestCase):
                     "mean_word_score": 0.7, "opening_word_score": 0.4,
                 },
             })
+        # A missing first sentence must be retried despite confident later words.
+        segments[1]["confidence_signals"].update(
+            opening_word_matched=False, text_coverage=0.58, opening_word_score=0.83,
+        )
         segments[-1]["status"] = "aligned"
         segments[-1]["highlightable"] = True
         before = copy.deepcopy(segments)
@@ -166,12 +225,16 @@ class OpeningRecoveryTest(unittest.TestCase):
              patch("whisperx_worker.recovery_opening", return_value=18.22):
             recover_weak_starts(segments, job, "cpu", "int8", Mock())
         self.assertEqual(decode.call_count, 8)
+        command = decode.call_args_list[1].args[0]
+        self.assertEqual(command[command.index("-ss") + 1], "75.0")
         self.assertEqual(segments[8:], before[8:])
         for index, segment in enumerate(segments[:8]):
             self.assertEqual(segment["status"], "aligned")
             self.assertTrue(segment["highlightable"])
             self.assertTrue(segment["confidence_signals"]["opening_recovered"])
-            self.assertEqual(segment["audio"]["start_ms"], index * 100000 + 18600)
+            self.assertTrue(segment["confidence_signals"]["opening_word_matched"])
+            expected = 93600 if index == 1 else index * 100000 + 18600
+            self.assertEqual(segment["audio"]["start_ms"], expected)
 
     def test_realign_accepts_only_complete_confident_bounded_words(self):
         import copy

@@ -123,6 +123,12 @@ for (const exact of [true, false]) {
       await expect(phrase(0)).toHaveAttribute('aria-selected', 'false');
       await expect(phrase(1)).toBeInViewport();
       await expect(page.getByRole('alert')).toHaveCount(0);
+      // A chapter introduction or unmatched passage must not keep a stale highlight.
+      await seek(segment.audio_end_ms / 1000 + 2);
+      await expect(panel.locator('[aria-selected="true"]')).toHaveCount(0);
+      await seek(chunks[1].startMS / 1000 + 1);
+      await expect(phrase(1)).toHaveAttribute('aria-selected', 'true');
+
       // The label stays steady whichever kind of timing a phrase has.
       await expect(page.getByText(/approximate timing/)).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath('read-along.png'), fullPage: true });

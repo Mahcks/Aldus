@@ -209,7 +209,7 @@ export function ReadAlongPanel({
               key={item.key}
               blockKey={item.key}
               chunk={item.chunk}
-              active={item.key === activeKey}
+              active={passage.active && item.key === activeKey}
               enterRank={Math.abs(position - activePosition)}
               onMeasured={handleMeasured}
               onSeek={handleSeek}

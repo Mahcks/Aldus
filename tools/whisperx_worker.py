@@ -100,6 +100,30 @@ def opening_word_score(words):
     return sum(word["confidence"] for word in opening) / len(opening)
 
 
+def chapter_markers(audio_path):
+    """Use embedded markers only to reject headings placed in the prior chapter."""
+    try:
+        output = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "chapter=start_time:chapter_tags=title",
+             "-of", "json", audio_path],
+            check=True, capture_output=True, timeout=30,
+        ).stdout
+        chapters = json.loads(output)["chapters"]
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, KeyError):
+        return {}
+    markers = {}
+    for chapter in chapters:
+        title = chapter.get("tags", {}).get("title") or ""
+        match = re.search(r"\bChapter (\d+)\b", title, re.IGNORECASE)
+        try:
+            start = float(chapter["start_time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if match and math.isfinite(start) and start >= 0:
+            markers.setdefault(f"Chapter {int(match.group(1))}", round(start * 1000))
+    return markers
+
+
 def recovery_opening(model, audio, text):
     """Find one independently recognized opening across overlapping short clips."""
     expected = tokens(text)[:6]
@@ -163,10 +187,9 @@ def recover_weak_starts(segments, job, device, compute_type, diagnostics):
         if (
             segment["status"] == "unresolved"
             and segment["word_timings"]
-            and signals["opening_word_matched"]
-            and signals["text_coverage"] >= 0.8
+            and signals["text_coverage"] >= (0.8 if signals["opening_word_matched"] else 0.5)
             and (signals["mean_word_score"] or 0) >= 0.5
-            and (signals["opening_word_score"] or 0) < 0.5
+            and (not signals["opening_word_matched"] or (signals["opening_word_score"] or 0) < 0.5)
             and len(tokens(segment["text"])) >= 6
         ):
             candidates.append(index)
@@ -191,7 +214,9 @@ def recover_weak_starts(segments, job, device, compute_type, diagnostics):
             segments[index + 1]["audio"]["start_ms"]
             if index + 1 < len(segments) else job["audio_duration_ms"]
         )
-        start_ms = max(lower_ms, segment["audio"]["start_ms"] - 5000)
+        # Missing opening words can precede the first retained match by a sentence.
+        lookback_ms = 5000 if segment["confidence_signals"]["opening_word_matched"] else 30000
+        start_ms = max(lower_ms, segment["audio"]["start_ms"] - lookback_ms)
         end_ms = min(upper_ms, segment["audio"]["end_ms"] + 1000)
         if not 5000 <= end_ms - start_ms <= 120000:
             continue
@@ -237,6 +262,7 @@ def recover_weak_starts(segments, job, device, compute_type, diagnostics):
                 "opening_word_score": opening_word_score(words),
                 "text_coverage": 1.0,
                 "opening_recovered": True,
+                "opening_word_matched": True,
             })
             recovered += 1
         del align_model
@@ -387,6 +413,7 @@ def run(args, diagnostics):
     if args.job_input:
         diagnostics.stage("matching_text")
         report_stage("matching_text")
+        markers = chapter_markers(args.audio)
         spoken = canonical_words(
             word for word in result["word_segments"] if "start" in word and "end" in word
         )
@@ -439,6 +466,9 @@ def run(args, diagnostics):
                 and opening_score >= 0.5
                 else "unresolved"
             )
+            marker_ms = markers.get(item["text"].strip())
+            if marker_ms is not None and words and words[0]["startTime"] * 1000 < marker_ms - 2000:
+                status = "unresolved"
             if words and round(words[0]["startTime"] * 1000) < last_end_ms:
                 words = []
                 status = "unresolved"
