@@ -16,6 +16,7 @@ import {
   type MediaChoice,
 } from '@/lib/consumption/consumption';
 import { rememberOfflineAudioDuration } from '@/lib/offline-library';
+import { applyPlayerVolume, usePlayerVolume } from '@/lib/consumption/player-volume';
 import { errorMessage } from '@/lib/api';
 
 export function useAudioPlayback({
@@ -39,6 +40,13 @@ export function useAudioPlayback({
     useState<(typeof PLAYBACK_RATES)[number]>(1);
   const player = useAudioPlayer(source, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
+  const volume = usePlayerVolume();
+  // Web has an in-app volume control; native players follow the device's volume buttons.
+  // Reapplied once the audio loads, since a newly loaded source starts at full volume.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    applyPlayerVolume(player, volume);
+  }, [player, volume, status.isLoaded]);
   const alignedDuration = useMemo(
     () =>
       alignment?.segments.reduce((end, segment) => Math.max(end, segment.audio_end_ms / 1000), 0) ??

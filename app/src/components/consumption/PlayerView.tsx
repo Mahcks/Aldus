@@ -2,6 +2,7 @@ import { fallbackCoverURL } from '@/lib/catalog/cover-artwork';
 import { AudioScrubber } from './AudioScrubber';
 import { ReadAlongPanel } from './ReadAlongPanel';
 import { ReadAlongUnavailableSheet } from './ReadAlongUnavailableSheet';
+import { VolumeControl } from './VolumeControl';
 import type { AudioChapter, Work } from '@/generated/api';
 import { useAudioPlayerStatus } from 'expo-audio';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -367,6 +368,7 @@ export function PlayerView({
               >
                 <Text className="text-sm font-sans-bold text-ink">{currentPlaybackRate}×</Text>
               </Pressable>
+              <VolumeControl disabled={!status.isLoaded || controlsLocked} />
               <IconButton
                 icon="sleepTimer"
                 label={
