@@ -28,10 +28,15 @@ test('an administrator can read, listen, and configure KOReader safely', async (
   await expect(page.getByText('Typography', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close reader settings' }).click();
 
-  // An ordinary format change keeps playback paused.
+  // An aligned place starts narration; an unaligned place opens paused.
+  const startsPlayback = await page
+    .getByRole('button', { name: 'Listen from here', exact: true })
+    .isVisible();
   const readURL = page.url();
   await page.getByRole('button', { name: 'Switch to listening' }).click();
-  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: startsPlayback ? 'Pause' : 'Play' })).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.goto(readURL);
   await expect(page.getByRole('button', { name: 'Open table of contents' })).toBeVisible({
