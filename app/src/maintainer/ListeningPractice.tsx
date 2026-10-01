@@ -145,7 +145,7 @@ export function ListeningPractice({
         if (generation !== playback.current) return;
         setPlaying(false);
       };
-      node.start(0, (before ? start - 1000 : start) / 1000, before ? 1 : 4);
+      node.start(0, (before ? start - 1000 : start) / 1000, 1);
       if (!before) setHeard(true);
     } catch {
       setPlaying(false);
@@ -242,19 +242,40 @@ export function ListeningPractice({
             <Button
               kind="secondary"
               label="Too early"
-              disabled={saving}
+              disabled={saving || boundary >= exercise.buffer.duration * 1000 - 4000}
               onPress={() => adjust(100)}
             />
             <Button
               kind="secondary"
               label="Too late"
-              disabled={saving}
+              disabled={saving || boundary <= 1000}
               onPress={() => adjust(-100)}
             />
           </View>
           <Text className="text-sm leading-5 text-muted">
             Silence first? Choose Too early. First sound missing? Choose Too late. Each tap moves
-            the start a little and replays it.
+            the start a little and replays just one second.
+          </Text>
+          <View className="flex-row flex-wrap gap-3">
+            <Button
+              kind="secondary"
+              label="Back 5 seconds"
+              disabled={saving || boundary <= 1000}
+              onPress={() => adjust(-5000)}
+            />
+            <Button
+              kind="secondary"
+              label="Forward 5 seconds"
+              disabled={saving || boundary >= exercise.buffer.duration * 1000 - 4000}
+              onPress={() => adjust(5000)}
+            />
+          </View>
+          <Text accessibilityLiveRegion="polite" className="text-sm leading-5 text-muted">
+            {boundary <= 1000
+              ? 'Start of this clip reached. If the words begin earlier, choose Not sure.'
+              : boundary >= exercise.buffer.duration * 1000 - 4000
+                ? 'End of this clip reached. If the words begin later, choose Not sure.'
+                : `${(boundary / 1000).toFixed(1)} seconds into this clip. Use the five-second jumps to find the words, then fine-tune above.`}
           </Text>
           <Button
             label={saving ? 'Saving…' : 'Perfect'}
@@ -314,7 +335,7 @@ export function ListeningPractice({
         )}
         <Text className="text-sm leading-5 text-muted">
           {onSave
-            ? 'Reviewing suggested starts in the full Alice recording. If this is the wrong passage or you cannot find the start, choose Not sure.'
+            ? 'Reviewing suggested starts in this recording. If this is the wrong passage or you cannot find the start, choose Not sure.'
             : 'Practice only. This uses an existing Alice annotation and won’t change the benchmark.'}
         </Text>
       </View>

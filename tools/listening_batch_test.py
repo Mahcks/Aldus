@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+import wave
 
 from listening_batch import digest, passage_text, prepare_batch, read_answers, save_answer
 
@@ -48,7 +49,11 @@ class ListeningBatchTest(unittest.TestCase):
             }))
             original = candidate.read_bytes()
             def cut(command, **_kwargs):
-                Path(command[-1]).write_bytes(('clip at ' + command[command.index('-ss') + 1]).encode())
+                with wave.open(command[-1], 'wb') as clip:
+                    clip.setnchannels(1)
+                    clip.setsampwidth(2)
+                    clip.setframerate(1000)
+                    clip.writeframes(b'\0\0' * int(command[command.index('-t') + 1]) * 1000)
             with patch('listening_batch.subprocess.run', side_effect=cut):
                 old, old_responses = prepare_batch(root, candidate, epub, audio, root / 'evidence', (12,))
                 old_responses.write_text('{"kept": true}')
@@ -61,7 +66,25 @@ class ListeningBatchTest(unittest.TestCase):
                 self.assertEqual(generic['sessions'][0]['id'], 's1')
                 self.assertEqual(generic['sessions'][0]['candidate_timestamp_ms'], 10000)
                 self.assertIsNone(generic['sessions'][0]['chapter'])
+                self.assertEqual(generic['sessions'][0]['clip_duration_ms'], 60000)
+                answer = {'batch_id': generic['id'], 'session_id': 's1',
+                          'clip_sha256': generic['sessions'][0]['clip_sha256'],
+                          'boundary_ms': 25000, 'result': 'right'}
+                save_answer(generic, generic_responses, answer)
+                with self.assertRaises(ValueError):
+                    save_answer(generic, generic_responses, {**answer, 'boundary_ms': 56001})
                 self.assertNotEqual(generic_responses, old_responses)
+                unresolved = json.loads(candidate.read_text())
+                unresolved['segments'][0].update(status='unresolved', highlightable=False)
+                candidate.write_text(json.dumps(unresolved))
+                review, _ = prepare_batch(
+                    root, candidate, epub, audio, root / 'evidence', segment_ids=['s1'],
+                )
+                self.assertEqual(review['sessions'][0]['candidate_status'], 'unresolved')
+                self.assertFalse(review['sessions'][0]['candidate_highlightable'])
+                with self.assertRaises(ValueError):
+                    prepare_batch(root, candidate, epub, audio, root / 'evidence', (12,))
+                candidate.write_bytes(original)
                 for ids in ([], ['missing'], ['s1', 's1']):
                     with self.assertRaises(ValueError):
                         prepare_batch(root, candidate, epub, audio, root / 'evidence', segment_ids=ids)

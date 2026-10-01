@@ -7,6 +7,7 @@ import re
 import subprocess
 from xml.etree import ElementTree as ET
 import zipfile
+import wave
 
 CHAPTERS = (1, 4, 7, 10, 12)
 
@@ -47,13 +48,15 @@ def prepare_batch(directory, candidate_path, epub_path, audio_path, evidence_roo
             raise ValueError(f'{field}: source does not match the alignment')
     # Explicit passage selection supports other books without guessing their
     # chapter naming. These remain model-assisted reviews, not blind annotations.
+    # Explicit review may include short or unresolved passages; retain their
+    # original status in the evidence without changing the live alignment.
     selected = []
     for key in segment_ids if segment_ids is not None else chapters:
         segment = next((item for item in candidate["segments"]
                         if (item["id"] == key if segment_ids is not None
-                            else item["epub"]["href"].endswith(f"-h-{key}.htm.xhtml"))
-                        and item.get("status") == "aligned"
-                        and item.get("highlightable") is True and len(item["text"]) > 110), None)
+                            else item["epub"]["href"].endswith(f"-h-{key}.htm.xhtml")
+                            and item.get("status") == "aligned"
+                            and item.get("highlightable") is True and len(item["text"]) > 110)), None)
         if segment is None:
             raise ValueError(f"No eligible passage for {key}")
         selected.append((key, segment))
@@ -67,22 +70,27 @@ def prepare_batch(directory, candidate_path, epub_path, audio_path, evidence_roo
             proposed = candidate_start if review_start_ms is None else review_start_ms
             if not isinstance(proposed, int) or isinstance(proposed, bool) or proposed < 5000:
                 raise ValueError('Invalid proposed start')
-            clip_start = proposed - 5000
+            clip_start = max(0, proposed - (30000 if segment_ids is not None else 5000))
             clip_file = f'passage-{len(sessions) + 1}.wav' if segment_ids is not None else f'chapter-{key}.wav'
             subprocess.run([
                 'ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error',
                 '-ss', str(clip_start / 1000), '-i', str(audio_path),
-                '-t', '15', '-ac', '1', '-ar', '24000', str(directory / clip_file),
+                '-t', '60' if segment_ids is not None else '15', '-ac', '1', '-ar', '24000', str(directory / clip_file),
             ], check=True)
+            with wave.open(str(directory / clip_file)) as clip:
+                clip_duration_ms = round(clip.getnframes() * 1000 / clip.getframerate())
             excerpt = text[:160].rsplit(' ', 1)[0] + '…' if len(text) > 160 else text
             sessions.append({
                 'id': segment['id'], 'chapter': key if segment_ids is None else None, 'text': excerpt,
                 'source_text': text, 'epub': segment['epub'],
                 'opening_word': re.search(r"[^\W\d_]+(?:['’][^\W\d_]+)*", text).group(),
-                'start_ms': 5000, 'clip_file': clip_file,
+                'start_ms': proposed - clip_start, 'clip_file': clip_file,
+                'clip_duration_ms': clip_duration_ms,
                 'clip_sha256': digest(directory / clip_file), 'source_start_ms': clip_start,
                 'proposed_timestamp_ms': proposed,
                 'candidate_timestamp_ms': candidate_start,
+                'candidate_status': segment.get('status'),
+                'candidate_highlightable': segment.get('highlightable'),
             })
     manifest = {
         'version': 1, 'title': f'{title}: {len(sessions)} passages',
@@ -113,7 +121,7 @@ def save_answer(manifest, path, answer):
     if session is None or answer.get('clip_sha256') != session['clip_sha256']:
         raise ValueError('The clip has changed. Reload before saving.')
     boundary = answer.get('boundary_ms')
-    if type(boundary) is not int or not 1000 <= boundary <= 11000:
+    if type(boundary) is not int or not 1000 <= boundary <= session.get('clip_duration_ms', 15000) - 4000:
         raise ValueError('The reviewed start is outside the clip.')
     if answer.get('result') not in ('right', 'unsure'):
         raise ValueError('Choose Perfect or Not sure.')
